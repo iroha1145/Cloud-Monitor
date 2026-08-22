@@ -1,0 +1,27 @@
+services:
+  sync-agent:
+    build: .
+    environment:
+      # 本地 openwebui-monitor 地址（Docker 内访问宿主机）
+      LOCAL_MONITOR_URL: ${LOCAL_MONITOR_URL:-http://host.docker.internal:7878}
+      # 本地 monitor 的只读密钥（ACCESS_TOKEN，未设置则与 API_KEY 相同）
+      LOCAL_API_KEY: ${LOCAL_API_KEY:-}
+      # 云端 Cloud-monitor hub 地址
+      CLOUD_HUB_URL: ${CLOUD_HUB_URL:?请在 .env 中配置 CLOUD_HUB_URL}
+      # 云端 hub 的 API_KEY
+      CLOUD_API_KEY: ${CLOUD_API_KEY:?请在 .env 中配置 CLOUD_API_KEY}
+      # 设备标识（默认按主机名自动生成，多台设备保持互不相同即可）
+      DEVICE_ID: ${DEVICE_ID:-}
+      DEVICE_NAME: ${DEVICE_NAME:-}
+      SYNC_INTERVAL_SECONDS: ${SYNC_INTERVAL_SECONDS:-60}
+      BATCH_SIZE: ${BATCH_SIZE:-200}
+      # 可选：token-monitor 多设备同步桥接
+      TOKEN_MONITOR_HUB_URL: ${TOKEN_MONITOR_HUB_URL:-}
+      TOKEN_MONITOR_SECRET: ${TOKEN_MONITOR_SECRET:-}
+      TOKEN_MONITOR_INTERVAL_SECONDS: ${TOKEN_MONITOR_INTERVAL_SECONDS:-300}
+    volumes:
+      - agent-state:/data
+    restart: unless-stopped
+
+volumes:
+  agent-state:

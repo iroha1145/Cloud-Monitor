@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenWebUI 监控台</title>
+    <meta name="description" content="OpenWebUI 使用统计监控台" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233B59F2'/%3E%3Cpath d='M7 20l5-6 4 4 6-9' stroke='%23ffffff' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/static/style.css?v=14" />
+  </head>
+  <body>
+    <!-- 访问密钥门：无密钥或 401 时显示 -->
+    <div class="gate" id="gate" hidden>
+      <div class="gate-card">
+        <span class="brand-mark brand-mark-lg" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="var(--brand-500)"/><path d="M7 20l5-6 4 4 6-9" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <h1>OpenWebUI 监控台</h1>
+        <p class="gate-desc">输入访问密钥查看使用统计。密钥只保存在当前标签页会话中，关闭标签页后自动清除。</p>
+        <form id="gate-form" novalidate>
+          <label class="field">
+            <span class="field-label">访问密钥</span>
+            <input id="gate-token" type="password" autocomplete="current-password" placeholder="ACCESS_TOKEN" />
+          </label>
+          <p class="gate-error" id="gate-error" role="alert" hidden></p>
+          <button type="submit" class="btn btn-primary btn-block">进入监控台</button>
+        </form>
+        <p class="gate-hint">密钥为后端的 ACCESS_TOKEN；未单独设置时与 API_KEY 相同。</p>
+      </div>
+    </div>
+
+    <div class="shell" id="shell" hidden>
+      <header class="topbar">
+        <div class="topbar-inner">
+          <div class="brand">
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="var(--brand-500)"/><path d="M7 20l5-6 4 4 6-9" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="brand-text"><strong>OpenWebUI 监控台</strong><em>USAGE MONITOR</em></span>
+          </div>
+
+          <nav class="nav" aria-label="主导航">
+            <button type="button" class="nav-item is-active" data-view="overview">
+              <span class="nav-no">01</span><span>概览</span>
+            </button>
+            <button type="button" class="nav-item" data-view="records">
+              <span class="nav-no">02</span><span>调用记录</span>
+            </button>
+            <button type="button" class="nav-item" data-view="users">
+              <span class="nav-no">03</span><span>用户</span>
+            </button>
+          </nav>
+
+          <div class="actions">
+            <button type="button" class="icon-btn" id="refresh" title="刷新数据" aria-label="刷新数据">
+              <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-refresh"/></svg>
+            </button>
+            <button type="button" class="ghost-btn" id="logout" title="清除已保存的密钥">
+              <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-logout"/></svg><span>更换密钥</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="strip">
+          <div class="strip-inner">
+            <div class="seg" id="range-seg" role="group" aria-label="时间范围">
+              <span class="seg-pill" aria-hidden="true"></span>
+              <button type="button" data-range="today">今天</button>
+              <button type="button" data-range="7d" class="is-active">近 7 天</button>
+              <button type="button" data-range="30d">近 30 天</button>
+              <button type="button" data-range="all">全部</button>
+              <button type="button" data-range="custom" id="range-custom-btn" aria-haspopup="true" aria-expanded="false">自定义</button>
+            </div>
+            <div class="strip-right">
+              <span class="conn" id="conn" data-state="off">
+                <span class="conn-dot" aria-hidden="true"></span><span id="conn-text">未连接</span>
+              </span>
+              <span class="updated" id="updated" aria-live="polite"></span>
+            </div>
+          </div>
+          <div class="custom-pop" id="custom-pop" hidden>
+            <label class="field">
+              <span class="field-label">开始（本地时间）</span>
+              <input type="datetime-local" id="custom-start" />
+            </label>
+            <label class="field">
+              <span class="field-label">结束（本地时间）</span>
+              <input type="datetime-local" id="custom-end" />
+            </label>
+            <div class="custom-pop-actions">
+              <button type="button" class="ghost-btn" id="custom-cancel">取消</button>
+              <button type="button" class="btn btn-primary btn-sm" id="custom-apply">应用</button>
+            </div>
+            <p class="gate-error" id="custom-error" hidden></p>
+          </div>
+        </div>
+      </header>
+
+      <main class="content">
+        <div class="page-head">
+          <div>
+            <p class="eyebrow">OPENWEBUI MONITOR</p>
+            <h1 id="view-title">概览</h1>
+            <p class="lede" id="view-lede">调用、Token 与活跃用户的全景。</p>
+          </div>
+          <p class="page-range mono" id="view-sub"></p>
+        </div>
+
+        <section id="view-overview" aria-label="概览">
+          <div class="kpis" id="kpis"></div>
+
+          <div class="panel chart-panel">
+            <div class="panel-head">
+              <div>
+                <h2>Token 趋势</h2>
+                <p class="panel-sub" id="chart-sub"></p>
+              </div>
+              <p class="panel-note mono">合计 = 输入 + 输出</p>
+            </div>
+            <div class="chart-wrap" id="chart-wrap">
+              <svg id="chart" role="img" aria-label="Token 趋势图"></svg>
+              <div class="chart-tip" id="chart-tip"></div>
+              <div class="empty empty-chart" id="chart-empty" hidden>
+                <svg class="ic ic-lg" aria-hidden="true"><use href="/static/icons.svg#i-chart-line"/></svg>
+                <p>所选范围内暂无数据</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="duo">
+            <div class="panel">
+              <div class="panel-head">
+                <h2>用户用量排行</h2>
+              </div>
+              <div class="rank" id="top-users"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-head">
+                <h2>模型分布</h2>
+                <p class="panel-sub">按 Token 合计占比</p>
+              </div>
+              <div class="donut-wrap">
+                <svg id="donut" viewBox="0 0 180 180" role="img" aria-label="模型分布"></svg>
+                <div class="donut-legend" id="donut-legend"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>最近记录</h2>
+              <button type="button" class="ghost-btn" id="goto-records">
+                <span>查看全部</span>
+                <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-arrow-right"/></svg>
+              </button>
+            </div>
+            <div class="recent" id="recent"></div>
+          </div>
+        </section>
+
+        <section id="view-records" hidden aria-label="调用记录">
+          <div class="panel">
+            <div class="filters">
+              <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-filter"/></svg>
+              <label class="field field-inline">
+                <span class="field-label">用户</span>
+                <select id="f-user"></select>
+              </label>
+              <label class="field field-inline">
+                <span class="field-label">模型</span>
+                <select id="f-model"></select>
+              </label>
+              <button type="button" class="ghost-btn" id="f-clear">
+                <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-x"/></svg><span>清除筛选</span>
+              </button>
+              <span class="filters-count" id="records-count"></span>
+            </div>
+            <div class="table-wrap">
+              <table class="tbl">
+                <thead>
+                  <tr>
+                    <th>时间</th>
+                    <th>用户</th>
+                    <th>模型</th>
+                    <th class="num">输入</th>
+                    <th class="num">输出</th>
+                    <th class="num">合计</th>
+                  </tr>
+                </thead>
+                <tbody id="records-body"></tbody>
+              </table>
+              <div class="empty" id="records-empty" hidden>
+                <svg class="ic ic-lg" aria-hidden="true"><use href="/static/icons.svg#i-database"/></svg>
+                <p>当前条件下没有记录</p>
+                <p class="empty-sub">调整筛选条件或时间范围试试</p>
+              </div>
+            </div>
+            <div class="pager">
+              <label class="pager-size">
+                每页
+                <select id="page-size">
+                  <option value="20" selected>20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="200">200</option>
+                </select>
+                条
+              </label>
+              <div class="pager-nav">
+                <span id="page-info" class="pager-info"></span>
+                <button type="button" class="icon-btn" id="page-prev" aria-label="上一页">
+                  <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-chevron-left"/></svg>
+                </button>
+                <button type="button" class="icon-btn" id="page-next" aria-label="下一页">
+                  <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-chevron-right"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-users" hidden aria-label="用户">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>全部用户</h2>
+              <p class="panel-sub" id="users-count"></p>
+            </div>
+            <div class="u-list" id="users-list"></div>
+            <div class="empty" id="users-empty" hidden>
+              <svg class="ic ic-lg" aria-hidden="true"><use href="/static/icons.svg#i-users"/></svg>
+              <p>还没有用户</p>
+              <p class="empty-sub">OpenWebUI 过滤器写入数据后，用户会出现在这里</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast-root" id="toast-root" aria-live="assertive"></div>
+
+    <script src="/static/app.js?v=13"></script>
+  </body>
+</html>

@@ -1,0 +1,15 @@
+services:
+  cloud-hub:
+    build: .
+    ports:
+      - "7878:7878"
+    environment:
+      API_KEY: ${API_KEY:-changeme}
+      ACCESS_TOKEN: ${ACCESS_TOKEN:-}
+      MAX_RECORDS_PER_PUSH: ${MAX_RECORDS_PER_PUSH:-500}
+    volumes:
+      - cloud-hub-data:/data
+    restart: unless-stopped
+
+volumes:
+  cloud-hub-data:
