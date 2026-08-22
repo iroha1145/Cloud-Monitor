@@ -21,7 +21,8 @@ def _project_root() -> Path:
 
 
 def _default_frontend_dir() -> Path:
-    return _project_root() / "frontend"
+    # 面板目录与 backend/ 同级：hub/frontend
+    return _project_root() / "hub" / "frontend"
 
 
 def _default_database_path() -> Path:

@@ -200,6 +200,7 @@ def test_bucket_upsert_within_five_minutes(node_hub, tmp_path):
     cloud = make_cloud_app(tmp_path, node_hub.url)
     with cloud:
         base = widget_style_payload("dev-bucket")
+        base["updatedAt"] = "2026-08-22T06:00:00.000Z"  # 固定桶锚点（local_day 取自 periodWindows，与此解耦）
         ingest(cloud, base)
         base["today"]["totalTokens"] = 2000
         base["updatedAt"] = "2026-08-22T06:02:00.000Z"  # 同一 5 分钟桶

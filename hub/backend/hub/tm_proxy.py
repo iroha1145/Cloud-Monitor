@@ -7,7 +7,7 @@
 - Python 本层: 鉴权（TOKEN_MONITOR_SECRET，只作用于 token-monitor 端点，
   与 OpenWebUI 链路的 API_KEY/ACCESS_TOKEN 完全隔离）、转发前的严格载荷
   校验、ASGI 级 1MiB 限流、SQLite 5 分钟桶历史快照（长期时间序列，官方
-  不提供）、/api/v1/tm/overview 面板数据、v1 旧表迁移。
+  不提供）、v1 旧表迁移。面板数据（/api/v1/tm/*）在 tm_overview.py。
 """
 
 from __future__ import annotations
@@ -19,14 +19,12 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from .auth import require_access_token
 from .config import Settings
 from .db import Database
 from .tm_snapshots import (
     delete_device_snapshots,
     legacy_device_payloads,
     migrate_legacy_tables,
-    trend_by_day,
     write_snapshot,
 )
 from .tm_validate import PayloadValidationError, is_limits_only_update, validate_ingest_payload
@@ -96,10 +94,6 @@ def build_tm_router(settings: Settings, db: Database, core: TmCore) -> APIRouter
 
         if not hmac.compare_digest((header or bearer).encode(), secret.encode()):
             raise HTTPException(status_code=401, detail="unauthorized")
-
-    def _require_core(request: Request) -> None:
-        if not settings.tm_ingest_secret:
-            raise HTTPException(status_code=404, detail="未启用 token-monitor 接入")
 
     # ------------------------------------------------------------ health
 
@@ -238,47 +232,6 @@ def build_tm_router(settings: Settings, db: Database, core: TmCore) -> APIRouter
                 "connection": "keep-alive",
             },
         )
-
-    # ------------------------------------------------------------ 面板
-
-    @router.get("/api/v1/tm/overview")
-    def tm_overview(request: Request) -> dict:
-        require_access_token(request, settings)
-        _require_core(request)
-        resp = core.request("GET", "/api/stats")
-        if resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="tm-core 聚合不可用")
-        stats = resp.json()
-        devices = []
-        for device in stats.get("devices") or []:
-            periods = device.get("periods") or {}
-            devices.append(
-                {
-                    "deviceId": device.get("deviceId"),
-                    "hostname": device.get("hostname"),
-                    "platform": device.get("platform"),
-                    "osName": device.get("osName"),
-                    "osVersion": device.get("osVersion"),
-                    "agentVersion": device.get("agentVersion"),
-                    "agentRuntime": device.get("agentRuntime"),
-                    "receivedAt": device.get("receivedAt"),
-                    "updatedAt": device.get("updatedAt"),
-                    "stale": device.get("stale"),
-                    "syncUploadIntervalMs": device.get("syncUploadIntervalMs"),
-                    "trackedClients": device.get("trackedClients"),
-                    "today": periods.get("today"),
-                    "month": periods.get("month"),
-                    "allTime": periods.get("allTime"),
-                    "limits": device.get("limits"),
-                }
-            )
-        return {
-            "generated_at": stats.get("updatedAt") or stats.get("generatedAt"),
-            "staleAfterMs": stats.get("staleAfterMs"),
-            "totals": stats.get("periods"),
-            "devices": devices,
-            "trend": trend_by_day(db),
-        }
 
     return router
 

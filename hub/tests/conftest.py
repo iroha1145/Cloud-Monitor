@@ -18,7 +18,9 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -117,6 +119,37 @@ def official_payload(spec: dict) -> dict:
     return json.loads(result.stdout)
 
 
+def _utc_iso(dt) -> str:
+    return (
+        dt.astimezone(timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
+
+
+def _period_windows(tz: str, day: str | None = None) -> dict:
+    """按当前时间生成有效周期窗口（不硬编码日期，避免随墙钟过期）。"""
+    zone = ZoneInfo(tz)
+    day_key = day or datetime.now(zone).date().isoformat()
+    day_start = datetime.fromisoformat(day_key).replace(tzinfo=zone)
+    today_end = day_start + timedelta(days=1)
+    month_start = day_start.replace(day=1)
+    month_end = (
+        month_start.replace(year=month_start.year + 1, month=1)
+        if month_start.month == 12
+        else month_start.replace(month=month_start.month + 1)
+    )
+    return {
+        "timeZone": tz,
+        "today": {"key": day_key, "endsAt": _utc_iso(today_end)},
+        "month": {"key": day_key[:7], "endsAt": _utc_iso(month_end)},
+    }
+
+
+def _now_iso() -> str:
+    return _utc_iso(datetime.now(timezone.utc))
+
+
 def widget_style_payload(device_id="dev-mac", *, tz="Asia/Tokyo", day=None) -> dict:
     """官方 widget 风格摘要（含缓存拆分/周期窗口/limits）。"""
     return {
@@ -131,12 +164,8 @@ def widget_style_payload(device_id="dev-mac", *, tz="Asia/Tokyo", day=None) -> d
         "projectsEnabled": False,
         "historyAvailable": True,
         "syncUploadIntervalMs": 300000,
-        "updatedAt": "2026-08-22T06:00:00.000Z",
-        "periodWindows": {
-            "timeZone": tz,
-            "today": {"key": day or "2026-08-22", "endsAt": "2026-08-22T15:00:00.000Z"},
-            "month": {"key": "2026-08", "endsAt": "2026-09-01T15:00:00.000Z"},
-        },
+        "updatedAt": _now_iso(),
+        "periodWindows": _period_windows(tz, day),
         "today": {
             "totalTokens": 1846320,
             "outputTokens": 421000,
@@ -186,12 +215,8 @@ def agent_style_payload(device_id="dev-headless") -> dict:
         "projectsEnabled": False,
         "historyAvailable": False,
         "syncUploadIntervalMs": 300000,
-        "updatedAt": "2026-08-22T06:00:00.000Z",
-        "periodWindows": {
-            "timeZone": "UTC",
-            "today": {"key": "2026-08-22", "endsAt": "2026-08-23T00:00:00.000Z"},
-            "month": {"key": "2026-08", "endsAt": "2026-09-01T00:00:00.000Z"},
-        },
+        "updatedAt": _now_iso(),
+        "periodWindows": _period_windows("UTC"),
         "today": {"totalTokens": 320000, "clients": {"codex": 320000}},
         "month": {"totalTokens": 6200000, "clients": {"codex": 6200000}},
         "allTime": {"totalTokens": 20800000, "clients": {"codex": 20800000}},
@@ -207,15 +232,15 @@ def limits_only_payload(device_id="dev-mac") -> dict:
         "agentVersion": "1.8.2",
         "agentRuntime": "widget",
         "syncUploadIntervalMs": 300000,
-        "updatedAt": "2026-08-22T06:05:00.000Z",
+        "updatedAt": _now_iso(),
         "limits": {
             "providers": [
                 {
-                    "provider": "anthropic",
+                    "provider": "claude",
                     "planLabel": "Max 5x",
                     "windows": [
-                        {"kind": "5h", "usedPercent": 42, "resetsAt": "2026-08-22T18:00:00.000Z"},
-                        {"kind": "7d", "usedPercent": 18},
+                        {"kind": "session", "label": "5h", "usedPercent": 42, "resetsAt": "2026-08-22T18:00:00.000Z"},
+                        {"kind": "weekly", "label": "7d", "usedPercent": 18},
                     ],
                 }
             ]

@@ -3,27 +3,27 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>OpenWebUI 监控台</title>
-    <meta name="description" content="OpenWebUI 使用统计监控台" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233B59F2'/%3E%3Cpath d='M7 20l5-6 4 4 6-9' stroke='%23ffffff' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="/static/style.css?v=14" />
+    <title>Cloud Monitor · 云端用量面板</title>
+    <meta name="description" content="token-monitor 设备用量云端面板" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%233B59F2'/%3E%3Cpath d='M10.2 21.5c-2.5 0-4.5-1.9-4.5-4.3 0-2.4 2-4.3 4.5-4.3.4-1.7 1.7-3.1 3.5-3.6 1.8-.5 3.8-.2 5.2 1 1.4 1.1 2.1 2.9 1.7 4.6h1c1.8 0 3.3 1.5 3.3 3.3s-1.5 3.3-3.3 3.3h-11.4z' stroke='%23ffffff' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/static/tm.css?v=3" />
   </head>
   <body>
-    <!-- 访问密钥门：无密钥或 401 时显示 -->
+    <!-- 访问密钥门：无密钥或 401 时显示；密钥只存 sessionStorage -->
     <div class="gate" id="gate" hidden>
       <div class="gate-card">
         <span class="brand-mark brand-mark-lg" aria-hidden="true">
-          <svg viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="var(--brand-500)"/><path d="M7 20l5-6 4 4 6-9" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <svg viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="var(--brand-500)"/><path d="M10.2 21.5c-2.5 0-4.5-1.9-4.5-4.3 0-2.4 2-4.3 4.5-4.3.4-1.7 1.7-3.1 3.5-3.6 1.8-.5 3.8-.2 5.2 1 1.4 1.1 2.1 2.9 1.7 4.6h1c1.8 0 3.3 1.5 3.3 3.3s-1.5 3.3-3.3 3.3h-11.4z" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </span>
-        <h1>OpenWebUI 监控台</h1>
-        <p class="gate-desc">输入访问密钥查看使用统计。密钥只保存在当前标签页会话中，关闭标签页后自动清除。</p>
+        <h1>Cloud Monitor</h1>
+        <p class="gate-desc">输入访问密钥查看云端用量面板。密钥只保存在当前标签页会话中，关闭标签页后自动清除。</p>
         <form id="gate-form" novalidate>
           <label class="field">
             <span class="field-label">访问密钥</span>
             <input id="gate-token" type="password" autocomplete="current-password" placeholder="ACCESS_TOKEN" />
           </label>
           <p class="gate-error" id="gate-error" role="alert" hidden></p>
-          <button type="submit" class="btn btn-primary btn-block">进入监控台</button>
+          <button type="submit" class="btn btn-primary btn-block">进入面板</button>
         </form>
         <p class="gate-hint">密钥为后端的 ACCESS_TOKEN；未单独设置时与 API_KEY 相同。</p>
       </div>
@@ -34,22 +34,10 @@
         <div class="topbar-inner">
           <div class="brand">
             <span class="brand-mark" aria-hidden="true">
-              <svg viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="var(--brand-500)"/><path d="M7 20l5-6 4 4 6-9" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <svg viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="var(--brand-500)"/><path d="M10.2 21.5c-2.5 0-4.5-1.9-4.5-4.3 0-2.4 2-4.3 4.5-4.3.4-1.7 1.7-3.1 3.5-3.6 1.8-.5 3.8-.2 5.2 1 1.4 1.1 2.1 2.9 1.7 4.6h1c1.8 0 3.3 1.5 3.3 3.3s-1.5 3.3-3.3 3.3h-11.4z" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </span>
-            <span class="brand-text"><strong>OpenWebUI 监控台</strong><em>USAGE MONITOR</em></span>
+            <span class="brand-text"><strong>Cloud Monitor · 云端用量面板</strong><em>TOKEN USAGE PANEL</em></span>
           </div>
-
-          <nav class="nav" aria-label="主导航">
-            <button type="button" class="nav-item is-active" data-view="overview">
-              <span class="nav-no">01</span><span>概览</span>
-            </button>
-            <button type="button" class="nav-item" data-view="records">
-              <span class="nav-no">02</span><span>调用记录</span>
-            </button>
-            <button type="button" class="nav-item" data-view="users">
-              <span class="nav-no">03</span><span>用户</span>
-            </button>
-          </nav>
 
           <div class="actions">
             <button type="button" class="icon-btn" id="refresh" title="刷新数据" aria-label="刷新数据">
@@ -63,35 +51,13 @@
 
         <div class="strip">
           <div class="strip-inner">
-            <div class="seg" id="range-seg" role="group" aria-label="时间范围">
-              <span class="seg-pill" aria-hidden="true"></span>
-              <button type="button" data-range="today">今天</button>
-              <button type="button" data-range="7d" class="is-active">近 7 天</button>
-              <button type="button" data-range="30d">近 30 天</button>
-              <button type="button" data-range="all">全部</button>
-              <button type="button" data-range="custom" id="range-custom-btn" aria-haspopup="true" aria-expanded="false">自定义</button>
-            </div>
+            <span class="updated" id="updated" aria-live="polite"></span>
             <div class="strip-right">
+              <span class="auto-hint mono">每 5 分钟自动刷新</span>
               <span class="conn" id="conn" data-state="off">
                 <span class="conn-dot" aria-hidden="true"></span><span id="conn-text">未连接</span>
               </span>
-              <span class="updated" id="updated" aria-live="polite"></span>
             </div>
-          </div>
-          <div class="custom-pop" id="custom-pop" hidden>
-            <label class="field">
-              <span class="field-label">开始（本地时间）</span>
-              <input type="datetime-local" id="custom-start" />
-            </label>
-            <label class="field">
-              <span class="field-label">结束（本地时间）</span>
-              <input type="datetime-local" id="custom-end" />
-            </label>
-            <div class="custom-pop-actions">
-              <button type="button" class="ghost-btn" id="custom-cancel">取消</button>
-              <button type="button" class="btn btn-primary btn-sm" id="custom-apply">应用</button>
-            </div>
-            <p class="gate-error" id="custom-error" hidden></p>
           </div>
         </div>
       </header>
@@ -99,138 +65,238 @@
       <main class="content">
         <div class="page-head">
           <div>
-            <p class="eyebrow">OPENWEBUI MONITOR</p>
-            <h1 id="view-title">概览</h1>
-            <p class="lede" id="view-lede">调用、Token 与活跃用户的全景。</p>
+            <p class="eyebrow">CLOUD MONITOR</p>
+            <h1>云端用量面板</h1>
+            <p class="lede">token-monitor 设备摘要的云端全景：周期用量、缓存拆分、模型与客户端分布。</p>
           </div>
-          <p class="page-range mono" id="view-sub"></p>
+          <p class="page-range mono" id="generated-at"></p>
         </div>
 
-        <section id="view-overview" aria-label="概览">
-          <div class="kpis" id="kpis"></div>
+        <!-- 无设备时的空状态引导 -->
+        <section id="empty-hero" class="panel empty-hero" hidden>
+          <svg class="ic ic-lg" aria-hidden="true"><use href="/static/icons.svg#i-cloud"/></svg>
+          <h2>还没有设备数据</h2>
+          <p class="empty-sub">在本机 token-monitor 设置里启用多设备同步（Multi-device sync）：</p>
+          <ol class="hero-steps">
+            <li>hub 地址填本服务器地址</li>
+            <li>密钥填服务端配置的 <code>TOKEN_MONITOR_SECRET</code></li>
+            <li>widget 按原节奏（默认 5 分钟）自动推送，本页每 5 分钟自动刷新</li>
+          </ol>
+        </section>
 
+        <section id="view-main" aria-label="用量概览">
+          <!-- 周期卡片：今日 / 本月 / 累计（JS 渲染，含堆叠组成条与图例） -->
+          <div class="periods" id="periods"></div>
+
+          <!-- 近 30 天趋势（按模型堆叠分色） -->
           <div class="panel chart-panel">
             <div class="panel-head">
               <div>
-                <h2>Token 趋势</h2>
-                <p class="panel-sub" id="chart-sub"></p>
+                <h2>近 30 天趋势</h2>
+                <p class="panel-sub">每日 token 合计 · 按模型堆叠着色（悬停查看明细）</p>
               </div>
-              <p class="panel-note mono">合计 = 输入 + 输出</p>
+              <p class="panel-note mono">单位：tokens</p>
             </div>
-            <div class="chart-wrap" id="chart-wrap">
-              <svg id="chart" role="img" aria-label="Token 趋势图"></svg>
-              <div class="chart-tip" id="chart-tip"></div>
-              <div class="empty empty-chart" id="chart-empty" hidden>
+            <div class="trend-legend" id="trend-legend" hidden></div>
+            <div class="chart-wrap" id="trend-wrap">
+              <svg id="trend-chart" role="img" aria-label="近 30 天 token 趋势"></svg>
+              <div class="chart-tip" id="trend-tip"></div>
+              <div class="empty empty-chart" id="trend-empty" hidden>
                 <svg class="ic ic-lg" aria-hidden="true"><use href="/static/icons.svg#i-chart-line"/></svg>
-                <p>所选范围内暂无数据</p>
+                <p>暂无趋势数据</p>
+                <p class="empty-sub">设备上报后，这里会出现每日用量柱状图</p>
               </div>
             </div>
           </div>
 
+          <!-- 模型分布 + 客户端分布 -->
           <div class="duo">
             <div class="panel">
               <div class="panel-head">
-                <h2>用户用量排行</h2>
+                <div>
+                  <h2>模型分布</h2>
+                  <p class="panel-sub" id="model-dist-sub">按 token 占比 · 条内为真实构成分段</p>
+                </div>
+                <div class="seg seg-sm" id="model-seg" role="group" aria-label="模型分布周期">
+                  <span class="seg-pill" aria-hidden="true"></span>
+                  <button type="button" data-p="today" class="is-active">今日</button>
+                  <button type="button" data-p="month">本月</button>
+                  <button type="button" data-p="allTime">累计</button>
+                </div>
               </div>
-              <div class="rank" id="top-users"></div>
+              <div class="dist" id="model-dist"></div>
+              <div class="empty" id="model-empty" hidden>
+                <svg class="ic ic-lg" aria-hidden="true"><use href="/static/icons.svg#i-cpu"/></svg>
+                <p>该周期暂无模型数据</p>
+              </div>
             </div>
             <div class="panel">
               <div class="panel-head">
-                <h2>模型分布</h2>
-                <p class="panel-sub">按 Token 合计占比</p>
+                <div>
+                  <h2>客户端分布</h2>
+                  <p class="panel-sub" id="client-dist-sub">按 token 占比 · 条内为真实构成分段</p>
+                </div>
+                <div class="seg seg-sm" id="client-seg" role="group" aria-label="客户端分布周期">
+                  <span class="seg-pill" aria-hidden="true"></span>
+                  <button type="button" data-p="today" class="is-active">今日</button>
+                  <button type="button" data-p="month">本月</button>
+                  <button type="button" data-p="allTime">累计</button>
+                </div>
               </div>
-              <div class="donut-wrap">
-                <svg id="donut" viewBox="0 0 180 180" role="img" aria-label="模型分布"></svg>
-                <div class="donut-legend" id="donut-legend"></div>
+              <div class="dist" id="client-dist"></div>
+              <div class="empty" id="client-empty" hidden>
+                <svg class="ic ic-lg" aria-hidden="true"><use href="/static/icons.svg#i-users"/></svg>
+                <p>该周期暂无客户端数据</p>
               </div>
             </div>
           </div>
 
-          <div class="panel">
+          <!-- 工具 × 模型矩阵（clientModels / clientModelCosts） -->
+          <div class="panel" id="matrix-panel" hidden>
             <div class="panel-head">
-              <h2>最近记录</h2>
-              <button type="button" class="ghost-btn" id="goto-records">
-                <span>查看全部</span>
-                <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-arrow-right"/></svg>
-              </button>
+              <div>
+                <h2>工具 × 模型矩阵</h2>
+                <p class="panel-sub">行 = 客户端 · 列 = 模型 · 色深 = 数值（取前 8 × 8，悬停查看）</p>
+              </div>
+              <div class="mx-segs">
+                <div class="seg seg-sm" id="mx-metric-seg" role="group" aria-label="矩阵指标">
+                  <span class="seg-pill" aria-hidden="true"></span>
+                  <button type="button" data-m="tokens" class="is-active">Tokens</button>
+                  <button type="button" data-m="cost">费用</button>
+                </div>
+                <div class="seg seg-sm" id="mx-period-seg" role="group" aria-label="矩阵周期">
+                  <span class="seg-pill" aria-hidden="true"></span>
+                  <button type="button" data-p="today" class="is-active">今日</button>
+                  <button type="button" data-p="month">本月</button>
+                  <button type="button" data-p="allTime">累计</button>
+                </div>
+              </div>
             </div>
-            <div class="recent" id="recent"></div>
+            <div class="mx-scroll">
+              <div class="mx" id="mx"></div>
+            </div>
           </div>
-        </section>
 
-        <section id="view-records" hidden aria-label="调用记录">
-          <div class="panel">
-            <div class="filters">
-              <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-filter"/></svg>
-              <label class="field field-inline">
-                <span class="field-label">用户</span>
-                <select id="f-user"></select>
-              </label>
-              <label class="field field-inline">
-                <span class="field-label">模型</span>
-                <select id="f-model"></select>
-              </label>
-              <button type="button" class="ghost-btn" id="f-clear">
-                <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-x"/></svg><span>清除筛选</span>
-              </button>
-              <span class="filters-count" id="records-count"></span>
+          <!-- 活动热力图（日 / 周 / 月） -->
+          <div class="panel hm-panel">
+            <div class="panel-head">
+              <div>
+                <h2>活动热力图</h2>
+                <p class="panel-sub" id="act-sub">本月逐日活动（UTC）</p>
+              </div>
+              <div class="seg seg-sm" id="act-seg" role="group" aria-label="活动热力图视图">
+                <span class="seg-pill" aria-hidden="true"></span>
+                <button type="button" data-v="day">日</button>
+                <button type="button" data-v="week">周</button>
+                <button type="button" data-v="month" class="is-active">月</button>
+              </div>
             </div>
-            <div class="table-wrap">
-              <table class="tbl">
+            <div class="hm-scroll">
+              <div class="hm" id="hm"></div>
+            </div>
+            <div class="hm-foot">
+              <span class="hm-scale-label">少</span>
+              <i class="hm-cell hm-s hm-0"></i>
+              <i class="hm-cell hm-s hm-1"></i>
+              <i class="hm-cell hm-s hm-2"></i>
+              <i class="hm-cell hm-s hm-3"></i>
+              <i class="hm-cell hm-s hm-4"></i>
+              <i class="hm-cell hm-s hm-5"></i>
+              <span class="hm-scale-label">多</span>
+            </div>
+          </div>
+
+          <!-- 项目分布（按 label 跨设备合并） -->
+          <div class="panel" id="projects-panel" hidden>
+            <div class="panel-head">
+              <div>
+                <h2>项目</h2>
+                <p class="panel-sub">按项目 label 跨设备合并 · 条内按客户端分布分段（悬停查看）</p>
+              </div>
+            </div>
+            <div class="dist" id="proj-dist"></div>
+          </div>
+
+          <!-- 订阅配额 limits（跨设备拍平去重） -->
+          <div class="panel" id="limits-panel" hidden>
+            <div class="panel-head">
+              <div>
+                <h2>订阅配额</h2>
+                <p class="panel-sub">各 provider 账户的窗口用量与余额 · 同一账户跨设备取最新</p>
+              </div>
+            </div>
+            <div class="lim-grid" id="lim-grid"></div>
+          </div>
+
+          <!-- 订阅清单（独立接口 /api/v1/tm/subscriptions） -->
+          <div class="panel" id="subs-panel" hidden>
+            <div class="panel-head">
+              <div>
+                <h2>订阅</h2>
+                <p class="panel-sub" id="subs-sub"></p>
+              </div>
+            </div>
+            <div class="tbl-scroll">
+              <table class="tbl" id="subs-tbl">
                 <thead>
                   <tr>
-                    <th>时间</th>
-                    <th>用户</th>
-                    <th>模型</th>
-                    <th class="num">输入</th>
-                    <th class="num">输出</th>
-                    <th class="num">合计</th>
+                    <th>Provider</th>
+                    <th>套餐</th>
+                    <th>绑定</th>
+                    <th class="num">金额</th>
+                    <th>周期</th>
+                    <th>开始日期</th>
+                    <th>续费</th>
+                    <th class="num">加购</th>
                   </tr>
                 </thead>
-                <tbody id="records-body"></tbody>
+                <tbody id="subs-body"></tbody>
               </table>
-              <div class="empty" id="records-empty" hidden>
-                <svg class="ic ic-lg" aria-hidden="true"><use href="/static/icons.svg#i-database"/></svg>
-                <p>当前条件下没有记录</p>
-                <p class="empty-sub">调整筛选条件或时间范围试试</p>
-              </div>
-            </div>
-            <div class="pager">
-              <label class="pager-size">
-                每页
-                <select id="page-size">
-                  <option value="20" selected>20</option>
-                  <option value="50">50</option>
-                  <option value="100">100</option>
-                  <option value="200">200</option>
-                </select>
-                条
-              </label>
-              <div class="pager-nav">
-                <span id="page-info" class="pager-info"></span>
-                <button type="button" class="icon-btn" id="page-prev" aria-label="上一页">
-                  <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-chevron-left"/></svg>
-                </button>
-                <button type="button" class="icon-btn" id="page-next" aria-label="下一页">
-                  <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-chevron-right"/></svg>
-                </button>
-              </div>
             </div>
           </div>
-        </section>
 
-        <section id="view-users" hidden aria-label="用户">
+          <!-- 会话明细（跨设备拍平，按 tokens 降序，至多 100 条） -->
+          <div class="panel" id="sessions-panel" hidden>
+            <div class="panel-head">
+              <div>
+                <h2>会话</h2>
+                <p class="panel-sub" id="sess-sub">按 tokens 降序</p>
+              </div>
+            </div>
+            <div class="tbl-scroll">
+              <table class="tbl" id="sess-tbl">
+                <thead>
+                  <tr>
+                    <th>客户端</th>
+                    <th>会话</th>
+                    <th>模型</th>
+                    <th class="num">Tokens</th>
+                    <th class="num">费用</th>
+                    <th>项目</th>
+                    <th>时长</th>
+                    <th>最近使用</th>
+                    <th>设备</th>
+                  </tr>
+                </thead>
+                <tbody id="sess-body"></tbody>
+              </table>
+            </div>
+            <div class="tbl-foot" id="sess-foot" hidden>
+              <button type="button" class="ghost-btn" id="sess-more">显示全部</button>
+              <span class="tbl-note" id="sess-omitted" hidden>会话明细已被客户端裁剪</span>
+            </div>
+          </div>
+
+          <!-- 设备卡片流 -->
           <div class="panel">
             <div class="panel-head">
-              <h2>全部用户</h2>
-              <p class="panel-sub" id="users-count"></p>
+              <div>
+                <h2>设备</h2>
+                <p class="panel-sub" id="devices-sub"></p>
+              </div>
+              <p class="panel-note">超过 15 分钟未上报视为离线</p>
             </div>
-            <div class="u-list" id="users-list"></div>
-            <div class="empty" id="users-empty" hidden>
-              <svg class="ic ic-lg" aria-hidden="true"><use href="/static/icons.svg#i-users"/></svg>
-              <p>还没有用户</p>
-              <p class="empty-sub">OpenWebUI 过滤器写入数据后，用户会出现在这里</p>
-            </div>
+            <div class="dev-grid" id="dev-grid"></div>
           </div>
         </section>
       </main>
@@ -238,6 +304,6 @@
 
     <div class="toast-root" id="toast-root" aria-live="assertive"></div>
 
-    <script src="/static/app.js?v=13"></script>
+    <script src="/static/tm.js?v=3"></script>
   </body>
 </html>

@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .auth import (
@@ -27,6 +27,7 @@ from .services import (
     list_users,
     usage_report,
 )
+from .tm_overview import build_tm_overview_router
 from .tm_proxy import bootstrap_tm_layer, build_tm_router
 
 
@@ -45,6 +46,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     # Python 负责鉴权/校验/限流/快照/面板数据
     tm_core = bootstrap_tm_layer(settings, app.state.db)
     app.include_router(build_tm_router(settings, app.state.db, tm_core))
+    # 云端用量面板数据（/api/v1/tm/overview + /api/v1/tm/subscriptions）
+    app.include_router(build_tm_overview_router(settings, app.state.db, tm_core))
 
     # ASGI receive 层 1MiB 实测限流（token-monitor 写入端点）
     app.add_middleware(TmBodyLimitMiddleware)
@@ -183,14 +186,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
         app.mount("/static", StaticFiles(directory=str(frontend_dir)), name="static")
 
-    # token-monitor 云端面板（独立目录，与上面的 openwebui 记录看板互不影响）
-    tm_frontend_dir = settings.frontend_dir.parent / "tm-frontend"
-    if tm_frontend_dir.is_dir():
-        app.mount(
-            "/tm",
-            StaticFiles(directory=str(tm_frontend_dir), html=True),
-            name="tm-frontend",
-        )
+    # 旧的 /tm/ 面板已并入 /（云端用量面板）：301 保留书签兼容
+    @app.get("/tm", include_in_schema=False)
+    @app.get("/tm/", include_in_schema=False)
+    def tm_redirect() -> RedirectResponse:
+        return RedirectResponse(url="/", status_code=301)
 
     @app.exception_handler(HTTPException)
     async def http_error(_request: Request, exc: HTTPException) -> JSONResponse:

@@ -187,7 +187,7 @@ token-monitor widget ──(设置 hub=云端地址 + TOKEN_MONITOR_SECRET)─�
     POST /api/ingest ──► tm_devices(最新全量 payload) + tm_snapshots(轻量历史)
     GET  /api/health /api/stats /api/devices[/:id]  ← 官方协议兼容
     GET  /api/v1/tm/overview ← 网格面板专用（ACCESS_TOKEN）
-    网页 /tm/ ← tm-frontend（独立新页面，未触碰 hub/frontend）
+    网页 /tm/ ← tm-frontend（v2 形态；现已被 / 用量面板取代，/tm/ 301 跳转）
 ```
 
 ## 与官方 hub 的兼容策略
@@ -242,7 +242,8 @@ widget/agent ──官方同步协议──► Python 网关（鉴权/严格校�
                                    │
                           SQLite tm_snapshot_buckets（5 分钟桶 × 设备本地日）
                                    │
-                          /api/v1/tm/overview + /tm/ 面板（趋势）
+                          /api/v1/tm/overview + / 用量面板
+                          （趋势按模型堆叠/活动热力图/会话/项目/配额/订阅）
 ```
 
 差分测试（tests/test_tm_differential.py）对同一载荷序列（widget 风格、

@@ -4,11 +4,12 @@
 官方 hub 实现被原样 vendored（固定提交 b925865，逐字节未改）作为**协议权威**运行在
 tm-core 容器中，本机 widget 在设置里把 hub 指向你的服务器即可原生直连；Python
 网关在其前侧做鉴权隔离、严格载荷校验、1MiB 实测限流，并把数据沉淀为 SQLite
-长期时间序列，配合 `/tm/` 网页面板随处查看（今日/本月/累计、按模型/客户端、
-缓存拆分、多设备、近 30 天趋势）。
+长期时间序列，配合 `/` 网页面板随处查看（今日/本月/累计、按模型/客户端、
+缓存拆分、多设备、近 30 天按模型堆叠趋势、日/周/月活动热力图，以及
+工具×模型矩阵、项目、配额、订阅、会话明细面板；旧 `/tm/` 301 跳转）。
 
 同时保留另一条链路：本机 [OpenWebUI-Monitor](https://github.com/iroha1145/OpenWebUI-Monitor)
-的详细调用记录同步（`/` 看板，前端原样复用、零改动）。两条链路密钥完全隔离。
+的详细调用记录同步（纯 API 链路，无独立页面）。两条链路密钥完全隔离。
 
 ```
 ┌───────────── 本机 ─────────────┐      ┌────────── 云端服务器（docker compose）──────────┐
@@ -18,8 +19,8 @@ tm-core 容器中，本机 widget 在设置里把 hub 指向你的服务器即�
 │  headless agent 默认 5 分钟     │      │ │  devices.json 持久化（官方原生行为）     │   │
 └────────────────────────────────┘      │ └──────────────△─────────────────────────┘   │
                                         │ Python 网关: 鉴权隔离+严格校验+1MiB 限流      │
-                                        │ SQLite 5 分钟桶历史(设备本地日) /tm/ 面板     │
-                                        │ OpenWebUI 记录链路(另一套密钥) / 看板         │
+                                        │ SQLite 5 分钟桶历史(设备本地日) / 用量面板    │
+                                        │ OpenWebUI 记录链路(另一套密钥, 纯 API)        │
                                         └──────────────────────────────────────────────┘
 ```
 
@@ -50,7 +51,8 @@ tm-core 容器中，本机 widget 在设置里把 hub 指向你的服务器即�
   一律 400，官方仅限 1MiB 体积）；ASGI receive 层 1MiB 实测限流（分块、
   无/伪造 Content-Length 均按实际字节判定）。
 - **网关增加的能力**：SQLite 5 分钟桶长期时间序列（官方 devices.json 只保留
-  每设备最新状态，不含历史点）；`/api/v1/tm/overview` 面板接口（ACCESS_TOKEN）；
+  每设备最新状态，不含历史点）；`/api/v1/tm/overview` 面板接口与
+  `/api/v1/tm/subscriptions` 只读订阅接口（ACCESS_TOKEN）；
   v1 旧表自动迁移。
 - **部署形态**：官方 hub 单进程；本方案为 compose 内 python + node 两容器。
 
@@ -100,7 +102,7 @@ location /api/stats/stream {
 密钥填 `TOKEN_MONITOR_SECRET`。widget 按其同步间隔（实时/10/20/30 分钟，
 headless agent 默认 5 分钟）推送，无需本机任何额外组件。
 
-**随处查看**：`https://<服务器>/tm/`，输入 `ACCESS_TOKEN`。
+**随处查看**：`https://<服务器>/`，输入 `ACCESS_TOKEN`（旧 `/tm/` 已 301 跳转）。
 
 ## OpenWebUI-Monitor 记录同步（第二条链路）
 
@@ -134,11 +136,11 @@ agent（OpenWebUI 链路）的环境变量见 `agent/.env.example`。
 ## 测试
 
 ```bash
-cd hub   && PYTHONPATH=backend python -m pytest tests/ -q   # 42 项
+cd hub   && PYTHONPATH=backend python -m pytest tests/ -q   # 83 项
 cd agent && python -m pytest tests/ -q                       # 28 项
 ```
 
-整体验证：102 项 pytest 全绿；32 线程并发压测零异常；10 万条 SQL 分页/聚合
+整体验证：111 项 pytest 全绿；32 线程并发压测零异常；10 万条 SQL 分页/聚合
 与基准一致；token-monitor 双设备真实风格 payload（含缓存拆分）端到端入库、
 聚合与面板展示正常。
 
