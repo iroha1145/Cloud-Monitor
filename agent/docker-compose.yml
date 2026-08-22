@@ -2,25 +2,38 @@ services:
   sync-agent:
     build: .
     environment:
-      # 本地 openwebui-monitor 地址（Docker 内访问宿主机）
       LOCAL_MONITOR_URL: ${LOCAL_MONITOR_URL:-http://host.docker.internal:7878}
-      # 本地 monitor 的只读密钥（ACCESS_TOKEN，未设置则与 API_KEY 相同）
       LOCAL_API_KEY: ${LOCAL_API_KEY:-}
-      # 云端 Cloud-monitor hub 地址
       CLOUD_HUB_URL: ${CLOUD_HUB_URL:?请在 .env 中配置 CLOUD_HUB_URL}
-      # 云端 hub 的 API_KEY
       CLOUD_API_KEY: ${CLOUD_API_KEY:?请在 .env 中配置 CLOUD_API_KEY}
-      # 设备标识（默认按主机名自动生成，多台设备保持互不相同即可）
+      # 设备身份：显式配置最稳妥；留空则首次生成 UUID 持久化到状态卷
       DEVICE_ID: ${DEVICE_ID:-}
       DEVICE_NAME: ${DEVICE_NAME:-}
+      HOST_PLATFORM: ${HOST_PLATFORM:-}
+      SOURCE_INSTANCE_ID: ${SOURCE_INSTANCE_ID:-}
+      TOKEN_MONITOR_DEVICE_ID: ${TOKEN_MONITOR_DEVICE_ID:-}
+      TIME_ZONE: ${TIME_ZONE:-Asia/Tokyo}
+      REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-15}
       SYNC_INTERVAL_SECONDS: ${SYNC_INTERVAL_SECONDS:-60}
       BATCH_SIZE: ${BATCH_SIZE:-200}
-      # 可选：token-monitor 多设备同步桥接
+      ALLOW_INSECURE_HTTP: ${ALLOW_INSECURE_HTTP:-false}
+      # 可选：token-monitor 桥接
       TOKEN_MONITOR_HUB_URL: ${TOKEN_MONITOR_HUB_URL:-}
       TOKEN_MONITOR_SECRET: ${TOKEN_MONITOR_SECRET:-}
       TOKEN_MONITOR_INTERVAL_SECONDS: ${TOKEN_MONITOR_INTERVAL_SECONDS:-300}
+      HEALTH_STALE_SECONDS: ${HEALTH_STALE_SECONDS:-3600}
     volumes:
       - agent-state:/data
+    # Linux 宿主机上 host.docker.internal 需要显式映射
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     restart: unless-stopped
 
 volumes:

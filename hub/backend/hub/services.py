@@ -1,14 +1,18 @@
-"""设备同步写入与聚合查询，读接口返回结构与本地 openwebui-monitor 完全一致。"""
+"""设备同步写入与聚合查询。
+
+写路径: apply_sync_push 在单个 BEGIN IMMEDIATE 事务内完成
+device/users/records 三类写入，任何异常整体回滚。
+读路径: /records 走 SQL LIMIT/OFFSET 分页，/usage 走 SQL GROUP BY 聚合，
+返回结构与 openwebui-monitor 保持兼容（前端零改动）。
+"""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from .db import Database
-
-
-MAX_DEVICE_ID_LENGTH = 128
+from .db import Database, record_fingerprint
+from .models import DeviceInfo, RecordIn, SyncPushRequest, UserIn
 
 
 def utc_now() -> str:
@@ -32,29 +36,17 @@ def _iso(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def normalize_created_at(value: Any) -> str:
-    """同步记录的时间戳：接受 ISO 字符串，非法或缺失时用服务器当前时间。"""
-    if isinstance(value, str) and value.strip():
-        try:
-            return _iso(parse_time(value) or datetime.now(timezone.utc))
-        except ValueError:
-            pass
-    return utc_now()
+def validate_time_range(start: Optional[str], end: Optional[str]) -> None:
+    start_dt = parse_time(start, end_of_day=False)
+    end_dt = parse_time(end, end_of_day=True)
+    if start_dt is not None and end_dt is not None and start_dt > end_dt:
+        raise ValueError("start_time 不能晚于 end_time")
 
 
 # ---------------------------------------------------------------- 写入（同步）
 
 
-def upsert_device(
-    db: Database,
-    device_id: str,
-    *,
-    name: str = "",
-    platform: str = "",
-    agent_version: str = "",
-    now: Optional[str] = None,
-) -> None:
-    stamp = now or utc_now()
+def _upsert_device(db: Database, device: DeviceInfo, *, now: str) -> None:
     db.execute(
         """
         INSERT INTO devices (id, name, platform, agent_version, first_seen_at, last_seen_at)
@@ -65,14 +57,15 @@ def upsert_device(
             agent_version = CASE WHEN excluded.agent_version != '' THEN excluded.agent_version ELSE devices.agent_version END,
             last_seen_at = excluded.last_seen_at
         """,
-        (device_id, name or "", platform or "", agent_version or "", stamp, stamp),
+        (device.id, device.name, device.platform, device.agent_version, now, now),
     )
 
 
-def upsert_user(db: Database, user: dict, *, now: Optional[str] = None) -> None:
-    if not isinstance(user, dict) or not user.get("id"):
-        raise ValueError("缺少用户 id")
-    stamp = now or utc_now()
+def _upsert_user(db: Database, user: UserIn, *, now: str) -> None:
+    """首次插入保留本地 created_at；更新不覆盖原始 created_at。"""
+    stamp = now
+    created = user.created_at or stamp
+    updated = user.updated_at or stamp
     db.execute(
         """
         INSERT INTO users (id, email, name, role, created_at, updated_at)
@@ -83,131 +76,100 @@ def upsert_user(db: Database, user: dict, *, now: Optional[str] = None) -> None:
             role = excluded.role,
             updated_at = excluded.updated_at
         """,
-        (
-            str(user["id"]),
-            str(user.get("email") or ""),
-            str(user.get("name") or ""),
-            str(user.get("role") or "user"),
-            stamp,
-            stamp,
-        ),
+        (user.id, user.email, user.name, user.role, created, updated),
     )
-
-
-def normalize_push_payload(
-    payload: Any, *, max_records: int
-) -> tuple[dict, list[dict], list[dict]]:
-    """校验并规整 /api/v1/sync/push 请求体，返回 (device, users, records)。"""
-    if not isinstance(payload, dict):
-        raise ValueError("请求体无效")
-
-    device = payload.get("device") if isinstance(payload.get("device"), dict) else {}
-    device_id = str(device.get("id") or "").strip()
-    if not device_id or len(device_id) > MAX_DEVICE_ID_LENGTH:
-        raise ValueError("缺少有效的 device.id")
-
-    raw_users = payload.get("users")
-    if raw_users is None:
-        raw_users = []
-    if not isinstance(raw_users, list) or len(raw_users) > max_records:
-        raise ValueError("users 必须是不超过上限的数组")
-    users: list[dict] = []
-    for user in raw_users:
-        if not isinstance(user, dict) or not user.get("id"):
-            raise ValueError("users 中存在缺少 id 的条目")
-        users.append(user)
-
-    raw_records = payload.get("records")
-    if raw_records is None:
-        raw_records = []
-    if not isinstance(raw_records, list) or len(raw_records) > max_records:
-        raise ValueError(f"records 单次最多 {max_records} 条")
-    records: list[dict] = []
-    for record in raw_records:
-        if not isinstance(record, dict):
-            raise ValueError("records 中存在非法条目")
-        try:
-            local_id = int(record.get("local_id"))
-        except (TypeError, ValueError) as exc:
-            raise ValueError("record 缺少数字型 local_id") from exc
-        if local_id < 1:
-            raise ValueError("record.local_id 必须为正整数")
-        user_id = record.get("user_id")
-        if not user_id or not isinstance(user_id, str):
-            raise ValueError("record 缺少 user_id")
-        try:
-            input_tokens = max(int(record.get("input_tokens") or 0), 0)
-            output_tokens = max(int(record.get("output_tokens") or 0), 0)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("record token 数值无效") from exc
-        records.append(
-            {
-                "local_id": local_id,
-                "user_id": user_id,
-                "nickname": str(record.get("nickname") or ""),
-                "model_name": str(record.get("model_name") or ""),
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "created_at": normalize_created_at(record.get("created_at")),
-            }
-        )
-
-    normalized_device = {
-        "id": device_id,
-        "name": str(device.get("name") or ""),
-        "platform": str(device.get("platform") or ""),
-        "agent_version": str(device.get("agent_version") or ""),
-    }
-    return normalized_device, users, records
 
 
 def apply_sync_push(
-    db: Database, payload: dict, *, max_records: int
+    db: Database,
+    payload: SyncPushRequest,
+    *,
+    protocol_version: int,
 ) -> dict:
-    device, users, records = normalize_push_payload(payload, max_records=max_records)
+    """幂等推送：按 (device_id, source_instance_id, local_id) 去重。
+
+    内容指纹一致的重复推送计 duplicates；同一主键但内容不同计 conflicts
+    （保留云端已有数据，不覆盖）。conflicts > 0 时 agent 不得推进游标。
+    """
     now = utc_now()
+    source = payload.source_instance_id
+    records = payload.records
 
-    upsert_device(
-        db,
-        device["id"],
-        name=device["name"],
-        platform=device["platform"],
-        agent_version=device["agent_version"],
-        now=now,
-    )
-    for user in users:
-        upsert_user(db, user, now=now)
+    with db.transaction():
+        _upsert_device(db, payload.device, now=now)
+        for user in payload.users:
+            _upsert_user(db, user, now=now)
 
-    inserted = 0
-    if records:
-        cur = db.executemany(
-            """
-            INSERT OR IGNORE INTO usage_records (
-                device_id, local_id, user_id, nickname, model_name,
-                input_tokens, output_tokens, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                (
-                    device["id"],
-                    r["local_id"],
-                    r["user_id"],
-                    r["nickname"],
-                    r["model_name"],
-                    r["input_tokens"],
-                    r["output_tokens"],
-                    r["created_at"],
+        inserted = 0
+        duplicates = 0
+        conflicts = 0
+        if records:
+            local_ids = [r.local_id for r in records]
+            placeholders = ",".join("?" * len(local_ids))
+            existing = {
+                row["local_id"]: row["fingerprint"]
+                for row in db.fetchall(
+                    f"""
+                    SELECT local_id, fingerprint FROM usage_records
+                    WHERE device_id = ? AND source_instance_id = ?
+                      AND local_id IN ({placeholders})
+                    """,
+                    [payload.device.id, source, *local_ids],
                 )
-                for r in records
-            ],
-        )
-        inserted = cur.rowcount if cur.rowcount is not None else 0
+            }
+            to_insert: list[tuple[Any, ...]] = []
+            for record in records:
+                fingerprint = record_fingerprint(
+                    user_id=record.user_id,
+                    nickname=record.nickname,
+                    model_name=record.model_name,
+                    input_tokens=record.input_tokens,
+                    output_tokens=record.output_tokens,
+                    created_at=record.created_at,
+                )
+                if record.local_id in existing:
+                    if existing[record.local_id] == fingerprint:
+                        duplicates += 1
+                    else:
+                        conflicts += 1
+                    continue
+                to_insert.append(
+                    (
+                        payload.device.id,
+                        source,
+                        record.local_id,
+                        record.user_id,
+                        record.nickname,
+                        record.model_name,
+                        record.input_tokens,
+                        record.output_tokens,
+                        record.created_at,
+                        fingerprint,
+                    )
+                )
+            if to_insert:
+                db.executemany(
+                    """
+                    INSERT INTO usage_records (
+                        device_id, source_instance_id, local_id, user_id,
+                        nickname, model_name, input_tokens, output_tokens,
+                        created_at, fingerprint
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    to_insert,
+                )
+                inserted = len(to_insert)
+
     return {
         "success": True,
-        "device_id": device["id"],
-        "users_upserted": len(users),
+        "protocol_version": protocol_version,
+        "device_id": payload.device.id,
+        "source_instance_id": source,
+        "received": len(records),
         "inserted": inserted,
-        "skipped": len(records) - max(inserted, 0),
+        "duplicates": duplicates,
+        "conflicts": conflicts,
+        "users_upserted": len(payload.users),
         "server_time": now,
     }
 
@@ -232,7 +194,41 @@ def _time_clause(
     return sql, params
 
 
-def list_usage_records(
+def _filters_clause(
+    *,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    user_id: Optional[str] = None,
+    model_name: Optional[str] = None,
+    device_id: Optional[str] = None,
+    alias: str = "",
+) -> tuple[str, list]:
+    """构造 WHERE 片段；alias="r" 时给列名加表别名前缀（聚合查询用）。"""
+    a = f"{alias}." if alias else ""
+    clauses: list[str] = []
+    params: list[Any] = []
+    start_dt = parse_time(start_time, end_of_day=False)
+    end_dt = parse_time(end_time, end_of_day=True)
+    if start_dt is not None:
+        clauses.append(f"{a}created_at >= ?")
+        params.append(_iso(start_dt))
+    if end_dt is not None:
+        clauses.append(f"{a}created_at <= ?")
+        params.append(_iso(end_dt))
+    if user_id:
+        clauses.append(f"{a}user_id = ?")
+        params.append(user_id)
+    if model_name:
+        clauses.append(f"{a}model_name = ?")
+        params.append(model_name)
+    if device_id:
+        clauses.append(f"{a}device_id = ?")
+        params.append(device_id)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    return where, params
+
+
+def list_usage_page(
     db: Database,
     *,
     start_time: Optional[str] = None,
@@ -240,137 +236,49 @@ def list_usage_records(
     user_id: Optional[str] = None,
     model_name: Optional[str] = None,
     device_id: Optional[str] = None,
-) -> list[dict]:
-    clauses: list[str] = []
-    params: list[Any] = []
-    time_sql, time_params = _time_clause(start_time, end_time)
-    if time_sql:
-        clauses.append(time_sql)
-        params.extend(time_params)
-    if user_id:
-        clauses.append("user_id = ?")
-        params.append(user_id)
-    if model_name:
-        clauses.append("model_name = ?")
-        params.append(model_name)
-    if device_id:
-        clauses.append("device_id = ?")
-        params.append(device_id)
-    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    return db.fetchall(
-        f"SELECT * FROM usage_records {where} ORDER BY created_at DESC, id DESC",
-        params,
-    )
-
-
-def paginate_records(
-    records: list[dict], *, page: int = 1, page_size: int = 20
+    page: int = 1,
+    page_size: int = 20,
 ) -> dict:
+    """SQL 分页：COUNT 计总数，LIMIT/OFFSET 取当前页，不整表加载。"""
+    validate_time_range(start_time, end_time)
     page = max(int(page), 1)
     page_size = min(max(int(page_size), 1), 200)
-    total = len(records)
-    start = (page - 1) * page_size
-    slice_ = records[start : start + page_size]
+    where, params = _filters_clause(
+        start_time=start_time,
+        end_time=end_time,
+        user_id=user_id,
+        model_name=model_name,
+        device_id=device_id,
+    )
+    total = int(
+        db.fetchone(f"SELECT COUNT(*) AS n FROM usage_records {where}", params)["n"]
+    )
+    offset = (page - 1) * page_size
+    rows = db.fetchall(
+        f"""
+        SELECT * FROM usage_records {where}
+        ORDER BY created_at DESC, id DESC
+        LIMIT ? OFFSET ?
+        """,
+        [*params, page_size, offset],
+    )
     return {
-        "records": slice_,
+        "records": rows,
         "total": total,
         "page": page,
         "page_size": page_size,
     }
 
 
-def summarize_records(records: list[dict]) -> dict:
-    """与本地 monitor 的汇总结构一致，额外附带 by_device 维度。"""
-    calls = len(records)
-    input_tokens = sum(int(r.get("input_tokens") or 0) for r in records)
-    output_tokens = sum(int(r.get("output_tokens") or 0) for r in records)
-    user_ids = {r.get("user_id") for r in records}
-    models = {r.get("model_name") for r in records}
-
-    by_user: dict[str, dict] = {}
-    by_model: dict[str, dict] = {}
-    by_device: dict[str, dict] = {}
-    for record in records:
-        uid = record.get("user_id") or ""
-        user_slot = by_user.setdefault(
-            uid,
-            {
-                "user_id": uid,
-                "nickname": record.get("nickname") or "",
-                "calls": 0,
-                "input_tokens": 0,
-                "output_tokens": 0,
-            },
-        )
-        user_slot["calls"] += 1
-        user_slot["input_tokens"] += int(record.get("input_tokens") or 0)
-        user_slot["output_tokens"] += int(record.get("output_tokens") or 0)
-        user_slot["nickname"] = record.get("nickname") or user_slot["nickname"]
-        user_slot["total_tokens"] = (
-            user_slot["input_tokens"] + user_slot["output_tokens"]
-        )
-
-        model = record.get("model_name") or ""
-        model_slot = by_model.setdefault(
-            model,
-            {
-                "model_name": model,
-                "calls": 0,
-                "input_tokens": 0,
-                "output_tokens": 0,
-            },
-        )
-        model_slot["calls"] += 1
-        model_slot["input_tokens"] += int(record.get("input_tokens") or 0)
-        model_slot["output_tokens"] += int(record.get("output_tokens") or 0)
-        model_slot["total_tokens"] = (
-            model_slot["input_tokens"] + model_slot["output_tokens"]
-        )
-
-        device = record.get("device_id") or ""
-        device_slot = by_device.setdefault(
-            device,
-            {
-                "device_id": device,
-                "calls": 0,
-                "input_tokens": 0,
-                "output_tokens": 0,
-            },
-        )
-        device_slot["calls"] += 1
-        device_slot["input_tokens"] += int(record.get("input_tokens") or 0)
-        device_slot["output_tokens"] += int(record.get("output_tokens") or 0)
-        device_slot["total_tokens"] = (
-            device_slot["input_tokens"] + device_slot["output_tokens"]
-        )
-
-    stamps = [r.get("created_at") for r in records if r.get("created_at")]
-    return {
-        "totals": {
-            "calls": calls,
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "total_tokens": input_tokens + output_tokens,
-            "distinct_users": len(user_ids),
-            "distinct_models": len(models),
-        },
-        "by_user": sorted(
-            by_user.values(),
-            key=lambda item: (-item["total_tokens"], item["user_id"]),
-        ),
-        "by_model": sorted(
-            by_model.values(),
-            key=lambda item: (-item["total_tokens"], item["model_name"]),
-        ),
-        "by_device": sorted(
-            by_device.values(),
-            key=lambda item: (-item["total_tokens"], item["device_id"]),
-        ),
-        "time_range": {
-            "min": min(stamps) if stamps else None,
-            "max": max(stamps) if stamps else None,
-        },
-    }
+_NICKNAME_SQL = """
+    COALESCE(
+        NULLIF(u.name, ''),
+        (SELECT r2.nickname FROM usage_records r2
+          WHERE r2.user_id = r.user_id AND r2.nickname <> ''
+          ORDER BY r2.created_at DESC, r2.id DESC LIMIT 1),
+        MAX(r.nickname)
+    ) AS nickname
+"""
 
 
 def usage_report(
@@ -380,10 +288,111 @@ def usage_report(
     end_time: Optional[str] = None,
     device_id: Optional[str] = None,
 ) -> dict:
-    records = list_usage_records(
-        db, start_time=start_time, end_time=end_time, device_id=device_id
+    """SQL 聚合：totals / by_user / by_model / by_device / time_range。
+
+    by_user 的昵称取「用户表当前名字」，为空时回退到该用户最新一条
+    非空记录昵称，不再出现倒序遍历留下最旧昵称的问题。
+    """
+    validate_time_range(start_time, end_time)
+    where, params = _filters_clause(
+        start_time=start_time, end_time=end_time, device_id=device_id
     )
-    return summarize_records(records)
+
+    totals_row = db.fetchone(
+        f"""
+        SELECT COUNT(*) AS calls,
+               COALESCE(SUM(input_tokens), 0) AS input_tokens,
+               COALESCE(SUM(output_tokens), 0) AS output_tokens,
+               COUNT(DISTINCT user_id) AS distinct_users,
+               COUNT(DISTINCT model_name) AS distinct_models,
+               MIN(created_at) AS min_at,
+               MAX(created_at) AS max_at
+        FROM usage_records {where}
+        """,
+        params,
+    )
+    input_tokens = int(totals_row["input_tokens"] or 0)
+    output_tokens = int(totals_row["output_tokens"] or 0)
+
+    rwhere, rparams = _filters_clause(
+        start_time=start_time,
+        end_time=end_time,
+        device_id=device_id,
+        alias="r",
+    )
+    by_user = db.fetchall(
+        f"""
+        SELECT r.user_id,
+               {_NICKNAME_SQL},
+               COUNT(*) AS calls,
+               COALESCE(SUM(r.input_tokens), 0) AS input_tokens,
+               COALESCE(SUM(r.output_tokens), 0) AS output_tokens
+        FROM usage_records r LEFT JOIN users u ON u.id = r.user_id
+        {rwhere}
+        GROUP BY r.user_id
+        ORDER BY (COALESCE(SUM(r.input_tokens), 0) + COALESCE(SUM(r.output_tokens), 0)) DESC,
+                 r.user_id ASC
+        """,
+        rparams,
+    )
+    for row in by_user:
+        row["calls"] = int(row["calls"] or 0)
+        row["input_tokens"] = int(row["input_tokens"] or 0)
+        row["output_tokens"] = int(row["output_tokens"] or 0)
+        row["total_tokens"] = row["input_tokens"] + row["output_tokens"]
+
+    by_model = _group_by(db, "model_name", start_time, end_time, device_id)
+    by_device = _group_by(db, "device_id", start_time, end_time, device_id)
+
+    return {
+        "totals": {
+            "calls": int(totals_row["calls"] or 0),
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+            "distinct_users": int(totals_row["distinct_users"] or 0),
+            "distinct_models": int(totals_row["distinct_models"] or 0),
+        },
+        "by_user": by_user,
+        "by_model": by_model,
+        "by_device": by_device,
+        "time_range": {"min": totals_row["min_at"], "max": totals_row["max_at"]},
+    }
+
+
+def _group_by(
+    db: Database,
+    column: str,
+    start_time: Optional[str],
+    end_time: Optional[str],
+    device_id: Optional[str],
+) -> list[dict]:
+    where, params = _filters_clause(
+        start_time=start_time,
+        end_time=end_time,
+        device_id=device_id,
+        alias="r",
+    )
+    rows = db.fetchall(
+        f"""
+        SELECT r.{column} AS {column},
+               COUNT(*) AS calls,
+               COALESCE(SUM(r.input_tokens), 0) AS input_tokens,
+               COALESCE(SUM(r.output_tokens), 0) AS output_tokens
+        FROM usage_records r
+        {where}
+        GROUP BY r.{column}
+        ORDER BY (COALESCE(SUM(r.input_tokens), 0) + COALESCE(SUM(r.output_tokens), 0)) DESC,
+                 r.{column} ASC
+        """,
+        params,
+    )
+    for row in rows:
+        row["calls"] = int(row["calls"] or 0)
+        row["input_tokens"] = int(row["input_tokens"] or 0)
+        row["output_tokens"] = int(row["output_tokens"] or 0)
+        row["total_tokens"] = row["input_tokens"] + row["output_tokens"]
+    return rows
 
 
 def list_users(
@@ -392,6 +401,7 @@ def list_users(
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
 ) -> list[dict]:
+    validate_time_range(start_time, end_time)
     time_sql, time_params = _time_clause(start_time, end_time, column="r.created_at")
     join_extra = f"AND {time_sql}" if time_sql else ""
     rows = db.fetchall(

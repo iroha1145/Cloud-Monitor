@@ -1,3 +1,7 @@
 .env
 agent-state.json
+*.corrupt-*.json
 __pycache__/
+*.pyc
+.pytest_cache/
+*.sqlite3*

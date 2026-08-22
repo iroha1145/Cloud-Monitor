@@ -1,0 +1,261 @@
+diff --git a/backend/monitor/db.py b/backend/monitor/db.py
+index d0c26c4..5d24b13 100644
+--- a/backend/monitor/db.py
++++ b/backend/monitor/db.py
+@@ -16,6 +16,11 @@ CREATE TABLE IF NOT EXISTS users (
+     updated_at TEXT NOT NULL
+ );
+ 
++CREATE TABLE IF NOT EXISTS sync_meta (
++    key TEXT PRIMARY KEY,
++    value TEXT NOT NULL
++);
++
+ CREATE TABLE IF NOT EXISTS usage_records (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     user_id TEXT NOT NULL,
+diff --git a/backend/monitor/main.py b/backend/monitor/main.py
+index fde2923..2a92ead 100644
+--- a/backend/monitor/main.py
++++ b/backend/monitor/main.py
+@@ -14,8 +14,10 @@ from .db import Database
+ from .services import (
+     handle_inlet,
+     handle_outlet,
++    list_records_after,
+     list_usage_page,
+     list_users,
++    sync_meta,
+     usage_report,
+ )
+ 
+@@ -120,6 +122,21 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
+         except ValueError as exc:
+             raise HTTPException(status_code=400, detail="时间格式无效") from exc
+ 
++    @app.get("/api/v1/sync/meta", dependencies=[Depends(read_auth)])
++    def get_sync_meta(db: Database = Depends(db_dep)) -> dict:
++        return sync_meta(db)
++
++    @app.get("/api/v1/sync/records", dependencies=[Depends(read_auth)])
++    def get_sync_records(
++        db: Database = Depends(db_dep),
++        after_id: int = Query(default=0, ge=0),
++        snapshot_max_id: Optional[int] = Query(default=None, ge=0),
++        limit: int = Query(default=200, ge=1, le=1000),
++    ) -> dict:
++        return list_records_after(
++            db, after_id=after_id, snapshot_max_id=snapshot_max_id, limit=limit
++        )
++
+     frontend_dir: Path = settings.frontend_dir
+     if frontend_dir.is_dir():
+         index_file = frontend_dir / "index.html"
+diff --git a/backend/monitor/services.py b/backend/monitor/services.py
+index 58c4be5..6fa9888 100644
+--- a/backend/monitor/services.py
++++ b/backend/monitor/services.py
+@@ -3,6 +3,7 @@
+ from __future__ import annotations
+ 
+ import sqlite3
++import uuid
+ from datetime import datetime, timezone
+ from typing import Any, Optional
+ 
+@@ -534,3 +535,64 @@ def list_users(
+         row["output_tokens"] = int(row["output_tokens"] or 0)
+         row["total_tokens"] = row["input_tokens"] + row["output_tokens"]
+     return rows
++
++
++# ---------------------------------------------------------------- 同步游标 API
++# 供 Cloud-monitor agent 使用：id 游标分页，避免全量同步时整表扫描。
++
++
++SYNC_PROTOCOL_VERSION = 2
++_SOURCE_INSTANCE_KEY = "source_instance_id"
++
++
++def sync_meta(db: Database) -> dict:
++    """数据源实例元数据：source_instance_id 首次生成后持久化在库里。
++
++    本地数据库重建（新文件）会生成新的实例 ID，云端据此区分
++    local_id 从 1 重新计数的记录，而不是把它们当作重复静默丢弃。
++    """
++    row = db.fetchone(
++        "SELECT value FROM sync_meta WHERE key = ?", (_SOURCE_INSTANCE_KEY,)
++    )
++    if row is None:
++        instance_id = f"monitor-{uuid.uuid4()}"
++        db.execute(
++            "INSERT OR IGNORE INTO sync_meta (key, value) VALUES (?, ?)",
++            (_SOURCE_INSTANCE_KEY, instance_id),
++        )
++        row = db.fetchone(
++            "SELECT value FROM sync_meta WHERE key = ?", (_SOURCE_INSTANCE_KEY,)
++        )
++    max_row = db.fetchone("SELECT COALESCE(MAX(id), 0) AS max_id FROM usage_records")
++    return {
++        "source_instance_id": row["value"],
++        "max_record_id": int(max_row["max_id"]),
++        "protocol_version": SYNC_PROTOCOL_VERSION,
++    }
++
++
++def list_records_after(
++    db: Database,
++    *,
++    after_id: int,
++    snapshot_max_id: Optional[int],
++    limit: int,
++) -> dict:
++    """id 游标分页：WHERE id > after_id AND id <= snapshot_max_id 升序返回。"""
++    max_row = db.fetchone("SELECT COALESCE(MAX(id), 0) AS max_id FROM usage_records")
++    ceiling = int(max_row["max_id"]) if snapshot_max_id is None else int(snapshot_max_id)
++    records = db.fetchall(
++        """
++        SELECT * FROM usage_records
++        WHERE id > ? AND id <= ?
++        ORDER BY id ASC
++        LIMIT ?
++        """,
++        (int(after_id), ceiling, int(limit)),
++    )
++    return {
++        "records": records,
++        "after_id": int(after_id),
++        "snapshot_max_id": ceiling,
++        "has_more": len(records) >= int(limit),
++    }
+diff --git a/tests/test_sync_api.py b/tests/test_sync_api.py
+new file mode 100644
+index 0000000..345ccba
+--- /dev/null
++++ b/tests/test_sync_api.py
+@@ -0,0 +1,125 @@
++from __future__ import annotations
++
++from fastapi.testclient import TestClient
++
++
++def _outlet(client: TestClient, headers: dict, i: int, user: str = "u1") -> dict:
++    resp = client.post(
++        "/api/v1/outlet",
++        headers=headers,
++        json={
++            "user": {"id": user, "name": f"User-{user}"},
++            "body": {
++                "model": f"model-{i % 2}",
++                "messages": [
++                    {"role": "user", "content": f"消息 {i}"},
++                    {"role": "assistant", "content": f"回复 {i}"},
++                ],
++            },
++        },
++    )
++    assert resp.status_code == 200
++    return resp.json()
++
++
++def test_sync_meta_stable_and_includes_max_id(client: TestClient, auth_header: dict):
++    first = client.get("/api/v1/sync/meta", headers=auth_header).json()
++    assert first["source_instance_id"].startswith("monitor-")
++    assert first["max_record_id"] == 0
++    assert first["protocol_version"] == 2
++
++    for i in range(1, 4):
++        _outlet(client, auth_header, i)
++
++    second = client.get("/api/v1/sync/meta", headers=auth_header).json()
++    assert second["source_instance_id"] == first["source_instance_id"]
++    assert second["max_record_id"] == 3
++
++
++def test_sync_records_cursor_pagination(client: TestClient, auth_header: dict):
++    for i in range(1, 6):
++        _outlet(client, auth_header, i)
++
++    page1 = client.get(
++        "/api/v1/sync/records",
++        params={"after_id": 0, "snapshot_max_id": 5, "limit": 2},
++        headers=auth_header,
++    ).json()
++    assert [r["id"] for r in page1["records"]] == [1, 2]  # id 升序游标
++    assert page1["snapshot_max_id"] == 5
++    assert page1["has_more"] is True
++
++    page2 = client.get(
++        "/api/v1/sync/records",
++        params={"after_id": 2, "snapshot_max_id": 5, "limit": 2},
++        headers=auth_header,
++    ).json()
++    assert [r["id"] for r in page2["records"]] == [3, 4]
++
++    tail = client.get(
++        "/api/v1/sync/records",
++        params={"after_id": 4, "snapshot_max_id": 5, "limit": 2},
++        headers=auth_header,
++    ).json()
++    assert [r["id"] for r in tail["records"]] == [5]
++    assert tail["has_more"] is False
++
++
++def test_sync_records_snapshot_excludes_new_writes(client: TestClient, auth_header: dict):
++    for i in range(1, 3):
++        _outlet(client, auth_header, i)
++    snapshot = client.get("/api/v1/sync/meta", headers=auth_header).json()
++    # 快照固定后新增的记录不进入本轮窗口
++    _outlet(client, auth_header, 3)
++    page = client.get(
++        "/api/v1/sync/records",
++        params={"after_id": 0, "snapshot_max_id": snapshot["max_record_id"], "limit": 100},
++        headers=auth_header,
++    ).json()
++    assert [r["id"] for r in page["records"]] == [1, 2]
++
++
++def test_sync_records_defaults_and_validation(client: TestClient, auth_header: dict):
++    _outlet(client, auth_header, 1)
++    no_args = client.get("/api/v1/sync/records", headers=auth_header).json()
++    assert [r["id"] for r in no_args["records"]] == [1]
++
++    assert (
++        client.get(
++            "/api/v1/sync/records",
++            params={"after_id": -1},
++            headers=auth_header,
++        ).status_code
++        == 422
++    )
++    assert (
++        client.get(
++            "/api/v1/sync/records",
++            params={"limit": 1001},
++            headers=auth_header,
++        ).status_code
++        == 422
++    )
++
++
++def test_sync_endpoints_require_auth(client: TestClient, api_key: str):
++    assert client.get("/api/v1/sync/meta").status_code == 401
++    assert client.get("/api/v1/sync/records").status_code == 401
++    wrong = {"Authorization": f"Bearer not-{api_key}"}
++    assert client.get("/api/v1/sync/meta", headers=wrong).status_code == 401
++
++
++def test_new_instance_id_on_rebuilt_database(settings, api_key):
++    """数据库重建后 source_instance_id 改变（新文件 → 新 UUID）。"""
++    from monitor.db import Database
++    from monitor.services import sync_meta
++
++    db1 = Database(settings.database_path)
++    id1 = sync_meta(db1)["source_instance_id"]
++    db1.close()
++
++    settings.database_path.unlink(missing_ok=True)
++    db2 = Database(settings.database_path)
++    id2 = sync_meta(db2)["source_instance_id"]
++    db2.close()
++    assert id1 != id2

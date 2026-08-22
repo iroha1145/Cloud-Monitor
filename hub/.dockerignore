@@ -1,7 +1,7 @@
-.venv
-.git
-data
-__pycache__
-.pytest_cache
-*.sqlite3
 .env
+__pycache__/
+*.pyc
+.pytest_cache/
+*.sqlite3*
+data/
+tests/

@@ -4,35 +4,69 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .auth import require_access_token, require_api_key
+from .auth import (
+    WriteBinding,
+    enforce_device_binding,
+    require_access_token,
+    resolve_write_binding,
+)
 from .config import Settings, load_settings
 from .db import Database
+from .models import SyncPushRequest
 from .services import (
     apply_sync_push,
     list_devices,
-    list_usage_records,
+    list_usage_page,
     list_users,
-    paginate_records,
     usage_report,
 )
 
 
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
     settings = settings or load_settings()
-    app = FastAPI(title="Cloud Monitor 云端 Token 看板", version="1.0.0")
+    docs_urls = (
+        {"docs_url": "/docs", "redoc_url": "/redoc", "openapi_url": "/openapi.json"}
+        if settings.docs_enabled
+        else {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    )
+    app = FastAPI(title="Cloud Monitor 云端 Token 看板", version="2.0.0", **docs_urls)
     app.state.settings = settings
     app.state.db = Database(settings.database_path)
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    if settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(settings.cors_origins),
+            allow_methods=["GET", "POST"],
+            allow_headers=["Authorization", "Content-Type"],
+        )
+
+    @app.middleware("http")
+    async def limit_body_size(request: Request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and content_length.isdigit():
+            if int(content_length) > settings.max_body_bytes:
+                return JSONResponse(
+                    status_code=413, content={"error": "请求体过大"}
+                )
+        return await call_next(request)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(_request: Request, exc: RequestValidationError):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "请求体校验失败", "details": jsonable_encoder(exc.errors())},
+        )
+
+    @app.on_event("shutdown")
+    def close_db() -> None:
+        app.state.db.close()
 
     def settings_dep() -> Settings:
         return app.state.settings
@@ -40,21 +74,33 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     def db_dep() -> Database:
         return app.state.db
 
-    def ingest_auth(request: Request, cfg: Settings = Depends(settings_dep)) -> None:
-        require_api_key(request, cfg)
+    def ingest_auth(
+        request: Request, cfg: Settings = Depends(settings_dep)
+    ) -> WriteBinding:
+        return resolve_write_binding(request, cfg)
 
     def read_auth(request: Request, cfg: Settings = Depends(settings_dep)) -> None:
         require_access_token(request, cfg)
 
     @app.get("/api/v1/health")
     def health() -> dict:
-        return {"ok": True, "role": "cloud-hub"}
+        return {"ok": True, "role": "cloud-hub", "protocol_version": settings.protocol_version}
 
-    @app.post("/api/v1/sync/push", dependencies=[Depends(ingest_auth)])
-    def sync_push(payload: dict, db: Database = Depends(db_dep)) -> dict:
+    @app.post("/api/v1/sync/push")
+    def sync_push(
+        payload: SyncPushRequest,
+        db: Database = Depends(db_dep),
+        binding: WriteBinding = Depends(ingest_auth),
+    ) -> dict:
+        enforce_device_binding(binding, payload.device.id)
+        if len(payload.records) > settings.max_records_per_push:
+            raise HTTPException(
+                status_code=400,
+                detail=f"records 单次最多 {settings.max_records_per_push} 条",
+            )
         try:
             return apply_sync_push(
-                db, payload, max_records=app.state.settings.max_records_per_push
+                db, payload, protocol_version=settings.protocol_version
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -71,7 +117,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                 db, start_time=start_time, end_time=end_time, device_id=device_id
             )
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail="时间格式无效") from exc
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/v1/users", dependencies=[Depends(read_auth)])
     def get_users(
@@ -82,7 +128,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         try:
             users = list_users(db, start_time=start_time, end_time=end_time)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail="时间格式无效") from exc
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"users": users, "total": len(users)}
 
     @app.get("/api/v1/records", dependencies=[Depends(read_auth)])
@@ -93,21 +139,22 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         user_id: Optional[str] = Query(default=None),
         model_name: Optional[str] = Query(default=None),
         device_id: Optional[str] = Query(default=None),
-        page: int = Query(default=1),
-        page_size: int = Query(default=20),
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=20, ge=1, le=200),
     ) -> dict:
         try:
-            rows = list_usage_records(
+            return list_usage_page(
                 db,
                 start_time=start_time,
                 end_time=end_time,
                 user_id=user_id,
                 model_name=model_name,
                 device_id=device_id,
+                page=page,
+                page_size=page_size,
             )
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail="时间格式无效") from exc
-        return paginate_records(rows, page=page, page_size=page_size)
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/v1/devices", dependencies=[Depends(read_auth)])
     def get_devices(db: Database = Depends(db_dep)) -> dict:

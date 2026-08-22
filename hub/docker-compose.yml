@@ -1,14 +1,29 @@
 services:
   cloud-hub:
     build: .
+    # 默认只绑定回环地址，公网访问请经 Nginx/Caddy HTTPS 反代
     ports:
-      - "7878:7878"
+      - "127.0.0.1:7878:7878"
     environment:
-      API_KEY: ${API_KEY:-changeme}
-      ACCESS_TOKEN: ${ACCESS_TOKEN:-}
+      # 必填强随机密钥（弱值/默认值会拒绝启动）；不再提供默认值
+      API_KEY: ${API_KEY:?请在 .env 配置强随机 API_KEY}
+      # 只读密钥（网页/看板用），必须与 API_KEY 分离；如需共用显式 ALLOW_SHARED_TOKEN=true
+      ACCESS_TOKEN: ${ACCESS_TOKEN:?请在 .env 配置与 API_KEY 不同的只读 ACCESS_TOKEN}
+      ALLOW_SHARED_TOKEN: ${ALLOW_SHARED_TOKEN:-false}
+      # 可选：每设备独立写密钥 {"device-id": "key"}
+      DEVICE_KEYS_JSON: ${DEVICE_KEYS_JSON:-}
       MAX_RECORDS_PER_PUSH: ${MAX_RECORDS_PER_PUSH:-500}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      DOCS_ENABLED: ${DOCS_ENABLED:-false}
     volumes:
       - cloud-hub-data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     restart: unless-stopped
 
 volumes:
