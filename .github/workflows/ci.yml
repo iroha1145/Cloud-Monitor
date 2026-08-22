@@ -34,6 +34,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
       - name: compose 配置校验
+        env:
+          API_KEY: ci-placeholder-key-0123456789abcdef
+          ACCESS_TOKEN: ci-placeholder-read-0123456789abcdef
+          TOKEN_MONITOR_SECRET: ci-placeholder-tm-0123456789abcdef
         run: docker compose -f hub/docker-compose.yml config >/dev/null
       - name: 构建 hub 镜像
         run: docker build -t cloud-monitor-hub ./hub
