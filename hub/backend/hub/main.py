@@ -16,6 +16,7 @@ from .auth import (
     require_access_token,
     resolve_write_binding,
 )
+from .body_limit import TmBodyLimitMiddleware
 from .config import Settings, load_settings
 from .db import Database
 from .models import SyncPushRequest
@@ -26,7 +27,7 @@ from .services import (
     list_users,
     usage_report,
 )
-from .tm_hub import build_tm_router, ensure_tm_schema
+from .tm_proxy import bootstrap_tm_layer, build_tm_router
 
 
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
@@ -39,8 +40,14 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app = FastAPI(title="Cloud Monitor 云端 Token 看板", version="2.0.0", **docs_urls)
     app.state.settings = settings
     app.state.db = Database(settings.database_path)
-    ensure_tm_schema(app.state.db)
-    app.include_router(build_tm_router(settings))
+
+    # token-monitor 官方协议层：协议权威 = tm-core（vendored Node），
+    # Python 负责鉴权/校验/限流/快照/面板数据
+    tm_core = bootstrap_tm_layer(settings, app.state.db)
+    app.include_router(build_tm_router(settings, app.state.db, tm_core))
+
+    # ASGI receive 层 1MiB 实测限流（token-monitor 写入端点）
+    app.add_middleware(TmBodyLimitMiddleware)
 
     if settings.cors_origins:
         app.add_middleware(

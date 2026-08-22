@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r hub/requirements.txt pytest
+          pip install -r agent/requirements.txt
+      - name: compileall
+        run: python -m compileall -q hub/backend agent/sync_agent.py agent/token_monitor_bridge.py agent/healthcheck.py
+      - name: hub 测试（含官方 Node hub 差分）
+        run: cd hub && PYTHONPATH=backend python -m pytest tests/ -q
+      - name: agent 测试
+        run: cd agent && python -m pytest tests/ -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: compose 配置校验
+        run: docker compose -f hub/docker-compose.yml config >/dev/null
+      - name: 构建 hub 镜像
+        run: docker build -t cloud-monitor-hub ./hub
+      - name: 构建 tm-core 镜像
+        run: docker build -t cloud-monitor-tm-core ./hub/tm-core
+      - name: 构建 agent 镜像
+        run: docker build -t cloud-monitor-agent ./agent

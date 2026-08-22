@@ -1,0 +1,418 @@
+"""token-monitor 历史快照：5 分钟桶，设备本地日归档。
+
+- 桶起点 = producer 时间（payload.updatedAt，缺失用接收时间）按 5 分钟取整；
+  UNIQUE(device_id, local_day, bucket_start)，同桶 UPSERT 保留最后一份 ——
+  不会每次 ingest 无限追加，"5 分钟级"是真实分桶。
+- local_day 优先级: periodWindows.today.key → timeZone+updatedAt 本地日 →
+  today.endsAt 反推 → UTC 回退（tz 留空标注）。
+- 保留策略: 近 7 天全分辨率；更早每 (device, local_day) 留最后一个桶；
+  370 天硬删除。清理按阈值触发（距上次 >10 分钟），不每次 ingest 全表扫。
+- limits-only 更新不产生 token 历史点。
+
+旧版 tm_devices / tm_snapshots 表（v1 云端方案）按"不得删除数据"原则原样
+保留：tm_snapshots 一次性搬入桶表；tm_devices 的 payload 在启动时回灌官方
+Node hub（devices.json 成为最新态权威），两者都打上迁移标记。
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any, Optional
+from zoneinfo import ZoneInfo
+
+from .db import Database
+from .services import utc_now
+
+log = logging.getLogger("tm-snapshots")
+
+BUCKET_MS = 5 * 60 * 1000
+FULL_RESOLUTION_DAYS = 7
+HARD_RETENTION_DAYS = 370
+PRUNE_INTERVAL_SECONDS = 600
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS tm_snapshot_buckets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id TEXT NOT NULL,
+    local_day TEXT NOT NULL,
+    bucket_start TEXT NOT NULL,
+    today_total INTEGER NOT NULL DEFAULT 0,
+    today_output INTEGER NOT NULL DEFAULT 0,
+    today_cache_read INTEGER NOT NULL DEFAULT 0,
+    today_cache_write INTEGER NOT NULL DEFAULT 0,
+    today_unclassified INTEGER NOT NULL DEFAULT 0,
+    today_cost REAL NOT NULL DEFAULT 0,
+    month_total INTEGER NOT NULL DEFAULT 0,
+    month_cost REAL NOT NULL DEFAULT 0,
+    all_time_total INTEGER NOT NULL DEFAULT 0,
+    all_time_cost REAL NOT NULL DEFAULT 0,
+    clients_json TEXT NOT NULL DEFAULT '{}',
+    models_json TEXT NOT NULL DEFAULT '{}',
+    device_time_zone TEXT NOT NULL DEFAULT '',
+    producer_updated_at TEXT NOT NULL DEFAULT '',
+    server_received_at TEXT NOT NULL DEFAULT '',
+    today_ends_at TEXT NOT NULL DEFAULT '',
+    month_ends_at TEXT NOT NULL DEFAULT '',
+    UNIQUE(device_id, local_day, bucket_start)
+);
+CREATE INDEX IF NOT EXISTS idx_tm_buckets_day ON tm_snapshot_buckets(local_day);
+CREATE INDEX IF NOT EXISTS idx_tm_buckets_device_time
+    ON tm_snapshot_buckets(device_id, bucket_start);
+
+CREATE TABLE IF NOT EXISTS tm_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+"""
+
+
+def ensure_schema(db: Database) -> None:
+    with db._lock:
+        db._conn.executescript(SCHEMA)
+
+
+# ---------------------------------------------------------------- 本地日
+
+
+def _parse_iso(value: Any) -> Optional[datetime]:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    raw = value.strip().replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _valid_day_key(key: Any) -> Optional[str]:
+    if not isinstance(key, str) or len(key) != 10:
+        return None
+    try:
+        datetime.strptime(key, "%Y-%m-%d")
+    except ValueError:
+        return None
+    return key
+
+
+def resolve_local_day(
+    *, period_windows: Any, updated_at: Any, received_at: Any
+) -> tuple[str, str]:
+    """返回 (local_day, 时区标注)。回退链按任务要求，UTC 回退显式标注。"""
+    windows = period_windows if isinstance(period_windows, dict) else {}
+
+    key = _valid_day_key((windows.get("today") or {}).get("key"))
+    tz_name = windows.get("timeZone")
+    tz = None
+    if isinstance(tz_name, str) and tz_name:
+        try:
+            tz = ZoneInfo(tz_name)
+        except Exception:
+            tz = None
+    if key:
+        return key, (tz_name if isinstance(tz_name, str) else "")
+
+    producer = _parse_iso(updated_at) or _parse_iso(received_at)
+    if producer is not None and tz is not None:
+        return producer.astimezone(tz).date().isoformat(), tz_name
+
+    ends_at = _parse_iso((windows.get("today") or {}).get("endsAt"))
+    if ends_at is not None and tz is not None:
+        # endsAt 是下一周期起点，反推其前一瞬间所在日
+        return (
+            (ends_at - timedelta(seconds=1)).astimezone(tz).date().isoformat(),
+            tz_name,
+        )
+
+    if producer is not None:
+        return producer.astimezone(timezone.utc).date().isoformat(), ""  # 兼容回退
+    return datetime.now(timezone.utc).date().isoformat(), ""
+
+
+def bucket_start_of(producer: Optional[datetime]) -> str:
+    base = producer or datetime.now(timezone.utc)
+    ms = int(base.timestamp() * 1000)
+    floored = (ms // BUCKET_MS) * BUCKET_MS
+    return (
+        datetime.fromtimestamp(floored / 1000, tz=timezone.utc)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z")
+    )
+
+
+# ---------------------------------------------------------------- 写入
+
+
+def _period_field(period: Any, key: str) -> int:
+    if not isinstance(period, dict):
+        return 0
+    value = period.get(key)
+    try:
+        value = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return max(value, 0)
+
+
+def _period_cost(period: Any) -> float:
+    if not isinstance(period, dict):
+        return 0.0
+    value = period.get("costUsd")
+    try:
+        value = float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(value, 0.0)
+
+
+def _stringify_dict(period: Any, key: str) -> str:
+    value = period.get(key) if isinstance(period, dict) else None
+    if not isinstance(value, dict):
+        return "{}"
+    clean = {}
+    for k, v in value.items():
+        if isinstance(k, str) and isinstance(v, (int, float)) and not isinstance(v, bool):
+            clean[k] = max(int(v) if float(v).is_integer() else v, 0)
+    return json.dumps(clean, ensure_ascii=False)
+
+
+def write_snapshot(
+    db: Database,
+    *,
+    device_id: str,
+    record: dict,
+    limits_only: bool,
+    incoming: Optional[dict] = None,
+) -> Optional[dict]:
+    """record = 官方合并后的设备记录；incoming = 本次上报的原始载荷。
+
+    周期窗口优先用上报方声明（官方 normalize 会丢弃不完整的
+    periodWindows，而设备本地日语义以生产者时区为准），合并记录兜底。
+    limits-only 更新直接跳过（不制造 token 为 0 的历史点）。
+    """
+    if limits_only or not isinstance(record, dict):
+        return None
+    periods = record.get("periods") if isinstance(record.get("periods"), dict) else {}
+    today = periods.get("today") or {}
+    month = periods.get("month") or {}
+    all_time = periods.get("allTime") or {}
+
+    candidate_windows = None
+    if isinstance(incoming, dict):
+        candidate_windows = incoming.get("periodWindows")
+        if not isinstance(candidate_windows, dict) or not candidate_windows:
+            candidate_windows = None
+    windows = candidate_windows or record.get("periodWindows")
+    producer_stamp = None
+    if isinstance(incoming, dict) and isinstance(incoming.get("updatedAt"), str):
+        producer_stamp = incoming["updatedAt"]
+    local_day, tz_name = resolve_local_day(
+        period_windows=windows,
+        updated_at=producer_stamp or record.get("updatedAt"),
+        received_at=record.get("receivedAt"),
+    )
+    producer = _parse_iso(producer_stamp) or _parse_iso(record.get("updatedAt")) or _parse_iso(record.get("receivedAt"))
+    received_at = record.get("receivedAt") or utc_now()
+    bucket = bucket_start_of(producer)
+
+    with db.transaction():
+        db.execute(
+            """
+            INSERT INTO tm_snapshot_buckets (
+                device_id, local_day, bucket_start,
+                today_total, today_output, today_cache_read, today_cache_write,
+                today_unclassified, today_cost,
+                month_total, month_cost, all_time_total, all_time_cost,
+                clients_json, models_json,
+                device_time_zone, producer_updated_at, server_received_at,
+                today_ends_at, month_ends_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(device_id, local_day, bucket_start) DO UPDATE SET
+                today_total = excluded.today_total,
+                today_output = excluded.today_output,
+                today_cache_read = excluded.today_cache_read,
+                today_cache_write = excluded.today_cache_write,
+                today_unclassified = excluded.today_unclassified,
+                today_cost = excluded.today_cost,
+                month_total = excluded.month_total,
+                month_cost = excluded.month_cost,
+                all_time_total = excluded.all_time_total,
+                all_time_cost = excluded.all_time_cost,
+                clients_json = excluded.clients_json,
+                models_json = excluded.models_json,
+                device_time_zone = excluded.device_time_zone,
+                producer_updated_at = excluded.producer_updated_at,
+                server_received_at = excluded.server_received_at,
+                today_ends_at = excluded.today_ends_at,
+                month_ends_at = excluded.month_ends_at
+            """,
+            (
+                device_id, local_day, bucket,
+                _period_field(today, "totalTokens"),
+                _period_field(today, "outputTokens"),
+                _period_field(today, "cacheReadTokens"),
+                _period_field(today, "cacheWriteTokens"),
+                _period_field(today, "unclassifiedTokens"),
+                _period_cost(today),
+                _period_field(month, "totalTokens"), _period_cost(month),
+                _period_field(all_time, "totalTokens"), _period_cost(all_time),
+                _stringify_dict(today, "clients"),
+                _stringify_dict(today, "models"),
+                tz_name,
+                str(record.get("updatedAt") or ""),
+                str(received_at),
+                str(((windows or {}).get("today") or {}).get("endsAt") or ""),
+                str(((windows or {}).get("month") or {}).get("endsAt") or ""),
+            ),
+        )
+    _prune_if_due(db)
+    return {"device_id": device_id, "local_day": local_day, "bucket": bucket}
+
+
+# ---------------------------------------------------------------- 清理
+
+
+def _meta_get(db: Database, key: str) -> Optional[str]:
+    row = db.fetchone("SELECT value FROM tm_meta WHERE key = ?", (key,))
+    return row["value"] if row else None
+
+
+def _meta_set(db: Database, key: str, value: str) -> None:
+    db.execute(
+        "INSERT INTO tm_meta (key, value) VALUES (?, ?)"
+        " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+
+
+def _prune_if_due(db: Database) -> None:
+    last = _parse_iso(_meta_get(db, "last_prune_at"))
+    now_dt = datetime.now(timezone.utc)
+    if last is not None and (now_dt - last).total_seconds() < PRUNE_INTERVAL_SECONDS:
+        return
+    prune_snapshots(db, now=now_dt)
+
+
+def prune_snapshots(db: Database, *, now: Optional[datetime] = None) -> dict:
+    """阈值触发的维护函数：也可手动/定时调用。"""
+    now_dt = now or datetime.now(timezone.utc)
+    full_cutoff = (now_dt - timedelta(days=FULL_RESOLUTION_DAYS)).isoformat()
+    hard_cutoff = (now_dt - timedelta(days=HARD_RETENTION_DAYS)).isoformat()
+    removed = {"full_res": 0, "hard": 0}
+    with db.transaction():
+        cur = db.execute(
+            """
+            DELETE FROM tm_snapshot_buckets
+            WHERE bucket_start < ?
+              AND id NOT IN (
+                  SELECT MAX(id) FROM tm_snapshot_buckets
+                  WHERE bucket_start >= ?
+                  GROUP BY device_id, local_day
+              )
+            """,
+            (full_cutoff, hard_cutoff),
+        )
+        removed["full_res"] = cur.rowcount or 0
+        cur = db.execute(
+            "DELETE FROM tm_snapshot_buckets WHERE bucket_start < ?", (hard_cutoff,)
+        )
+        removed["hard"] = cur.rowcount or 0
+        _meta_set(db, "last_prune_at", now_dt.isoformat())
+    return removed
+
+
+def trend_by_day(db: Database, days: int = 30) -> list[dict]:
+    """每设备每天取最后一个桶的 today_total，按 local_day 汇总。"""
+    rows = db.fetchall(
+        """
+        SELECT local_day, SUM(today_total) AS total FROM (
+            SELECT local_day, today_total,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY device_id, local_day
+                       ORDER BY bucket_start DESC
+                   ) AS rn
+            FROM tm_snapshot_buckets
+        ) WHERE rn = 1 GROUP BY local_day ORDER BY local_day DESC LIMIT ?
+        """,
+        (days,),
+    )
+    return [{"day": r["local_day"], "total": int(r["total"] or 0)} for r in reversed(rows)]
+
+
+def delete_device_snapshots(db: Database, device_id: str) -> int:
+    cur = db.execute(
+        "DELETE FROM tm_snapshot_buckets WHERE device_id = ?", (device_id,)
+    )
+    return cur.rowcount or 0
+
+
+# ---------------------------------------------------------------- 旧表迁移
+
+
+def migrate_legacy_tables(db: Database) -> dict:
+    """v1 tm_snapshots → 桶表（一次性）；tm_devices / tm_snapshots 原样保留。"""
+    if _meta_get(db, "legacy_migrated"):
+        return {"migrated": False, "reason": "already_done"}
+    exists = db.fetchone(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='tm_snapshots'"
+    )
+    ported = 0
+    if exists:
+        rows = db.fetchall("SELECT * FROM tm_snapshots")
+        for row in rows:
+            received = _parse_iso(row.get("received_at")) or datetime.now(timezone.utc)
+            db.execute(
+                """
+                INSERT OR IGNORE INTO tm_snapshot_buckets (
+                    device_id, local_day, bucket_start,
+                    today_total, today_output, today_cache_read, today_cache_write,
+                    today_unclassified, today_cost,
+                    month_total, month_cost, all_time_total, all_time_cost,
+                    server_received_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    row["device_id"], row.get("day") or received.date().isoformat(),
+                    bucket_start_of(received),
+                    int(row.get("today_total") or 0),
+                    int(row.get("today_output") or 0),
+                    int(row.get("today_cache_read") or 0),
+                    int(row.get("today_cache_write") or 0),
+                    int(row.get("today_unclassified") or 0),
+                    float(row.get("today_cost") or 0),
+                    int(row.get("month_total") or 0), float(row.get("month_cost") or 0),
+                    int(row.get("all_time_total") or 0), float(row.get("all_time_cost") or 0),
+                    row.get("received_at") or "",
+                ),
+            )
+            ported += 1
+    _meta_set(db, "legacy_migrated", "1")
+    log.info("旧版 tm 表迁移完成：搬入 %d 条快照（旧表原样保留）", ported)
+    return {"migrated": True, "ported_snapshots": ported}
+
+
+def legacy_device_payloads(db: Database) -> list[dict]:
+    """待回灌官方 hub 的 v1 设备 payload（一次性，配合 legacy_migrated 标记）。"""
+    exists = db.fetchone(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='tm_devices'"
+    )
+    if not exists or _meta_get(db, "legacy_reingested"):
+        return []
+    rows = db.fetchall("SELECT device_id, payload, last_seen_at FROM tm_devices")
+    payloads = []
+    for row in rows:
+        try:
+            payload = json.loads(row.get("payload") or "{}")
+        except ValueError:
+            continue
+        if isinstance(payload, dict) and payload.get("deviceId"):
+            payloads.append(payload)
+        elif isinstance(payload, dict) and row.get("device_id"):
+            payload.setdefault("deviceId", row["device_id"])
+            payloads.append(payload)
+    _meta_set(db, "legacy_reingested", "1")
+    return payloads

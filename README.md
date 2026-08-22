@@ -1,88 +1,109 @@
 # Cloud Monitor — token-monitor 的云端用量面板
 
 把**本机 [token-monitor](https://github.com/Javis603/token-monitor) 的数据搬到云端**：
-hub 实现了 token-monitor 的服务端同步协议，本机 widget 在设置里把 hub 指向你的
-服务器即可，数据持久化进 SQLite，随时随地打开网页查看用量（今日/本月/累计、
-按模型/客户端、缓存拆分、多设备、近 30 天趋势）。
+官方 hub 实现被原样 vendored（固定提交 b925865，逐字节未改）作为**协议权威**运行在
+tm-core 容器中，本机 widget 在设置里把 hub 指向你的服务器即可原生直连；Python
+网关在其前侧做鉴权隔离、严格载荷校验、1MiB 实测限流，并把数据沉淀为 SQLite
+长期时间序列，配合 `/tm/` 网页面板随处查看（今日/本月/累计、按模型/客户端、
+缓存拆分、多设备、近 30 天趋势）。
 
 同时保留另一条链路：本机 [OpenWebUI-Monitor](https://github.com/iroha1145/OpenWebUI-Monitor)
-的详细调用记录也可同步到同一台服务器（`/` 看板，前端原样复用、零改动）。
-两条链路共用一套部署与鉴权体系，互不影响。
+的详细调用记录同步（`/` 看板，前端原样复用、零改动）。两条链路密钥完全隔离。
 
 ```
-┌───────────── 本机 ─────────────┐          ┌────────── 云端服务器（Docker）──────────┐
-│ token-monitor widget           │  原生同步  │  Cloud-monitor hub                     │
-│  设置 hub=服务器 密钥=SECRET    │ ────────► │   /api/ingest  ← token-monitor 协议     │
-│  （每 5 分钟自动推送，零改造）   │           │   SQLite 持久化 + 快照历史（官方 hub 是  │
-│                                │           │   内存态，本层补上留存与网页）           │
-│ openwebui-monitor + sync-agent │  游标增量  │   /api/v1/sync/push ← 详细记录同步      │
-└────────────────────────────────┘           │   网页: /tm/ = token 用量面板           │
-                                             │        /    = OpenWebUI 记录看板        │
-                                             └────────────────────────────────────────┘
+┌───────────── 本机 ─────────────┐      ┌────────── 云端服务器（docker compose）──────────┐
+│ token-monitor widget           │ 原生  │ ┌────────────────────────────────────────┐   │
+│  设置 hub=服务器 密钥=SECRET    │──────►│ │ tm-core（vendored 官方 hub, 未修改）     │   │
+│  widget 同步间隔 实时/10/20/30分 │ 协议  │ │  规范化/合并/聚合/过期/SSE/订阅          │   │
+│  headless agent 默认 5 分钟     │      │ │  devices.json 持久化（官方原生行为）     │   │
+└────────────────────────────────┘      │ └──────────────△─────────────────────────┘   │
+                                        │ Python 网关: 鉴权隔离+严格校验+1MiB 限流      │
+                                        │ SQLite 5 分钟桶历史(设备本地日) /tm/ 面板     │
+                                        │ OpenWebUI 记录链路(另一套密钥) / 看板         │
+                                        └──────────────────────────────────────────────┘
 ```
 
-## 快速开始（token-monitor 上云，推荐路径）
+## 协议支持矩阵
+
+| 官方端点 | 状态 | 处理方 |
+|---|---|---|
+| `GET /api/health` | ✅ 官方形状原样（含 hubBuild） | 透传 tm-core；上游不可达时 503 明确失败 |
+| `POST /api/ingest` | ✅ 官方形状（ok/deviceId/stats） | 前置严格校验 → 透传 → 快照联动 |
+| `GET /api/stats` | ✅ | 透传（聚合/过期/stale 全部官方语义） |
+| `GET /api/stats/stream` | ✅ SSE（snapshot 首帧/ingest·delete·subscriptions 广播/30s 心跳 `: hb`） | 字节级透传 |
+| `GET /api/devices` | ✅ `{devices:[...]}` | 透传 |
+| `DELETE /api/devices/:id` | ✅ `{ok,deviceId}` | 透传 + 清理 SQLite 快照 |
+| `GET /api/history` | ✅ | 透传 |
+| `GET/PUT /api/subscriptions` | ✅（含 stale_write 409 / 非法币种 400） | 透传 |
+| `OPTIONS`（官方 204） | ⚠️ 未特殊处理 | 如有需要可加 |
+| Worker 专属 `/api/public/*` | ❌ 不适用 | 官方 Node hub 亦无此端点 |
+
+## 与官方 hub 的差异（如实列出）
+
+- **协议行为本身无差异**：tm-core 是官方代码逐字节副本（规范化、设备合并含
+  limitsOnly 语义、聚合、periodWindows 过期、按 syncUploadIntervalMs 的
+  stale 判定、SSE、订阅、devices.json 持久化）。差分测试对同一载荷序列
+  断言两者输出等价。
+- **网关增加的防护**：`TOKEN_MONITOR_SECRET` 与 OpenWebUI 链路密钥完全隔离
+  （TM 密钥碰不到记录写入/读取，反之亦然）；转发前严格校验（负数/bool/
+  NaN/Infinity/超 64 位/非法 IANA 时区/原型污染键/数量超限/过度未来时间
+  一律 400，官方仅限 1MiB 体积）；ASGI receive 层 1MiB 实测限流（分块、
+  无/伪造 Content-Length 均按实际字节判定）。
+- **网关增加的能力**：SQLite 5 分钟桶长期时间序列（官方 devices.json 只保留
+  每设备最新状态，不含历史点）；`/api/v1/tm/overview` 面板接口（ACCESS_TOKEN）；
+  v1 旧表自动迁移。
+- **部署形态**：官方 hub 单进程；本方案为 compose 内 python + node 两容器。
+
+## 数据保留 / 时区语义 / 隐私 / 备份
+
+- **保留**：SQLite 快照近 7 天 5 分钟级（按设备本地日 5 分钟桶 UPSERT，
+  同桶保留最后值），之后每日每设备保留一个锚点，370 天硬删除；清理按
+  阈值触发（≥10 分钟一次），不逐 ingest 全表扫描。limits-only 更新不产生
+  token 历史点。devices.json 由官方代码原子写，保留每设备最新完整状态。
+- **时区**：快照日归属按设备 `periodWindows`（today.key → timeZone+updatedAt
+  → endsAt 反推 → UTC 回退并留空标注）；非法时区在网关 400 拒绝。
+- **隐私**：devices.json 可能含 limits 的账户邮箱/计划名与订阅金额（官方
+  字段，位于 TM 密钥保护之后）；SQLite 快照只存 token/成本聚合与客户端/
+  模型名，不含账户身份。面板经 ACCESS_TOKEN 访问。
+- **备份**：备份 `tm-core-data` 卷（devices.json）与 `cloud-hub-data` 卷
+  （cloud-monitor.sqlite3）即可完整恢复。
+
+## 快速开始（token-monitor 上云）
 
 **服务器**：
 
 ```bash
 git clone https://github.com/iroha1145/Cloud-Monitor.git
-cd Cloud-Monitor/hub
+cd Cloud-monitor/hub
 cp .env.example .env
-# 必填：API_KEY / ACCESS_TOKEN（强随机，二者不同）
-# 填上：TOKEN_MONITOR_SECRET（自选一个强随机值，下步 widget 要用）
+# 必填三个互不相同、各≥32 随机字符的密钥：
+#   API_KEY / ACCESS_TOKEN（OpenWebUI 链路） + TOKEN_MONITOR_SECRET（TM 链路）
 docker compose up -d --build
 curl http://127.0.0.1:7878/api/health   # {"ok":true,"role":"hub",...}
 ```
 
-公网访问请在前面挂 Nginx/Caddy 做 HTTPS 反代（如 `https://tm.example.com`）。
+公网访问在前面挂 HTTPS 反代；**SSE 路径必须关闭代理缓冲**（nginx 示例）：
 
-**本机 token-monitor**（widget 或无头 agent 均可）：
-
-1. 打开 token-monitor 设置 → 多设备同步（Multi-device sync）
-2. hub 地址填 `https://tm.example.com`
-3. 密钥填服务器上配置的 `TOKEN_MONITOR_SECRET`
-
-完成。widget 会按原有节奏（默认 5 分钟）推送设备摘要，云端自动积累历史。
-
-**随处查看**：浏览器打开 `https://tm.example.com/tm/`，输入 `ACCESS_TOKEN`
-即可看到今日/本月/累计 token 与成本、缓存读/写拆分、模型与客户端分布、
-设备在线状态、近 30 天趋势。
-
-与官方 hub 的差别：官方 Node hub 只在内存保留每台设备最新一份摘要（重启
-即失、无网页）；本层持久化 + 快照历史（近 7 天 5 分钟级、之后每日一个，
-保留 370 天）+ 网页面板。不支持 SSE 实时广播，widget 自身显示仍走本地数据。
-
-## 目录结构
-
-```
-Cloud-monitor/
-├── hub/
-│   ├── backend/hub/
-│   │   ├── tm_hub.py        token-monitor 服务端协议（ingest/health/stats/devices）
-│   │   └── …                OpenWebUI 记录同步（config/auth/db/models/services/main）
-│   ├── tm-frontend/         /tm/ 用量面板（独立新页面）
-│   ├── frontend/            OpenWebUI 记录看板（原样复制，零改动）
-│   ├── tests/               42 项 pytest
-│   └── Dockerfile / docker-compose.yml
-├── agent/                   本机 OpenWebUI 同步代理（token-monitor 路径不需要它）
-└── docs/{ARCHITECTURE.md, patches/}
+```nginx
+location /api/stats/stream {
+    proxy_pass http://127.0.0.1:7878;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 24h;
+}
+# 其余路径常规反代；如需纵深防御可另加 client_max_body_size 1m;
 ```
 
-## 云端 API 一览
+**本机 token-monitor**：设置 → 多设备同步 → hub 填 `https://<服务器>`，
+密钥填 `TOKEN_MONITOR_SECRET`。widget 按其同步间隔（实时/10/20/30 分钟，
+headless agent 默认 5 分钟）推送，无需本机任何额外组件。
 
-| 方法 | 路径 | 鉴权 | 说明 |
-|---|---|---|---|
-| POST | `/api/ingest` | `TOKEN_MONITOR_SECRET` | token-monitor 设备摘要推送（持久化） |
-| GET | `/api/health` | 无 | token-monitor 兼容健康检查 |
-| GET | `/api/stats` | `TOKEN_MONITOR_SECRET` | token-monitor 兼容聚合统计 |
-| GET/DELETE | `/api/devices[/:id]` | `TOKEN_MONITOR_SECRET` | 设备管理 |
-| GET | `/api/v1/tm/overview` | `ACCESS_TOKEN` | 网格面板数据（含趋势） |
-| POST | `/api/v1/sync/push` | `API_KEY`/设备密钥 | OpenWebUI 记录幂等推送 |
-| GET | `/api/v1/usage\|users\|records\|devices` | `ACCESS_TOKEN` | OpenWebUI 记录查询 |
-| GET | `/tm/`、`/` | 页面内输入密钥 | 两个网页看板 |
+**随处查看**：`https://<服务器>/tm/`，输入 `ACCESS_TOKEN`。
 
-## 附：OpenWebUI-Monitor 记录同步（第二条链路）
+## OpenWebUI-Monitor 记录同步（第二条链路）
+
 
 ```bash
 cd Cloud-monitor/agent && cp .env.example .env

@@ -5,20 +5,43 @@ services:
     ports:
       - "127.0.0.1:7878:7878"
     environment:
-      # 必填强随机密钥（弱值/默认值会拒绝启动）；不再提供默认值
+      # 必填强随机密钥（≥32 随机字符，弱值/默认值/彼此相同都会拒绝启动）
       API_KEY: ${API_KEY:?请在 .env 配置强随机 API_KEY}
-      # 只读密钥（网页/看板用），必须与 API_KEY 分离；如需共用显式 ALLOW_SHARED_TOKEN=true
+      # 只读密钥（网页/看板用），必须与 API_KEY 不同；如需共用显式 ALLOW_SHARED_TOKEN=true
       ACCESS_TOKEN: ${ACCESS_TOKEN:?请在 .env 配置与 API_KEY 不同的只读 ACCESS_TOKEN}
       ALLOW_SHARED_TOKEN: ${ALLOW_SHARED_TOKEN:-false}
-      # 可选：每设备独立写密钥 {"device-id": "key"}
-      DEVICE_KEYS_JSON: ${DEVICE_KEYS_JSON:-}
-      # 可选：token-monitor 接入密钥（本机 widget 推送用；留空则停用该接入）
+      # token-monitor 接入密钥（widget 推送用；与上面两个密钥都不同）
       TOKEN_MONITOR_SECRET: ${TOKEN_MONITOR_SECRET:-}
+      # 官方协议权威（tm-core 服务）地址
+      TM_CORE_URL: http://tm-core:17321
+      # 可选：每设备独立写密钥 {"device-id": "key"}（OpenWebUI 记录链路）
+      DEVICE_KEYS_JSON: ${DEVICE_KEYS_JSON:-}
       MAX_RECORDS_PER_PUSH: ${MAX_RECORDS_PER_PUSH:-500}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       DOCS_ENABLED: ${DOCS_ENABLED:-false}
     volumes:
       - cloud-hub-data:/data
+    depends_on:
+      - tm-core
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+
+  # vendored 官方 token-monitor hub（协议权威：规范化/合并/聚合/过期/SSE/订阅）
+  tm-core:
+    build: ./tm-core
+    environment:
+      TOKEN_MONITOR_SECRET: ${TOKEN_MONITOR_SECRET:-}
+      TOKEN_MONITOR_PORT: "17321"
+      TOKEN_MONITOR_HOST: 0.0.0.0
+      TOKEN_MONITOR_DATA_FILE: /data/devices.json
+    volumes:
+      - tm-core-data:/data
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -30,3 +53,4 @@ services:
 
 volumes:
   cloud-hub-data:
+  tm-core-data:

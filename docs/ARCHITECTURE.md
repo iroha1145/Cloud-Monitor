@@ -217,3 +217,59 @@ tm_snapshots(id, device_id, received_at, day,
 每次 ingest 追加一条轻量快照并清理：近 7 天全分辨率（5 分钟级），更早每
 (设备, 天) 只保留最后一个，硬上限 370 天。面板趋势 = 每天最后一个快照的
 today_total 汇总（近似当日用量）。
+
+---
+
+# 附二：官方协议权威架构（v3，替代前文"tm_hub 兼容层"描述）
+
+> 前文「token-monitor 云端接入层（tm_hub）」一节描述的手写近似实现已被
+> 整体替换；本文以 vendored 官方实现为准。前文的《桥接 v2》仍适用于
+> agent 侧可选反向桥接（OpenWebUI 摘要 → 外部 token-monitor hub）。
+
+## 分工（方案 A：官方代码为唯一协议权威）
+
+```
+widget/agent ──官方同步协议──► Python 网关（鉴权/严格校验/1MiB 实测限流）
+                                   │ 转发
+                                   ▼
+                          tm-core（vendored 官方 hub @b925865，逐字节未改）
+                            规范化 / 设备合并(含 limitsOnly) / 多设备聚合 /
+                            periodWindows 过期 / syncUploadIntervalMs stale /
+                            history / limits / SSE 广播 / subscriptions /
+                            devices.json 原子持久化
+                                   ▲
+                          Python 网关 ingest 成功后读回合并记录
+                                   │
+                          SQLite tm_snapshot_buckets（5 分钟桶 × 设备本地日）
+                                   │
+                          /api/v1/tm/overview + /tm/ 面板（趋势）
+```
+
+差分测试（tests/test_tm_differential.py）对同一载荷序列（widget 风格、
+headless agent 风格、官方 mergeDeviceRecord 生成的载荷、partial、
+limits-only、trackedClients 变化、窗口过期、删除）断言：经 Cloud 全链路
+与直连官方 hub 的 stats/devices/history/ingest 响应核心字段等价。
+
+## 关键语义（全部由官方代码执行，网关不重造）
+
+- **过期**：`isPeriodExpired` —— periodWindows.{today,month}.endsAt 到期即
+  不参与聚合；无窗口时按记录 UTC 日/月兜底；allTime 永不过期。stale 按
+  `staleAfterMsForSyncUpload(syncUploadIntervalMs)` 每设备独立判定。
+- **合并**：`mergeDeviceRecord` —— limitsOnly:true 继承 periods/窗口等；
+  省略 limits/history 时保留旧值；trackedClients 收缩时保留未跟踪客户端
+  用量；partial 更新不带 month/allTime 时按官方语义归零（组件与总量矛盾
+  时以组件归一）。
+- **订阅**：条目必须含 provider+startDate（topup 需 topUps）；过期
+  baseUpdatedAt → 409 stale_write；非法币种 → 400。
+- **SSE**：首帧 `event: snapshot`，ingest/delete/subscriptions 广播
+  `event: stats`，30s `: hb` 心跳；网关字节级透传并设置
+  x-accel-buffering: no。
+
+## 快照分桶（网关自有，官方无此数据）
+
+`UNIQUE(device_id, local_day, bucket_start)`，桶起点 = 生产者时间
+（payload.updatedAt）floor 5 分钟，同桶 UPSERT 保留最后。local_day 回退链：
+today.key → timeZone+updatedAt 本地日 → endsAt 反推 → UTC（tz 留空标注）。
+保留：近 7 天全量、更早每日一锚点、370 天硬删；阈值触发清理（≥10 分钟）。
+v1 tm_devices/tm_snapshots 迁移：快照搬入桶表，设备 payload 启动时回灌
+官方 hub，旧表原样保留不删。

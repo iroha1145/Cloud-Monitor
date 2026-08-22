@@ -580,11 +580,29 @@ def test_device_keys_json_validation(monkeypatch, tmp_path):
     monkeypatch.setenv("DEVICE_KEYS_JSON", "{not json")
     with pytest.raises(ConfigError):
         load_settings()
-    monkeypatch.setenv("DEVICE_KEYS_JSON", json.dumps({"d1": "k1", "d2": "k1"}))
+    monkeypatch.setenv("DEVICE_KEYS_JSON", json.dumps({"d1": "k" * 32, "d2": "k" * 32}))
     with pytest.raises(ConfigError):  # 重复密钥值
         load_settings()
-    monkeypatch.setenv("DEVICE_KEYS_JSON", json.dumps({"d1": "k1"}))
-    assert load_settings().device_keys == {"d1": "k1"}
+    monkeypatch.setenv("DEVICE_KEYS_JSON", json.dumps({"d1": "short"}))
+    with pytest.raises(ConfigError):  # 32 字符下限
+        load_settings()
+    monkeypatch.setenv("DEVICE_KEYS_JSON", json.dumps({"d1": "d" * 32}))
+    settings = load_settings()
+    assert settings.device_keys == {"d1": "d" * 32}
+
+
+def test_keys_mutual_exclusion(monkeypatch, tmp_path):
+    monkeypatch.setenv("API_KEY", "a" * 32)
+    monkeypatch.setenv("ACCESS_TOKEN", "a" * 32)  # 与 API_KEY 相同且未显式放行
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "m.db"))
+    with pytest.raises(ConfigError):
+        load_settings()
+    monkeypatch.setenv("ACCESS_TOKEN", "b" * 32)
+    monkeypatch.setenv("TOKEN_MONITOR_SECRET", "b" * 32)  # 与 ACCESS_TOKEN 相同
+    with pytest.raises(ConfigError):
+        load_settings()
+    monkeypatch.setenv("TOKEN_MONITOR_SECRET", "t" * 32)
+    assert load_settings().tm_ingest_secret == "t" * 32
 
 
 def test_device_key_cannot_impersonate_other_device(tmp_path):

@@ -9,7 +9,7 @@ from pathlib import Path
 PROTOCOL_VERSION = 2
 
 WEAK_API_KEYS = {"changeme", "please-change-me", "password", "secret", "123456"}
-MIN_API_KEY_LENGTH = 12
+MIN_API_KEY_LENGTH = 32
 
 
 class ConfigError(Exception):
@@ -32,16 +32,19 @@ def _env_bool(raw: str | None) -> bool:
     return str(raw or "").strip().lower() in ("1", "true", "yes", "on")
 
 
-def validate_api_key(api_key: str) -> None:
-    if not api_key:
-        raise ConfigError("API_KEY 未配置：云端 hub 必须设置强随机 API_KEY")
-    if api_key in WEAK_API_KEYS:
-        raise ConfigError(f"API_KEY 是弱默认值 ({api_key})，请更换为强随机值")
-    if len(api_key) < MIN_API_KEY_LENGTH:
+def validate_secret(name: str, value: str) -> None:
+    if not value:
+        raise ConfigError(f"{name} 未配置")
+    if value in WEAK_API_KEYS:
+        raise ConfigError(f"{name} 是弱默认值，请更换为强随机值")
+    if len(value) < MIN_API_KEY_LENGTH:
         raise ConfigError(
-            f"API_KEY 长度不足（最少 {MIN_API_KEY_LENGTH} 字符），请使用如 "
-            "`openssl rand -hex 32` 生成的强随机值"
+            f"{name} 长度不足（最少 {MIN_API_KEY_LENGTH} 个随机字符，"
+            "建议 `openssl rand -hex 32`）"
         )
+
+
+validate_api_key = validate_secret
 
 
 def parse_device_keys(raw: str | None) -> dict[str, str]:
@@ -79,11 +82,12 @@ class Settings:
     allow_shared_token: bool = True  # 仅显式构造（测试）时默认放行；load_settings 会强制校验
     protocol_version: int = PROTOCOL_VERSION
     tm_ingest_secret: str = ""  # token-monitor 接入密钥（TOKEN_MONITOR_SECRET），空 = 停用
+    tm_core_url: str = "http://127.0.0.1:17321"  # vendored 官方 Node hub 地址
 
 
 def load_settings() -> Settings:
     api_key = os.environ.get("API_KEY", "")
-    validate_api_key(api_key)
+    validate_secret("API_KEY", api_key)
 
     access_token = (os.environ.get("ACCESS_TOKEN") or "").strip()
     allow_shared = _env_bool(os.environ.get("ALLOW_SHARED_TOKEN"))
@@ -122,17 +126,42 @@ def load_settings() -> Settings:
     except ValueError:
         max_body = 2 * 1024 * 1024
 
+    device_keys = parse_device_keys(os.environ.get("DEVICE_KEYS_JSON"))
+    for device_id, key in device_keys.items():
+        validate_secret(f"DEVICE_KEYS_JSON[{device_id}]", key)
+
+    tm_secret = (os.environ.get("TOKEN_MONITOR_SECRET") or "").strip()
+    if tm_secret:
+        validate_secret("TOKEN_MONITOR_SECRET", tm_secret)
+
+    # 密钥互斥：不同用途的密钥不得相等（API_KEY/ACCESS_TOKEN 仅在显式
+    # ALLOW_SHARED_TOKEN 时允许共用）
+    distinct: list[tuple[str, str]] = [
+        ("API_KEY", api_key),
+        ("TOKEN_MONITOR_SECRET", tm_secret),
+        *[(f"DEVICE_KEYS_JSON[{d}]", k) for d, k in device_keys.items()],
+    ]
+    if access_token != api_key or not allow_shared:
+        distinct.append(("ACCESS_TOKEN", access_token))
+    for i, (name_a, value_a) in enumerate(distinct):
+        for name_b, value_b in distinct[i + 1 :]:
+            if value_a and value_b and value_a == value_b:
+                raise ConfigError(
+                    f"密钥 {name_a} 与 {name_b} 相同：不同用途必须使用不同密钥"
+                )
+
     return Settings(
         api_key=api_key,
         access_token=access_token,
         database_path=database_path,
         frontend_dir=frontend_dir,
         max_records_per_push=max(1, min(max_records, 500)),
-        device_keys=parse_device_keys(os.environ.get("DEVICE_KEYS_JSON")),
+        device_keys=device_keys,
         cors_origins=cors_origins,
         docs_enabled=_env_bool(os.environ.get("DOCS_ENABLED")),
         max_body_bytes=max_body,
         allow_shared_token=allow_shared,
         protocol_version=PROTOCOL_VERSION,
-        tm_ingest_secret=(os.environ.get("TOKEN_MONITOR_SECRET") or "").strip(),
+        tm_ingest_secret=tm_secret,
+        tm_core_url=(os.environ.get("TM_CORE_URL") or "http://127.0.0.1:17321").strip(),
     )
