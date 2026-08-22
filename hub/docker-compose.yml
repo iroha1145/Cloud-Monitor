@@ -12,6 +12,8 @@ services:
       ALLOW_SHARED_TOKEN: ${ALLOW_SHARED_TOKEN:-false}
       # 可选：每设备独立写密钥 {"device-id": "key"}
       DEVICE_KEYS_JSON: ${DEVICE_KEYS_JSON:-}
+      # 可选：token-monitor 接入密钥（本机 widget 推送用；留空则停用该接入）
+      TOKEN_MONITOR_SECRET: ${TOKEN_MONITOR_SECRET:-}
       MAX_RECORDS_PER_PUSH: ${MAX_RECORDS_PER_PUSH:-500}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       DOCS_ENABLED: ${DOCS_ENABLED:-false}

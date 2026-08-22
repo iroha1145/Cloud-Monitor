@@ -173,3 +173,47 @@ PRAGMA：`journal_mode=WAL`、`synchronous=NORMAL`、`busy_timeout=30000`、
   非法/超前 48h 拒绝、start_time>end_time 返回 400）。
 - Docker：非 root 用户、`cap_drop: ALL`、`no-new-privileges`、只读根文件
   系统 + tmpfs、hub 默认只绑 `127.0.0.1:7878`（公网经 HTTPS 反代）。
+
+# 附：token-monitor 云端接入层（tm_hub）
+
+## 定位反转说明
+
+用户的核心诉求：**本机 token-monitor 的数据在云端网页随处可查**。因此主路径
+不是"把数据推给 token-monitor 的 hub"，而是反过来——**Cloud-monitor hub
+实现 token-monitor 的服务端协议**，本机 widget 原生同步直连云端：
+
+```
+token-monitor widget ──(设置 hub=云端地址 + TOKEN_MONITOR_SECRET)──►
+    POST /api/ingest ──► tm_devices(最新全量 payload) + tm_snapshots(轻量历史)
+    GET  /api/health /api/stats /api/devices[/:id]  ← 官方协议兼容
+    GET  /api/v1/tm/overview ← 网格面板专用（ACCESS_TOKEN）
+    网页 /tm/ ← tm-frontend（独立新页面，未触碰 hub/frontend）
+```
+
+## 与官方 hub 的兼容策略
+
+- 健康检查**不含 hubBuild**：按官方文档，无 hubBuild 的响应被视为 legacy
+  Hub 并"remains otherwise compatible"，这是最稳妥的兼容姿态。
+- 鉴权同时接受 `Authorization: Bearer <secret>` 与
+  `X-Token-Monitor-Secret: <secret>`（与官方一致）。
+- payload 宽容解析：周期对象接受顶层或 `periods{}` 内嵌两种形态；token
+  拆分（cacheRead/cacheWrite/output/unclassified）、clients、clientModels
+  全部保留；未识别字段存进 `payload` JSON 原文，不丢失。
+- **不支持 SSE 广播**：官方 hub 向 widget 实时推送 stats；本层定位是持久
+  化与远程网页查看，widget 自身显示仍依赖本地数据。若需要 widget 间实时
+  同步，官方的 widget-hosted hub / Node hub / Worker 仍可并行使用。
+
+## 数据模型与保留策略
+
+```sql
+tm_devices(device_id PK, 主机/OS/agent 元信息, first/last_seen_at,
+           payload TEXT /* 最新完整摘要 JSON */)
+tm_snapshots(id, device_id, received_at, day,
+             today 的 total/output/cache_read/cache_write/unclassified/cost,
+             month_total, month_cost, all_time_total, all_time_cost,
+             models_json /* 今日模型分布 */)
+```
+
+每次 ingest 追加一条轻量快照并清理：近 7 天全分辨率（5 分钟级），更早每
+(设备, 天) 只保留最后一个，硬上限 370 天。面板趋势 = 每天最后一个快照的
+today_total 汇总（近似当日用量）。

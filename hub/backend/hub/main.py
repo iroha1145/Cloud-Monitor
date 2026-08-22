@@ -26,6 +26,7 @@ from .services import (
     list_users,
     usage_report,
 )
+from .tm_hub import build_tm_router, ensure_tm_schema
 
 
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
@@ -38,6 +39,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app = FastAPI(title="Cloud Monitor 云端 Token 看板", version="2.0.0", **docs_urls)
     app.state.settings = settings
     app.state.db = Database(settings.database_path)
+    ensure_tm_schema(app.state.db)
+    app.include_router(build_tm_router(settings))
 
     if settings.cors_origins:
         app.add_middleware(
@@ -172,6 +175,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             return FileResponse(index_file)
 
         app.mount("/static", StaticFiles(directory=str(frontend_dir)), name="static")
+
+    # token-monitor 云端面板（独立目录，与上面的 openwebui 记录看板互不影响）
+    tm_frontend_dir = settings.frontend_dir.parent / "tm-frontend"
+    if tm_frontend_dir.is_dir():
+        app.mount(
+            "/tm",
+            StaticFiles(directory=str(tm_frontend_dir), html=True),
+            name="tm-frontend",
+        )
 
     @app.exception_handler(HTTPException)
     async def http_error(_request: Request, exc: HTTPException) -> JSONResponse:

@@ -1,140 +1,123 @@
-# Cloud Monitor — 云端 Token 消耗看板（v2）
+# Cloud Monitor — token-monitor 的云端用量面板
 
-把本机 [OpenWebUI-Monitor](https://github.com/iroha1145/OpenWebUI-Monitor) 的数据
-可靠地同步到云端服务器，由服务器统一存储并以网页展示详细 Token 消耗。
-前端复用 OpenWebUI-Monitor 的现有页面（未做任何改动），只动后端。
+把**本机 [token-monitor](https://github.com/Javis603/token-monitor) 的数据搬到云端**：
+hub 实现了 token-monitor 的服务端同步协议，本机 widget 在设置里把 hub 指向你的
+服务器即可，数据持久化进 SQLite，随时随地打开网页查看用量（今日/本月/累计、
+按模型/客户端、缓存拆分、多设备、近 30 天趋势）。
 
-v2 相对 v1 的核心改进：**并发安全的 SQLite 事务**、**稳定的设备/数据源身份**
-（容器重建/本地库重建都不再产生重复或丢数据）、**id 游标增量同步**
-（每批确认后才推进游标）、**云端响应严格校验**、**token-monitor 桥接协议
-按官方字段重写**、**默认安全**（HTTPS 强制、密钥分离、非 root 容器、
-默认关闭 CORS/docs）。细节见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
-
-```
-┌──────────── 本机 ────────────┐          ┌─────────── 云端服务器 ───────────┐
-│ OpenWebUI → openwebui-monitor │  游标增量  │  Cloud-monitor hub (Docker)     │
-│               (本地, 后端新增  │ ────────► │   POST /api/v1/sync/push 幂等   │
-│                /sync/* 接口)  │  心跳+校验 │   冲突检测 / 事务 / WAL          │
-│  sync-agent v2 (Docker)       │          │   网页 / = 现有前端, 只读 API     │
-│   可选: → token-monitor hub   │          │   SQL 分页 + SQL 聚合            │
-└───────────────────────────────┘          └─────────────────────────────────┘
-```
-
-## 目录结构
+同时保留另一条链路：本机 [OpenWebUI-Monitor](https://github.com/iroha1145/OpenWebUI-Monitor)
+的详细调用记录也可同步到同一台服务器（`/` 看板，前端原样复用、零改动）。
+两条链路共用一套部署与鉴权体系，互不影响。
 
 ```
-Cloud-monitor/
-├── hub/        云端后端（FastAPI + SQLite，部署在服务器）
-│   ├── backend/hub/      config / auth / db / models / services / main
-│   ├── frontend/         从 openwebui-monitor 原样复制（零改动）
-│   ├── tests/            29 项 pytest（并发/回滚/迁移/鉴权/10万条分页聚合…）
-│   └── Dockerfile / docker-compose.yml（非 root、只读、健康检查）
-├── agent/      本机同步代理 v2
-│   ├── sync_agent.py         游标增量同步 + 心跳 + 响应校验 + 退避降级
-│   ├── token_monitor_bridge.py 可选：标准字段推送到 token-monitor hub
-│   ├── healthcheck.py        Docker 健康检查
-│   ├── tests/                28 项 pytest（身份/状态损坏/时区/设备隔离…）
-│   └── Dockerfile / docker-compose.yml
-└── docs/
-    ├── ARCHITECTURE.md     v2 协议与数据模型
-    └── patches/openwebui-monitor-sync-api.patch  本地 monitor 的新接口补丁
+┌───────────── 本机 ─────────────┐          ┌────────── 云端服务器（Docker）──────────┐
+│ token-monitor widget           │  原生同步  │  Cloud-monitor hub                     │
+│  设置 hub=服务器 密钥=SECRET    │ ────────► │   /api/ingest  ← token-monitor 协议     │
+│  （每 5 分钟自动推送，零改造）   │           │   SQLite 持久化 + 快照历史（官方 hub 是  │
+│                                │           │   内存态，本层补上留存与网页）           │
+│ openwebui-monitor + sync-agent │  游标增量  │   /api/v1/sync/push ← 详细记录同步      │
+└────────────────────────────────┘           │   网页: /tm/ = token 用量面板           │
+                                             │        /    = OpenWebUI 记录看板        │
+                                             └────────────────────────────────────────┘
 ```
 
-## 一、云端服务器部署（hub）
+## 快速开始（token-monitor 上云，推荐路径）
+
+**服务器**：
 
 ```bash
 git clone https://github.com/iroha1145/Cloud-Monitor.git
 cd Cloud-Monitor/hub
 cp .env.example .env
-# 必填：API_KEY（写入密钥，openssl rand -hex 32）与 ACCESS_TOKEN（只读密钥，
-# 必须与 API_KEY 不同）。弱值/默认值/过短值会拒绝启动。
+# 必填：API_KEY / ACCESS_TOKEN（强随机，二者不同）
+# 填上：TOKEN_MONITOR_SECRET（自选一个强随机值，下步 widget 要用）
 docker compose up -d --build
-curl http://127.0.0.1:7878/api/v1/health
+curl http://127.0.0.1:7878/api/health   # {"ok":true,"role":"hub",...}
 ```
 
-- 默认只绑定 `127.0.0.1:7878`，公网访问请经 Nginx/Caddy HTTPS 反代。
-- 数据持久化在 `cloud-hub-data` 卷（`/data/cloud-monitor.sqlite3`）。
-- 旧 v1 数据库首次打开时自动迁移（见 ARCHITECTURE），不清空数据。
+公网访问请在前面挂 Nginx/Caddy 做 HTTPS 反代（如 `https://tm.example.com`）。
 
-## 二、本机部署（agent）
+**本机 token-monitor**（widget 或无头 agent 均可）：
 
-```bash
-cd Cloud-monitor/agent
-cp .env.example .env
-#   LOCAL_MONITOR_URL / LOCAL_API_KEY   本地 monitor 地址与只读密钥
-#   CLOUD_HUB_URL / CLOUD_API_KEY       云端地址（公网必须 HTTPS）与写入密钥
-#   DEVICE_ID / DEVICE_NAME / HOST_PLATFORM  建议显式配置
-docker compose up -d --build
-docker compose logs -f sync-agent
+1. 打开 token-monitor 设置 → 多设备同步（Multi-device sync）
+2. hub 地址填 `https://tm.example.com`
+3. 密钥填服务器上配置的 `TOKEN_MONITOR_SECRET`
+
+完成。widget 会按原有节奏（默认 5 分钟）推送设备摘要，云端自动积累历史。
+
+**随处查看**：浏览器打开 `https://tm.example.com/tm/`，输入 `ACCESS_TOKEN`
+即可看到今日/本月/累计 token 与成本、缓存读/写拆分、模型与客户端分布、
+设备在线状态、近 30 天趋势。
+
+与官方 hub 的差别：官方 Node hub 只在内存保留每台设备最新一份摘要（重启
+即失、无网页）；本层持久化 + 快照历史（近 7 天 5 分钟级、之后每日一个，
+保留 370 天）+ 网页面板。不支持 SSE 实时广播，widget 自身显示仍走本地数据。
+
+## 目录结构
+
+```
+Cloud-monitor/
+├── hub/
+│   ├── backend/hub/
+│   │   ├── tm_hub.py        token-monitor 服务端协议（ingest/health/stats/devices）
+│   │   └── …                OpenWebUI 记录同步（config/auth/db/models/services/main）
+│   ├── tm-frontend/         /tm/ 用量面板（独立新页面）
+│   ├── frontend/            OpenWebUI 记录看板（原样复制，零改动）
+│   ├── tests/               42 项 pytest
+│   └── Dockerfile / docker-compose.yml
+├── agent/                   本机 OpenWebUI 同步代理（token-monitor 路径不需要它）
+└── docs/{ARCHITECTURE.md, patches/}
 ```
 
-不用 Docker 也可裸跑（`LOCAL_MONITOR_URL=http://127.0.0.1:7878`）。
-
-**本地 monitor 需要新接口**（`/api/v1/sync/meta`、`/api/v1/sync/records`）：
-- 本地仓库已含该补丁（提交 19134c7）；
-- 若部署的是旧版，应用 `docs/patches/openwebui-monitor-sync-api.patch`；
-- 无法升级时 agent 自动回退时间窗口模式（打印一次性能警告，功能不受影响）。
-
-## 三、可选：对接 token-monitor 多设备同步
-
-```env
-TOKEN_MONITOR_HUB_URL=https://<token-monitor-hub>
-TOKEN_MONITOR_SECRET=<共享密钥>
-TOKEN_MONITOR_DEVICE_ID=        # 默认 openwebui:<DEVICE_ID>，与 Cloud 身份隔离
-TIME_ZONE=Asia/Tokyo            # today/month 边界时区
-```
-
-payload 使用 token-monitor 的标准周期字段（models/clientModels/
-outputTokens/unclassifiedTokens 等，`capabilities.tokenComponents=false`，
-costUsd 恒为 0——OpenWebUI-Monitor 不计费）。上游 4xx 时桥接自动停用，
-5xx 下个周期重试，均不影响主同步。
-
-## 环境变量速查
-
-### hub（服务器）
-
-| 变量 | 说明 | 默认 |
-|---|---|---|
-| `API_KEY` | 写入密钥（必填，弱值拒绝启动） | — |
-| `ACCESS_TOKEN` | 只读密钥（必填，须与 API_KEY 不同） | — |
-| `ALLOW_SHARED_TOKEN` | 显式允许两密钥共用 | `false` |
-| `DEVICE_KEYS_JSON` | 每设备写密钥，绑定 device.id | 空 |
-| `CORS_ORIGINS` | 允许跨域来源，默认不启用 CORS | 空 |
-| `DOCS_ENABLED` | 开放 /docs /redoc /openapi.json | `false` |
-| `MAX_RECORDS_PER_PUSH` | 单次 push 上限（≤500） | `500` |
-
-### agent（本机）
-
-| 变量 | 说明 | 默认 |
-|---|---|---|
-| `CLOUD_HUB_URL` | 云端地址（必填，公网强制 HTTPS） | — |
-| `CLOUD_API_KEY` | 云端写入密钥 | — |
-| `DEVICE_ID` / `DEVICE_NAME` / `HOST_PLATFORM` | 设备身份（建议显式配置） | 状态卷 UUID / 空 |
-| `SOURCE_INSTANCE_ID` | 数据源实例（一般自动获取） | 自动 |
-| `SYNC_INTERVAL_SECONDS` / `BATCH_SIZE` | 间隔与批量（≤500） | `60` / `200` |
-| `ALLOW_INSECURE_HTTP` | 显式放行明文 HTTP（仅限特殊场景） | `false` |
-| `HEALTH_STALE_SECONDS` | 健康检查阈值 | `3600` |
-
-## 云端 API
+## 云端 API 一览
 
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
-| POST | `/api/v1/sync/push` | `API_KEY` 或设备密钥 | 幂等推送，返回 inserted/duplicates/conflicts |
-| GET | `/api/v1/usage` | `ACCESS_TOKEN` | SQL 聚合（by_user/by_model/by_device） |
-| GET | `/api/v1/users` | `ACCESS_TOKEN` | 用户列表（含 created_at 保真） |
-| GET | `/api/v1/records` | `ACCESS_TOKEN` | SQL 分页明细，支持 device_id 过滤 |
-| GET | `/api/v1/devices` | `ACCESS_TOKEN` | 设备与同步健康状态 |
-| GET | `/api/v1/health` | 无 | 健康检查（含 protocol_version） |
-| GET | `/` | 无 | 网页看板（现有前端） |
+| POST | `/api/ingest` | `TOKEN_MONITOR_SECRET` | token-monitor 设备摘要推送（持久化） |
+| GET | `/api/health` | 无 | token-monitor 兼容健康检查 |
+| GET | `/api/stats` | `TOKEN_MONITOR_SECRET` | token-monitor 兼容聚合统计 |
+| GET/DELETE | `/api/devices[/:id]` | `TOKEN_MONITOR_SECRET` | 设备管理 |
+| GET | `/api/v1/tm/overview` | `ACCESS_TOKEN` | 网格面板数据（含趋势） |
+| POST | `/api/v1/sync/push` | `API_KEY`/设备密钥 | OpenWebUI 记录幂等推送 |
+| GET | `/api/v1/usage\|users\|records\|devices` | `ACCESS_TOKEN` | OpenWebUI 记录查询 |
+| GET | `/tm/`、`/` | 页面内输入密钥 | 两个网页看板 |
+
+## 附：OpenWebUI-Monitor 记录同步（第二条链路）
+
+```bash
+cd Cloud-monitor/agent && cp .env.example .env
+#   LOCAL_MONITOR_URL / LOCAL_API_KEY   本地 monitor 地址与只读密钥
+#   CLOUD_HUB_URL / CLOUD_API_KEY       云端地址（公网必须 HTTPS）与写入密钥
+docker compose up -d --build
+```
+
+本地 monitor 需要 `/api/v1/sync/meta|records` 游标接口（本地仓库已含提交
+19134c7，或应用 `docs/patches/openwebui-monitor-sync-api.patch`）；旧版自动
+回退时间窗口模式。agent 端还有一个**可选**的反向桥接（把 OpenWebUI 用量
+摘要以 `openwebui:<device>` 身份推给任意 token-monitor hub），详见
+ARCHITECTURE——token-monitor 走上面主路径时不需要它。
+
+## 环境变量速查（hub）
+
+| 变量 | 说明 | 默认 |
+|---|---|---|
+| `API_KEY` | 记录写入密钥（弱值拒绝启动） | — |
+| `ACCESS_TOKEN` | 只读密钥（面板/查询用，须与 API_KEY 不同） | — |
+| `TOKEN_MONITOR_SECRET` | token-monitor 接入密钥（空=停用该接入） | 空 |
+| `DEVICE_KEYS_JSON` | 每设备写密钥（记录链路） | 空 |
+| `CORS_ORIGINS` / `DOCS_ENABLED` | 默认均关闭 | 关 |
+| `MAX_RECORDS_PER_PUSH` | 记录单批上限 | `500` |
+
+agent（OpenWebUI 链路）的环境变量见 `agent/.env.example`。
 
 ## 测试
 
 ```bash
-cd hub   && PYTHONPATH=backend python -m pytest tests/ -q   # 29 项
+cd hub   && PYTHONPATH=backend python -m pytest tests/ -q   # 42 项
 cd agent && python -m pytest tests/ -q                       # 28 项
 ```
 
-已通过的整体验证：三套 pytest 共 89 项；32 线程×200 批×100 条并发压测
-零异常恰好 20000 条；10 万条记录 SQL 分页/聚合与 Python 基准一致；
-真实数据端到端（全量 1628 → 幂等心跳 → 增量 1 条 → 本地库重建后
-source 轮换、local_id=1 重新入库不被吞）。
+整体验证：102 项 pytest 全绿；32 线程并发压测零异常；10 万条 SQL 分页/聚合
+与基准一致；token-monitor 双设备真实风格 payload（含缓存拆分）端到端入库、
+聚合与面板展示正常。
+

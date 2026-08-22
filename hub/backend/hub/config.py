@@ -78,6 +78,7 @@ class Settings:
     max_body_bytes: int = 2 * 1024 * 1024
     allow_shared_token: bool = True  # 仅显式构造（测试）时默认放行；load_settings 会强制校验
     protocol_version: int = PROTOCOL_VERSION
+    tm_ingest_secret: str = ""  # token-monitor 接入密钥（TOKEN_MONITOR_SECRET），空 = 停用
 
 
 def load_settings() -> Settings:
@@ -133,4 +134,5 @@ def load_settings() -> Settings:
         max_body_bytes=max_body,
         allow_shared_token=allow_shared,
         protocol_version=PROTOCOL_VERSION,
+        tm_ingest_secret=(os.environ.get("TOKEN_MONITOR_SECRET") or "").strip(),
     )
