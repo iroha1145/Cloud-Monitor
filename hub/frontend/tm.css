@@ -1089,13 +1089,15 @@ code {
   /* 表格横滚（表头玻璃吸附已内置） */
   .tbl-scroll { max-height: 440px; }
 
-  /* 热力图：月/日视图适配屏宽，周视图保留横滚 */
-  .hm:has(.hm-mon-wrap), .hm:has(.hm-day) { min-width: 0; }
+  /* 热力图：日/周/月三视图全部适配屏宽，不再横滚 */
+  .hm:has(.hm-mon-wrap), .hm:has(.hm-day), .hm:has(.hm-week) { min-width: 0; }
   .hm-day { grid-template-columns: repeat(12, 1fr); }
   .hm-d { min-height: 22px; font-size: 9px; }
   .hm-mon-grid { gap: 4px; }
   .hm-m { min-height: 0; font-size: 10px; }
   .hm-mon-head span { font-size: 10px; }
+  .hm-wk-grid { gap: 3px; }
+  .hm-wk-months span { font-size: 9.5px; }
 
   /* 近 7 天趋势：限制柱宽，避免满屏宽条 */
   .hm-spark-bars { gap: 6px; height: 38px; }
