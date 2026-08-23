@@ -1236,6 +1236,20 @@ function renderModelDonut(per, animate) {
     </div>
     <ul class="donut-legend">${legend}</ul>`;
 
+  /* 中央总量数字按内孔可用宽度自适应收缩（25→13px），
+     避免大数值（如 6773.8万）在窄屏/小环上溢出错位 */
+  const centerNum = box.querySelector(".donut-center b");
+  const donutEl = box.querySelector(".donut");
+  if (centerNum && donutEl) {
+    const avail = donutEl.clientWidth * 0.58; // R=45 内孔直径 ≈ 环宽的 63%，留边取 58%
+    let fs = 25;
+    centerNum.style.fontSize = fs + "px";
+    while (fs > 13 && centerNum.scrollWidth > avail) {
+      fs -= 1;
+      centerNum.style.fontSize = fs + "px";
+    }
+  }
+
   /* 弧段 / 图例行 hover 联动 + tooltip */
   const rows = box.querySelectorAll(".donut-lg-row");
   const arcEls = box.querySelectorAll(".donut-arc");
@@ -1404,13 +1418,23 @@ function renderMatrix() {
     `<i class="mx-cell mx-zero-s" style="background:${MX_ZERO}"></i>` +
     MX_SCALE.map((c) => `<i class="mx-cell" style="background:${c}"></i>`).join("") +
     `<span>高</span></div>`;
-  // 格子正方形且随容器自适应，但列少时给整格网上限，避免巨型方块
-  const mxMaxW = 150 + models.length * 104;
+  // 格子正方形且随容器自适应，但列少时给整格网上限，避免巨型方块；
+  // 窄屏（≤768px）改用 0 最小列宽 + 无整网上限，配合 CSS min-width:0 装入屏宽
+  const narrow = window.matchMedia("(max-width: 768px)").matches;
+  const labelCol = narrow ? "minmax(64px, 88px)" : "minmax(110px, 140px)";
+  const cellCol = narrow ? "minmax(0, 1fr)" : "minmax(48px, 1fr)";
+  const mxMaxW = narrow ? "none" : `${150 + models.length * 104}px`;
   box.innerHTML =
-    `<div class="mx-grid" style="grid-template-columns:minmax(110px, 140px) repeat(${models.length}, minmax(48px, 1fr));max-width:${mxMaxW}px">${head}${rowsHtml}</div>` +
+    `<div class="mx-grid" style="grid-template-columns:${labelCol} repeat(${models.length}, ${cellCol});max-width:${mxMaxW}">${head}${rowsHtml}</div>` +
     scaleLegend;
 
   const grid = box.querySelector(".mx-grid");
+  /* 窄屏矩阵已适配屏宽：仅在确实溢出时保留“左右滑动查看”提示 */
+  const scroller = panel.querySelector(".mx-scroll");
+  const hint = panel.querySelector(".scroll-hint");
+  if (scroller && hint) {
+    hint.style.display = scroller.scrollWidth > scroller.clientWidth + 1 ? "" : "none";
+  }
   grid.querySelectorAll(".mx-cell[data-v]").forEach((cell) => {
     bindHover(cell, grid, () => {
       const c = cell.dataset.c;
