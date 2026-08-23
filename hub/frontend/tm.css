@@ -612,6 +612,8 @@ code {
   text-align: center; pointer-events: none;
 }
 .donut-center b {
+  display: inline-block; white-space: nowrap; max-width: 62%;
+  overflow: hidden; text-overflow: ellipsis;
   font-family: var(--font-mono); font-variant-numeric: tabular-nums;
   font-size: 25px; font-weight: 700; letter-spacing: -0.02em; line-height: 28px;
 }
@@ -1088,6 +1090,13 @@ code {
 
   /* 表格横滚（表头玻璃吸附已内置） */
   .tbl-scroll { max-height: 440px; }
+
+  /* 工具 × 模型矩阵：适配屏宽（列模板由 JS 按断点给出），格子仍为正方形 */
+  .mx-grid { min-width: 0; gap: 3px; }
+  .mx-corner { min-height: 26px; }
+  .mx-col, .mx-row { min-height: 26px; font-size: 10px; gap: 4px; }
+  .mx-cell { font-size: 9px; padding: 0 1px; border-radius: 6px; }
+  .mx-scale { margin-top: 9px; }
 
   /* 热力图：日/周/月三视图全部适配屏宽，不再横滚 */
   .hm:has(.hm-mon-wrap), .hm:has(.hm-day), .hm:has(.hm-week) { min-width: 0; }
