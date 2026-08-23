@@ -320,6 +320,7 @@
         windows: [
           { kind: "session", metric: "percentage", label: "5 小时窗口", usedPercent: randInt(68, 76), resetsAt: utcHour(-randInt(70, 160) * 60000) },
           { kind: "weekly", metric: "percentage", label: "7 天窗口", usedPercent: randInt(34, 42), resetsAt: utcHour(-randInt(2, 4) * DAY) },
+          { kind: "monthly", metric: "percentage", label: "月度额度", usedPercent: randInt(2, 9), resetsAt: utcHour(-randInt(8, 12) * DAY) },
         ],
         device: "MacBook-Pro.local",
       },
