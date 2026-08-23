@@ -1,8 +1,8 @@
 {
   "overview_schema_version": 2,
-  "generated_at": "2026-08-23T11:35:19.951Z",
+  "generated_at": "2026-08-23T15:55:10.597Z",
   "pending_outbox": 0,
-  "last_snapshot_success_at": "2026-08-23T11:35:19+00:00",
+  "last_snapshot_success_at": "2026-08-23T15:55:10+00:00",
   "last_snapshot_error": null,
   "snapshot_degraded": false,
   "staleAfterMs": 600000,
@@ -183,8 +183,8 @@
       "osVersion": "15.5",
       "agentVersion": "1.8.2",
       "agentRuntime": "widget",
-      "receivedAt": "2026-08-23T11:35:19.934Z",
-      "updatedAt": "2026-08-23T11:35:19.930Z",
+      "receivedAt": "2026-08-23T15:55:10.584Z",
+      "updatedAt": "2026-08-23T15:55:10.578Z",
       "stale": false,
       "syncUploadIntervalMs": 0,
       "trackedClients": [
@@ -358,13 +358,13 @@
   ],
   "trend": [
     {
-      "day": "2026-08-23",
+      "day": "2026-08-24",
       "total": 1846320
     }
   ],
   "trend_models": [
     {
-      "day": "2026-08-23",
+      "day": "2026-08-24",
       "total": 1846320,
       "models": {
         "opus-4.5": 1000000,
@@ -377,7 +377,7 @@
     "hourly": [
       {
         "hour": 0,
-        "total": 0
+        "total": 1846320
       },
       {
         "hour": 1,
@@ -457,7 +457,7 @@
       },
       {
         "hour": 20,
-        "total": 1846320
+        "total": 0
       },
       {
         "hour": 21,
@@ -472,14 +472,17 @@
         "total": 0
       }
     ],
-    "hourly_day": "2026-08-23",
+    "hourly_day": "2026-08-24",
+    "daily_day_basis": "dashboard-time-zone",
+    "daily_mixed_basis": false,
+    "daily_archive_cutover_day": null,
     "hourly_today": {
-      "day": "2026-08-23",
+      "day": "2026-08-24",
       "time_zone": "Asia/Tokyo",
       "buckets": [
         {
           "hour": 0,
-          "total": 0
+          "total": 1846320
         },
         {
           "hour": 1,
@@ -559,7 +562,7 @@
         },
         {
           "hour": 20,
-          "total": 1846320
+          "total": 0
         },
         {
           "hour": 21,
@@ -577,13 +580,13 @@
     },
     "daily": [
       {
-        "day": "2026-08-23",
+        "day": "2026-08-24",
         "total": 1846320
       }
     ],
     "coverage": {
-      "first_sample_at": "2026-08-23T11:35:00.000Z",
-      "last_sample_at": "2026-08-23T11:35:00.000Z",
+      "first_sample_at": "2026-08-23T15:55:00.000Z",
+      "last_sample_at": "2026-08-23T15:55:00.000Z",
       "expected_buckets": 1,
       "observed_buckets": 1,
       "coverage_percent": 100.0,
@@ -591,12 +594,13 @@
       "devices": [
         {
           "device_id": "dev-fixture",
-          "first_sample_at": "2026-08-23T11:35:00.000Z",
-          "last_sample_at": "2026-08-23T11:35:00.000Z",
+          "first_sample_at": "2026-08-23T15:55:00.000Z",
+          "last_sample_at": "2026-08-23T15:55:00.000Z",
           "expected_buckets": 1,
           "observed_buckets": 1,
           "gap_count": 0,
-          "reset_count": 0
+          "reset_count": 0,
+          "expected_interval_ms": 300000
         }
       ],
       "gap_count": 0,
@@ -605,8 +609,8 @@
   },
   "period_windows": {
     "today": {
-      "endsAt": "2026-08-23T15:00:00.000Z",
-      "key": "2026-08-23"
+      "endsAt": "2026-08-24T15:00:00.000Z",
+      "key": "2026-08-24"
     },
     "month": {
       "endsAt": "2026-08-31T15:00:00.000Z",
@@ -617,8 +621,8 @@
   "period_windows_by_device": {
     "dev-fixture": {
       "today": {
-        "endsAt": "2026-08-23T15:00:00.000Z",
-        "key": "2026-08-23"
+        "endsAt": "2026-08-24T15:00:00.000Z",
+        "key": "2026-08-24"
       },
       "month": {
         "endsAt": "2026-08-31T15:00:00.000Z",
@@ -630,12 +634,12 @@
   "dashboard_period": {
     "time_zone": "Asia/Tokyo",
     "today": {
-      "key": "2026-08-23",
-      "endsAt": "2026-08-22T15:00:00.000Z"
+      "key": "2026-08-24",
+      "endsAt": "2026-08-24T15:00:00.000Z"
     },
     "month": {
       "key": "2026-08",
-      "endsAt": "2026-09-22T15:00:00.000Z"
+      "endsAt": "2026-08-31T15:00:00.000Z"
     }
   },
   "limits": [],

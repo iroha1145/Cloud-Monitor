@@ -320,8 +320,11 @@ def test_delayed_tm_core_bootstrap_retries_and_replay_once(node_hub, tmp_path):
 
     first = legacy_device_payloads(db)
     assert len(first) == 1
+    # 读取不得消耗待回灌队列；只有全部 payload 成功提交后才写幂等标记。
     second = legacy_device_payloads(db)
-    assert second == []
+    assert len(second) == 1
+    assert background._bootstrap() is True
+    assert legacy_device_payloads(db) == []
 
 
 # ================================================================ P0-3 活动口径

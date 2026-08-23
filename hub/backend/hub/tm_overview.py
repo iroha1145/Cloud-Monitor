@@ -61,6 +61,7 @@ ACTIVITY_DAILY_DAYS = 90
 FINE_ACTIVITY_DAYS = 7
 SESSIONS_LIMIT = 100
 GAP_BUCKETS = 2  # 相邻桶间隔超过 2 个槽位视为采样缺口（低覆盖）
+DEFAULT_SAMPLE_INTERVAL_MS = 5 * 60 * 1000
 LATE_START_GRACE_MINUTES = 10  # 本地日开始后 10 分钟内的首桶不算晚启动
 
 
@@ -194,9 +195,18 @@ def _bucket_gap_slots(prev: str | None, curr: str) -> int:
     return max(int((b - a).total_seconds() // 300), 0)
 
 
-def _deltas_for_device(rows: list[dict]) -> list[dict]:
+def _deltas_for_device(
+    rows: list[dict], *, expected_interval_ms: int = DEFAULT_SAMPLE_INTERVAL_MS
+) -> list[dict]:
     """同一设备按时间排序的相邻差分。换本地日视为新周期，不记累计回退。"""
     out: list[dict] = []
+    expected_slots = max(
+        1,
+        round(
+            max(int(expected_interval_ms or 0), DEFAULT_SAMPLE_INTERVAL_MS)
+            / DEFAULT_SAMPLE_INTERVAL_MS
+        ),
+    )
     prev_total: int | None = None
     prev_bucket: str | None = None
     prev_day: str | None = None
@@ -219,7 +229,8 @@ def _deltas_for_device(rows: list[dict]) -> list[dict]:
                 }
             )
         else:
-            gap = _bucket_gap_slots(prev_bucket, stamp) > GAP_BUCKETS
+            gap_slots = _bucket_gap_slots(prev_bucket, stamp)
+            gap = gap_slots > max(GAP_BUCKETS, expected_slots * 2)
             delta = value - prev_total
             reset = delta < 0
             out.append(
@@ -240,7 +251,9 @@ def _deltas_for_device(rows: list[dict]) -> list[dict]:
     return out
 
 
-def _coverage_for_device(deltas: list[dict]) -> dict:
+def _coverage_for_device(
+    deltas: list[dict], *, expected_interval_ms: int = DEFAULT_SAMPLE_INTERVAL_MS
+) -> dict:
     stamps = []
     gap_count = 0
     reset_count = 0
@@ -256,8 +269,14 @@ def _coverage_for_device(deltas: list[dict]) -> dict:
         if entry.get("late_start"):
             late = True
     observed = len(stamps)
+    normalized_interval_ms = max(
+        int(expected_interval_ms or 0), DEFAULT_SAMPLE_INTERVAL_MS
+    )
+    sample_seconds = normalized_interval_ms / 1000
     expected = (
-        int((max(stamps) - min(stamps)).total_seconds() // 300) + 1 if stamps else 0
+        int((max(stamps) - min(stamps)).total_seconds() // sample_seconds) + 1
+        if stamps
+        else 0
     )
     return {
         "device_id": deltas[0]["device_id"] if deltas else None,
@@ -268,6 +287,7 @@ def _coverage_for_device(deltas: list[dict]) -> dict:
         "gap_count": gap_count,
         "reset_count": reset_count,
         "late_start": late,
+        "expected_interval_ms": normalized_interval_ms,
     }
 
 
@@ -294,7 +314,13 @@ def _attribution_mode(device_diags: list[dict], expected_total: int, observed_to
     return "delta"
 
 
-def activity_report(db: Database, dashboard_tz, now: Any = None) -> dict:
+def activity_report(
+    db: Database,
+    dashboard_tz,
+    now: Any = None,
+    *,
+    sync_intervals: Optional[dict[str, int]] = None,
+) -> dict:
     """活动口径：hourly 只收仪表盘今日；daily 近 7 天 5 分钟桶 + 更早日锚点。
 
     coverage 按设备求和：expected_total = Σ expected_device，
@@ -322,13 +348,21 @@ def activity_report(db: Database, dashboard_tz, now: Any = None) -> dict:
     first_samples: list = []
     last_samples: list = []
 
-    for device_rows in by_device.values():
-        deltas = _deltas_for_device(device_rows)
+    for device_id, device_rows in by_device.items():
+        expected_interval_ms = max(
+            int((sync_intervals or {}).get(device_id) or 0),
+            DEFAULT_SAMPLE_INTERVAL_MS,
+        )
+        deltas = _deltas_for_device(
+            device_rows, expected_interval_ms=expected_interval_ms
+        )
         if not deltas:
             continue
         latest_day = max(r["local_day"] for r in device_rows)
         latest_deltas = [d for d in deltas if d["local_day"] == latest_day]
-        cov = _coverage_for_device(latest_deltas)
+        cov = _coverage_for_device(
+            latest_deltas, expected_interval_ms=expected_interval_ms
+        )
         device_diags.append(
             {
                 "device_id": cov["device_id"],
@@ -338,6 +372,7 @@ def activity_report(db: Database, dashboard_tz, now: Any = None) -> dict:
                 "observed_buckets": cov["observed_buckets"],
                 "gap_count": cov["gap_count"],
                 "reset_count": cov["reset_count"],
+                "expected_interval_ms": cov["expected_interval_ms"],
             }
         )
         # 诊断字段挂在内部对象上供 attribution 使用
@@ -400,6 +435,9 @@ def activity_report(db: Database, dashboard_tz, now: Any = None) -> dict:
             "time_zone": str(tz),
             "hourly": [],
             "hourly_day": today_key,
+            "daily_day_basis": "dashboard-time-zone",
+            "daily_mixed_basis": False,
+            "daily_archive_cutover_day": None,
             "hourly_today": {
                 "day": today_key,
                 "time_zone": str(tz),
@@ -423,6 +461,13 @@ def activity_report(db: Database, dashboard_tz, now: Any = None) -> dict:
         "time_zone": str(tz),
         "hourly": hourly_buckets,
         "hourly_day": today_key,
+        "daily_day_basis": (
+            "hybrid-dashboard-and-device-local"
+            if archive["items"]
+            else "dashboard-time-zone"
+        ),
+        "daily_mixed_basis": bool(archive["items"]),
+        "daily_archive_cutover_day": archive_to if archive["items"] else None,
         "hourly_today": {
             "day": today_key,
             "time_zone": str(tz),
@@ -664,7 +709,17 @@ def build_overview(
     # v2 扩展：活动口径 / 每设备窗口 / 降级信息（P0-3 / P1-4）
     partial_errors: list[dict] = []
     try:
-        activity = activity_report(db, dashboard_time_zone, now=now)
+        sync_intervals = {
+            str(device.get("deviceId")): _int(device.get("syncUploadIntervalMs"))
+            for device in stats.get("devices") or []
+            if device.get("deviceId") is not None
+        }
+        activity = activity_report(
+            db,
+            dashboard_time_zone,
+            now=now,
+            sync_intervals=sync_intervals,
+        )
         daily = daily_activity(
             db,
             history,
@@ -732,21 +787,27 @@ def build_overview(
 
 def _dashboard_period(dashboard_tz: str, now: Any = None) -> dict:
     """仪表盘时区的当前 today/month 窗口（供前端展示口径）。"""
+    from datetime import timedelta, timezone
+
     now, tz = _now_for_dashboard(dashboard_tz, now)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    next_day = today_start + timedelta(days=1)
+    month_start = today_start.replace(day=1)
     if now.month == 12:
-        next_month = today_start.replace(year=now.year + 1, month=1)
+        next_month = month_start.replace(year=now.year + 1, month=1)
     else:
-        next_month = today_start.replace(month=now.month + 1)
+        next_month = month_start.replace(month=now.month + 1)
 
     def utc(dt) -> str:
-        return dt.astimezone(tz).astimezone(
-            __import__("datetime").timezone.utc
-        ).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        return (
+            dt.astimezone(timezone.utc)
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z")
+        )
 
     return {
         "time_zone": dashboard_tz,
-        "today": {"key": today_start.date().isoformat(), "endsAt": utc(today_start)},
+        "today": {"key": today_start.date().isoformat(), "endsAt": utc(next_day)},
         "month": {
             "key": today_start.strftime("%Y-%m"),
             "endsAt": utc(next_month),

@@ -713,5 +713,9 @@ def legacy_device_payloads(db: Database) -> list[dict]:
         elif isinstance(payload, dict) and row.get("device_id"):
             payload.setdefault("deviceId", row["device_id"])
             payloads.append(payload)
-    _meta_set(db, "legacy_reingested", "1")
     return payloads
+
+
+def mark_legacy_reingested(db: Database) -> None:
+    """仅在全部旧设备 payload 成功回灌 tm-core 后写入幂等标记。"""
+    _meta_set(db, "legacy_reingested", "1")

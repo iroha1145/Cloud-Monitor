@@ -1,38 +1,18 @@
-/* Cloud Monitor · 云端用量面板
- * 对接后端：GET /api/v1/tm/overview（同源，Bearer ACCESS_TOKEN）
- *      ＋GET /api/v1/tm/subscriptions（同鉴权，失败/404 时按无数据处理）
- * overview 返回 { generated_at, totals: {today, month, allTime}, devices[], trend[],
- *        trend_models[], activity: { hourly[], daily[] },
- *        period_windows, limits[], sessions[], sessions_omitted, projects[], diagnostics[] }
- * 周期对象：{ totalTokens, outputTokens, cacheReadTokens, cacheWriteTokens,
- *            unclassifiedTokens, timedTokens, timedOutputTokens, timedDurationMs,
- *            costUsd, clients{}, models{},
- *            clientCosts{}, clientCacheReads{}, clientCacheWrites{},
- *            clientOutputs{}, clientUnclassifiedTokens{},
- *            modelCosts{}, modelCacheReads{}, modelCacheWrites{},
- *            modelOutputs{}, modelUnclassifiedTokens{},
- *            clientModels{client:{model:tokens}}, clientModelCosts{client:{model:usd}} }
- * 非缓存输入 = totalTokens − output − cacheRead − cacheWrite − unclassified（钳到 0）
- * 设备离线判定：距 receivedAt 超过 15 分钟（协议 staleAfterMs）
- * trend_models[]：{day, total, models:{模型名: tokens}}，近 30 天升序
- * activity.hourly：今日（UTC）[{hour: 0-23, total}]；activity.daily：近 90 天 [{day, total}]
- * 模型/客户端分布：条内按 输出/缓存读/缓存写/非缓存输入/未分类 真实分段（语义色），
- *   行首圆点保留模型/客户端名配色；周期无拆分字段（老数据）时回退单段 + 按周期比例估算并注明。
- * 新增面板（无数据即整体隐藏）：工具×模型矩阵 / 项目 / 订阅配额 limits /
- *   订阅清单 / 会话明细；diagnostics 按 deviceId 并入设备卡。
+/* 云端用量面板 · 前端逻辑
+ * 结构：工具 → 常量/状态 → API 层（真实 / 演示双通道）→ 密钥门 → 路由 →
+ *       渲染层（概览 KPI/趋势/分布/矩阵/会话 · 设备 · 配额环/订阅卡 · 热力图/日归档）→
+ *       分段控件 → 加载与轮询 → 事件 → 启动
+ * 真实模式：GET /api/v1/tm/overview + GET /api/v1/tm/subscriptions（Bearer ACCESS_TOKEN，401 回到密钥门）
+ * 演示模式：?demo=1 或密钥门「查看演示数据」→ mock.js 生成数据
  */
 "use strict";
 
-/* ---------- 工具 ---------- */
+/* ================= 工具 ================= */
 const $ = (sel, root = document) => root.querySelector(sel);
 
 const esc = (v) =>
   String(v ?? "").replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[c]));
 
 const nf = new Intl.NumberFormat("zh-Hans-CN");
@@ -83,7 +63,7 @@ function fmtInterval(ms) {
   return `每 ${ms} 毫秒`;
 }
 
-/* 会话时长等毫秒跨度人性化：「2 小时 15 分钟」「3 天 4 小时」 */
+/* 毫秒跨度人性化：「2 小时 15 分钟」 */
 function fmtDuration(ms) {
   ms = Number(ms) || 0;
   if (ms <= 0) return "—";
@@ -99,7 +79,6 @@ function fmtDuration(ms) {
   return parts.join(" ") || "—";
 }
 
-/* 周期卡「计时 X tokens / Y 小时」的时长段 */
 function fmtTimedMs(ms) {
   ms = Number(ms) || 0;
   if (ms <= 0) return "";
@@ -120,6 +99,10 @@ function fmtReset(v) {
 }
 
 /* 订阅金额：amountMinor ÷ 100 + 币种符号 */
+const CCY_SYMBOLS = {
+  USD: "$", CNY: "¥", CNH: "¥", EUR: "€", GBP: "£", JPY: "JP¥",
+  HKD: "HK$", TWD: "NT$", KRW: "₩", SGD: "S$", AUD: "A$", CAD: "C$",
+};
 function fmtMoney(amountMinor, currency) {
   const v = (Number(amountMinor) || 0) / 100;
   const code = String(currency || "").toUpperCase();
@@ -127,40 +110,190 @@ function fmtMoney(amountMinor, currency) {
   return sym + v.toFixed(2);
 }
 
-/* 分类调色板（按名称稳定 hash 分配，见 assignColors） */
+/* provider 显示名：官方小写标识 → 标准写法 */
+const PROVIDER_NAMES = {
+  anthropic: "Anthropic", openai: "OpenAI", cursor: "Cursor",
+  google: "Google", gemini: "Gemini", github: "GitHub", copilot: "Copilot",
+  zhipu: "智谱", moonshot: "Moonshot", kimi: "Kimi", deepseek: "DeepSeek",
+};
+function fmtProvider(v) {
+  const s = String(v ?? "");
+  if (!s) return "—";
+  return PROVIDER_NAMES[s.toLowerCase()] || s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/* 邮箱打码：dev@acme.com → de***@acme.com */
+function maskEmail(v) {
+  const s = String(v ?? "");
+  const at = s.indexOf("@");
+  if (at <= 0) return s;
+  const local = s.slice(0, at);
+  return local.slice(0, Math.min(2, local.length)) + "***" + s.slice(at);
+}
+
+/* 分类调色板（按名称稳定 hash 分配） */
 const PALETTE = [
   "#3b59f2", "#f59e0b", "#0ea5e9", "#8b5cf6", "#10b981",
   "#ef4444", "#ec4899", "#14b8a6", "#f97316", "#64748b",
 ];
-const OTHER_COLOR = "#96a0b5"; // 趋势「其他」合并段 · 中性灰
+const OTHER_COLOR = "#96a0b5";
 
-/* hex 调色板色 → 指定透明度 rgba（条形阴影 = 段色低透明度版本） */
 function hexA(hex, a) {
   const n = parseInt(String(hex).slice(1), 16);
   if (Number.isNaN(n)) return `rgba(90, 103, 136, ${a})`;
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 }
 
+/* 同一列表内撞槽时顺移到下一个空槽：同屏不同名不同色（同名恒同色） */
+function assignColors(names) {
+  const base = (name) => {
+    let h = 5381;
+    for (let i = 0; i < name.length; i++) h = ((h << 5) + h + name.charCodeAt(i)) >>> 0;
+    return h % PALETTE.length;
+  };
+  const used = new Set();
+  const out = {};
+  for (const name of [...names].sort()) {
+    let idx = base(name);
+    if (used.size < PALETTE.length) {
+      while (used.has(idx)) idx = (idx + 1) % PALETTE.length;
+      used.add(idx);
+    }
+    out[name] = PALETTE[idx];
+  }
+  return out;
+}
+
+/* models 字段宽容解析：数组 → 元素；对象 → 键；字符串 → 自身 */
+function modelNamesOf(models) {
+  if (Array.isArray(models)) return models.map(String).filter(Boolean);
+  if (models && typeof models === "object") return Object.keys(models);
+  if (typeof models === "string" && models) return [models];
+  return [];
+}
+
+/* clientHealth 规范解析为 [客户端名, 原始值] 列表。
+ * 官方结构为 {version, observedAt, clients:{...}}；兼容旧版直接 map/array，
+ * 但绝不能把 version / observedAt / clients 本身误当成客户端。 */
+function healthEntries(ch) {
+  if (!ch) return [];
+  if (Array.isArray(ch)) {
+    return ch
+      .map((x) => [String((x && (x.client || x.name || x.id)) || ""), x])
+      .filter(([name]) => name);
+  }
+  if (typeof ch === "object") {
+    const source = ch.clients && typeof ch.clients === "object" && !Array.isArray(ch.clients)
+      ? ch.clients
+      : ch;
+    return Object.entries(source)
+      .filter(([name]) => !["version", "observedAt", "clients"].includes(String(name)))
+      .map(([name, value]) => [String(name), value]);
+  }
+  return [];
+}
+
+/* 官方诊断状态采用显式枚举映射。未知值保持灰色并显示原文，禁止关键词猜测；
+ * 尤其 "not-running" 不能因为包含 run 而被误判为健康。 */
+const HEALTH_STATE_LEVEL = Object.freeze({
+  active: "ok",
+  direct: "ok",
+  detected: "ok",
+  healthy: "ok",
+  operational: "ok",
+  ok: "ok",
+  ready: "ok",
+  normal: "ok",
+  waiting: "warn",
+  warning: "warn",
+  stale: "warn",
+  degraded: "warn",
+  partial: "warn",
+  "no-data": "warn",
+  missing: "crit",
+  error: "crit",
+  failed: "crit",
+  unhealthy: "crit",
+  critical: "crit",
+  "not-running": "crit",
+  stopped: "crit",
+  crashed: "crit",
+  disabled: "mute",
+  "not-installed": "mute",
+  unknown: "mute",
+});
+
+function normalizeHealthState(raw) {
+  const stateName = String(raw ?? "").trim().toLowerCase();
+  return stateName || "unknown";
+}
+
+function healthLevel(raw) {
+  return HEALTH_STATE_LEVEL[normalizeHealthState(raw)] || "mute";
+}
+
+function diagnosticState(name, value, diag) {
+  const clientStatus = diag && diag.clientStatus && typeof diag.clientStatus === "object"
+    ? diag.clientStatus[name]
+    : null;
+  if (typeof clientStatus === "string" && clientStatus) return clientStatus;
+  if (!value || typeof value !== "object") return value;
+  const candidates = [
+    value.status,
+    value.health,
+    value.state,
+    value.collection && value.collection.state,
+    value.source && value.source.state,
+    value.data && value.data.state,
+  ];
+  const found = candidates.find((candidate) => typeof candidate === "string" && candidate.trim());
+  if (found) return found;
+  if (value.healthy === true) return "healthy";
+  if (value.healthy === false) return "unhealthy";
+  return "unknown";
+}
+
+function shortStatusText(v) {
+  if (v == null || v === "") return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "object") {
+    return Object.entries(v)
+      .slice(0, 4)
+      .map(([k, x]) => `${k}: ${typeof x === "object" && x ? JSON.stringify(x) : x}`)
+      .join(" · ");
+  }
+  return String(v);
+}
+
 const reducedMotion = () =>
   window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/* ---------- 常量与状态 ---------- */
+/* ================= 常量与状态 ================= */
 const TOKEN_KEY = "cm_access_token";
 const OVERVIEW_API = "/api/v1/tm/overview";
 const SUBS_API = "/api/v1/tm/subscriptions";
-const POLL_MS = 5 * 60 * 1000;   // 每 5 分钟自动刷新
-const STALE_MS = 15 * 60 * 1000; // 协议 staleAfterMs：超过视为离线
-const TREND_TOP_MODELS = 8;      // 趋势堆叠保留的模型数，超出合并为「其他」
-const MATRIX_TOP = 8;            // 工具×模型矩阵行列各取前 8
-const SESSIONS_INIT = 20;        // 会话表默认展示条数（可展开到后端截断的 100）
+const PROVIDER_STATUS_API = "/api/v1/tm/provider-status";
+const HISTORY_DAILY_API = "/api/v1/tm/history/daily";
+/* §1：动态 SVG 图标路径唯一封装，禁止散落硬编码 */
+const ICON_SVG = "/static/icons.svg";
+const iconHref = (id) => ICON_SVG + "#" + id;
+const POLL_MS = 5 * 60 * 1000;
+const TREND_TOP_MODELS = 8;
+const MATRIX_TOP = 8;
+const SESSIONS_SHOW = 5;
+const HIST_PAGE = 30;
+
+/* 矩阵色阶：5 档蓝色阶（低值可辨），空格另用极浅灰 */
+const MX_SCALE = ["#eef1fe", "#c7d2fe", "#818cf8", "#3b59f2", "#173cda"];
+const MX_ZERO = "#f2f3f7";
 
 const PERIODS = [
-  ["today", "今日", "TODAY"],
-  ["month", "本月", "MONTH"],
-  ["allTime", "累计", "ALL TIME"],
+  ["today", "今日"],
+  ["month", "本月"],
+  ["allTime", "累计"],
 ];
 
-/* token 构成维度：key / 中文名 / 语义色 class（顺序即堆叠条顺序） */
+/* token 构成维度：key / 中文名 / 语义色 class */
 const SEGS = [
   ["input", "非缓存输入", "input"],
   ["output", "输出", "output"],
@@ -169,10 +302,11 @@ const SEGS = [
   ["unclassified", "未分类", "uncls"],
 ];
 
-/* 订阅金额币种符号（amountMinor ÷ 100 后加此前缀） */
-const CCY_SYMBOLS = {
-  USD: "$", CNY: "¥", CNH: "¥", EUR: "€", GBP: "£", JPY: "JP¥",
-  HKD: "HK$", TWD: "NT$", KRW: "₩", SGD: "S$", AUD: "A$", CAD: "C$",
+const VIEWS = {
+  overview: ["概览", "CLOUD MONITOR · 实时用量全景"],
+  devices: ["设备", "DEVICES · 上报设备与健康度"],
+  quota: ["配额与订阅", "ACCOUNTS · 配额窗口与订阅清单"],
+  history: ["历史", "HISTORY · 活动热力与日归档"],
 };
 
 const store = {
@@ -189,22 +323,97 @@ const store = {
 
 const state = {
   data: null,
-  subs: null,                // /api/v1/tm/subscriptions 响应（失败为 null）
+  subs: null,
+  view: "overview",
+  demo: false,
   modelPeriod: "today",
   clientPeriod: "today",
-  actView: "month",          // 活动热力图：日 / 周 / 月，默认月
-  mxMetric: "tokens",        // 矩阵指标：tokens / cost
-  mxPeriod: "today",         // 矩阵周期
-  sessExpanded: false,       // 会话表「显示全部」
-  modelColors: {},           // 模型名 → 颜色（全局面板间一致）
-  clientColors: {},          // 客户端名 → 颜色
+  actView: "month",
+  mxMetric: "tokens",
+  mxPeriod: "today",
+  providers: null,
+  histShown: HIST_PAGE,
+  modelColors: {},
+  clientColors: {},
   alive: false,
   loading: false,
   pollTimer: null,
   booted: false,
+  entryFx: false, // true = 本次渲染播放入场动效（视图进入/首载；轮询刷新不播）
+  staleData: false, // §3-10 网络失败保留上一份成功数据时置位
+  /* §3 竞态控制：新请求中止旧请求；旧响应不得覆盖新密钥状态 */
+  requestGeneration: 0,
+  tokenRevision: 0,
+  activeRequest: null,
+  /* §4 辅助接口独立状态机：idle/loading/ready/empty/error/unsupported */
+  aux: {
+    providers: { status: "idle", data: null, aborter: null },
+    subs: { status: "idle", data: null, aborter: null },
+    history: {
+      status: "idle", rows: [], cursor: null, done: false,
+      totalDays: null, retentionDays: null, unsupported: false,
+      fallback: false, loading: false, seen: new Set(), aborter: null,
+      dayBasis: null, mixedTz: false, partial: false,
+    },
+  },
 };
 
-/* ---------- API ---------- */
+/* §5：后端权威在线状态。返回 true=在线 / false=离线 / null=无法判断 */
+function deviceOnline(device, overview) {
+  if (!device || typeof device !== "object") return null;
+  if (typeof device.stale === "boolean") return !device.stale;
+  let ageMs = Number(device.ageMs);
+  if (!Number.isFinite(ageMs)) {
+    const t = new Date(device.receivedAt).getTime();
+    ageMs = Number.isNaN(t) ? NaN : Date.now() - t;
+  }
+  if (!Number.isFinite(ageMs)) return null;
+  const sync = Number(device.syncUploadIntervalMs) || 0;
+  const threshold = Math.max(sync * 2, Number((overview || {}).staleAfterMs) || 600000);
+  return ageMs <= threshold;
+}
+
+/* §6：时区工具（按 overview.dashboard_time_zone / activity.time_zone） */
+function tzParts(date, tz) {
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", weekday: "short",
+    });
+    const p = {};
+    for (const part of fmt.formatToParts(date)) p[part.type] = part.value;
+    const DOW = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    return { y: Number(p.year), m: Number(p.month), d: Number(p.day), dow: DOW[p.weekday] };
+  } catch (e) {
+    return { y: date.getUTCFullYear(), m: date.getUTCMonth() + 1, d: date.getUTCDate(), dow: date.getUTCDay() };
+  }
+}
+function dayKeyTz(date, tz) {
+  const p = tzParts(date, tz);
+  return `${p.y}-${pad2(p.m)}-${pad2(p.d)}`;
+}
+/* 日期键日历运算（与时区无关，纯 yyyy-mm-dd 步进） */
+function keyAdd(key, off) {
+  const [y, m, d] = String(key).split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + off));
+  return `${dt.getUTCFullYear()}-${pad2(dt.getUTCMonth() + 1)}-${pad2(dt.getUTCDate())}`;
+}
+function dowOfKey(key) {
+  const dt = new Date(String(key) + "T00:00:00Z");
+  return Number.isNaN(dt.getTime()) ? null : dt.getUTCDay();
+}
+const dashTz = () => {
+  const d = state.data || {};
+  return (d.activity && d.activity.time_zone) || d.dashboard_time_zone || "UTC";
+};
+
+/* 入场 stagger：--duration-stagger 40ms/项，封顶 7 项 → 总量 280ms < 300ms（polish 纪律） */
+const STAGGER_CAP = 7;
+const riseCls = () => (state.entryFx ? " t-rise" : "");
+const riseStyle = (i) =>
+  state.entryFx ? ` style="animation-delay:${Math.min(i, STAGGER_CAP) * 40}ms"` : "";
+
+
+/* ================= API 层（真实 / 演示双通道） ================= */
 class ApiError extends Error {
   constructor(status, message) {
     super(message);
@@ -212,24 +421,70 @@ class ApiError extends Error {
   }
 }
 
-async function api(path) {
+async function apiFetch(path, opts) {
   const headers = { Accept: "application/json" };
   if (store.token) headers.Authorization = "Bearer " + store.token;
   let res;
   try {
-    res = await fetch(path, { headers });
+    res = await fetch(path, { headers, signal: opts && opts.signal });
   } catch (e) {
+    if (e && e.name === "AbortError") throw e;
     throw new ApiError(0, "无法连接服务器");
   }
   let data = {};
   try { data = await res.json(); } catch (e) { /* 保留默认 */ }
   if (!res.ok) {
-    throw new ApiError(res.status, (data && data.error) || "请求失败 " + res.status);
+    throw new ApiError(res.status, (data && (data.detail || data.error)) || "请求失败 " + res.status);
   }
   return data;
 }
 
-/* ---------- 连接状态 / 提示 ---------- */
+/* 统一取数入口：演示模式走 mock.js，真实模式走后端 API */
+const dataApi = {
+  async overview(signal) {
+    if (state.demo) {
+      await new Promise((r) => setTimeout(r, 180)); // 模拟网络延迟
+      if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
+      if (!window.CM_MOCK) throw new ApiError(0, "演示数据模块未加载");
+      return window.CM_MOCK.buildOverview();
+    }
+    return apiFetch(OVERVIEW_API, { signal });
+  },
+  async subscriptions(signal) {
+    if (state.demo) {
+      await new Promise((r) => setTimeout(r, 120));
+      if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
+      return window.CM_MOCK ? window.CM_MOCK.buildSubscriptions() : null;
+    }
+    return apiFetch(SUBS_API, { signal });
+  },
+  async providerStatus(signal) {
+    if (state.demo) {
+      await new Promise((r) => setTimeout(r, 140));
+      if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
+      return window.CM_MOCK && window.CM_MOCK.buildProviderStatus
+        ? window.CM_MOCK.buildProviderStatus()
+        : null;
+    }
+    return apiFetch(PROVIDER_STATUS_API, { signal });
+  },
+  /* §9：服务端分页日归档；后端未部署时由调用方按 unsupported 降级 */
+  async historyDaily(cursor, deviceId, signal) {
+    if (state.demo) {
+      await new Promise((r) => setTimeout(r, 120));
+      if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
+      if (!window.CM_MOCK || !window.CM_MOCK.buildHistoryPage) throw new ApiError(404, "not found");
+      return window.CM_MOCK.buildHistoryPage(cursor, HIST_PAGE, deviceId);
+    }
+    const q = new URLSearchParams();
+    q.set("limit", String(HIST_PAGE));
+    if (cursor) q.set("cursor", cursor);
+    if (deviceId) q.set("device_id", deviceId);
+    return apiFetch(HISTORY_DAILY_API + "?" + q.toString(), { signal });
+  },
+};
+
+/* ================= 连接状态 / 提示 ================= */
 function setConn(stateName, text) {
   const el = $("#conn");
   el.dataset.state = stateName;
@@ -239,20 +494,26 @@ function setConn(stateName, text) {
 function toast(msg, isErr) {
   const root = $("#toast-root");
   const el = document.createElement("div");
-  el.className = "toast" + (isErr ? " err" : "");
+  el.className = "toast t-toast" + (isErr ? " err" : "");
   el.innerHTML =
-    `<svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-${isErr ? "alert-triangle" : "activity"}"/></svg>` +
+    `<svg class="ic" aria-hidden="true"><use href="${iconHref(isErr ? "i-alert" : "i-check")}"/></svg>` +
     `<span>${esc(msg)}</span>`;
   root.appendChild(el);
+  /* 22-toast：.is-open 切换驱动开 350ms / 关 250ms 不对称（含 cross-blur）；
+     关闭计时读 --toast-close，与 :root 值保持同步 */
+  requestAnimationFrame(() => el.classList.add("is-open"));
+  const closeMs =
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--toast-close")) || 250;
   setTimeout(() => {
-    el.classList.add("out");
-    setTimeout(() => el.remove(), 360); // 与 --duration-medium（toast 关闭 350ms）对齐
+    el.classList.remove("is-open");
+    setTimeout(() => el.remove(), closeMs + 20);
   }, 4200);
 }
 
-/* ---------- 全局悬浮 tooltip（复用 chart-tip 毛玻璃风格） ---------- */
+/* ================= 全局悬浮 tooltip（玻璃浮层） ================= */
 const floatTip = {
   el: null,
+  trigger: null,
   ensure() {
     if (!this.el) {
       this.el = document.createElement("div");
@@ -264,6 +525,11 @@ const floatTip = {
   show(html, x, y) {
     const el = this.ensure();
     el.innerHTML = html;
+    if (!el.classList.contains("is-shown")) {
+      /* 元素刚创建/已隐藏：先提交关闭态（reflow），再加 is-shown ——
+         否则进入过渡（含 80ms intent delay）没有起点，首帧即是显示态 */
+      void el.offsetWidth;
+    }
     el.classList.add("is-shown");
     this.place(x, y);
   },
@@ -272,7 +538,6 @@ const floatTip = {
     if (!el) return;
     const w = el.offsetWidth;
     const h = el.offsetHeight;
-    // 水平居中于指针并钳进视口；上方放不下时翻到指针下方
     let lx = x - w / 2;
     lx = Math.max(8, Math.min(lx, window.innerWidth - w - 8));
     let ly = y - h - 12;
@@ -292,28 +557,76 @@ function tipHtml(title, rows) {
   );
 }
 
-/* 横条 hover：tooltip 跟随 + 其余段降透明度（hotRoot 加 has-hot，自身 is-hot） */
+/* 横条/格子 hover：tooltip 跟随 + 其余元素降透明度。
+ * §10：同一 tooltip 支持 focus/blur（键盘可达）、触摸点击、Escape 与点外部关闭。 */
 function bindHover(el, hotRoot, htmlFn) {
-  el.addEventListener("mouseenter", (e) => {
+  if (!el.hasAttribute("tabindex") && !/^(A|BUTTON|INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) {
+    el.setAttribute("tabindex", "0");
+  }
+  const open = (x, y) => {
     if (hotRoot) {
       hotRoot.classList.add("has-hot");
       el.classList.add("is-hot");
     }
-    floatTip.show(htmlFn(), e.clientX, e.clientY);
-  });
-  el.addEventListener("mousemove", (e) => floatTip.place(e.clientX, e.clientY));
-  el.addEventListener("mouseleave", () => {
+    floatTip.trigger = el;
+    floatTip.show(htmlFn(), x, y);
+  };
+  const close = () => {
     if (hotRoot) {
       hotRoot.classList.remove("has-hot");
       el.classList.remove("is-hot");
     }
     floatTip.hide();
+  };
+  el.addEventListener("mouseenter", (e) => open(e.clientX, e.clientY));
+  el.addEventListener("mousemove", (e) => floatTip.place(e.clientX, e.clientY));
+  el.addEventListener("mouseleave", close);
+  el.addEventListener("focus", () => {
+    const r = el.getBoundingClientRect();
+    open(r.left + r.width / 2, r.top);
   });
+  el.addEventListener("blur", close);
+  el.addEventListener("touchstart", (e) => {
+    const t = e.changedTouches[0];
+    if (t) open(t.clientX, t.clientY);
+  }, { passive: true });
 }
 
-/* ---------- 密钥门 ---------- */
+/* §10：Escape / 点击外部关闭浮动 tooltip */
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") floatTip.hide();
+});
+document.addEventListener("pointerdown", (e) => {
+  if (!floatTip.el || !floatTip.el.classList.contains("is-shown")) return;
+  if (floatTip.el.contains(e.target)) return;
+  // 鼠标悬停中的正常点击不关闭；触摸/外部点击关闭
+  if (e.pointerType !== "touch" && floatTip.trigger && floatTip.trigger.contains(e.target)) return;
+  floatTip.hide();
+}, true);
+
+/* ================= 密钥门 ================= */
+/* 12-error-state-shake：.is-error（边框）与 .is-shaking（抖动）分离，
+   remove → reflow → re-add 保证抖动可重播 */
+function gateShake() {
+  const box = $("#gate-token").closest(".field-box");
+  if (!box) return;
+  const cs = getComputedStyle(document.documentElement);
+  const ms = (n, fb) => {
+    const v = parseFloat(cs.getPropertyValue(n));
+    return Number.isFinite(v) ? v : fb;
+  };
+  box.classList.add("is-error");
+  box.classList.remove("is-shaking");
+  void box.offsetWidth; // force reflow
+  box.classList.add("is-shaking");
+  const shakeMs = ms("--shake-dur-a", 80) * 2 + ms("--shake-dur-b", 60) * 2;
+  setTimeout(() => box.classList.remove("is-shaking"), shakeMs + 20);
+}
+
 function showGate(message) {
   state.alive = false;
+  state.requestGeneration++; // §3-2：退出时中止全部请求并使在途响应失效
+  abortAllRequests();
   stopPolling();
   $("#shell").hidden = true;
   $("#gate").hidden = false;
@@ -321,8 +634,11 @@ function showGate(message) {
   if (message) {
     err.textContent = message;
     err.hidden = false;
+    gateShake();
   } else {
     err.hidden = true;
+    const box = $("#gate-token").closest(".field-box");
+    if (box) box.classList.remove("is-error", "is-shaking");
   }
   setTimeout(() => $("#gate-token").focus(), 60);
 }
@@ -339,81 +655,91 @@ function handleApiError(err) {
     showGate(err.status === 401 ? "密钥不正确，请重新输入。" : "没有访问权限。");
     return;
   }
-  if (err instanceof ApiError && err.status === 500 && /密钥|API_KEY/.test(err.message)) {
+  if (err instanceof ApiError && err.status === 500 && /密钥|token/i.test(err.message)) {
     setConn("err", "未配置");
-    showGate("服务器未配置访问密钥，请先在后端设置 API_KEY。");
+    showGate("服务器访问令牌未配置，请先在后端设置 ACCESS_TOKEN。");
     return;
   }
-  setConn("err", "连接失败");
+  setConn("err", "服务器不可用");
   toast(err.message || "加载失败", true);
 }
 
-/* ---------- 骨架屏 ---------- */
-function skeletonAll() {
-  $("#periods").innerHTML = PERIODS.map(
-    () => `<div class="period-card">
-      <div class="sk" style="height:12px;width:56px"></div>
-      <div class="sk" style="height:28px;width:96px;margin-top:12px"></div>
-      <div class="sk" style="height:11px;width:70px;margin-top:10px"></div>
-      <div class="sk" style="height:10px;width:100%;margin-top:16px;border-radius:999px"></div>
-      <div style="display:flex;gap:7px;margin-top:13px">
-        <div class="sk" style="height:24px;width:88px;border-radius:999px"></div>
-        <div class="sk" style="height:24px;width:76px;border-radius:999px"></div>
-        <div class="sk" style="height:24px;width:96px;border-radius:999px"></div>
-      </div>
-    </div>`
-  ).join("");
-  $("#trend-chart").innerHTML = "";
-  $("#trend-legend").hidden = true;
-  $("#trend-empty").hidden = true;
-  for (const id of ["#model-dist", "#client-dist"]) {
-    $(id).innerHTML = skRows(5);
-    $(id).style.display = "block";
+/* ================= 路由（四视图切换） ================= */
+function updateTopbar() {
+  const data = state.data || {};
+  const tz = data.dashboard_time_zone ? " · 时区 " + data.dashboard_time_zone : "";
+  $("#view-title").textContent = VIEWS[state.view][0];
+  $("#view-sub").textContent =
+    VIEWS[state.view][1] + (data.generated_at ? " · 生成于 " + fmtDateTime(data.generated_at) : "") + tz;
+}
+
+function switchView(view) {
+  if (!VIEWS[view]) return;
+  state.view = view;
+  document.querySelectorAll(".view").forEach((s) => {
+    s.hidden = s.dataset.view !== view;
+  });
+  /* page-enter：只动 transform 的 250ms 位移（from 帧不碰 opacity，防白屏）；
+     remove → reflow → re-add 保证连续切换可重播 */
+  const shown = document.querySelector(`.view[data-view="${view}"]`);
+  if (shown && !shown.hidden) {
+    shown.classList.remove("page-enter");
+    void shown.offsetWidth;
+    shown.classList.add("page-enter");
   }
-  $("#model-empty").hidden = true;
-  $("#client-empty").hidden = true;
-  $("#hm").innerHTML = `<div class="sk" style="height:118px;width:100%"></div>`;
-  $("#dev-grid").innerHTML = Array.from({ length: 3 })
-    .map(() => `<article class="dev-card">
-      <div class="sk" style="height:12px;width:40%"></div>
-      <div class="sk" style="height:16px;width:62%"></div>
-      <div class="sk" style="height:11px;width:80%"></div>
-      <div class="sk" style="height:11px;width:55%"></div>
-      <div class="sk" style="height:34px;width:100%;margin-top:6px"></div>
-    </article>`)
-    .join("");
-}
-
-function skRows(n) {
-  return Array.from({ length: n })
-    .map((_, i) => `<div style="padding:11px 0"><div class="sk" style="height:14px;width:${50 + ((i * 29) % 45)}%"></div></div>`)
-    .join("");
-}
-
-/* ---------- 名称 → 颜色（djb2 稳定 hash；同屏异名异色） ---------- */
-/* 同一列表内撞槽时按名称序顺移到下一个空槽，保证同屏不同名不同色（同名恒同色） */
-function assignColors(names) {
-  const base = (name) => {
-    let h = 5381;
-    for (let i = 0; i < name.length; i++) h = ((h << 5) + h + name.charCodeAt(i)) >>> 0;
-    return h % PALETTE.length;
-  };
-  const used = new Set();
-  const out = {};
-  for (const name of [...names].sort()) {
-    let idx = base(name);
-    if (used.size < PALETTE.length) {
-      // 调色板未占满时才顺移避撞；名字多于色槽时允许复用（hash 兜底）
-      while (used.has(idx)) idx = (idx + 1) % PALETTE.length;
-      used.add(idx);
-    }
-    out[name] = PALETTE[idx];
+  document.querySelectorAll("[data-view].nav-item, [data-view].bn-item").forEach((b) => {
+    const on = b.dataset.view === view;
+    b.classList.toggle("is-active", on);
+    if (on) b.setAttribute("aria-current", "page");
+    else b.removeAttribute("aria-current");
+  });
+  updateTopbar();
+  floatTip.hide();
+  // §4-3/§4-4：辅助数据切到对应页才加载
+  if (state.alive && state.data) {
+    if (view === "quota") ensureSubs();
+    else if (view === "history" && state.aux.history.status === "idle") resetHistory();
   }
-  return out;
+  // 视图可见后再渲染（图表尺寸依赖布局）；entryFx = 卡片/图表入场动效仅入场播放
+  requestAnimationFrame(() => {
+    state.entryFx = true;
+    renderView(view);
+    positionAllPills();
+  });
+  if (location.hash !== "#" + view) {
+    const nextUrl = new URL(location.href);
+    nextUrl.hash = view;
+    history.replaceState(null, "", nextUrl.pathname + nextUrl.search + nextUrl.hash);
+  }
 }
 
-/* 汇总全响应里出现过的模型名 / 客户端名，生成全局一致的颜色映射，
-   供模型分布、趋势堆叠、客户端分布、矩阵、项目分段、会话 chip、设备 AI 工具 chip 共用 */
+function renderView(view) {
+  if (!state.data) return;
+  if (view === "overview") renderOverview();
+  else if (view === "devices") renderDevicesView();
+  else if (view === "quota") renderQuotaView();
+  else if (view === "history") renderHistoryView();
+  /* 消费入场标记并调度清理：动画结束后移除 fx 类（fill both 的终态与自然态
+     一致，移除无跳变），不留永久合成层 */
+  const fx = state.entryFx;
+  state.entryFx = false;
+  if (fx) clearEntryFxSoon();
+}
+
+/* 动画总时长上限 ≈ 280ms(stagger 封顶) + 500ms(pop) / 700ms(draw)，900ms 兜底 */
+function clearEntryFxSoon() {
+  setTimeout(() => {
+    document.querySelectorAll(".t-rise, .t-pop, .grow, .is-drawing").forEach((el) => {
+      el.classList.remove("t-rise", "t-pop", "grow", "is-drawing");
+      el.style.animationDelay = "";
+    });
+    const c = $(".content");
+    if (c) c.classList.remove("is-revealing");
+  }, 900);
+}
+
+/* ================= 渲染层 · 公共 ================= */
+/* 汇总全响应出现过的模型名 / 客户端名，生成全局一致颜色映射 */
 function rebuildColorMaps(data) {
   const models = new Set();
   const clients = new Set();
@@ -421,16 +747,13 @@ function rebuildColorMaps(data) {
     if (!per) return;
     Object.keys(per.models || {}).forEach((m) => models.add(m));
     Object.keys(per.clients || {}).forEach((c) => clients.add(c));
-    Object.keys(per.clientModels || {}).forEach((c) => {
-      clients.add(c);
-      const mm = per.clientModels[c];
-      if (mm && typeof mm === "object") Object.keys(mm).forEach((m) => models.add(m));
-    });
-    Object.keys(per.clientModelCosts || {}).forEach((c) => {
-      clients.add(c);
-      const mm = per.clientModelCosts[c];
-      if (mm && typeof mm === "object") Object.keys(mm).forEach((m) => models.add(m));
-    });
+    for (const key of ["clientModels", "clientModelCosts"]) {
+      Object.keys(per[key] || {}).forEach((c) => {
+        clients.add(c);
+        const mm = per[key][c];
+        if (mm && typeof mm === "object") Object.keys(mm).forEach((m) => models.add(m));
+      });
+    }
   };
   for (const p of PERIODS.map(([k]) => k)) addSplit((data.totals || {})[p]);
   (data.trend_models || []).forEach((r) =>
@@ -449,123 +772,182 @@ function rebuildColorMaps(data) {
   (data.diagnostics || []).forEach((dg) =>
     healthEntries(dg && dg.clientHealth).forEach(([name]) => clients.add(name))
   );
+  (data.history || []).forEach((h) => {
+    Object.keys((h && h.perClient) || {}).forEach((c) => clients.add(c));
+    Object.keys((h && h.perModel) || {}).forEach((m) => models.add(m));
+  });
   state.modelColors = assignColors([...models]);
   state.clientColors = assignColors([...clients]);
 }
 
-/* models 字段宽容解析：数组 → 元素；对象 → 键；字符串 → 自身 */
-function modelNamesOf(models) {
-  if (Array.isArray(models)) return models.map(String).filter(Boolean);
-  if (models && typeof models === "object") return Object.keys(models);
-  if (typeof models === "string" && models) return [models];
-  return [];
-}
-
-/* clientHealth 宽容解析为 [客户端名, 原始值] 列表 */
-function healthEntries(ch) {
-  if (!ch) return [];
-  if (Array.isArray(ch)) {
-    return ch
-      .map((x) => [String((x && (x.client || x.name || x.id)) || ""), x])
-      .filter(([name]) => name);
+/* ---------- §7：Token 组成统一判定 ----------
+ * componentBreakdown(period, entityType, entityName)
+ * - entityType: "client" | "model" | null（null=周期整体）
+ * 规则：
+ * 1. 费用字段不代表 Token 组件（本函数不读任何 cost 字段）。
+ * 2. 每个模型/客户端单独判断完整性（逐实体读拆分字段）。
+ * 3. 来源未知（无任何拆分字段或 tokenComponents 不可用）→ known=false，调用方画单色总量条。
+ * 4. 未知部分一律标「未分类」，绝不猜成非缓存输入（unclassified 独立分段）。
+ * 5. 禁止按周期比例估算实体组成（本函数不做任何比例估算）。
+ * 6. 组件和 ≠ 总量 → complete=false（调用方显示完整性警告）。
+ * 7. capabilities.tokenComponents !== true → capable=false，不得标「真实构成」。
+ */
+function componentBreakdown(period, entityType, entityName) {
+  period = period || {};
+  /* 契约：capabilities 按周期嵌套（totals.<period>.capabilities.tokenComponents）；
+     顶层 state.data.capabilities 仅作旧载荷回退 */
+  const caps = period.capabilities || (state.data && state.data.capabilities) || {};
+  const capable = caps.tokenComponents === true;
+  let total;
+  let raw;
+  if (!entityType) {
+    total = Number(period.totalTokens) || 0;
+    raw = {
+      output: period.outputTokens,
+      cacheRead: period.cacheReadTokens,
+      cacheWrite: period.cacheWriteTokens,
+      unclassified: period.unclassifiedTokens,
+    };
+  } else {
+    const base = entityType; // "client" | "model"
+    const tokensMap = period[base + "s"] || {};
+    total = Number(tokensMap[entityName]) || 0;
+    raw = {
+      output: (period[base + "Outputs"] || {})[entityName],
+      cacheRead: (period[base + "CacheReads"] || {})[entityName],
+      cacheWrite: (period[base + "CacheWrites"] || {})[entityName],
+      unclassified: (period[base + "UnclassifiedTokens"] || {})[entityName],
+    };
   }
-  if (typeof ch === "object") return Object.entries(ch).map(([k, v]) => [String(k), v]);
-  return [];
-}
-
-/* ---------- token 构成拆分 ---------- */
-function compose(p) {
-  p = p || {};
-  const total = Number(p.totalTokens) || 0;
-  const vals = {
-    output: Number(p.outputTokens) || 0,
-    cacheRead: Number(p.cacheReadTokens) || 0,
-    cacheWrite: Number(p.cacheWriteTokens) || 0,
-    unclassified: Number(p.unclassifiedTokens) || 0,
+  const hasAny = Object.values(raw).some((v) => v != null && Number.isFinite(Number(v)));
+  if (!capable || !hasAny || total <= 0) {
+    return { total, known: false, complete: false, capable, segs: [] };
+  }
+  const knownVals = {
+    output: Number(raw.output) || 0,
+    cacheRead: Number(raw.cacheRead) || 0,
+    cacheWrite: Number(raw.cacheWrite) || 0,
+    unclassified: Number(raw.unclassified) || 0,
   };
-  vals.input = Math.max(0, total - vals.output - vals.cacheRead - vals.cacheWrite - vals.unclassified);
-  return SEGS.map(([key, label, cls]) => ({ key, label, cls, value: vals[key] }))
-    .filter((s) => s.value > 0);
+  // 非缓存输入 = 总量减去全部已知组件（含未分类），钳 0
+  const input = Math.max(0, total - knownVals.output - knownVals.cacheRead - knownVals.cacheWrite - knownVals.unclassified);
+  const segs = SEGS.map(([key, label, cls]) => ({
+    key, label, cls,
+    value: key === "input" ? input : knownVals[key],
+  })).filter((s) => s.value > 0);
+  const sum = segs.reduce((a, s) => a + s.value, 0);
+  const complete = Math.abs(sum - total) <= Math.max(1, total * 0.01);
+  return { total, known: true, complete, capable: true, segs };
 }
 
-/* ---------- 周期卡片 ---------- */
-/* periodWindows → 卡角落小字：「Asia/Tokyo · 今日窗口至 08:00」（宽容解析时区与 endsAt） */
-function periodWindowNote(pw, key) {
-  if (!pw || typeof pw !== "object") return "";
-  const tz = pw.timeZone || pw.timezone || "";
-  const wins = pw.windows && typeof pw.windows === "object" ? pw.windows : pw;
-  const w = wins[key];
-  let tail = "";
-  if (w && typeof w === "object") {
-    const ends = w.endsAt || w.endAt || w.end || "";
-    const d = new Date(ends);
-    if (ends && !Number.isNaN(d.getTime())) {
-      const sameDay = d.toDateString() === new Date().toDateString();
-      const when = sameDay
-        ? `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
-        : `${d.getMonth() + 1}月${d.getDate()}日`;
-      tail = (key === "today" ? "今日窗口至 " : "本月窗口至 ") + when;
-    }
-  }
-  return [tz, tail].filter(Boolean).join(" · ");
-}
+/* ================= 渲染层 · 概览 ================= */
+function renderKpis(data) {
+  const totals = data.totals || {};
+  const today = totals.today || {};
+  const month = totals.month || {};
+  const allTime = totals.allTime || {};
+  const devices = data.devices || [];
+  const onlineStates = devices.map((d) => deviceOnline(d, data));
+  const online = onlineStates.filter((s) => s === true).length;
+  const unknown = onlineStates.filter((s) => s === null).length;
 
-function renderPeriods(data) {
-  const totals = (data && data.totals) || {};
-  const pw = data && data.period_windows;
-  $("#periods").innerHTML = PERIODS.map(([key, label, tag], ci) => {
-    const p = totals[key] || {};
-    const total = Number(p.totalTokens) || 0;
-    const segs = compose(p);
-    const sum = segs.reduce((a, s) => a + s.value, 0);
-    const bar = segs.length
-      ? segs.map((s, si) => {
-          const pct = (s.value / sum) * 100;
-          return `<i class="seg-${s.cls}" data-label="${esc(s.label)}" data-v="${s.value}" data-pct="${pct.toFixed(1)}" style="width:${pct.toFixed(2)}%;--i:${si}"></i>`;
-        }).join("")
+  const breakdown = componentBreakdown(today, null, null);
+  const segs = breakdown.known
+    ? breakdown.segs
+    : breakdown.total > 0
+      ? [{ key: "unknown", label: "组成未知", cls: "uncls", value: breakdown.total }]
+      : [];
+  const sum = segs.reduce((a, s) => a + s.value, 0);
+  const bar = segs.map((s) =>
+    `<i class="seg-${s.cls}" data-label="${esc(s.label)}" data-v="${s.value}" data-pct="${((s.value / (sum || 1)) * 100).toFixed(1)}" style="width:${((s.value / (sum || 1)) * 100).toFixed(2)}%"></i>`
+  ).join("");
+  const legend = segs
+    .map((s) => `<span><i class="seg-${s.cls}"></i>${esc(s.label)} <b>${fmtCompact(s.value)}</b></span>`)
+    .join("");
+  const mixNote = breakdown.total > 0 && !breakdown.known
+    ? '<p class="kpi-mix-note comp-warn">后端未提供精确 Token 组成，未将剩余量猜作非缓存输入。</p>'
+    : breakdown.known && !breakdown.complete
+      ? '<p class="kpi-mix-note comp-warn">Token 组件之和与总量不一致，请以总量为准。</p>'
       : "";
-    const legend = segs.length
-      ? segs.map((s) =>
-          `<span class="chip chip-${s.cls}"><i></i>${esc(s.label)} <b>${fmtCompact(s.value)}</b></span>`
-        ).join("")
-      : `<span class="pc-none">暂无构成数据</span>`;
-    // 计时用量（timedTokens / timedDurationMs 任一非零才显示）
-    const timedTokens = Number(p.timedTokens) || 0;
-    const timedMs = Number(p.timedDurationMs) || 0;
-    const timed = timedTokens > 0 || timedMs > 0
-      ? `<div class="pc-timed">计时 ${fmtCompact(timedTokens)} tokens${timedMs > 0 ? " / " + esc(fmtTimedMs(timedMs)) : ""}</div>`
-      : "";
-    // 时区与窗口边界（今日 / 本月卡角落）
-    const winNote = key === "allTime" ? "" : periodWindowNote(pw, key);
-    const win = winNote ? `<div class="pc-win" title="${esc(winNote)}">${esc(winNote)}</div>` : "";
-    return `<article class="period-card" data-period="${key}" style="--i:${ci}">
-      <div class="pc-top"><span class="pc-label">${label}</span><span class="pc-tag">${tag}</span></div>
-      <div class="pc-value pop" title="${fmtInt(total)} tokens">${fmtCompact(total)}</div>
-      <div class="pc-cost">费用 <b>${fmtUsd(p.costUsd)}</b></div>${timed}
-      <div class="pc-bar">${bar}</div>
-      <div class="pc-legend">${legend}</div>${win}
-    </article>`;
-  }).join("");
+  const timedTokens = Number(today.timedTokens) || 0;
+  const timedMs = Number(today.timedDurationMs) || 0;
+  const timed = timedTokens > 0
+    ? `计时 <b>${fmtCompact(timedTokens)}</b> tokens${timedMs > 0 ? " / " + esc(fmtTimedMs(timedMs)) : ""}`
+    : "今日暂无计时用量";
 
-  // 堆叠组成条 hover：tooltip（名称 + 紧凑 tokens + 百分比），其余段降透明度
-  document.querySelectorAll("#periods .pc-bar").forEach((barEl) => {
-    barEl.querySelectorAll("i").forEach((seg) => {
-      bindHover(seg, barEl, () =>
+  const seen = devices
+    .map((d) => new Date(d.receivedAt).getTime())
+    .filter((t) => !Number.isNaN(t))
+    .sort((a, b) => b - a)[0];
+
+  /* 连接状态卡：有设备在 staleAfterMs 内上报 → 连线点亮 + 在线绿点；
+     全部离线 → 灰线 + 离线灰点 + 最后上报时间 */
+  const isOnline = online > 0;
+  const connLine = isOnline
+    ? `<span class="conn-track on" aria-hidden="true"><i></i><i></i><i></i></span>`
+    : `<span class="conn-track" aria-hidden="true"></span>`;
+  const connState = isOnline
+    ? `<span class="conn-state on"><span class="status-dot"></span>在线</span>`
+    : `<span class="conn-state off"><span class="status-dot"></span>${onlineStates.some((s) => s === false) ? "离线" : "状态未知"}</span>`;
+  const connSeen = seen
+    ? `${isOnline ? "最近上报" : "最后上报"} <b>${esc(relTime(seen))}</b>`
+    : "暂无设备上报";
+
+  /* 数据刷新（非入场）时 KPI 主数字走 number pop-in（模糊滑动换数）；
+     入场时整卡 t-rise，数字不再单独 pop */
+  const pop = !state.entryFx && state.booted ? " t-pop" : "";
+
+  const cards = [
+    `<article class="kpi-card${riseCls()}"${riseStyle(0)}>
+      <div class="kpi-tag"><span>今日 Tokens</span><svg class="ic" aria-hidden="true"><use href="${iconHref("i-zap")}"/></svg></div>
+      <div class="kpi-value${pop}" title="${fmtInt(today.totalTokens)} tokens">${fmtCompact(today.totalTokens)}</div>
+      <p class="kpi-sub">${timed}</p>
+      <div class="kpi-bar" id="kpi-mix">${bar}</div>
+      <div class="kpi-legend">${legend}</div>
+      ${mixNote}
+    </article>`,
+    `<article class="kpi-card${riseCls()}"${riseStyle(1)}>
+      <div class="kpi-tag"><span>费用概览</span><svg class="ic" aria-hidden="true"><use href="${iconHref("i-coins")}"/></svg></div>
+      <div class="kpi-value${pop}">${fmtUsd(today.costUsd)}<small class="kpi-unit">今日</small></div>
+      <div class="kpi-rows">
+        <div class="kpi-row"><span>本月成本</span><b>${fmtUsd(month.costUsd)}</b></div>
+        <div class="kpi-row"><span>本月 Tokens</span><b title="${fmtInt(month.totalTokens)} tokens">${fmtCompact(month.totalTokens)}</b></div>
+        <div class="kpi-row"><span>历史累计</span><b title="${fmtInt(allTime.totalTokens)} tokens">${fmtCompact(allTime.totalTokens)}</b></div>
+      </div>
+    </article>`,
+    `<article class="kpi-card kpi-conn-card${isOnline ? " is-online" : " is-offline"}${riseCls()}"${riseStyle(2)}>
+      <div class="kpi-tag"><span>连接状态</span><svg class="ic" aria-hidden="true"><use href="${iconHref("i-activity")}"/></svg></div>
+      <div class="conn-diagram" aria-hidden="true">
+        <span class="conn-node"><svg class="ic"><use href="${iconHref("i-terminal")}"/></svg><em>AGENT</em></span>
+        ${connLine}
+        <span class="conn-node"><svg class="ic"><use href="${iconHref("i-cloud")}"/></svg><em>CLOUD</em></span>
+      </div>
+      <div class="conn-meta">${connState}<span class="conn-seen">${connSeen}</span></div>
+      <p class="kpi-sub">在线设备 <b>${online}</b> / ${devices.length} 台${unknown ? `（${unknown} 台状态未知）` : ""}</p>
+    </article>`,
+  ];
+  $("#kpis").innerHTML = cards.join("");
+  if (pop) clearEntryFxSoon(); // 刷新换数的 t-pop 也要定时清掉，不留常驻动画类
+
+  // 构成条 hover
+  const mix = $("#kpi-mix");
+  if (mix) {
+    mix.querySelectorAll("i").forEach((seg) => {
+      bindHover(seg, mix, () =>
         tipHtml(seg.dataset.label, [
           ["tokens", fmtCompact(seg.dataset.v)],
           ["占比", Number(seg.dataset.pct).toFixed(1) + "%"],
         ])
       );
     });
-  });
+  }
 }
 
-/* ---------- 近 30 天趋势（按模型堆叠的彩色柱） ---------- */
+/* ---------- 近 30 天趋势（按模型堆叠） ---------- */
 function trendRows() {
   const d = state.data || {};
   const tm = Array.isArray(d.trend_models) ? d.trend_models.filter((r) => r && r.day) : [];
   if (tm.length) return tm;
-  // 旧后端无 trend_models 时退化为单色总量柱
   const t = Array.isArray(d.trend) ? d.trend.filter((r) => r && r.day) : [];
   return t.map((r) => ({ day: r.day, total: r.total, models: {} }));
 }
@@ -573,21 +955,20 @@ function trendRows() {
 function renderTrend() {
   const svg = $("#trend-chart");
   const wrap = $("#trend-wrap");
-  const tip = $("#trend-tip");
   const legend = $("#trend-legend");
   const rows = trendRows();
   svg.innerHTML = "";
   svg.classList.remove("has-hot");
-  tip.classList.remove("is-shown");
   legend.hidden = true;
   legend.innerHTML = "";
   if (!rows.length) {
     $("#trend-empty").hidden = false;
+    const old = wrap.querySelector(".chart-data");
+    if (old) old.remove();
     return;
   }
   $("#trend-empty").hidden = true;
 
-  // 模型排名：按 30 天总量降序，前 TREND_TOP_MODELS 名保留，其余合并「其他」
   const sums = {};
   rows.forEach((r) => {
     for (const [m, v] of Object.entries(r.models || {})) {
@@ -604,14 +985,10 @@ function renderTrend() {
   if (ranking.length > TREND_TOP_MODELS) cats.push("其他");
   const colorOf = (m) => (m === "其他" ? OTHER_COLOR : state.modelColors[m] || OTHER_COLOR);
 
-  // 每天的堆叠值：vals 与 cats 对齐；无模型明细时柱高退回 total
   const days = rows.map((r) => {
     const models = r.models || {};
     let other = 0;
-    const vals = cats.map((m) => {
-      if (m !== "其他") return Number(models[m]) || 0;
-      return 0; // 占位，下面统一算
-    });
+    const vals = cats.map((m) => (m !== "其他" ? Number(models[m]) || 0 : 0));
     if (cats[cats.length - 1] === "其他") {
       for (const [k, v] of Object.entries(models)) {
         if (!topSet.has(k)) other += Number(v) || 0;
@@ -625,7 +1002,7 @@ function renderTrend() {
 
   const W = wrap.clientWidth || 800;
   const H = wrap.clientHeight || 300;
-  const padL = 46, padR = 10, padT = 18, padB = 26;
+  const padL = 58, padR = 10, padT = 18, padB = 26;
   const iw = W - padL - padR;
   const ih = H - padT - padB;
   const max = Math.max(...days.map((d) => d.v), 1);
@@ -635,71 +1012,90 @@ function renderTrend() {
 
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const NS = "http://www.w3.org/2000/svg";
+  /* §10：SVG 图表 title/desc */
+  const svgTitle = document.createElementNS(NS, "title");
+  svgTitle.textContent = "近 30 天 tokens 趋势";
+  svg.appendChild(svgTitle);
+  const svgDesc = document.createElementNS(NS, "desc");
+  svgDesc.textContent = `共 ${n} 天，最高单日 ${fmtInt(max)} tokens`;
+  svg.appendChild(svgDesc);
   const mk = (tag, attrs) => {
     const el = document.createElementNS(NS, tag);
     for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
     return el;
   };
 
-  // 横向网格线 + y 轴刻度
+  /* 柱状柔和投影：filter 作用于整组（一次滤镜 pass，30 根柱子无每根开销），
+     悬停（svg.has-hot）切换为加深版投影 */
+  const defs = mk("defs", {});
+  defs.innerHTML =
+    `<filter id="trend-shadow" x="-30%" y="-30%" width="160%" height="180%">` +
+    `<feDropShadow dx="0" dy="1.5" stdDeviation="2.2" flood-color="#0d1626" flood-opacity="0.13"/>` +
+    `</filter>` +
+    `<filter id="trend-shadow-hot" x="-30%" y="-30%" width="160%" height="180%">` +
+    `<feDropShadow dx="0" dy="2.5" stdDeviation="3.4" flood-color="#0d1626" flood-opacity="0.24"/>` +
+    `</filter>`;
+  svg.appendChild(defs);
+
   for (let g = 0; g <= 4; g++) {
     const y = padT + (ih * g) / 4;
     svg.appendChild(mk("line", { x1: padL, y1: y, x2: W - padR, y2: y, class: "chart-grid" }));
-    const val = max * (1 - g / 4);
     const label = mk("text", { x: padL - 8, y: y + 3, class: "chart-axis", "text-anchor": "end" });
-    label.textContent = fmtCompact(val);
+    label.textContent = fmtCompact(max * (1 - g / 4));
     svg.appendChild(label);
   }
 
-  // x 轴日期标签（稀疏；窄屏进一步抽稀）
   const labelEvery = Math.max(1, Math.ceil(n / (W < 560 ? 5 : 9)));
   days.forEach((d, i) => {
     if (i % labelEvery !== 0) return;
     if (n - 1 - i < labelEvery / 2 && i !== n - 1) return;
     const cx = padL + step * i + step / 2;
     const t = mk("text", { x: cx, y: H - 8, class: "chart-axis", "text-anchor": "middle" });
-    t.textContent = d.day.slice(5); // MM-DD
+    t.textContent = d.day.slice(5);
     svg.appendChild(t);
   });
   if ((n - 1) % labelEvery !== 0) {
     const cx = padL + step * (n - 1) + step / 2;
-    const t = mk("text", { x: cx, y: H - 8, class: "chart-axis", "text-anchor": "end" });
-    t.setAttribute("x", Math.min(cx + step / 2, W - padR));
+    const t = mk("text", { x: Math.min(cx + step / 2, W - padR), y: H - 8, class: "chart-axis", "text-anchor": "end" });
     t.textContent = days[n - 1].day.slice(5);
     svg.appendChild(t);
   }
 
-  const showSums = step >= 24; // 柱顶合计标签：空间够才画
+  const barsG = mk("g", { class: "trend-bars" });
+  svg.appendChild(barsG);
+
+  /* 入场：柱子 scaleY 从底部生长，按列 stagger 40ms，封顶 280ms（polish 总量纪律） */
+  const grow = state.entryFx;
+
   days.forEach((d, i) => {
     const x = padL + step * i + (step - bw) / 2;
+    const growCls = grow ? " grow" : "";
+    const growDelay = grow ? `animation-delay:${Math.min(i, STAGGER_CAP) * 40}ms` : "";
     if (d.v <= 0) {
-      // 0 值画 2px 灰条占位
       const bar = mk("rect", {
         x: x.toFixed(2), y: (padT + ih - 2).toFixed(2),
         width: bw.toFixed(2), height: "2",
-        class: "trend-bar is-zero",
-        style: `--i:${i}`,
+        class: "trend-bar is-zero" + growCls,
+        style: growDelay,
       });
       bindHover(bar, svg, () => tipHtml(d.day, [["tokens", "0"]]));
-      svg.appendChild(bar);
+      barsG.appendChild(bar);
       return;
     }
     const bh = (d.v / max) * ih;
     if (cats.length) {
-      // 按模型堆叠：排名靠前（量大）的在底部
       let yBase = padT + ih;
       cats.forEach((m, j) => {
         const val = d.vals[j];
         if (val <= 0) return;
         const h = (val / max) * ih;
         yBase -= h;
-        const col = colorOf(m);
         const rect = mk("rect", {
           x: x.toFixed(2), y: yBase.toFixed(2),
           width: bw.toFixed(2), height: Math.max(0.6, h).toFixed(2),
-          class: "tseg",
-          fill: col,
-          style: `--i:${i};--seg-sh:${hexA(col, 0.38)};--seg-sh-deep:${hexA(col, 0.58)}`,
+          class: "tseg" + growCls,
+          fill: colorOf(m),
+          style: growDelay,
         });
         bindHover(rect, svg, () =>
           tipHtml(d.day, [
@@ -708,45 +1104,134 @@ function renderTrend() {
             ["当日合计", fmtCompact(d.total || d.v)],
           ])
         );
-        svg.appendChild(rect);
+        barsG.appendChild(rect);
       });
     } else {
-      // 无模型明细：单色总量柱
       const bar = mk("rect", {
         x: x.toFixed(2), y: (padT + ih - bh).toFixed(2),
         width: bw.toFixed(2), height: bh.toFixed(2),
         rx: Math.min(5, bw / 2),
-        class: "trend-bar",
-        style: `--i:${i}`,
+        class: "trend-bar" + growCls,
+        style: growDelay,
       });
-      bindHover(bar, svg, () =>
-        tipHtml(d.day, [["tokens", fmtInt(d.v)]])
-      );
-      svg.appendChild(bar);
-    }
-    if (showSums) {
-      const t = mk("text", {
-        x: (x + bw / 2).toFixed(2), y: (padT + ih - bh - 5).toFixed(2),
-        class: "trend-sum", "text-anchor": "middle",
-      });
-      t.textContent = fmtCompact(d.total || d.v);
-      svg.appendChild(t);
+      bindHover(bar, svg, () => tipHtml(d.day, [["tokens", fmtInt(d.v)]]));
+      barsG.appendChild(bar);
     }
   });
 
-  // 图例：按排名列出模型色（与模型分布同一套按名 hash 配色）
   if (cats.length) {
     legend.innerHTML = cats
       .map((m) => `<span class="lg" title="${esc(m)}"><i style="background:${colorOf(m)}"></i>${esc(m)}</span>`)
       .join("");
     legend.hidden = false;
   }
+
+  /* §10：等价数据表（details 折叠，屏幕阅读器/键盘可取数） */
+  let dataTbl = wrap.querySelector(".chart-data");
+  if (!dataTbl) {
+    dataTbl = document.createElement("details");
+    dataTbl.className = "chart-data";
+    wrap.appendChild(dataTbl);
+  }
+  dataTbl.innerHTML =
+    `<summary>查看数据表</summary><div class="tbl-scroll"><table class="tbl"><caption>近 30 天每日 tokens 合计</caption>` +
+    `<thead><tr><th scope="col">日期</th><th scope="col" class="num">Tokens</th></tr></thead><tbody>` +
+    days.map((d) => `<tr><td class="mono">${esc(d.day)}</td><td class="num">${fmtInt(d.total || d.v)}</td></tr>`).join("") +
+    `</tbody></table></div>`;
 }
 
-/* ---------- 分布（模型 / 客户端） ----------
- * 条内按 输出/缓存读/缓存写/非缓存输入/未分类 真实分段（语义色 seg-*），
- * 行首圆点保留模型/客户端名配色（避免条色与语义色双编码打架），行尾显示费用。
- * 周期无拆分字段（老数据）时回退：单段实体色 + tooltip 按周期缓存比例估算并注明。 */
+/* ---------- 模型分布：环形图（中央总量 + 图例占比） ---------- */
+const PERIOD_LABELS = { today: "今日", month: "本月", allTime: "累计" };
+
+function renderModelDonut(per, animate) {
+  const box = $("#model-dist");
+  if (animate === undefined) animate = state.entryFx;
+  per = per || {};
+  const entries = Object.entries(per.models || {})
+    .map(([name, v]) => [name, Number(v) || 0])
+    .filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const periodLabel = PERIOD_LABELS[state.modelPeriod] || "";
+  const sub = $("#model-dist-sub");
+  if (sub) sub.textContent = `按 token 占比 · ${periodLabel}周期`;
+  if (!entries.length) {
+    box.innerHTML = "";
+    box.style.display = "none";
+    $("#model-empty").hidden = false;
+    return;
+  }
+  $("#model-empty").hidden = true;
+  box.style.display = "";
+  const total = entries.reduce((a, [, v]) => a + v, 0);
+
+  /* SVG donut：pathLength=100 让每段直接用百分比画弧；
+     入场/换周期时 is-drawing 从 0 画到 dasharray 目标值（700ms，spark-draw 同款） */
+  const R = 45;
+  let offset = 25; // 12 点方向起笔
+  const arcs = entries.map(([name, v]) => {
+    const pct = (v / total) * 100;
+    const color = state.modelColors[name] || OTHER_COLOR;
+    const arc =
+      `<circle class="donut-arc${animate ? " is-drawing" : ""}" cx="60" cy="60" r="${R}" pathLength="100" ` +
+      `stroke="${color}" stroke-dasharray="${Math.max(pct - 0.8, 0.4).toFixed(2)} 100" ` +
+      `stroke-dashoffset="${(-offset).toFixed(2)}" data-name="${esc(name)}"/>`;
+    offset += pct;
+    return arc;
+  }).join("");
+
+  const legend = entries.map(([name, v]) => {
+    const color = state.modelColors[name] || OTHER_COLOR;
+    return `<li class="donut-lg-row" data-name="${esc(name)}">
+      <i style="background:${color}"></i>
+      <span class="donut-lg-name" title="${esc(name)}">${esc(name)}</span>
+      <span class="donut-lg-pct">${pct1(v, total)}</span>
+      <b class="donut-lg-val" title="${fmtInt(v)} tokens">${fmtCompact(v)}</b>
+    </li>`;
+  }).join("");
+
+  box.innerHTML = `
+    <div class="donut" role="img" aria-label="模型分布环形图">
+      <svg viewBox="0 0 120 120">
+        <title>模型分布环形图</title>
+        <desc>${entries.length} 个模型，合计 ${fmtInt(total)} tokens</desc>
+        <circle class="donut-bg" cx="60" cy="60" r="${R}"/>
+        ${arcs}
+      </svg>
+      <div class="donut-center">
+        <b title="${fmtInt(total)} tokens">${fmtCompact(total)}</b>
+        <span>${periodLabel} tokens</span>
+      </div>
+    </div>
+    <ul class="donut-legend">${legend}</ul>`;
+
+  /* 弧段 / 图例行 hover 联动 + tooltip */
+  const rows = box.querySelectorAll(".donut-lg-row");
+  const arcEls = box.querySelectorAll(".donut-arc");
+  const hot = (name, on) => {
+    box.classList.toggle("has-hot", on);
+    rows.forEach((r) => r.classList.toggle("is-hot", on && r.dataset.name === name));
+    arcEls.forEach((a) => a.classList.toggle("is-hot", on && a.dataset.name === name));
+  };
+  const tipOf = (name) => () => {
+    const e = entries.find(([n]) => n === name);
+    return tipHtml(name, [
+      ["tokens", fmtInt(e ? e[1] : 0)],
+      ["占比", pct1(e ? e[1] : 0, total)],
+    ]);
+  };
+  rows.forEach((r) => {
+    r.addEventListener("mouseenter", (e) => { hot(r.dataset.name, true); floatTip.show(tipOf(r.dataset.name)(), e.clientX, e.clientY); });
+    r.addEventListener("mousemove", (e) => floatTip.place(e.clientX, e.clientY));
+    r.addEventListener("mouseleave", () => { hot(r.dataset.name, false); floatTip.hide(); });
+  });
+  arcEls.forEach((a) => {
+    a.addEventListener("mouseenter", (e) => { hot(a.dataset.name, true); floatTip.show(tipOf(a.dataset.name)(), e.clientX, e.clientY); });
+    a.addEventListener("mousemove", (e) => floatTip.place(e.clientX, e.clientY));
+    a.addEventListener("mouseleave", () => { hot(a.dataset.name, false); floatTip.hide(); });
+  });
+}
+
+/* ---------- 分布（客户端条形） ---------- */
 function renderDist(listSel, emptySel, subSel, per, kind) {
   const box = $(listSel);
   const isModel = kind === "model";
@@ -754,25 +1239,23 @@ function renderDist(listSel, emptySel, subSel, per, kind) {
   per = per || {};
   const tokensMap = per[isModel ? "models" : "clients"] || {};
   const costs = per[base + "Costs"] || {};
-  const reads = per[base + "CacheReads"] || {};
-  const writes = per[base + "CacheWrites"] || {};
-  const outs = per[base + "Outputs"] || {};
-  const uncls = per[base + "UnclassifiedTokens"] || {};
   const colorMap = isModel ? state.modelColors : state.clientColors;
-  // 拆分字段（同名家族 dict）任一非空即视为真实拆分周期
-  const hasSplit = [costs, reads, writes, outs, uncls].some(
-    (d) => d && typeof d === "object" && Object.keys(d).length > 0
-  );
-  const sub = subSel ? $(subSel) : null;
-  if (sub) {
-    sub.textContent = hasSplit
-      ? "按 token 占比 · 条内为真实构成分段"
-      : "按 token 占比 · 缓存拆分按周期整体比例估算";
-  }
   const entries = Object.entries(tokensMap)
     .map(([name, v]) => [name, Number(v) || 0])
     .filter(([, v]) => v > 0)
     .sort((a, b) => b[1] - a[1]);
+  /* §7：逐实体经 componentBreakdown 判定；tokenComponents 不可用不得标「真实构成」 */
+  const breakdowns = new Map(entries.map(([name]) => [name, componentBreakdown(per, base, name)]));
+  const anyKnown = [...breakdowns.values()].some((b) => b.known);
+  const capable = ((per.capabilities || (state.data || {}).capabilities || {}).tokenComponents) === true;
+  const sub = subSel ? $(subSel) : null;
+  if (sub) {
+    sub.textContent = anyKnown
+      ? "按 token 占比 · 条内为真实构成分段"
+      : capable
+        ? "按 token 占比 · 构成来源未知，显示总量"
+        : "按 token 占比 · 后端未提供真实构成";
+  }
   if (!entries.length) {
     box.innerHTML = "";
     box.style.display = "none";
@@ -784,367 +1267,51 @@ function renderDist(listSel, emptySel, subSel, per, kind) {
   box.classList.remove("has-hot");
   const sumAll = entries.reduce((a, [, v]) => a + v, 0);
   const max = entries[0][1];
-  // 回退估算用：周期整体缓存比例
-  const perTotal = Number(per.totalTokens) || 0;
-  const cacheRatio = perTotal > 0
-    ? Math.max(0, Math.min(1, ((Number(per.cacheReadTokens) || 0) + (Number(per.cacheWriteTokens) || 0)) / perTotal))
-    : 0;
 
   const tips = [];
-  box.innerHTML = entries.map(([name, v], idx) => {
+  box.innerHTML = entries.map(([name, v]) => {
     const color = colorMap[name] || OTHER_COLOR;
     const w = ((v / max) * 100).toFixed(2);
-    let barInner;
-    let tip;
-    let costHtml = "";
-    if (hasSplit) {
-      const out = Number(outs[name]) || 0;
-      const cr = Number(reads[name]) || 0;
-      const cw = Number(writes[name]) || 0;
-      const un = Number(uncls[name]) || 0;
-      const input = Math.max(0, v - out - cr - cw - un);
-      // SEGS 顺序：[cls, label, value]；cls 对应 seg-* 语义色 class
-      const parts = [
-        ["input", "非缓存输入", input],
-        ["output", "输出", out],
-        ["cacher", "缓存读", cr],
-        ["cachew", "缓存写", cw],
-        ["uncls", "未分类", un],
-      ].filter(([, , val]) => val > 0);
-      const partsSum = parts.reduce((a, [, , val]) => a + val, 0);
-      const denom = Math.max(v, partsSum); // 拆分总和异常超过总量时按比例压缩
-      barInner = parts.length
-        ? parts.map(([cls, , val]) =>
-            `<i class="dist-part seg-${cls}" style="width:${((val / denom) * 100).toFixed(2)}%"></i>`
+    const bd = breakdowns.get(name);
+    let barInner, tip, costHtml = "";
+    if (bd.known) {
+      const denom = Math.max(v, bd.segs.reduce((a, s) => a + s.value, 0));
+      barInner = bd.segs.length
+        ? bd.segs.map((s) =>
+            `<i class="dist-part seg-${s.cls}" style="width:${((s.value / denom) * 100).toFixed(2)}%"></i>`
           ).join("")
         : `<i class="dist-part" style="width:100%;background:${color}"></i>`;
-      const tipRows = parts.map(([, label, val]) => [label, `${fmtCompact(val)}（${pct1(val, v)}）`]);
+      const tipRows = bd.segs.map((s) => [s.label, `${fmtCompact(s.value)}（${pct1(s.value, v)}）`]);
+      if (!bd.complete) tipRows.push(["完整性警告", "构成合计与总量不一致"]);
       if (costs[name] != null) {
         tipRows.push(["费用", fmtUsd(costs[name])]);
         costHtml = `<i class="dist-cost">${fmtUsd(costs[name])}</i>`;
       }
       tipRows.push(["合计", fmtInt(v)]);
-      tip = () => tipHtml(name, tipRows);
+      tip = () => tipHtml(name + (bd.complete ? "" : "（构成不完整）"), tipRows);
     } else {
-      // 老数据：单段实体色 + 按周期缓存比例估算的 tooltip（注明估算）
+      // §7-3/5：来源未知显示单色总量条，不做任何比例估算
       barInner = `<i class="dist-part" style="width:100%;background:${color}"></i>`;
-      const nc = v * (1 - cacheRatio);
-      const c = v * cacheRatio;
-      tip = () => tipHtml(name + "（缓存拆分为估算）", [
-        ["非缓存", `${fmtCompact(nc)}（${pct1(nc, v)}）`],
-        ["缓存", `${fmtCompact(c)}（${pct1(c, v)}）`],
-        ["合计", fmtInt(v)],
-      ]);
+      const tipRows = [["合计", fmtInt(v)]];
+      if (costs[name] != null) {
+        tipRows.push(["费用", fmtUsd(costs[name])]);
+        costHtml = `<i class="dist-cost">${fmtUsd(costs[name])}</i>`;
+      }
+      tipRows.push(["构成", capable ? "来源未知" : "后端未提供真实构成"]);
+      tip = () => tipHtml(name, tipRows);
     }
     tips.push(tip);
-    return `<div class="dist-row" style="--ri:${idx}">
+    const warnHtml = bd.known && !bd.complete ? `<span class="comp-warn">构成不完整</span>` : "";
+    return `<div class="dist-row">
       <span class="dist-name" title="${esc(name)}"><i style="background:${color}"></i>${esc(name)}</span>
-      <div class="dist-track"><div class="dist-bar" style="width:${w}%;--i:${idx};--bar-sh:${hexA(color, 0.38)};--bar-sh-deep:${hexA(color, 0.58)}">${barInner}</div></div>
-      <span class="dist-val" title="${fmtInt(v)} tokens"><b>${fmtCompact(v)}</b>${pct1(v, sumAll)}${costHtml}</span>
+      <div class="dist-track"><div class="dist-bar" style="width:${w}%">${barInner}</div></div>
+      <span class="dist-val" title="${fmtInt(v)} tokens"><b>${fmtCompact(v)}</b>${pct1(v, sumAll)}${costHtml}${warnHtml}</span>
     </div>`;
   }).join("");
 
-  // hover 分布条：其余行降透明度 + tooltip（各构成段 tokens + 百分比 + 费用）
   box.querySelectorAll(".dist-row").forEach((row, i) => {
     bindHover(row.querySelector(".dist-track"), box, tips[i]);
   });
-}
-
-/* ---------- 设备卡片流 ---------- */
-/* clientHealth 状态值 → 健康度彩点等级（绿/黄/红/灰） */
-function healthLevel(raw) {
-  const s = String(raw ?? "").toLowerCase();
-  if (!s) return "mute";
-  if (/(err|fail|unhealth|bad|stop|crash|down|critical)/.test(s)) return "crit";
-  if (/(warn|degrad|stale|slow|partial)/.test(s)) return "warn";
-  if (/(ok|health|good|run|ready|normal|up)/.test(s)) return "ok";
-  return "mute";
-}
-
-/* clientStatus / wslStatus 宽容转简短文本 */
-function shortStatusText(v) {
-  if (v == null || v === "") return "";
-  if (typeof v === "string") return v;
-  if (typeof v === "object") {
-    return Object.entries(v)
-      .slice(0, 4)
-      .map(([k, x]) => `${k}: ${typeof x === "object" && x ? JSON.stringify(x) : x}`)
-      .join(" · ");
-  }
-  return String(v);
-}
-
-/* diagnostics[] 按 deviceId 匹配进设备卡：clientHealth 每工具一行 /
-   clientStatus 一行 / wslStatus 仅 Windows 设备；载荷没有就不渲染对应行 */
-function diagHtml(diag, platform) {
-  if (!diag) return "";
-  const parts = [];
-  const tools = healthEntries(diag.clientHealth);
-  if (tools.length) {
-    parts.push(`<div class="diag-health">${tools.map(([name, v]) => {
-      const color = state.clientColors[name] || OTHER_COLOR;
-      const isObj = v && typeof v === "object";
-      const ver = isObj ? (v.version || v.agentVersion || v.v || "") : "";
-      const stRaw = isObj
-        ? (v.status ?? v.health ?? v.state ?? (v.healthy === true ? "healthy" : v.healthy === false ? "error" : ""))
-        : v;
-      const lv = healthLevel(stRaw);
-      const stText = shortStatusText(stRaw);
-      const verText = String(ver || "").replace(/^v/, "");
-      return `<span class="diag-tool"><i style="background:${color}"></i>${esc(name)}` +
-        `${verText ? `<em>v${esc(verText)}</em>` : ""}` +
-        `<b class="hdot hd-${lv}" title="${esc(stText || "状态未知")}"></b></span>`;
-    }).join("")}</div>`);
-  }
-  const cs = shortStatusText(diag.clientStatus);
-  if (cs) parts.push(`<div class="diag-line" title="${esc(cs)}">${esc(cs)}</div>`);
-  if (/win/i.test(String(platform || ""))) {
-    const ws = shortStatusText(diag.wslStatus);
-    if (ws) parts.push(`<div class="diag-line" title="${esc(ws)}"><b>WSL</b> ${esc(ws)}</div>`);
-  }
-  return parts.length ? `<div class="dev-diag">${parts.join("")}</div>` : "";
-}
-
-function renderDevices(devices, diagnostics) {
-  const list = devices || [];
-  const diagMap = {};
-  (diagnostics || []).forEach((dg) => {
-    if (dg && dg.deviceId != null) diagMap[String(dg.deviceId)] = dg;
-  });
-  const online = list.filter((d) => Date.now() - new Date(d.receivedAt).getTime() < STALE_MS).length;
-  $("#devices-sub").textContent = list.length
-    ? `${online} 台在线 · 共 ${list.length} 台`
-    : "";
-  $("#dev-grid").innerHTML = list.map((d, idx) => {
-    const ts = new Date(d.receivedAt).getTime();
-    const on = !Number.isNaN(ts) && Date.now() - ts < STALE_MS;
-    const devId = String(d.deviceId || "");
-    const name = d.hostname || devId.slice(0, 8) || "未知设备";
-    const shortId = devId.length > 12 ? devId.slice(0, 8) + "…" : devId;
-
-    const meta = [];
-    const plat = [d.platform, [d.osName, d.osVersion].filter(Boolean).join(" ")]
-      .filter(Boolean).join(" · ");
-    if (plat) meta.push(plat);
-    const agent = [
-      d.agentVersion ? `agent v${String(d.agentVersion).replace(/^v/, "")}` : "",
-      d.agentRuntime || "",
-    ].filter(Boolean).join(" · ");
-    if (agent) meta.push(agent);
-    const interval = fmtInterval(d.syncUploadIntervalMs);
-    if (interval) meta.push("同步 " + interval);
-
-    const chips = (d.trackedClients || []).map((c) => {
-      const color = state.clientColors[c] || OTHER_COLOR;
-      return `<span class="dev-chip" style="background:${color}1f"><i style="background:${color}"></i>${esc(c)}</span>`;
-    }).join("");
-
-    const badges = [
-      d.projectsEnabled ? `<span class="dev-badge">项目统计</span>` : "",
-      d.historyAvailable ? `<span class="dev-badge">历史数据</span>` : "",
-    ].filter(Boolean).join("");
-
-    const stat = (label, key) => {
-      const v = Number(((d[key] || {}).totalTokens) || 0);
-      return `<div class="dev-stat"><span>${label}</span><b title="${fmtInt(v)} tokens">${fmtCompact(v)}</b></div>`;
-    };
-    const cost = `<div class="dev-stat"><span>累计费用</span><b>${fmtUsd((d.allTime || {}).costUsd)}</b></div>`;
-
-    return `<article class="dev-card" style="--i:${idx}">
-      <div class="dev-top">
-        <span class="status ${on ? "on" : "off"}"><span class="status-dot"></span>${on ? "在线" : "离线"}</span>
-        <span class="dev-seen" title="${esc(fmtDateTime(d.receivedAt))}">最近上报 ${esc(relTime(d.receivedAt))}</span>
-      </div>
-      <div class="dev-title">
-        <h3 class="dev-host" title="${esc(d.hostname || devId)}">${esc(name)}</h3>
-        ${shortId ? `<span class="dev-id mono" title="${esc(devId)}">${esc(shortId)}</span>` : ""}
-      </div>
-      ${meta.length ? `<div class="dev-meta">${meta.map((m) => `<span>${esc(m)}</span>`).join("")}</div>` : ""}
-      ${chips ? `<div class="dev-clients" title="AI 工具">${chips}</div>` : ""}
-      ${badges ? `<div class="dev-badges">${badges}</div>` : ""}
-      ${diagHtml(diagMap[devId], d.platform)}
-      <div class="dev-stats">${stat("今日", "today")}${stat("本月", "month")}${stat("累计", "allTime")}${cost}</div>
-    </article>`;
-  }).join("");
-}
-
-/* ---------- 活动热力图（日 / 周 / 月） ---------- */
-const hmLevel = (v, max) => (v > 0 ? Math.min(5, Math.max(1, Math.ceil((v / max) * 5))) : 0);
-
-function bindHmCells(root, titleFn) {
-  root.querySelectorAll(".hm-cell[data-v]").forEach((cell) => {
-    bindHover(cell, null, () => {
-      const v = Number(cell.dataset.v) || 0;
-      return tipHtml(titleFn(cell), [["tokens", fmtInt(v)]]);
-    });
-  });
-}
-
-/* 日：今日 24 小时格子（桌面一行 24 格，窄屏两行 12 格） */
-function renderHmDay(hm, hourly) {
-  const byHour = new Array(24).fill(0);
-  (hourly || []).forEach((h) => {
-    const i = Number(h && h.hour);
-    if (i >= 0 && i < 24) byHour[i] = Number(h.total) || 0;
-  });
-  const max = Math.max(...byHour, 1);
-  $("#act-sub").textContent = "今日 24 小时活动（按 UTC 日期）";
-  hm.innerHTML = `<div class="hm-day">` + byHour
-    .map((v, i) => `<span class="hm-cell hm-d hm-${hmLevel(v, max)}" data-h="${i}" data-v="${v}">${i}</span>`)
-    .join("") + `</div>`;
-  bindHmCells(hm, (cell) => {
-    const h = Number(cell.dataset.h);
-    return `今日 ${pad2(h)}:00–${pad2((h + 1) % 24)}:00`;
-  });
-}
-
-/* 周：GitHub 风格，最近 12 周 × 7 天（列=周、行=周一~周日） */
-function renderHmWeek(hm, daily) {
-  const map = new Map((daily || []).map((r) => [r.day, Number(r.total) || 0]));
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const today = new Date(todayStr + "T00:00:00Z");
-  const dow = (today.getUTCDay() + 6) % 7; // 周一 = 0
-  const monday = new Date(today);
-  monday.setUTCDate(today.getUTCDate() - dow);
-  const start = new Date(monday);
-  start.setUTCDate(monday.getUTCDate() - 7 * 11);
-
-  const grid = [];
-  const months = [];
-  let max = 1;
-  for (let w = 0; w < 12; w++) {
-    for (let d = 0; d < 7; d++) {
-      const dt = new Date(start);
-      dt.setUTCDate(start.getUTCDate() + w * 7 + d);
-      const str = dt.toISOString().slice(0, 10);
-      const future = str > todayStr;
-      const v = future ? 0 : map.get(str) || 0;
-      if (v > max) max = v;
-      grid.push({ str, v, future });
-    }
-    // 月份标签：精确对齐到「包含该月 1 日」的周列左边缘；首列不含 1 日时标注首列所在月份
-    const weekDays = grid.slice(w * 7, w * 7 + 7);
-    const firstOfMonth = weekDays.find((c) => c.str.slice(8) === "01");
-    if (firstOfMonth) months.push(`${Number(firstOfMonth.str.slice(5, 7))}月`);
-    else if (w === 0) months.push(`${Number(weekDays[0].str.slice(5, 7))}月`);
-    else months.push("");
-  }
-  $("#act-sub").textContent = "最近 12 周 · 每格一天（UTC）";
-  hm.innerHTML = `<div class="hm-week">
-    <div class="hm-wk-months">${months.map((m) => `<span>${m}</span>`).join("")}</div>
-    <div class="hm-wk-main">
-      <div class="hm-wk-gutter"><span style="grid-row:1">一</span><span style="grid-row:3">三</span><span style="grid-row:5">五</span></div>
-      <div class="hm-wk-grid">${grid
-        .map((c) =>
-          c.future
-            ? `<span class="hm-cell hm-w hm-skip"></span>`
-            : `<span class="hm-cell hm-w hm-${hmLevel(c.v, max)}" data-day="${c.str}" data-v="${c.v}"></span>`
-        )
-        .join("")}</div>
-    </div>
-  </div>`;
-  bindHmCells(hm, (cell) => cell.dataset.day);
-}
-
-/* 月：本月日历网格（周一开头，按星期对齐）+ 右侧本月摘要 */
-function renderHmMonth(hm, daily) {
-  const map = new Map((daily || []).map((r) => [r.day, Number(r.total) || 0]));
-  const now = new Date();
-  const y = now.getUTCFullYear();
-  const m = now.getUTCMonth();
-  const daysIn = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-  const lead = (new Date(Date.UTC(y, m, 1)).getUTCDay() + 6) % 7;
-  let max = 1;
-  const cells = [];
-  for (let d = 1; d <= daysIn; d++) {
-    const str = `${y}-${pad2(m + 1)}-${pad2(d)}`;
-    const v = map.get(str) || 0;
-    if (v > max) max = v;
-    cells.push({ d, v });
-  }
-  // 摘要统计：仅对本月格子做展示层聚合，数据口径不变
-  let total = 0;
-  let activeDays = 0;
-  let best = null;
-  cells.forEach((c) => {
-    total += c.v;
-    if (c.v > 0) {
-      activeDays += 1;
-      if (!best || c.v > best.v) best = c;
-    }
-  });
-  // 日均 tokens：活跃天数口径
-  const avg = activeDays ? Math.round(total / activeDays) : 0;
-  // 近 7 天（UTC，含今天）迷你趋势
-  const dayMs = 86400000;
-  const t0 = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00Z").getTime();
-  const last7 = [];
-  for (let i = 6; i >= 0; i--) {
-    const str = new Date(t0 - i * dayMs).toISOString().slice(0, 10);
-    last7.push({ str, v: map.get(str) || 0 });
-  }
-  const sum7 = last7.reduce((a, x) => a + x.v, 0);
-  const max7 = Math.max(...last7.map((x) => x.v), 1);
-  // 本周（周一至今）vs 上周同期（同跨度对比）；上周同期无数据则隐藏
-  const dow = (new Date(t0).getUTCDay() + 6) % 7; // 周一 = 0
-  let wkThis = 0;
-  let wkPrev = 0;
-  for (let i = 0; i <= dow; i++) {
-    wkThis += map.get(new Date(t0 - (dow - i) * dayMs).toISOString().slice(0, 10)) || 0;
-    wkPrev += map.get(new Date(t0 - (dow + 7 - i) * dayMs).toISOString().slice(0, 10)) || 0;
-  }
-  const wowPct = wkPrev > 0 ? ((wkThis - wkPrev) / wkPrev) * 100 : null;
-  const wowAbs = wowPct == null ? 0 : Math.abs(wowPct);
-  const wow = wowPct == null
-    ? ""
-    : `<span class="hm-wow ${wowPct >= 0 ? "up" : "down"}" title="本周至今 ${fmtInt(wkThis)} · 上周同期 ${fmtInt(wkPrev)} tokens">` +
-      `${wowPct >= 0 ? "↑" : "↓"} ${wowAbs >= 100 ? Math.round(wowAbs) : wowAbs.toFixed(1)}%<em>周环比</em></span>`;
-  const sparkBars = last7.map((x, i) =>
-    `<i${x.v > 0 ? "" : ' class="is-zero"'} data-day="${x.str}" data-v="${x.v}" ` +
-    `style="height:${((x.v / max7) * 100).toFixed(1)}%;--i:${i}"></i>`
-  ).join("");
-  $("#act-sub").textContent = `${y} 年 ${m + 1} 月逐日活动（UTC）`;
-  hm.innerHTML = `<div class="hm-mon-wrap">
-    <div class="hm-mon">
-      <div class="hm-mon-head">${["一", "二", "三", "四", "五", "六", "日"].map((d) => `<span>${d}</span>`).join("")}</div>
-      <div class="hm-mon-grid">` +
-      Array.from({ length: lead }).map(() => `<span class="hm-cell hm-m hm-skip"></span>`).join("") +
-      cells.map((c) => `<span class="hm-cell hm-m hm-${hmLevel(c.v, max)}" data-v="${c.v}" data-d="${c.d}">${c.d}</span>`).join("") +
-      `</div>
-    </div>
-    <div class="hm-mon-sum">
-      <p class="hm-mon-sum-title">${m + 1} 月摘要</p>
-      <div class="hm-sum-grid">
-        <div class="hm-sum"><span>本月总量</span><b title="${fmtInt(total)} tokens">${fmtCompact(total)}</b></div>
-        <div class="hm-sum"><span>活跃天数</span><b>${activeDays} 天</b></div>
-        <div class="hm-sum"><span>最高单日</span>${best
-          ? `<b title="${fmtInt(best.v)} tokens">${fmtCompact(best.v)} · ${m + 1}月${best.d}日</b>`
-          : `<b>—</b>`}</div>
-      </div>
-      <div class="hm-sum-mid">
-        <div class="hm-avg"><span>日均 tokens</span><b title="${fmtInt(avg)} tokens">${fmtCompact(avg)}</b><em>按活跃天</em></div>
-        ${wow}
-      </div>
-      <div class="hm-spark">
-        <div class="hm-spark-head"><span>近 7 天趋势</span><b title="${fmtInt(sum7)} tokens">合计 ${fmtCompact(sum7)}</b></div>
-        <div class="hm-spark-bars">${sparkBars}</div>
-      </div>
-    </div>
-  </div>`;
-  bindHmCells(hm, (cell) => `${m + 1}月${cell.dataset.d}日`);
-  // sparkline 柱 tooltip（复用全局 float-tip）
-  hm.querySelectorAll(".hm-spark-bars i").forEach((bar) => {
-    bindHover(bar, null, () => tipHtml(bar.dataset.day, [["tokens", fmtInt(bar.dataset.v)]]));
-  });
-}
-
-function renderActivity() {
-  const act = (state.data && state.data.activity) || {};
-  floatTip.hide();
-  const hm = $("#hm");
-  if (state.actView === "day") renderHmDay(hm, act.hourly || []);
-  else if (state.actView === "week") renderHmWeek(hm, act.daily || []);
-  else renderHmMonth(hm, act.daily || []);
 }
 
 /* ---------- 工具 × 模型矩阵 ---------- */
@@ -1175,7 +1342,6 @@ function renderMatrix() {
     box.innerHTML = "";
     return;
   }
-  const wasHidden = panel.hidden;
   panel.hidden = false;
   box.classList.remove("has-hot");
   const cellOf = (c, m) => Number(((cm[c] || {})[m]) || 0);
@@ -1194,13 +1360,23 @@ function renderMatrix() {
       const v = cellOf(c, m);
       if (v <= 0) return `<span class="mx-cell is-zero"></span>`;
       const t = maxV > 0 ? v / maxV : 0;
-      const alpha = (0.08 + 0.92 * Math.sqrt(t)).toFixed(3);
-      return `<span class="mx-cell${t >= 0.45 ? " is-deep" : ""}" data-c="${esc(c)}" data-m="${esc(m)}" data-v="${v}" ` +
-        `style="background:rgba(59, 89, 242, ${alpha})">${esc(fmtV(v))}</span>`;
+      // 离散 5 档：低值也清晰可见，避免连续渐变导致浅档看不清
+      const lv = Math.min(MX_SCALE.length - 1, Math.floor(t * MX_SCALE.length));
+      return `<span class="mx-cell mx-lv${lv}${lv >= 2 ? " is-deep" : ""}" data-c="${esc(c)}" data-m="${esc(m)}" data-v="${v}" ` +
+        `data-lv="${lv}">${esc(fmtV(v))}</span>`;
     }).join("");
     return `<span class="mx-row" title="${esc(c)}"><i style="background:${color}"></i><span>${esc(c)}</span></span>${cells}`;
   }).join("");
-  box.innerHTML = `<div class="mx-grid" style="grid-template-columns:minmax(110px, 1.3fr) repeat(${models.length}, minmax(56px, 1fr))">${head}${rowsHtml}</div>`;
+  const scaleLegend =
+    `<div class="mx-scale" aria-hidden="true"><span>低</span>` +
+    `<i class="mx-cell mx-zero-s" style="background:${MX_ZERO}"></i>` +
+    MX_SCALE.map((c) => `<i class="mx-cell" style="background:${c}"></i>`).join("") +
+    `<span>高</span></div>`;
+  // 格子正方形且随容器自适应，但列少时给整格网上限，避免巨型方块
+  const mxMaxW = 150 + models.length * 104;
+  box.innerHTML =
+    `<div class="mx-grid" style="grid-template-columns:minmax(110px, 140px) repeat(${models.length}, minmax(48px, 1fr));max-width:${mxMaxW}px">${head}${rowsHtml}</div>` +
+    scaleLegend;
 
   const grid = box.querySelector(".mx-grid");
   grid.querySelectorAll(".mx-cell[data-v]").forEach((cell) => {
@@ -1214,156 +1390,9 @@ function renderMatrix() {
       ]);
     });
   });
-  if (wasHidden) requestAnimationFrame(positionAllPills); // 面板刚显示，定位 seg 胶囊
 }
 
-/* ---------- 项目（按 label 跨设备合并，条内按客户端分布分段） ---------- */
-function renderProjects(projects) {
-  const panel = $("#projects-panel");
-  const box = $("#proj-dist");
-  const list = (Array.isArray(projects) ? projects : [])
-    .map((p) => ({
-      label: String((p && p.label) || ""),
-      tokens: Number(p && p.tokens) || 0,
-      costUsd: Number(p && p.costUsd) || 0,
-      clients: (p && typeof p.clients === "object" && p.clients) || {},
-      devices: Array.isArray(p && p.devices) ? p.devices : [],
-    }))
-    .filter((p) => p.label && p.tokens > 0)
-    .sort((a, b) => b.tokens - a.tokens);
-  if (!list.length) {
-    panel.hidden = true;
-    box.innerHTML = "";
-    return;
-  }
-  panel.hidden = false;
-  box.classList.remove("has-hot");
-  const max = list[0].tokens;
-  const tips = [];
-  box.innerHTML = list.map((p, idx) => {
-    const clientEntries = Object.entries(p.clients)
-      .map(([k, v]) => [k, Number(v) || 0])
-      .filter(([, v]) => v > 0)
-      .sort((a, b) => b[1] - a[1]);
-    const segsSum = clientEntries.reduce((a, [, v]) => a + v, 0);
-    const denom = Math.max(p.tokens, segsSum);
-    const barInner = clientEntries.length
-      ? clientEntries.map(([c, v]) =>
-          `<i class="dist-part" style="width:${((v / denom) * 100).toFixed(2)}%;background:${state.clientColors[c] || OTHER_COLOR}"></i>`
-        ).join("")
-      : `<i class="dist-part" style="width:100%;background:${OTHER_COLOR}"></i>`;
-    const tipRows = clientEntries.map(([c, v]) => [c, `${fmtCompact(v)}（${pct1(v, p.tokens)}）`]);
-    tipRows.push(["费用", fmtUsd(p.costUsd)]);
-    if (p.devices.length) tipRows.push(["设备", p.devices.join("、")]);
-    tipRows.push(["合计", fmtInt(p.tokens)]);
-    tips.push(() => tipHtml(p.label, tipRows));
-    const devs = p.devices.length ? `<i class="proj-devs">${p.devices.length} 设备</i>` : "";
-    // 条内按客户端分段：阴影取占比最高客户端的配色（低透明度版本）
-    const barColor = clientEntries.length ? (state.clientColors[clientEntries[0][0]] || OTHER_COLOR) : OTHER_COLOR;
-    return `<div class="dist-row" style="--ri:${idx}">
-      <span class="dist-name" title="${esc(p.label)}">${esc(p.label)}</span>
-      <div class="dist-track"><div class="dist-bar" style="width:${((p.tokens / max) * 100).toFixed(2)}%;--i:${idx};--bar-sh:${hexA(barColor, 0.38)};--bar-sh-deep:${hexA(barColor, 0.58)}">${barInner}</div></div>
-      <span class="dist-val" title="${fmtInt(p.tokens)} tokens"><b>${fmtCompact(p.tokens)}</b><i class="dist-cost">${fmtUsd(p.costUsd)}</i>${devs}</span>
-    </div>`;
-  }).join("");
-  box.querySelectorAll(".dist-row").forEach((row, i) => {
-    bindHover(row.querySelector(".dist-track"), box, tips[i]);
-  });
-}
-
-/* ---------- 订阅配额 limits（provider 卡片） ---------- */
-function renderLimits(limits) {
-  const panel = $("#limits-panel");
-  const grid = $("#lim-grid");
-  const list = (Array.isArray(limits) ? limits : []).filter((l) => l && typeof l === "object");
-  if (!list.length) {
-    panel.hidden = true;
-    grid.innerHTML = "";
-    return;
-  }
-  panel.hidden = false;
-  grid.innerHTML = list.map((l) => {
-    const provider = String(l.provider || "unknown");
-    const plan = l.planLabel ? `<span class="lim-plan">${esc(String(l.planLabel))}</span>` : "";
-    // 余额：balanceUsd 优先；balance 兜底（数字或常见字段）
-    let bal = "";
-    if (l.balanceUsd != null && l.balanceUsd !== "" && !Number.isNaN(Number(l.balanceUsd))) {
-      bal = fmtUsd(l.balanceUsd);
-    } else if (typeof l.balance === "number") {
-      bal = fmtCompact(l.balance);
-    } else if (l.balance && typeof l.balance === "object") {
-      const cand = l.balance.remaining ?? l.balance.total ?? l.balance.value ?? l.balance.amount;
-      if (cand != null && !Number.isNaN(Number(cand))) bal = fmtCompact(cand);
-    }
-    const account = [l.accountLabel, l.accountName, l.accountEmail]
-      .filter(Boolean).map(String).join(" · ");
-    const wins = (Array.isArray(l.windows) ? l.windows : []).map((w) => {
-      if (!w || typeof w !== "object") return "";
-      const pct = Math.max(0, Math.min(100, Number(w.usedPercent) || 0));
-      const lv = pct < 60 ? "ok" : pct < 85 ? "warn" : "crit";
-      const label = w.label || w.name || w.window || "窗口";
-      const reset = fmtReset(w.resetsAt);
-      return `<div class="lim-win">
-        <span class="lim-win-label">${esc(String(label))}</span>
-        <div class="lim-bar"><i class="lv-${lv}" style="width:${pct.toFixed(1)}%"></i></div>
-        <span class="lim-win-meta"><b>${pct.toFixed(0)}%</b>${reset ? " · " + esc(reset) : ""}</span>
-      </div>`;
-    }).filter(Boolean).join("");
-    return `<article class="lim-card">
-      <div class="lim-top">
-        <div class="lim-provider"><strong>${esc(provider)}</strong>${plan}</div>
-        ${bal ? `<div class="lim-balance"><span>余额</span><b>${esc(bal)}</b></div>` : ""}
-      </div>
-      ${account ? `<div class="lim-account" title="${esc(account)}">${esc(account)}</div>` : ""}
-      ${wins ? `<div class="lim-wins">${wins}</div>` : ""}
-      ${l.device ? `<div class="lim-dev">来源 · ${esc(String(l.device))}</div>` : ""}
-    </article>`;
-  }).join("");
-}
-
-/* ---------- 订阅清单（独立接口数据） ---------- */
-function renderSubs() {
-  const panel = $("#subs-panel");
-  const body = $("#subs-body");
-  const s = state.subs;
-  const list = s && Array.isArray(s.subscriptions) ? s.subscriptions : [];
-  if (!list.length) {
-    panel.hidden = true;
-    body.innerHTML = "";
-    return;
-  }
-  panel.hidden = false;
-  $("#subs-sub").textContent = s.updated_at ? "更新于 " + fmtDateTime(s.updated_at) : "";
-  const INTERVALS = {
-    day: "每天", week: "每周", month: "每月", year: "每年",
-    daily: "每天", weekly: "每周", monthly: "每月", yearly: "每年", annual: "每年",
-  };
-  body.innerHTML = list.map((it) => {
-    it = it && typeof it === "object" ? it : {};
-    const topUps = Array.isArray(it.topUps) ? it.topUps : [];
-    const topTotal = topUps.reduce((a, t) => a + (Number(t && t.amountMinor) || 0), 0);
-    const topText = topUps.length ? `${topUps.length} 次 · ${fmtMoney(topTotal, it.currency)}` : "—";
-    const interval = INTERVALS[String(it.interval || "").toLowerCase()] || it.interval || "—";
-    const start = it.startDate ? String(it.startDate).slice(0, 10) : "—";
-    // 官方 normalized binding 为对象 {profileName, accountKey, accountEmail}；宽容兼容字符串
-    const binding = it.binding && typeof it.binding === "object"
-      ? [it.binding.profileName, it.binding.accountEmail, it.binding.accountKey]
-          .filter(Boolean).join(" · ")
-      : it.binding;
-    return `<tr>
-      <td>${esc(it.provider || "—")}</td>
-      <td>${esc(it.planName || "—")}</td>
-      <td>${esc(binding || "—")}</td>
-      <td class="num">${esc(fmtMoney(it.amountMinor, it.currency))}</td>
-      <td>${esc(String(interval))}</td>
-      <td class="num">${esc(start)}</td>
-      <td>${it.autoRenew ? `<span class="badge-renew">自动续费</span>` : `<span class="mute">—</span>`}</td>
-      <td class="num">${esc(topText)}</td>
-    </tr>`;
-  }).join("");
-}
-
-/* ---------- 会话明细（默认前 20 条，可展开到 100） ---------- */
+/* ---------- 会话明细 ---------- */
 function renderSessions() {
   const panel = $("#sessions-panel");
   const body = $("#sess-body");
@@ -1375,9 +1404,14 @@ function renderSessions() {
     return;
   }
   panel.hidden = false;
-  $("#sess-sub").textContent = `按 tokens 降序 · 共 ${list.length} 条`;
-  const showAll = state.sessExpanded;
-  const rows = showAll ? list : list.slice(0, SESSIONS_INIT);
+  const meta = data.sessions_meta || {};
+  $("#sess-sub").textContent =
+    `最近使用的 ${Math.min(SESSIONS_SHOW, list.length)} 条会话 · 共 ${meta.sessions_total || list.length} 条`;
+  // 只保留最近 5 条：按 lastUsedAt 降序
+  const rows = list
+    .slice()
+    .sort((a, b) => new Date(b.lastUsedAt).getTime() - new Date(a.lastUsedAt).getTime())
+    .slice(0, SESSIONS_SHOW);
   body.innerHTML = rows.map((s) => {
     const client = String(s.client || "");
     const color = state.clientColors[client] || OTHER_COLOR;
@@ -1394,7 +1428,7 @@ function renderSessions() {
       : "—";
     return `<tr>
       <td><span class="dev-chip" style="background:${color}1f"><i style="background:${color}"></i>${esc(client || "—")}</span></td>
-      <td><span class="sess-id" title="${esc(sid)}">${esc(sid.slice(0, 8))}</span></td>
+      <td><span class="sess-id" title="${esc(sid)}">${esc(sid.slice(0, 12))}</span></td>
       <td><span class="sess-models" title="${esc(models.join("、"))}">${esc(modelsText || "—")}</span></td>
       <td class="num" title="${fmtInt(tokens)} tokens">${fmtCompact(tokens)}</td>
       <td class="num">${fmtUsd(s.costUsd)}</td>
@@ -1404,75 +1438,882 @@ function renderSessions() {
       <td class="mute">${esc(String(s.device || "—"))}</td>
     </tr>`;
   }).join("");
-  const needMore = list.length > SESSIONS_INIT && !showAll;
-  const more = $("#sess-more");
-  more.hidden = !needMore;
-  if (needMore) more.textContent = `显示全部（共 ${list.length} 条）`;
-  $("#sess-omitted").hidden = !data.sessions_omitted;
-  $("#sess-foot").hidden = !needMore && !data.sessions_omitted;
+  const omitted = data.sessions_omitted || (meta.session_details_incomplete === true);
+  $("#sess-omitted").hidden = !omitted;
+  $("#sess-foot").hidden = !omitted;
 }
 
-/* ---------- 渲染总入口 ---------- */
-function renderAll(firstLoad) {
+/* ---------- 提供商状态（独立状态机；§9 失败显示「状态页暂不可用」） ---------- */
+const PV_STATUS = {
+  operational: ["正常", "ok"],
+  degraded: ["部分降级", "warn"],
+  maintenance: ["维护中", "warn"],
+  outage: ["服务中断", "crit"],
+  unknown: ["状态未知", "mute"],
+};
+/* status=unknown 且 error_code 非空：状态页抓取失败（稳定错误码 → 中文语义） */
+const PV_ERROR_TEXT = {
+  timeout: "状态页请求超时",
+  http_status: "状态页返回异常",
+  invalid_json: "状态页响应无法解析",
+  network: "状态页网络错误",
+  stats_unavailable: "用量来源暂不可用",
+  subscriptions_unavailable: "订阅来源暂不可用",
+};
+
+function renderProviderStatus() {
+  const panel = $("#provider-panel");
+  const grid = $("#provider-grid");
+  const aux = state.aux.providers;
+  // 404 / features.provider_status=false（Token Monitor 未启用或能力关闭）→ 整块隐藏
+  if (aux.status === "unsupported") {
+    panel.hidden = true;
+    grid.innerHTML = "";
+    return;
+  }
+  // 请求失败：不将失败解释为空列表
+  if (aux.status === "error") {
+    panel.hidden = false;
+    grid.innerHTML = `<p class="aux-note err">状态页暂不可用</p>`;
+    return;
+  }
+  const list = aux.data && Array.isArray(aux.data.providers)
+    ? aux.data.providers.filter((p) => p && typeof p === "object")
+    : [];
+  if (!list.length) {
+    panel.hidden = true;
+    grid.innerHTML = "";
+    return;
+  }
+  panel.hidden = false;
+  /* 顶层 partial=true：部分来源（stats/subscriptions 或个别状态页）失败 → 面板级提示 */
+  const errs = aux.data && Array.isArray(aux.data.errors) ? aux.data.errors : [];
+  const errCodes = errs
+    .map((e) => (e && typeof e === "object" ? e.error_code || e.code : e))
+    .filter(Boolean);
+  const partialNote = aux.data && aux.data.partial === true
+    ? `<p class="aux-note">部分提供商状态来源暂不可用${errCodes.length ? `（${esc(errCodes.map((c) => PV_ERROR_TEXT[c] || c).join("、"))}）` : ""}</p>`
+    : "";
+  grid.innerHTML = partialNote + list.map((p, i) => {
+    const status = String(p.status || "unknown");
+    const errorCode = String(p.error_code || "");
+    /* unknown + error_code：状态页抓取失败 → 「状态页暂不可用」语义，而非灰点空状态 */
+    const unavailable = status === "unknown" && !!errorCode;
+    const [text, lv] = unavailable
+      ? ["状态页暂不可用", "warn"]
+      : PV_STATUS[status] || PV_STATUS.unknown;
+    const name = String(p.name || fmtProvider(p.provider) || p.provider || "—");
+    let desc = unavailable
+      ? (PV_ERROR_TEXT[errorCode] || errorCode)
+      : String(p.description || text);
+    if (p.stale === true) desc += " · 缓存数据";
+    const checked = p.checked_at ? `检测于 ${esc(relTime(p.checked_at))}` : "";
+    const url = String(p.url || "");
+    return `<article class="pv-card lv-${lv}${riseCls()}"${riseStyle(i)}${url ? ` title="${esc(url)}"` : ""}>
+      <span class="pv-dot lv-${lv}" aria-hidden="true"></span>
+      <div class="pv-info">
+        <div class="pv-name"><strong>${esc(name)}</strong><em class="pv-status">${esc(text)}</em></div>
+        <p class="pv-desc" title="${esc(desc)}">${esc(desc)}</p>
+      </div>
+      ${checked ? `<span class="pv-time mono">${checked}</span>` : ""}
+    </article>`;
+  }).join("");
+}
+
+function renderOverview() {
+  const data = state.data;
+  renderKpis(data);
+  renderProviderStatus();
+  renderTrend();
+  renderModelDonut((data.totals || {})[state.modelPeriod]);
+  renderDist("#client-dist", "#client-empty", "#client-dist-sub", (data.totals || {})[state.clientPeriod], "client");
+  renderMatrix();
+  renderSessions();
+}
+
+/* ================= 渲染层 · 设备 ================= */
+function diagHtml(diag, platform) {
+  if (!diag) return "";
+  const parts = [];
+  const tools = healthEntries(diag.clientHealth);
+  if (tools.length) {
+    parts.push(`<div class="diag-health">${tools.map(([name, v]) => {
+      const color = state.clientColors[name] || OTHER_COLOR;
+      const isObj = v && typeof v === "object";
+      const ver = isObj ? (v.version || v.agentVersion || v.v || "") : "";
+      const stRaw = diagnosticState(name, v, diag);
+      const lv = healthLevel(stRaw);
+      const stText = shortStatusText(stRaw) || "状态未知";
+      const verText = String(ver || "").replace(/^v/, "");
+      const widthPct = lv === "ok" ? 100 : lv === "warn" ? 62 : lv === "crit" ? 28 : 45;
+      return `<span class="diag-tool">
+        <span class="dt-name"><i style="background:${color}"></i>${esc(name)}${verText ? ` <em>v${esc(verText)}</em>` : ""}</span>
+        <span class="dt-track"><i class="lv-${lv}" style="width:${widthPct}%"></i></span>
+        <em title="${esc(stText)}">${esc({ ok: "健康", warn: "警告", crit: "异常", mute: "未知" }[lv])}</em>
+      </span>`;
+    }).join("")}</div>`);
+  }
+  const cs = shortStatusText(diag.clientStatus);
+  if (cs) parts.push(`<div class="diag-line" title="${esc(cs)}">${esc(cs)}</div>`);
+  if (/win/i.test(String(platform || ""))) {
+    const ws = shortStatusText(diag.wslStatus);
+    if (ws) parts.push(`<div class="diag-line" title="${esc(ws)}"><b>WSL</b> ${esc(ws)}</div>`);
+  }
+  return parts.length ? `<div class="dev-diag">${parts.join("")}</div>` : "";
+}
+
+function renderDevicesView() {
+  const data = state.data || {};
+  const list = data.devices || [];
+  const diagMap = {};
+  (data.diagnostics || []).forEach((dg) => {
+    if (dg && dg.deviceId != null) diagMap[String(dg.deviceId)] = dg;
+  });
+  const winMap = data.period_windows_by_device || {};
+  const onlineMap = new Map(list.map((d) => [String(d.deviceId || ""), deviceOnline(d, data)]));
+  const online = [...onlineMap.values()].filter((s) => s === true).length;
+  const clientSet = new Set();
+  list.forEach((d) => (d.trackedClients || []).forEach((c) => clientSet.add(c)));
+  const todaySum = list.reduce((a, d) => a + (Number((d.today || {}).totalTokens) || 0), 0);
+
+  $("#dev-summary").innerHTML = [
+    `<span class="sum-pill${riseCls()}"${riseStyle(0)}><svg class="ic" aria-hidden="true"><use href="${iconHref("i-monitor")}"/></svg>在线 <b>${online}</b> / 共 ${list.length} 台</span>`,
+    `<span class="sum-pill${riseCls()}"${riseStyle(1)}><svg class="ic" aria-hidden="true"><use href="${iconHref("i-terminal")}"/></svg>追踪客户端 <b>${clientSet.size}</b> 个</span>`,
+    `<span class="sum-pill${riseCls()}"${riseStyle(2)}><svg class="ic" aria-hidden="true"><use href="${iconHref("i-zap")}"/></svg>今日合计 <b>${fmtCompact(todaySum)}</b> tokens</span>`,
+    `<span class="sum-pill${riseCls()}"${riseStyle(3)}><svg class="ic" aria-hidden="true"><use href="${iconHref("i-clock")}"/></svg>离线状态由服务端按每台设备的上传间隔判定</span>`,
+  ].join("");
+
+  $("#dev-grid").innerHTML = list.map((d, di) => {
+    const devId = String(d.deviceId || "");
+    const on = onlineMap.get(devId) ?? null;
+    const name = d.hostname || devId.slice(0, 8) || "未知设备";
+    const shortId = devId.length > 12 ? devId.slice(0, 8) + "…" : devId;
+
+    const meta = [];
+    const plat = [d.platform, [d.osName, d.osVersion].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
+    if (plat) meta.push(["i-cpu", plat]);
+    const agent = [
+      d.agentVersion ? `agent v${String(d.agentVersion).replace(/^v/, "")}` : "",
+      d.agentRuntime || "",
+    ].filter(Boolean).join(" · ");
+    if (agent) meta.push(["i-activity", agent]);
+    const interval = fmtInterval(d.syncUploadIntervalMs);
+    if (interval) meta.push(["i-refresh", "同步 " + interval]);
+    const tz = (winMap[devId] || {}).timeZone;
+    if (tz) meta.push(["i-globe", String(tz)]);
+
+    const chips = (d.trackedClients || []).map((c) => {
+      const color = state.clientColors[c] || OTHER_COLOR;
+      return `<span class="dev-chip" style="background:${color}1f"><i style="background:${color}"></i>${esc(c)}</span>`;
+    }).join("");
+
+    const badges = [
+      d.projectsEnabled ? `<span class="dev-badge">项目统计</span>` : "",
+      d.historyAvailable ? `<span class="dev-badge">历史数据</span>` : "",
+    ].filter(Boolean).join("");
+
+    const stat = (label, key) => {
+      const v = Number(((d[key] || {}).totalTokens) || 0);
+      return `<div class="dev-stat"><span>${label}</span><b title="${fmtInt(v)} tokens">${fmtCompact(v)}</b></div>`;
+    };
+    const cost = `<div class="dev-stat"><span>累计费用</span><b>${fmtUsd((d.allTime || {}).costUsd)}</b></div>`;
+
+    return `<article class="dev-card${riseCls()}"${riseStyle(di)}>
+      <div class="dev-top">
+        <span class="status ${on === null ? "unknown" : on ? "on" : "off"}"><span class="status-dot"></span>${on === null ? "状态未知" : on ? "在线" : "离线"}</span>
+        <span class="dev-seen" title="${esc(fmtDateTime(d.receivedAt))}">最近上报 ${esc(relTime(d.receivedAt))}</span>
+      </div>
+      <div class="dev-title">
+        <h2 class="dev-host" title="${esc(d.hostname || devId)}">${esc(name)}</h2>
+        ${shortId ? `<span class="dev-id mono" title="${esc(devId)}">${esc(shortId)}</span>` : ""}
+      </div>
+      ${meta.length ? `<div class="dev-meta">${meta.map(([ic, m]) => `<span><svg class="ic" aria-hidden="true"><use href="${iconHref(ic)}"/></svg>${esc(m)}</span>`).join("")}</div>` : ""}
+      ${chips ? `<div class="dev-clients" title="AI 工具">${chips}</div>` : ""}
+      ${badges ? `<div class="dev-badges">${badges}</div>` : ""}
+      ${diagHtml(diagMap[devId], d.platform)}
+      <div class="dev-stats">${stat("今日", "today")}${stat("本月", "month")}${stat("累计", "allTime")}${cost}</div>
+    </article>`;
+  }).join("");
+}
+
+/* ================= 渲染层 · 配额与订阅 ================= */
+function ringSvg(pct, lv, animate) {
+  const R = 26;
+  const C = 2 * Math.PI * R;
+  const off = C * (1 - pct / 100);
+  /* 入场 draw（参考 spark-draw 700ms）：CSS keyframes 从 --ring-c（整周长）
+     画到属性目标值；日常数值变化仍走 stroke-dashoffset transition */
+  const draw = animate ? ` is-drawing" style="--ring-c:${C.toFixed(1)}` : "";
+  return `<span class="ring lv-${lv}">
+    <svg viewBox="0 0 64 64" aria-hidden="true">
+      <circle class="ring-bg" cx="32" cy="32" r="${R}"/>
+      <circle class="ring-fg${draw}" cx="32" cy="32" r="${R}" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>
+    </svg>
+    <span class="ring-num">${pct.toFixed(0)}%</span>
+  </span>`;
+}
+
+function renderLimits(limits) {
+  const panel = $("#limits-panel");
+  const grid = $("#lim-grid");
+  const list = (Array.isArray(limits) ? limits : []).filter((l) => l && typeof l === "object");
+  if (!list.length) {
+    panel.hidden = true;
+    grid.innerHTML = "";
+    return;
+  }
+  panel.hidden = false;
+  grid.innerHTML = list.map((l, li) => {
+    const provider = String(l.provider || "unknown");
+    const plan = l.planLabel ? `<span class="lim-plan">${esc(String(l.planLabel))}</span>` : "";
+    let bal = "";
+    if (l.balanceUsd != null && l.balanceUsd !== "" && !Number.isNaN(Number(l.balanceUsd))) {
+      bal = fmtUsd(l.balanceUsd);
+    } else if (typeof l.balance === "number") {
+      bal = fmtCompact(l.balance);
+    } else if (l.balance && typeof l.balance === "object") {
+      const cand = l.balance.remaining ?? l.balance.total ?? l.balance.value ?? l.balance.amount;
+      if (cand != null && !Number.isNaN(Number(cand))) bal = fmtCompact(cand);
+    }
+    const account = [l.accountLabel, l.accountName, l.accountEmail ? maskEmail(l.accountEmail) : ""]
+      .filter(Boolean).map(String).join(" · ");
+    const wins = (Array.isArray(l.windows) ? l.windows : []).map((w) => {
+      if (!w || typeof w !== "object") return "";
+      const label = w.label || w.name || w.window || "窗口";
+      const reset = fmtReset(w.resetsAt);
+      const metric = String(w.metric || "").toLowerCase();
+      const hasPct = w.usedPercent != null && Number.isFinite(Number(w.usedPercent));
+      const showMeter = w.showMeter !== false;
+      let meter = "";
+      let meta;
+      if (hasPct && showMeter) {
+        // percentage 窗口：圆环仪表
+        const pct = Math.max(0, Math.min(100, Number(w.usedPercent)));
+        const lv = pct < 60 ? "ok" : pct < 85 ? "warn" : "crit";
+        meter = ringSvg(pct, lv, state.entryFx);
+        meta = reset || "已用 " + pct.toFixed(0) + "%";
+      } else if (metric === "credits" && w.remaining != null && Number.isFinite(Number(w.remaining))) {
+        // credits 只有余额：显示绝对余额
+        meta = "剩余 " + fmtCompact(w.remaining) +
+          (w.limit != null ? " / 上限 " + fmtCompact(w.limit) : "") + (reset ? " · " + reset : "");
+      } else if (metric === "spend") {
+        meta = "已用 " + fmtUsd(w.used) + (w.limit != null ? " / " + fmtUsd(w.limit) : "") + (reset ? " · " + reset : "");
+      } else if (hasPct) {
+        // showMeter=false：纯文本百分比，不画仪表
+        meta = "已用 " + Number(w.usedPercent).toFixed(0) + "%" + (reset ? " · " + reset : "");
+      } else {
+        // 没有 usedPercent：不显示 0%
+        meta = reset || "用量未知";
+      }
+      return `<div class="lim-win">
+        ${meter}
+        <div class="lim-win-info">
+          <span class="lim-win-label">${esc(String(label))}</span>
+          <span class="lim-win-meta">${esc(meta)}</span>
+        </div>
+      </div>`;
+    }).filter(Boolean).join("");
+    return `<article class="lim-card${riseCls()}"${riseStyle(li)}>
+      <div class="lim-top">
+        <div class="lim-provider"><strong>${esc(fmtProvider(provider))}</strong>${plan}</div>
+        ${bal ? `<div class="lim-balance"><span>余额</span><b>${esc(bal)}</b></div>` : ""}
+      </div>
+      ${account ? `<div class="lim-account" title="${esc(account)}">${esc(account)}</div>` : ""}
+      ${wins ? `<div class="lim-wins">${wins}</div>` : ""}
+      ${l.device ? `<div class="lim-dev">来源设备 · ${esc(String(l.device))}</div>` : ""}
+    </article>`;
+  }).join("");
+}
+
+/* ---------- 订阅卡（§8：kind=subscription/topup 分别渲染） ---------- */
+const INTERVAL_UNITS = {
+  day: "天", week: "周", month: "个月", year: "年",
+  daily: "天", weekly: "周", monthly: "个月", yearly: "年", annual: "年",
+};
+
+/* 每3个月 / 每2年：interval × intervalCount */
+function fmtBillingInterval(it) {
+  const unit = INTERVAL_UNITS[String(it.interval || "month").toLowerCase()] || "个月";
+  const count = Math.max(1, Number(it.intervalCount) || 1);
+  return count > 1 ? `每 ${count} ${unit}` : `每${unit}`;
+}
+
+/* accountKey 只显示截断值 */
+function truncateKey(v) {
+  const s = String(v || "");
+  if (!s) return "";
+  return s.length > 8 ? s.slice(0, 6) + "…" : s;
+}
+
+function renderSubs() {
+  const panel = $("#subs-panel");
+  const grid = $("#sub-grid");
+  const aux = state.aux.subs;
+  if (aux.status === "loading" || aux.status === "idle") {
+    panel.hidden = false;
+    $("#subs-sub").textContent = "";
+    grid.innerHTML = `<p class="aux-note">正在加载订阅清单…</p>`;
+    return;
+  }
+  if (aux.status === "error" || aux.status === "unsupported") {
+    panel.hidden = false;
+    $("#subs-sub").textContent = "";
+    grid.innerHTML = `<p class="aux-note err">订阅清单暂不可用</p>`;
+    return;
+  }
+  const s = aux.data;
+  const list = s && Array.isArray(s.subscriptions) ? s.subscriptions : [];
+  if (!list.length) {
+    panel.hidden = true;
+    grid.innerHTML = "";
+    return;
+  }
+  panel.hidden = false;
+  $("#subs-sub").textContent = s.updated_at ? "更新于 " + fmtDateTime(s.updated_at) : "";
+  grid.innerHTML = list.map((it, si) => {
+    it = it && typeof it === "object" ? it : {};
+    const kind = String(it.kind || "subscription").toLowerCase() === "topup" ? "topup" : "subscription";
+    const topUps = Array.isArray(it.topUps) ? it.topUps : [];
+    const binding = it.binding && typeof it.binding === "object"
+      ? [it.binding.profileName, it.binding.accountEmail ? maskEmail(it.binding.accountEmail) : "", truncateKey(it.binding.accountKey)]
+          .filter(Boolean).join(" · ")
+      : (it.binding ? String(it.binding) : "");
+
+    if (kind === "topup") {
+      // 充值台账：次数 / 累计 / 最近充值；不显示月费与续费
+      const topTotal = topUps.reduce((a, t) => a + (Number(t && t.amountMinor) || 0), 0);
+      const latest = topUps
+        .map((t) => String((t && (t.date || t.at)) || ""))
+        .filter(Boolean).sort().pop();
+      return `<article class="sub-card${riseCls()}"${riseStyle(si)}>
+        <div class="sub-top">
+          <span class="sub-provider"><i></i>${esc(fmtProvider(it.provider))}</span>
+          <span class="renew-badge">充值台账</span>
+        </div>
+        <h3 class="sub-plan">${esc(it.planName || "按量充值")}</h3>
+        <div class="sub-meta">
+          <span>充值 <b>${topUps.length}</b> 次</span>
+          <span>累计 <b>${esc(fmtMoney(topTotal, it.currency))}</b></span>
+          ${latest ? `<span>最近充值 <b>${esc(latest.slice(0, 10))}</b></span>` : ""}
+        </div>
+        ${binding ? `<div class="sub-binding" title="${esc(binding)}">${esc(binding)}</div>` : ""}
+      </article>`;
+    }
+
+    const start = it.startDate ? String(it.startDate).slice(0, 10) : "—";
+    const renewal = it.nextRenewalOverride ? String(it.nextRenewalOverride).slice(0, 10) : "";
+    const tops = topUps.length
+      ? `<div class="sub-topups">
+          <p class="sub-topups-title">加购记录（${topUps.length}）</p>
+          <ul>${topUps.map((t) => {
+            const tLabel = (t && (t.label || t.name || t.title)) || "加购";
+            const tAt = t && (t.date || t.at || t.createdAt);
+            return `<li><span>${esc(String(tLabel))}${tAt ? ` <time>${esc(String(tAt).slice(0, 10))}</time>` : ""}</span><b>${esc(fmtMoney(t && t.amountMinor, it.currency))}</b></li>`;
+          }).join("")}</ul>
+        </div>`
+      : "";
+    return `<article class="sub-card${riseCls()}"${riseStyle(si)}>
+      <div class="sub-top">
+        <span class="sub-provider"><i></i>${esc(fmtProvider(it.provider))}</span>
+        <span class="renew-badge${it.autoRenew !== false ? " on" : ""}">${it.autoRenew !== false ? "自动续费" : "手动续费"}</span>
+      </div>
+      <h3 class="sub-plan">${esc(it.planName || "—")}</h3>
+      <div class="sub-amount"><b>${esc(fmtMoney(it.amountMinor, it.currency))}</b><span>/ ${esc(fmtBillingInterval(it))}</span></div>
+      <div class="sub-meta">
+        <span><svg class="ic" aria-hidden="true"><use href="${iconHref("i-calendar")}"/></svg>开始于 <b>${esc(start)}</b></span>
+        ${renewal ? `<span>下次续费 <b>${esc(renewal)}</b></span>` : ""}
+      </div>
+      ${binding ? `<div class="sub-binding" title="${esc(binding)}">${esc(binding)}</div>` : ""}
+      ${tops}
+    </article>`;
+  }).join("");
+}
+
+function renderQuotaView() {
+  const data = state.data || {};
+  renderLimits(data.limits);
+  renderSubs();
+  const hasLimits = !$("#limits-panel").hidden;
+  const hasSubs = !$("#subs-panel").hidden;
+  $("#quota-empty").hidden = hasLimits || hasSubs;
+}
+
+/* ================= 渲染层 · 历史 ================= */
+const hmLevel = (v, max) => (v > 0 ? Math.min(5, Math.max(1, Math.ceil((v / max) * 5))) : 0);
+
+function bindHmCells(root, titleFn) {
+  root.querySelectorAll(".hm-cell[data-v]").forEach((cell) => {
+    bindHover(cell, null, () => {
+      const v = Number(cell.dataset.v) || 0;
+      return tipHtml(titleFn(cell), [["tokens", fmtInt(v)]]);
+    });
+  });
+}
+
+/* 今日 24 小时桶：契约优先读 activity.hourly_today{day,time_zone,buckets}
+ * （校验 day == dashboard_period.today.key，防跨日串桶），回退旧 activity.hourly 数组 */
+function hourlyBuckets(act) {
+  act = act || {};
+  const dp = (state.data || {}).dashboard_period || {};
+  const todayKey = dp.today && dp.today.key;
+  const ht = act.hourly_today;
+  if (ht && Array.isArray(ht.buckets) && (!todayKey || ht.day === todayKey)) return ht.buckets;
+  return Array.isArray(act.hourly) ? act.hourly : [];
+}
+
+/* 日：今日 24 小时格子（桶起点为后端按仪表盘时区换算后的值，直接使用） */
+function renderHmDay(hm, hourly) {
+  const byHour = new Array(24).fill(0);
+  (hourly || []).forEach((h) => {
+    const i = Number(h && h.hour);
+    if (i >= 0 && i < 24) byHour[i] = Number(h.total) || 0;
+  });
+  const max = Math.max(...byHour, 1);
+  $("#act-sub").textContent = `今日 24 小时活动（${dashTz()}）`;
+  hm.innerHTML = `<div class="hm-day">` + byHour
+    .map((v, i) => `<span class="hm-cell hm-d hm-${hmLevel(v, max)}" data-h="${i}" data-v="${v}">${i}</span>`)
+    .join("") + `</div>`;
+  bindHmCells(hm, (cell) => {
+    const h = Number(cell.dataset.h);
+    return `今日 ${pad2(h)}:00–${pad2((h + 1) % 24)}:00`;
+  });
+}
+
+/* 周：GitHub 风格，最近 12 周 × 7 天（「今天」按仪表盘时区求值） */
+function renderHmWeek(hm, daily) {
+  const map = new Map((daily || []).map((r) => [r.day, Number(r.total) || 0]));
+  const todayStr = dayKeyTz(new Date(), dashTz());
+  const dow = (dowOfKey(todayStr) + 6) % 7; // 周一开头
+  const mondayKey = keyAdd(todayStr, -dow);
+  const startKey = keyAdd(mondayKey, -7 * 11);
+
+  const grid = [];
+  const months = [];
+  let max = 1;
+  for (let w = 0; w < 12; w++) {
+    for (let d = 0; d < 7; d++) {
+      const str = keyAdd(startKey, w * 7 + d);
+      const future = str > todayStr;
+      const v = future ? 0 : map.get(str) || 0;
+      if (v > max) max = v;
+      grid.push({ str, v, future });
+    }
+    const weekDays = grid.slice(w * 7, w * 7 + 7);
+    const firstOfMonth = weekDays.find((c) => c.str.slice(8) === "01");
+    if (firstOfMonth) months.push(`${Number(firstOfMonth.str.slice(5, 7))}月`);
+    else if (w === 0) months.push(`${Number(weekDays[0].str.slice(5, 7))}月`);
+    else months.push("");
+  }
+  $("#act-sub").textContent = `最近 12 周 · 每格一天（${dashTz()}）`;
+  hm.innerHTML = `<div class="hm-week">
+    <div class="hm-wk-months">${months.map((m) => `<span>${m}</span>`).join("")}</div>
+    <div class="hm-wk-main">
+      <div class="hm-wk-gutter"><span style="grid-row:1">一</span><span style="grid-row:3">三</span><span style="grid-row:5">五</span></div>
+      <div class="hm-wk-grid">${grid
+        .map((c) =>
+          c.future
+            ? `<span class="hm-cell hm-w hm-skip"></span>`
+            : `<span class="hm-cell hm-w hm-${hmLevel(c.v, max)}" data-day="${c.str}" data-v="${c.v}"></span>`
+        )
+        .join("")}</div>
+    </div>
+  </div>`;
+  bindHmCells(hm, (cell) => cell.dataset.day);
+}
+
+/* 月：本月日历网格 + 右侧本月摘要（月界/近 7 天/周环比均按仪表盘时区的日期键） */
+function renderHmMonth(hm, daily) {
+  const map = new Map((daily || []).map((r) => [r.day, Number(r.total) || 0]));
+  const tz = dashTz();
+  const todayStr = dayKeyTz(new Date(), tz);
+  const dp = (state.data || {}).dashboard_period || {};
+  // 本月键优先取后端 dashboard_period.month.key，回退时区换算
+  const monthKey = String((dp.month && dp.month.key) || todayStr.slice(0, 7));
+  const y = Number(monthKey.slice(0, 4));
+  const m = Number(monthKey.slice(5, 7)) - 1;
+  const daysIn = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const lead = (dowOfKey(monthKey + "-01") + 6) % 7;
+  let max = 1;
+  const cells = [];
+  for (let d = 1; d <= daysIn; d++) {
+    const str = `${y}-${pad2(m + 1)}-${pad2(d)}`;
+    const v = map.get(str) || 0;
+    if (v > max) max = v;
+    cells.push({ d, v });
+  }
+  let total = 0;
+  let activeDays = 0;
+  let best = null;
+  cells.forEach((c) => {
+    total += c.v;
+    if (c.v > 0) {
+      activeDays += 1;
+      if (!best || c.v > best.v) best = c;
+    }
+  });
+  const avg = activeDays ? Math.round(total / activeDays) : 0;
+  const last7 = [];
+  for (let i = 6; i >= 0; i--) {
+    const str = keyAdd(todayStr, -i);
+    last7.push({ str, v: map.get(str) || 0 });
+  }
+  const sum7 = last7.reduce((a, x) => a + x.v, 0);
+  const max7 = Math.max(...last7.map((x) => x.v), 1);
+  const dow = (dowOfKey(todayStr) + 6) % 7; // 周一开头
+  let wkThis = 0;
+  let wkPrev = 0;
+  for (let i = 0; i <= dow; i++) {
+    wkThis += map.get(keyAdd(todayStr, -(dow - i))) || 0;
+    wkPrev += map.get(keyAdd(todayStr, -(dow + 7 - i))) || 0;
+  }
+  const wowPct = wkPrev > 0 ? ((wkThis - wkPrev) / wkPrev) * 100 : null;
+  const wowAbs = wowPct == null ? 0 : Math.abs(wowPct);
+  const wow = wowPct == null
+    ? ""
+    : `<span class="hm-wow ${wowPct >= 0 ? "up" : "down"}" title="本周至今 ${fmtInt(wkThis)} · 上周同期 ${fmtInt(wkPrev)} tokens">` +
+      `${wowPct >= 0 ? "↑" : "↓"} ${wowAbs >= 100 ? Math.round(wowAbs) : wowAbs.toFixed(1)}%<em>周环比</em></span>`;
+  const sparkBars = last7.map((x) =>
+    `<i${x.v > 0 ? "" : ' class="is-zero"'} data-day="${x.str}" data-v="${x.v}" ` +
+    `style="height:${((x.v / max7) * 100).toFixed(1)}%"></i>`
+  ).join("");
+  $("#act-sub").textContent = `${y} 年 ${m + 1} 月逐日活动（${tz}）`;
+  hm.innerHTML = `<div class="hm-mon-wrap">
+    <div class="hm-mon">
+      <div class="hm-mon-head">${["一", "二", "三", "四", "五", "六", "日"].map((d) => `<span>${d}</span>`).join("")}</div>
+      <div class="hm-mon-grid">` +
+      Array.from({ length: lead }).map(() => `<span class="hm-cell hm-m hm-skip"></span>`).join("") +
+      cells.map((c) => `<span class="hm-cell hm-m hm-${hmLevel(c.v, max)}" data-v="${c.v}" data-d="${c.d}">${c.d}</span>`).join("") +
+      `</div>
+    </div>
+    <div class="hm-mon-sum">
+      <p class="hm-mon-sum-title">${m + 1} 月摘要</p>
+      <div class="hm-sum-grid">
+        <div class="hm-sum"><span>本月总量</span><b title="${fmtInt(total)} tokens">${fmtCompact(total)}</b></div>
+        <div class="hm-sum"><span>活跃天数</span><b>${activeDays} 天</b></div>
+        <div class="hm-sum"><span>最高单日</span>${best
+          ? `<b title="${fmtInt(best.v)} tokens">${fmtCompact(best.v)} · ${m + 1}月${best.d}日</b>`
+          : `<b>—</b>`}</div>
+      </div>
+      <div class="hm-sum-mid">
+        <div class="hm-avg"><span>日均 tokens</span><b title="${fmtInt(avg)} tokens">${fmtCompact(avg)}</b><em>按活跃天</em></div>
+        ${wow}
+      </div>
+      <div class="hm-spark">
+        <div class="hm-spark-head"><span>近 7 天趋势</span><b title="${fmtInt(sum7)} tokens">合计 ${fmtCompact(sum7)}</b></div>
+        <div class="hm-spark-bars">${sparkBars}</div>
+      </div>
+    </div>
+  </div>`;
+  bindHmCells(hm, (cell) => `${m + 1}月${cell.dataset.d}日`);
+  hm.querySelectorAll(".hm-spark-bars i").forEach((bar) => {
+    bindHover(bar, null, () => tipHtml(bar.dataset.day, [["tokens", fmtInt(bar.dataset.v)]]));
+  });
+}
+
+/* §6：采样覆盖率 / 首次/最近采样 / attribution_mode 展示 */
+function renderCoverage(act) {
+  const el = $("#hm-coverage");
+  const warn = $("#hm-cov-warn");
+  const devEl = $("#hm-cov-devices");
+  if (!el) return;
+  const cov = act && act.coverage;
+  if (!cov || typeof cov !== "object") {
+    el.hidden = true;
+    if (warn) warn.hidden = true;
+    if (devEl) devEl.hidden = true;
+    return;
+  }
+  const parts = [];
+  parts.push(`时区 <b>${esc(String(act.time_zone || (state.data || {}).dashboard_time_zone || "UTC"))}</b>`);
+  if (cov.coverage_percent != null) {
+    /* 契约钳制 0–100；前端再钳一次防御旧载荷 */
+    const pct = Math.max(0, Math.min(100, Number(cov.coverage_percent) || 0));
+    parts.push(`采样覆盖率 <b>${pct.toFixed(1)}%</b>`);
+  }
+  if (cov.first_sample_at) parts.push(`首次采样 <b>${esc(relTime(cov.first_sample_at))}</b>`);
+  if (cov.last_sample_at) parts.push(`最近采样 <b>${esc(relTime(cov.last_sample_at))}</b>`);
+  if (cov.attribution_mode) {
+    const MODE = {
+      delta: "增量归属",
+      "delta-low-coverage": "增量归属（低覆盖）",
+      "delta-with-reset": "增量归属（含计数重置）",
+      none: "无归属",
+    };
+    parts.push(`归属模式 <b>${esc(MODE[String(cov.attribution_mode)] || String(cov.attribution_mode))}</b>`);
+  }
+  if (act.daily_mixed_basis === true) {
+    parts.push("长期日归档 <b>混合日期口径</b>");
+  }
+  el.innerHTML = parts.join(" · ");
+  el.hidden = false;
+  /* 逐设备覆盖率诊断（契约 coverage.devices[]：expected/observed/gap/reset） */
+  if (devEl) {
+    const nameOf = {};
+    ((state.data || {}).devices || []).forEach((d) => {
+      if (d && d.deviceId != null) nameOf[String(d.deviceId)] = d.hostname || String(d.deviceId);
+    });
+    const devs = (Array.isArray(cov.devices) ? cov.devices : []).filter((d) => d && typeof d === "object");
+    if (devs.length) {
+      devEl.innerHTML = "逐设备采样（期望/实到）· " + devs.map((dv) => {
+        const id = String(dv.device_id || "");
+        const name = nameOf[id] || id || "未知设备";
+        const exp = Number(dv.expected_buckets) || 0;
+        const obs = Number(dv.observed_buckets) || 0;
+        const extra = [];
+        if (Number(dv.gap_count) > 0) extra.push(`缺口 ${Number(dv.gap_count)}`);
+        if (Number(dv.reset_count) > 0) extra.push(`重置 ${Number(dv.reset_count)}`);
+        return `<span class="hm-cov-dev"><b>${esc(name)}</b> ${obs}/${exp}${extra.length ? ` · ${esc(extra.join(" · "))}` : ""}</span>`;
+      }).join(" ");
+      devEl.hidden = false;
+    } else {
+      devEl.hidden = true;
+    }
+  }
+  const low = cov.attribution_mode === "delta-low-coverage" ||
+    (cov.coverage_percent != null && Number(cov.coverage_percent) < 60);
+  if (warn) {
+    const warnings = [];
+    if (low) warnings.push("小时分布为采样增量归属，可能集中在首次采样时段。");
+    if (act.daily_mixed_basis === true) {
+      warnings.push("七天前数据来自设备本地日锚点；跨时区设备的长期日历不可视为统一仪表盘日。");
+    }
+    warn.textContent = warnings.join(" ");
+    warn.hidden = warnings.length === 0;
+  }
+}
+
+function renderActivity() {
+  const act = (state.data && state.data.activity) || {};
+  floatTip.hide();
+  const hm = $("#hm");
+  if (state.actView === "day") renderHmDay(hm, hourlyBuckets(act));
+  else if (state.actView === "week") renderHmWeek(hm, act.daily || []);
+  else renderHmMonth(hm, act.daily || []);
+  renderCoverage(act);
+}
+
+/* ---------- 日归档表（滚动加载） ----------
+ * 优先消费扩展字段 data.history[]（{day, tokens, costUsd, perClient, perModel}）；
+ * 无该字段时退化为 trend_models + activity.daily 合并（仅 tokens/模型构成）。 */
+const DOW_NAMES = ["日", "一", "二", "三", "四", "五", "六"];
+
+function historyRows() {
+  const d = state.data || {};
+  if (Array.isArray(d.history) && d.history.length) {
+    return d.history
+      .filter((h) => h && h.day)
+      .map((h) => ({
+        day: String(h.day).slice(0, 10),
+        tokens: Number(h.tokens ?? h.total) || 0,
+        costUsd: h.costUsd != null ? Number(h.costUsd) : null,
+        mix: h.perClient && typeof h.perClient === "object" ? { kind: "client", map: h.perClient } : null,
+        mixModel: h.perModel && typeof h.perModel === "object" ? h.perModel : null,
+      }))
+      .sort((a, b) => (a.day < b.day ? 1 : -1));
+  }
+  // 回退：trend_models（30 天，模型构成）+ activity.daily（90 天，仅总量）
+  const merged = new Map();
+  (d.trend_models || []).forEach((r) => {
+    if (!r || !r.day) return;
+    merged.set(r.day, {
+      day: r.day, tokens: Number(r.total) || 0, costUsd: null,
+      mix: null, mixModel: r.models || null,
+    });
+  });
+  (d.trend || []).forEach((r) => {
+    if (!r || !r.day) return;
+    if (!merged.has(r.day)) merged.set(r.day, { day: r.day, tokens: Number(r.total) || 0, costUsd: null, mix: null, mixModel: null });
+  });
+  ((d.activity || {}).daily || []).forEach((r) => {
+    if (!r || !r.day) return;
+    if (!merged.has(r.day)) merged.set(r.day, { day: r.day, tokens: Number(r.total) || 0, costUsd: null, mix: null, mixModel: null });
+  });
+  return [...merged.values()].sort((a, b) => (a.day < b.day ? 1 : -1));
+}
+
+function histRowHtml(row) {
+  const dowNum = dowOfKey(row.day);
+  const dow = dowNum == null ? "" : DOW_NAMES[dowNum];
+  const isToday = row.day === dayKeyTz(new Date(), dashTz());
+  // 构成迷你条：优先 perClient（客户端配色），其次 perModel（模型配色）
+  let mixHtml = `<span class="mute" style="font-size:11px">—</span>`;
+  const src = row.mix ? row.mix.map : row.mixModel;
+  if (src && row.tokens > 0) {
+    const colorMap = row.mix ? state.clientColors : state.modelColors;
+    const parts = Object.entries(src)
+      .map(([k, v]) => [k, Number(v) || 0])
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1]);
+    if (parts.length) {
+      mixHtml = `<span class="hist-mix" title="${esc(parts.map(([k, v]) => `${k} ${pct1(v, row.tokens)}`).join(" · "))}">` +
+        parts.map(([k, v]) =>
+          `<i style="width:${((v / row.tokens) * 100).toFixed(2)}%;background:${colorMap[k] || OTHER_COLOR}"></i>`
+        ).join("") + `</span>`;
+    }
+  }
+  /* complete=false 或 coverage 偏低 → 该日数据不完整标记 */
+  const incomplete = row.complete === false || (row.coverage != null && row.coverage < 60);
+  const covTitle = row.coverage != null ? `覆盖率 ${Number(row.coverage).toFixed(1)}%` : "部分设备归档损坏或缺失";
+  const incBadge = incomplete
+    ? `<span class="hist-inc" title="${esc(covTitle)}">数据不完整</span>`
+    : "";
+  return `<tr>
+    <td class="${isToday ? "hist-today" : ""}"><span class="mono">${esc(row.day)}</span><span class="hist-dow">周${dow}${isToday ? " · 今天" : ""}</span>${incBadge}</td>
+    <td class="num" title="${fmtInt(row.tokens)} tokens">${fmtCompact(row.tokens)}</td>
+    <td class="num">${row.costUsd == null ? "—" : fmtUsd(row.costUsd)}</td>
+    <td class="hist-mix-col">${mixHtml}</td>
+  </tr>`;
+}
+
+function renderHistoryTable() {
+  const aux = state.aux.history;
+  const rows = aux.rows;
+  const body = $("#hist-body");
+  const sentinel = $("#hist-sentinel");
+  $("#hist-empty").hidden = !(aux.status === "empty" || (aux.status !== "loading" && !rows.length));
+  const retention = aux.retentionDays || 370;
+  let sub;
+  if (aux.fallback) {
+    sub = `按日期倒序 · 共 ${rows.length} 天 · 保留 ${retention} 天（服务端分页接口不可用，显示概览内嵌数据）`;
+  } else if (aux.status === "error") {
+    sub = "日归档加载失败 · 稍后自动重试";
+  } else {
+    const total = aux.totalDays != null ? `共 ${aux.totalDays} 天` : `已加载 ${rows.length} 天`;
+    sub = `按日期倒序 · ${total} · 保留 ${retention} 天`;
+    /* 日口径提示：day_basis=device-local 或多设备时区混合时必须显式声明 */
+    if (aux.dayBasis === "device-local") sub += " · 日口径：设备本地日";
+    if (aux.mixedTz) sub += "（设备时区不一致，按各设备本地日聚合）";
+    if (aux.partial) sub += " · 部分日期数据不完整";
+  }
+  $("#hist-sub").textContent = sub;
+  body.innerHTML = rows.map(histRowHtml).join("");
+  if (aux.status === "error" && !rows.length) {
+    body.innerHTML = `<tr><td colspan="4" class="aux-note err">日归档暂不可用</td></tr>`;
+  }
+  const more = !aux.done && aux.status !== "error";
+  sentinel.hidden = !more && aux.status !== "loading";
+  $("#hist-more").textContent = more ? "加载更早记录" : "";
+}
+
+function renderHistoryView() {
+  renderActivity();
+  renderHistoryTable();
+}
+
+/* ================= 渲染总入口 ================= */
+function renderAll() {
   const data = state.data;
   if (!data) return;
-  $("#generated-at").textContent = data.generated_at ? "数据生成于 " + fmtDateTime(data.generated_at) : "";
+  updateTopbar();
   const devices = data.devices || [];
   const empty = devices.length === 0;
   $("#empty-hero").hidden = !empty;
-  $("#view-main").hidden = empty;
+  document.querySelectorAll(".view").forEach((s) => {
+    s.hidden = empty || s.dataset.view !== state.view;
+  });
   if (empty) return;
-  if (firstLoad && !reducedMotion()) {
-    // 首屏：子面板错峰浮现（--i 控制错峰延迟）
-    const main = $("#view-main");
-    main.classList.add("boot");
-    Array.from(main.children).forEach((el, i) => el.style.setProperty("--i", i));
-  }
-
   rebuildColorMaps(data);
-  renderPeriods(data);
-  renderTrend();
-  renderDist("#model-dist", "#model-empty", "#model-dist-sub", (data.totals || {})[state.modelPeriod], "model");
-  renderDist("#client-dist", "#client-empty", "#client-dist-sub", (data.totals || {})[state.clientPeriod], "client");
-  renderMatrix();
-  renderActivity();
-  renderProjects(data.projects);
-  renderLimits(data.limits);
-  renderSubs();
-  renderSessions();
-  renderDevices(devices, data.diagnostics);
+  /* 首载 skeleton → 内容：面板做 cross-fade + cross-blur 400ms reveal（14 的低成本替代） */
+  if (state.entryFx) $(".content").classList.add("is-revealing");
+  renderView(state.view);
 }
 
-/* ---------- 分段控件（滑动胶囊） ---------- */
-function positionPill(seg) {
+/* ================= 分段控件（滑动胶囊） ================= */
+function positionPill(seg, instant) {
   const active = seg.querySelector("button.is-active");
   const pill = seg.querySelector(".seg-pill");
   if (!active || !pill) return;
   const w = active.offsetWidth;
-  if (!w) return; // 容器仍 hidden（密钥门阶段）：等可见后由 positionAllPills 定位
+  if (!w) return; // 容器不可见时跳过，由 positionAllPills 兜底
+  /* 首次定位与 resize 必须 transition:none 写入（reflow 后恢复）——否则
+     pill 从 translateX(0)/width:0 动画滑进来（catalog 16 常见错误清单） */
+  const snap = instant || !pill.dataset.set;
+  if (snap) pill.style.transition = "none";
   pill.style.width = w + "px";
   pill.style.transform = `translateX(${active.offsetLeft}px)`;
+  if (snap) {
+    void pill.offsetWidth; // force reflow
+    pill.style.transition = "";
+    pill.dataset.set = "1";
+  }
 }
 
-function positionAllPills() {
-  document.querySelectorAll(".seg").forEach(positionPill);
+function positionAllPills(instant) {
+  document.querySelectorAll(".seg").forEach((s) => positionPill(s, instant));
 }
 
-function initSeg(sel, onChange, attr = "data-p") {
+function initSeg(sel, onChange, attr) {
+  attr = attr || "data-p";
   const seg = $(sel);
-  seg.addEventListener("click", (e) => {
-    const btn = e.target.closest(`button[${attr}]`);
+  const activate = (btn) => {
     if (!btn || btn.classList.contains("is-active")) return;
-    seg.querySelectorAll("button").forEach((b) => b.classList.remove("is-active"));
+    seg.querySelectorAll("button").forEach((b) => {
+      b.classList.remove("is-active");
+      b.setAttribute("aria-selected", "false");
+      b.setAttribute("tabindex", "-1");
+    });
     btn.classList.add("is-active");
+    btn.setAttribute("aria-selected", "true");
+    btn.setAttribute("tabindex", "0");
     positionPill(seg);
     onChange(btn.getAttribute(attr));
+  };
+  seg.addEventListener("click", (e) => {
+    activate(e.target.closest(`button[${attr}]`));
   });
-  // 初始定位（等布局完成后；不可见时跳过，首次数据渲染后由 positionAllPills 兜底）
-  requestAnimationFrame(() => positionPill(seg));
+  /* §10：方向键 / Home / End / Enter / Space 键盘操作（tablist 语义） */
+  seg.addEventListener("keydown", (e) => {
+    const btns = [...seg.querySelectorAll(`button[${attr}]`)];
+    const i = btns.indexOf(document.activeElement);
+    if (i < 0) return;
+    let j = null;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") j = (i + 1) % btns.length;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") j = (i - 1 + btns.length) % btns.length;
+    else if (e.key === "Home") j = 0;
+    else if (e.key === "End") j = btns.length - 1;
+    if (j != null) {
+      e.preventDefault();
+      btns[j].focus();
+      activate(btns[j]);
+    }
+    // Enter/Space 由原生 button click 触发（click 处理器已覆盖）
+  });
+  requestAnimationFrame(() => positionPill(seg, true)); // 首帧定位不带动画
 }
 
-/* ---------- 加载与轮询 ---------- */
+/* ================= 骨架屏 ================= */
+function skeletonAll() {
+  $("#provider-panel").hidden = true;
+  $("#kpis").innerHTML = Array.from({ length: 3 }).map(() =>
+    `<div class="kpi-card">
+      <div class="sk" style="height:11px;width:52px"></div>
+      <div class="sk" style="height:30px;width:96px;margin-top:12px"></div>
+      <div class="sk" style="height:11px;width:70%;margin-top:12px"></div>
+      <div class="sk" style="height:10px;width:100%;margin-top:14px;border-radius:999px"></div>
+    </div>`
+  ).join("");
+  $("#trend-chart").innerHTML = "";
+  $("#trend-legend").hidden = true;
+  $("#trend-empty").hidden = true;
+  for (const id of ["#model-dist", "#client-dist"]) {
+    $(id).innerHTML = Array.from({ length: 4 }).map((_, i) =>
+      `<div style="padding:12px 0"><div class="sk" style="height:14px;width:${50 + ((i * 29) % 45)}%"></div></div>`
+    ).join("");
+    $(id).style.display = "block";
+  }
+  $("#model-empty").hidden = true;
+  $("#client-empty").hidden = true;
+  $("#dev-grid").innerHTML = Array.from({ length: 3 }).map(() =>
+    `<article class="dev-card">
+      <div class="sk" style="height:12px;width:40%"></div>
+      <div class="sk" style="height:16px;width:62%"></div>
+      <div class="sk" style="height:11px;width:80%"></div>
+      <div class="sk" style="height:34px;width:100%;margin-top:6px"></div>
+    </article>`
+  ).join("");
+}
+
+/* ================= 加载与轮询 ================= */
 function stopPolling() {
   if (state.pollTimer) {
     clearTimeout(state.pollTimer);
@@ -1482,44 +2323,318 @@ function stopPolling() {
 
 function schedulePoll() {
   stopPolling();
-  if (!state.alive) return;
+  // 演示模式不轮询；页面隐藏时暂停轮询（§3-6）
+  if (!state.alive || state.demo || document.hidden) return;
   state.pollTimer = setTimeout(() => load(false), POLL_MS);
 }
 
-async function load(manual) {
-  if (state.loading) return;
-  state.loading = true;
-  const refreshBtn = $("#refresh");
-  if (manual) refreshBtn.classList.add("is-spinning");
-  if (!state.booted) skeletonAll();
-  try {
-    // 订阅清单为独立接口；老后端无此路由或鉴权失败时按无数据处理（面板隐藏）
-    const [data, subs] = await Promise.all([
-      api(OVERVIEW_API),
-      api(SUBS_API).catch(() => null),
-    ]);
-    const firstLoad = !state.booted;
-    state.data = data;
-    state.subs = subs;
-    state.booted = true;
-    hideGate();
-    renderAll(firstLoad);
-    // 首渲染后 shell 可见，此时再定位 seg 胶囊（修复首屏激活项文字不可见）
-    requestAnimationFrame(positionAllPills);
-    setConn("ok", "已连接");
-    $("#updated").textContent = "更新于 " + fmtDateTime(new Date().toISOString()).slice(11);
-    if (manual) toast("已刷新");
-    schedulePoll();
-  } catch (err) {
-    handleApiError(err);
-    if (state.alive) schedulePoll(); // 非鉴权错误也继续轮询
-  } finally {
-    state.loading = false;
-    refreshBtn.classList.remove("is-spinning");
+/* §3：中止一切在途请求（主请求 + 辅助接口） */
+function abortAllRequests() {
+  if (state.activeRequest) state.activeRequest.abort();
+  for (const key of ["providers", "subs", "history"]) {
+    const aux = state.aux[key];
+    if (aux.aborter) aux.aborter.abort();
   }
 }
 
-/* ---------- 事件 ---------- */
+/* §4：顶部状态六态区分 */
+function updateConn() {
+  const d = state.data;
+  if (!state.alive || !d) {
+    setConn("off", "未连接");
+    return;
+  }
+  if (state.demo) {
+    setConn("ok", "演示模式");
+    return;
+  }
+  let text;
+  if (state.staleData) text = "数据可能已过期";
+  else if (d.snapshot_degraded) text = "快照历史降级";
+  else if (d.partial) text = "部分数据不可用";
+  else text = "正常";
+  const outbox = Number(d.pending_outbox) || 0;
+  if (outbox > 0) text += ` · 待同步快照 ${outbox} 条`;
+  setConn(text === "正常" ? "ok" : "warn", text);
+}
+
+async function load(manual) {
+  /* §3-1/§3-3：新请求（含换密钥后的请求）中止旧请求，不被 state.loading 丢弃 */
+  if (state.activeRequest) state.activeRequest.abort();
+  const gen = ++state.requestGeneration;
+  const rev = state.tokenRevision;
+  const ctl = new AbortController();
+  state.activeRequest = ctl;
+  state.loading = true;
+  const fresh = () => gen === state.requestGeneration && rev === state.tokenRevision; // §3-4
+  const refreshBtn = $("#refresh");
+  if (manual) {
+    // §3-5：手动刷新期间按钮 disabled + aria-busy
+    refreshBtn.disabled = true;
+    refreshBtn.setAttribute("aria-busy", "true");
+    refreshBtn.classList.add("is-spinning");
+  }
+  const firstBoot = !state.booted;
+  if (firstBoot) skeletonAll();
+  try {
+    // §4：主加载只等 Overview；辅助接口独立异步
+    const data = await dataApi.overview(ctl.signal);
+    if (!fresh()) return; // 旧响应不得覆盖新密钥/新请求状态
+    state.data = data;
+    state.staleData = false;
+    state.booted = true;
+    hideGate();
+    if (firstBoot) state.entryFx = true; // 首载：skeleton → reveal + 入场 stagger
+    renderAll();
+    requestAnimationFrame(() => positionAllPills(true));
+    updateConn();
+    $("#updated").textContent = "更新于 " + fmtDateTime(new Date().toISOString()).slice(11);
+    if (manual) toast(state.demo ? "已重新生成演示数据" : "已刷新");
+    // §4-2/3/4：provider-status 独立异步；配额/历史切到对应页才加载
+    loadProviderStatus();
+    if (state.view === "quota") ensureSubs();
+    if (state.view === "history" && state.aux.history.status === "idle") resetHistory();
+    schedulePoll();
+  } catch (err) {
+    if ((err && err.name === "AbortError") || !fresh()) return;
+    if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+      store.token = ""; // §3-9：清除失效 Token
+      state.tokenRevision++;
+      handleApiError(err);
+      return;
+    }
+    if (state.data) {
+      // §3-10：网络失败保留上一份成功数据
+      state.staleData = true;
+      updateConn();
+      toast((err && err.message ? err.message : "刷新失败") + "，显示上一份数据", true);
+      if (state.alive) schedulePoll();
+      return;
+    }
+    handleApiError(err);
+    if (state.alive) schedulePoll();
+  } finally {
+    if (fresh()) {
+      state.loading = false;
+      state.activeRequest = null;
+      refreshBtn.disabled = false;
+      refreshBtn.removeAttribute("aria-busy");
+      refreshBtn.classList.remove("is-spinning");
+    }
+  }
+}
+
+/* ---------- §4/§9：provider-status 独立状态机 ---------- */
+async function loadProviderStatus() {
+  const aux = state.aux.providers;
+  /* 契约 features.provider_status=false → 能力关闭，不发请求、整块隐藏 */
+  const feats = (state.data && state.data.features) || {};
+  if (feats.provider_status === false) {
+    aux.data = null;
+    aux.status = "unsupported";
+    renderProviderStatus();
+    return;
+  }
+  if (aux.aborter) aux.aborter.abort();
+  const ctl = new AbortController();
+  aux.aborter = ctl;
+  aux.status = "loading";
+  const gen = state.requestGeneration;
+  try {
+    const res = await dataApi.providerStatus(ctl.signal);
+    if (ctl.signal.aborted || gen !== state.requestGeneration) return;
+    const list = res && Array.isArray(res.providers) ? res.providers : [];
+    aux.data = res;
+    aux.status = list.length ? "ready" : "empty";
+  } catch (e) {
+    if (ctl.signal.aborted || gen !== state.requestGeneration) return;
+    aux.data = null;
+    aux.status = e instanceof ApiError && e.status === 404 ? "unsupported" : "error";
+  }
+  renderProviderStatus();
+}
+
+/* ---------- §4：订阅清单（切到配额页才加载） ---------- */
+async function ensureSubs() {
+  const aux = state.aux.subs;
+  if (aux.status === "ready" || aux.status === "empty" || aux.status === "loading") return;
+  if (aux.aborter) aux.aborter.abort();
+  const ctl = new AbortController();
+  aux.aborter = ctl;
+  aux.status = "loading";
+  const gen = state.requestGeneration;
+  if (state.view === "quota") renderQuotaView();
+  try {
+    const res = await dataApi.subscriptions(ctl.signal);
+    if (ctl.signal.aborted || gen !== state.requestGeneration) return;
+    aux.data = res;
+    aux.status = res && Array.isArray(res.subscriptions) && res.subscriptions.length ? "ready" : "empty";
+  } catch (e) {
+    if (ctl.signal.aborted || gen !== state.requestGeneration) return;
+    aux.data = null;
+    aux.status = e instanceof ApiError && e.status === 404 ? "unsupported" : "error";
+  }
+  if (state.view === "quota") renderQuotaView();
+}
+
+/* ---------- §9：历史日归档（服务端分页，404/失败优雅降级） ---------- */
+function fallbackHistoryRows() {
+  const aux = state.aux.history;
+  aux.unsupported = true;
+  aux.fallback = true;
+  aux.rows = historyRows();
+  aux.totalDays = aux.rows.length;
+  aux.done = true;
+  aux.status = aux.rows.length ? "ready" : "empty";
+}
+
+function resetHistory() {
+  const aux = state.aux.history;
+  if (aux.aborter) aux.aborter.abort();
+  aux.rows = [];
+  aux.cursor = null;
+  aux.done = false;
+  aux.totalDays = null;
+  aux.retentionDays = null;
+  aux.unsupported = false;
+  aux.fallback = false;
+  aux.loading = false;
+  aux.seen = new Set();
+  aux.dayBasis = null;
+  aux.mixedTz = false;
+  aux.partial = false;
+  aux.status = "idle";
+  /* 契约 features.history_daily=false → 不发请求，直接走降级路径 */
+  const feats = (state.data && state.data.features) || {};
+  if (feats.history_daily === false) {
+    fallbackHistoryRows();
+    if (state.view === "history") renderHistoryTable();
+    return;
+  }
+  loadHistoryPage();
+}
+
+async function loadHistoryPage() {
+  const aux = state.aux.history;
+  if (aux.loading || aux.done || !state.alive) return;
+  aux.loading = true;
+  aux.status = "loading";
+  const ctl = new AbortController();
+  aux.aborter = ctl;
+  const gen = state.requestGeneration;
+  const cursor = aux.cursor;
+  updateHistLoading(true);
+  try {
+    const res = await dataApi.historyDaily(cursor, "", ctl.signal);
+    if (ctl.signal.aborted || gen !== state.requestGeneration) return;
+    /* 契约：items[]（day/tokens/costUsd/perClient/perModel/deviceCount/complete/coverage）；
+       res.days 仅为旧载荷回退 */
+    const items = res && Array.isArray(res.items) ? res.items
+      : res && Array.isArray(res.days) ? res.days : [];
+    let added = 0;
+    for (const h of items) {
+      if (!h || !h.day) continue;
+      const key = String(h.day).slice(0, 10);
+      if (aux.seen.has(key)) continue; // 游标去重
+      aux.seen.add(key);
+      added++;
+      aux.rows.push({
+        day: key,
+        tokens: Number(h.tokens ?? h.total) || 0,
+        costUsd: h.costUsd != null ? Number(h.costUsd) : null,
+        mix: h.perClient && typeof h.perClient === "object" ? { kind: "client", map: h.perClient } : null,
+        mixModel: h.perModel && typeof h.perModel === "object" ? h.perModel : null,
+        deviceCount: h.deviceCount != null ? Number(h.deviceCount) : null,
+        complete: h.complete !== false,
+        coverage: h.coverage != null && Number.isFinite(Number(h.coverage)) ? Number(h.coverage) : null,
+      });
+    }
+    aux.rows.sort((a, b) => (a.day < b.day ? 1 : -1));
+    if (res.total_days != null) aux.totalDays = Number(res.total_days);
+    if (res.retention_days != null) aux.retentionDays = Number(res.retention_days);
+    aux.dayBasis = res.day_basis || aux.dayBasis;
+    aux.mixedTz = res.mixed_time_zones === true;
+    aux.partial = aux.partial || res.partial === true;
+    // 游标 = 本页最后一条的 day（next_cursor 优先，缺失时取 items 尾日）
+    const lastDay = items.length ? String(items[items.length - 1].day || "").slice(0, 10) : "";
+    aux.cursor = res.next_cursor || lastDay || null;
+    const hasMore = res.has_more != null ? res.has_more === true : !!res.next_cursor;
+    aux.done = !hasMore || added === 0 || !aux.cursor;
+    aux.status = aux.rows.length ? "ready" : "empty";
+  } catch (e) {
+    if (ctl.signal.aborted || gen !== state.requestGeneration) return;
+    if (e instanceof ApiError && (e.status === 404 || e.status === 501)) {
+      // 接口未部署（Token Monitor 未启用）：回退概览内嵌的 trend/activity 数据并标注
+      fallbackHistoryRows();
+    } else if (!aux.rows.length) {
+      aux.status = "error";
+    } else {
+      aux.status = "ready"; // 已有页保留
+      aux.done = true;
+    }
+  } finally {
+    if (gen === state.requestGeneration) {
+      aux.loading = false;
+      aux.aborter = null;
+    }
+    updateHistLoading(false);
+    if (state.view === "history") renderHistoryTable(false);
+  }
+}
+
+function updateHistLoading(on) {
+  const el = $("#hist-loading");
+  if (el) el.hidden = !on;
+}
+
+/* ================= 演示模式 ================= */
+function resetAux() {
+  for (const key of ["providers", "subs"]) {
+    const aux = state.aux[key];
+    if (aux.aborter) aux.aborter.abort();
+    aux.status = "idle";
+    aux.data = null;
+  }
+  const h = state.aux.history;
+  if (h.aborter) h.aborter.abort();
+  h.status = "idle";
+  h.rows = [];
+  h.cursor = null;
+  h.done = false;
+  h.totalDays = null;
+  h.retentionDays = null;
+  h.unsupported = false;
+  h.fallback = false;
+  h.loading = false;
+  h.seen = new Set();
+  h.dayBasis = null;
+  h.mixedTz = false;
+  h.partial = false;
+}
+
+function enterDemo() {
+  state.demo = true;
+  store.token = ""; // §12：演示模式不写入 sessionStorage Token
+  state.tokenRevision++;
+  resetAux();
+  $("#demo-badge").hidden = false;
+  $("#logout-text").textContent = "退出演示";
+  load(false);
+}
+
+function exitDemo() {
+  state.demo = false;
+  state.data = null;
+  state.booted = false;
+  state.staleData = false;
+  resetAux();
+  $("#demo-badge").hidden = true;
+  $("#logout-text").textContent = "更换密钥";
+  setConn("off", "未连接");
+  showGate();
+}
+
+/* ================= 事件 ================= */
 $("#gate-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const token = $("#gate-token").value.trim();
@@ -1527,26 +2642,50 @@ $("#gate-form").addEventListener("submit", (e) => {
     const err = $("#gate-error");
     err.textContent = "请输入访问密钥。";
     err.hidden = false;
+    gateShake();
     return;
   }
   store.token = token;
+  state.tokenRevision++; // §3-3：换密钥后新请求不被旧状态干扰
   $("#gate-token").value = "";
   load(true);
 });
 
+/* 输入即撤销错误边框（catalog 12：typing cancels），错误文案保留到下次提交 */
+$("#gate-token").addEventListener("input", () => {
+  const box = $("#gate-token").closest(".field-box");
+  if (box) box.classList.remove("is-error", "is-shaking");
+});
+
+$("#gate-demo").addEventListener("click", enterDemo);
+
 $("#logout").addEventListener("click", () => {
+  if (state.demo) {
+    exitDemo();
+    return;
+  }
   store.token = "";
+  state.tokenRevision++;
   state.data = null;
   state.booted = false;
+  state.staleData = false;
+  resetAux();
+  setConn("off", "未连接");
   showGate();
 });
 
 $("#refresh").addEventListener("click", () => load(true));
 
+document.querySelectorAll("[data-view].nav-item, [data-view].bn-item").forEach((b) => {
+  b.addEventListener("click", () => switchView(b.dataset.view));
+});
+
 initSeg("#model-seg", (p) => {
   state.modelPeriod = p;
-  if (!state.data) return;
-  renderDist("#model-dist", "#model-empty", "#model-dist-sub", (state.data.totals || {})[p], "model");
+  if (state.data) {
+    renderModelDonut((state.data.totals || {})[p], true);
+    clearEntryFxSoon(); // 周期切换的 is-drawing 也要清，不留常驻动画类
+  }
 });
 initSeg("#client-seg", (p) => {
   state.clientPeriod = p;
@@ -1565,23 +2704,63 @@ initSeg("#mx-period-seg", (p) => {
   if (state.data) renderMatrix();
 });
 
-$("#sess-more").addEventListener("click", () => {
-  state.sessExpanded = true;
-  renderSessions();
-});
+/* §9：日归档服务端分页滚动加载：IntersectionObserver + 按钮兜底（防重复由 aux.loading 保证） */
+$("#hist-more").addEventListener("click", () => loadHistoryPage());
+if ("IntersectionObserver" in window) {
+  const io = new IntersectionObserver((entries) => {
+    if (entries.some((en) => en.isIntersecting) && state.alive && state.view === "history") {
+      loadHistoryPage();
+    }
+  }, { rootMargin: "160px" });
+  io.observe($("#hist-sentinel"));
+}
 
+let resizeTimer = null;
 window.addEventListener("resize", () => {
-  positionAllPills();
-  if (state.data && (state.data.trend || state.data.trend_models)) renderTrend();
+  positionAllPills(true); // resize 重定位必须瞬时，pill 不应跟着窗口滑
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (state.data && state.view === "overview" && (state.data.trend || state.data.trend_models)) renderTrend();
+  }, 160);
 });
 
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden && state.alive) load(false);
+  if (document.hidden) {
+    stopPolling(); // §3-6：页面隐藏暂停轮询
+    return;
+  }
+  // §3-7：页面恢复只刷新一次（load 内部中止在途请求，避免并发）
+  if (state.alive && !state.demo) load(false);
 });
 
-/* ---------- 启动 ---------- */
-if (store.token) {
-  load(false);
-} else {
-  showGate();
-}
+/* §3-8：页面卸载时中止请求 */
+window.addEventListener("pagehide", abortAllRequests);
+window.addEventListener("beforeunload", abortAllRequests);
+
+/* ================= 启动 ================= */
+(function boot() {
+  const params = new URLSearchParams(location.search);
+  /* §12：生产环境可通过 <meta name="cm-demo" content="off"> 隐藏演示入口 */
+  const demoMeta = document.querySelector('meta[name="cm-demo"]');
+  const demoEnabled = !demoMeta || String(demoMeta.content).toLowerCase() !== "off";
+  if (!demoEnabled) {
+    const demoBtn = $("#gate-demo");
+    if (demoBtn) demoBtn.hidden = true;
+    const or = document.querySelector(".gate-or");
+    if (or) or.hidden = true;
+  }
+  const hashView = location.hash.replace("#", "");
+  if (VIEWS[hashView]) state.view = hashView;
+  // 初始应用视图可见性
+  document.querySelectorAll(".view").forEach((s) => {
+    s.hidden = s.dataset.view !== state.view;
+  });
+  document.querySelectorAll("[data-view].nav-item, [data-view].bn-item").forEach((b) => {
+    b.classList.toggle("is-active", b.dataset.view === state.view);
+  });
+  $("#view-title").textContent = VIEWS[state.view][0];
+
+  if (demoEnabled && params.get("demo") === "1") enterDemo();
+  else if (store.token) load(false);
+  else showGate();
+})();

@@ -423,11 +423,12 @@ async def fetch_provider_statuses(
 
     providers: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = []
-    for row in rows:
+    for expected_canon, row in zip(canonicals, rows):
         if isinstance(row, BaseException):
             log.warning("provider-status gather error err=%s", type(row).__name__)
-            continue
-        canon, parsed, error = row
+            canon, parsed, error = expected_canon, {}, "internal_error"
+        else:
+            canon, parsed, error = row
         page = STATUS_PAGES[canon]
         names = observed.get(canon) or [canon]
         if error or not parsed:
@@ -480,8 +481,20 @@ def assemble_envelope(
 @dataclass
 class _CacheEntry:
     fetched_at: float
-    key: frozenset[str]
+    key: tuple[tuple[str, tuple[str, ...]], ...]
     payload: dict[str, Any]
+
+
+def _observed_key(
+    observed: dict[str, list[str]],
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """缓存键包含 canonical 与 observed_as，避免别名展示陈旧。"""
+    return tuple(
+        sorted(
+            (canonical, tuple(sorted(set(names))))
+            for canonical, names in observed.items()
+        )
+    )
 
 
 class ProviderStatusService:
@@ -501,7 +514,7 @@ class ProviderStatusService:
         self._monotonic = monotonic
         self._lock = asyncio.Lock()
         self._inflight: Optional[asyncio.Task] = None
-        self._inflight_key: Optional[frozenset[str]] = None
+        self._inflight_key: Optional[tuple[tuple[str, tuple[str, ...]], ...]] = None
         self._cache: Optional[_CacheEntry] = None
         self.fetch_count = 0
 
@@ -519,7 +532,7 @@ class ProviderStatusService:
         observed: dict[str, list[str]],
         wait_for_refresh: bool = True,
     ) -> dict[str, Any]:
-        key = frozenset(observed)
+        key = _observed_key(observed)
         now = self._monotonic()
         cache = self._cache
         if (
@@ -545,7 +558,7 @@ class ProviderStatusService:
         self,
         client: httpx.AsyncClient,
         observed: dict[str, list[str]],
-        key: frozenset[str],
+        key: tuple[tuple[str, tuple[str, ...]], ...],
     ) -> None:
         if self._inflight is not None and not self._inflight.done() and self._inflight_key == key:
             return
@@ -560,7 +573,7 @@ class ProviderStatusService:
         self,
         client: httpx.AsyncClient,
         observed: dict[str, list[str]],
-        key: frozenset[str],
+        key: tuple[tuple[str, tuple[str, ...]], ...],
     ) -> dict[str, Any]:
         async with self._lock:
             cache = self._cache
@@ -583,7 +596,7 @@ class ProviderStatusService:
         self,
         client: httpx.AsyncClient,
         observed: dict[str, list[str]],
-        key: frozenset[str],
+        key: tuple[tuple[str, tuple[str, ...]], ...],
     ) -> dict[str, Any]:
         self.fetch_count += 1
         providers, errors = await fetch_provider_statuses(
@@ -593,7 +606,17 @@ class ProviderStatusService:
             budget_seconds=self.budget_seconds,
         )
         payload = assemble_envelope(providers, errors)
-        # 成功或部分成功都写入缓存，供 SWR 返回旧值
+        previous = self._cache
+        full_failure = bool(observed) and not any(
+            provider.get("status") != "unknown" for provider in providers
+        )
+        if full_failure and previous is not None and previous.key == key:
+            # 全部状态页故障时保留 last-known-good；不能用 unknown 覆盖好缓存。
+            stale = self._mark_stale(previous.payload, True)
+            stale["partial"] = True
+            stale["errors"] = list(stale.get("errors") or []) + list(errors)
+            return stale
+        # 成功或部分成功才替换缓存，供 SWR 返回旧值。
         self._cache = _CacheEntry(
             fetched_at=self._monotonic(),
             key=key,

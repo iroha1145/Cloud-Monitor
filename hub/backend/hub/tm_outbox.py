@@ -27,6 +27,7 @@ from typing import Optional
 
 from .db import Database
 from .services import utc_now
+from .tm_snapshots import norm_ts, utc_z
 
 log = logging.getLogger("tm-outbox")
 
@@ -85,7 +86,12 @@ def record_pending(
             INSERT INTO tm_ingest_outbox (request_id, device_id, payload_json, received_at)
             VALUES (?, ?, ?, ?)
             """,
-            (request_id, device_id, json.dumps(payload, ensure_ascii=False), utc_now()),
+            (
+                request_id,
+                device_id,
+                json.dumps(payload, ensure_ascii=False),
+                norm_ts(utc_now()),
+            ),
         )
 
 
@@ -107,6 +113,18 @@ def mark_failed(db: Database, request_id: str, error: str) -> None:
     )
 
 
+def mark_rejected(db: Database, request_id: str, error: str) -> None:
+    """上游确定性 4xx：停止重放，保留短期审计记录。"""
+    db.execute(
+        """
+        UPDATE tm_ingest_outbox
+        SET state = 'rejected', attempts = attempts + 1, last_error = ?
+        WHERE request_id = ?
+        """,
+        (error[:500], request_id),
+    )
+
+
 def pending_count(db: Database) -> int:
     return int(
         db.fetchone("SELECT COUNT(*) AS n FROM tm_ingest_outbox WHERE state='pending'")["n"]
@@ -114,10 +132,12 @@ def pending_count(db: Database) -> int:
 
 
 def prune_done(db: Database, *, retention_hours: int = DONE_RETENTION_HOURS) -> int:
-    cutoff = (
-        datetime.now(timezone.utc) - timedelta(hours=retention_hours)
-    ).isoformat(timespec="seconds")
-    cur = db.execute("DELETE FROM tm_ingest_outbox WHERE state='done' AND received_at < ?", (cutoff,))
+    cutoff = utc_z(datetime.now(timezone.utc) - timedelta(hours=retention_hours))
+    cur = db.execute(
+        "DELETE FROM tm_ingest_outbox"
+        " WHERE state IN ('done','rejected') AND received_at < ?",
+        (cutoff,),
+    )
     return cur.rowcount or 0
 
 
@@ -165,7 +185,7 @@ def _superseded(db: Database, device_id: str, received_at: str) -> bool:
         WHERE device_id = ? AND server_received_at > ?
         LIMIT 1
         """,
-        (device_id, received_at),
+        (device_id, norm_ts(received_at)),
     )
     return row is not None
 
@@ -184,13 +204,19 @@ def replay_pending(db: Database, core, *, max_items: int = REPLAY_BATCH) -> dict
         """,
         (max_items,),
     )
-    stats = {"checked": len(rows), "completed": 0, "superseded": 0, "failed": 0}
+    stats = {
+        "checked": len(rows),
+        "completed": 0,
+        "superseded": 0,
+        "rejected": 0,
+        "failed": 0,
+    }
     for row in rows:
         try:
             payload = json.loads(row["payload_json"])
         except ValueError:
-            mark_done(db, row["request_id"])  # 无法解析的载荷无法重放
-            stats["completed"] += 1
+            mark_rejected(db, row["request_id"], "stored payload is not JSON")
+            stats["rejected"] += 1
             continue
         if _superseded(db, row["device_id"], row["received_at"]):
             mark_done(db, row["request_id"])
@@ -203,9 +229,16 @@ def replay_pending(db: Database, core, *, max_items: int = REPLAY_BATCH) -> dict
             stats["stopped_by"] = "upstream_unavailable"
             break
         if resp.status_code != 200:
+            if 400 <= resp.status_code < 500:
+                mark_rejected(
+                    db, row["request_id"], f"upstream HTTP {resp.status_code}"
+                )
+                stats["rejected"] += 1
+                continue
             mark_failed(db, row["request_id"], f"upstream HTTP {resp.status_code}")
             stats["failed"] += 1
-            continue
+            stats["stopped_by"] = f"upstream_status_{resp.status_code}"
+            break
         try:
             body = resp.json()
             record = next(
@@ -216,6 +249,11 @@ def replay_pending(db: Database, core, *, max_items: int = REPLAY_BATCH) -> dict
                 ),
                 None,
             )
+            if record is None:
+                raise ValueError(
+                    "tm-core ingest response missing normalized device "
+                    f"{row['device_id']!r}"
+                )
             write_snapshot(
                 db,
                 device_id=row["device_id"],

@@ -1,0 +1,19 @@
+{
+  "name": "cloud-monitor-frontend-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "§13 自动化测试：node --check + Playwright（真实 FastAPI 夹具）+ axe-core",
+  "type": "commonjs",
+  "scripts": {
+    "test:static": "node --check ../tm.js && node --check ../mock.js",
+    "test:e2e": "node node_modules/@playwright/test/cli.js test e2e-real-backend.spec.js",
+    "test:scenarios": "node node_modules/@playwright/test/cli.js test scenarios.spec.js",
+    "test:axe": "node node_modules/@playwright/test/cli.js test axe.spec.js",
+    "test:shots": "node node_modules/@playwright/test/cli.js test screenshots.spec.js",
+    "test": "npm run test:static && node node_modules/@playwright/test/cli.js test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "axe-core": "^4.13.0"
+  }
+}
