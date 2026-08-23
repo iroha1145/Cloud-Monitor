@@ -49,10 +49,21 @@ jobs:
           PY
       - name: hub 测试（含官方 Node hub 差分与可靠性故障路径）
         run: cd hub && PYTHONPATH=backend python -m pytest tests/ -q
+      - name: Cloud 扩展专项（provider-status / history-daily / coverage / prune / fixtures）
+        run: |
+          cd hub && PYTHONPATH=backend python -m pytest tests/test_provider_status.py tests/test_history_daily.py tests/test_activity_coverage.py tests/test_prune_snapshots.py tests/test_frontend_contract_export.py -q
       - name: agent 测试
         run: cd agent && python -m pytest tests/ -q
-      - name: pip-audit（依赖漏洞）
-        run: pip-audit || true
+      - name: pip-audit（依赖漏洞；默认失败。若必须忽略：--ignore-vuln ID 且在注释写明原因与到期日）
+        run: |
+          # 新增 CVE 时不得 `|| true`；只能带到期日的显式 --ignore-vuln。
+          pip-audit -r hub/requirements.txt
+          # agent/ 本轮禁止改动。requests 2.32.3:
+          #   PYSEC-2026-1872 (fix 2.32.4), PYSEC-2026-2275 (fix 2.33.0)
+          # ignore 到期 2026-11-23：跟进单独 PR 升级 agent 依赖。
+          pip-audit -r agent/requirements.txt \
+            --ignore-vuln PYSEC-2026-1872 \
+            --ignore-vuln PYSEC-2026-2275
 
   docker-e2e:
     runs-on: ubuntu-latest

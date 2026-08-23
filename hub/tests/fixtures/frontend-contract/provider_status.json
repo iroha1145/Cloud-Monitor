@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-23T11:35:19.957Z",
+  "providers": [
+    {
+      "provider": "anthropic",
+      "observed_as": [
+        "claude"
+      ],
+      "name": "Anthropic",
+      "status": "operational",
+      "description": "ok",
+      "checked_at": "2026-08-23T11:35:19.956Z",
+      "source_updated_at": "2026-08-23T00:00:00Z",
+      "stale": false,
+      "error_code": null,
+      "url": "https://status.claude.com"
+    },
+    {
+      "provider": "openai",
+      "observed_as": [
+        "codex"
+      ],
+      "name": "OpenAI",
+      "status": "operational",
+      "description": "ok",
+      "checked_at": "2026-08-23T11:35:19.956Z",
+      "source_updated_at": "2026-08-23T00:00:00Z",
+      "stale": false,
+      "error_code": null,
+      "url": "https://status.openai.com"
+    }
+  ],
+  "partial": false,
+  "errors": []
+}

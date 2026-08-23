@@ -1,9 +1,18 @@
-# TM Overview 响应契约（v2）
+# TM Overview 响应契约（v2 + Cloud 扩展）
 
 `GET /api/v1/tm/overview` 与 `GET /api/v1/tm/subscriptions` 的面板数据契约。
+另有两条 **Cloud 扩展**（不是官方 Hub 协议）：
+
+- `GET /api/v1/tm/provider-status`
+- `GET /api/v1/tm/history/daily`
+
 **协议权威仍是 tm-core（vendored 官方 Node hub）**：totals/devices/limits/
 projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面板扩展，
-不重造官方聚合。
+不重造官方聚合。官方 `/api/ingest` `/api/stats` `/api/history` SSE 订阅
+行为不得因本扩展改变。
+
+鉴权：面板与 Cloud 扩展一律 `Authorization: Bearer ACCESS_TOKEN`。
+`TOKEN_MONITOR_SECRET` 不能读这些端点。Token Monitor 未启用 → 404。
 
 ## 响应骨架（v2，新增字段只增不改）
 
@@ -16,7 +25,9 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
   "features": {                                // 面板能力声明
     "trend_models": true,
     "activity_hourly": true,
-    "subscriptions": true
+    "subscriptions": true,
+    "provider_status": true,                   // GET /api/v1/tm/provider-status
+    "history_daily": true                      // GET /api/v1/tm/history/daily
   },
   "partial": false,                            // 辅助来源失败时为 true
   "partial_errors": [],                        // 见下方稳定错误码
@@ -34,15 +45,32 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
   "trend_models": [ { "day": "…", "total": 1, "models": {"m": 1} } ], // 同口径+模型分布
   "activity": {
     "time_zone": "Asia/Tokyo",
-    "hourly": [ { "hour": 10, "total": 500 } ],   // 24 桶，桶起点按仪表盘时区
-    "daily":  [ { "day": "…", "total": 900 } ],    // 仪表盘日，≤90 天
+    "hourly_day": "2026-08-23",               // 仪表盘今日 key
+    "hourly": [ { "hour": 10, "total": 500 } ], // 旧前端：24 桶数组
+    "hourly_today": {                         // 带 day 的对象形态
+      "day": "2026-08-23",
+      "time_zone": "Asia/Tokyo",
+      "buckets": [ { "hour": 10, "total": 500 } ]
+    },
+    "daily":  [ { "day": "…", "total": 900 } ],    // ≤90 天，不是 370 天全量
     "coverage": {
-      "first_sample_at": "2026-08-23T12:00:00Z",
+      "first_sample_at": "2026-08-23T12:00:00.000Z",
       "last_sample_at": "…",
-      "expected_buckets": 7,
-      "observed_buckets": 2,
-      "coverage_percent": 28.6,
-      "attribution_mode": "delta-low-coverage"      // delta | delta-low-coverage | none
+      "expected_buckets": 6,                  // Σ expected_device
+      "observed_buckets": 6,                  // Σ observed_device
+      "coverage_percent": 100.0,              // 钳制 0–100
+      "attribution_mode": "delta",            // none | delta | delta-low-coverage | delta-with-reset
+      "devices": [                            // 可选逐设备诊断
+        {
+          "device_id": "dev-a",
+          "first_sample_at": "…",
+          "last_sample_at": "…",
+          "expected_buckets": 3,
+          "observed_buckets": 3,
+          "gap_count": 0,
+          "reset_count": 0
+        }
+      ]
     }
   },
 
@@ -71,6 +99,9 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
 }
 ```
 
+Overview **不得**把 370 天日归档塞进每 5 分钟刷新的 payload。长期历史走
+`/api/v1/tm/history/daily` 分页。
+
 ## 会话主键（P1-1）
 
 跨设备稳定主键 = `deviceId:client:sessionId`。不同设备出现相同
@@ -87,19 +118,173 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
 | `history_unavailable` | 官方 /api/history 读取失败 |
 | `devices_badges_unavailable` | 官方 /api/devices 徽章读取失败 |
 | `activity_unavailable` | SQLite 活动计算失败 |
+| `clients_json_corrupt` / `models_json_corrupt` | 日归档 JSON 损坏（history/daily） |
 
 `totals` / `devices` 始终完整来自官方 stats（stats 失败整体 502）。
+外部状态页失败不得拖垮 Overview 或 Token ingest。
 
-## 活动时间口径（P0-3，写入契约）
+## 活动时间口径
 
-- **hourly**：每台设备独立取其最新有效本地日的 5 分钟桶，相邻差分
-  （累计回退钳 0 并标记缺口），桶起点换算到 `DASHBOARD_TIME_ZONE` 的
-  小时。东京/洛杉矶设备同处一条全局时间轴。
-- **daily**：采用【仪表盘日】（与 hourly 同一时区），缺失日用官方
-  `/api/history.daily` 回填（同日快照优先）。
-- 首次接入/长时间断线/采样缺口 → `attribution_mode: "delta-low-coverage"`，
-  绝不伪装成精确小时数据。
-- 夏令时 23/25 小时日：桶按 UTC 存储、换算到仪表盘时区，总量守恒。
+### hourly
+
+1. 计算 `dashboard_period.today.key`（`DASHBOARD_TIME_ZONE` 的今日）。
+2. 每个 5 分钟桶换算到仪表盘时区。
+3. **只有转换后日期 == today.key 的桶进入 hourly**；其它日期进 daily，
+   不进今日 24 小时图。禁止把不同日期的 08:00 加到同一格。
+4. 旧前端继续读 `activity.hourly` 数组；新字段 `hourly_day` /
+   `time_zone` / `hourly_today.{day,time_zone,buckets}`。
+
+### daily
+
+与 `GET /api/v1/tm/history/daily` **共用同一查询核心**：
+
+- 近 7 天：5 分钟桶按仪表盘日聚合（差分）。
+- 更早：每 `(device_id, local_day)` 最后一条快照（日锚点）按设备本地日汇总。
+- 官方 `/api/history` 回填缺失日（同日快照优先）。
+- History 不可用时 SQLite 仍给出多日序列，不得只返回当前一天。
+- Overview 窗口 ≤90 天。
+
+### coverage
+
+逐设备计算再求和，禁止用「全设备最早到最晚的单一跨度」当 expected：
+
+```
+expected_total = Σ expected_device
+observed_total = Σ observed_device
+coverage_percent = clamp(observed_total / expected_total * 100, 0, 100)
+```
+
+两台设备各有三个相同时间桶 → observed=6, expected=6, coverage=100%，
+**绝不是 200%**。
+
+`attribution_mode`：
+
+| 值 | 何时 |
+|---|---|
+| `none` | 无数据 |
+| `delta` | 覆盖完整且无显著缺口；首桶在设备本地日开始附近（10 分钟宽限） |
+| `delta-low-coverage` | 首桶明显晚于本地日开始、长时间断线、或采样缺口 |
+| `delta-with-reset` | 同一本地日内累计值回退 |
+
+不得因为每个设备天然存在第一个桶，就把所有有数据的情况标成
+`delta-low-coverage`。
+
+夏令时 23/25 小时日：桶按 UTC 存储、换算到仪表盘时区，总量守恒。
+
+## 日口径 / day_basis
+
+SQLite 日锚点是 **设备本地日**（`periodWindows.today.key` 等），不是统一
+UTC 日，也不是仪表盘日。多时区设备聚合时：
+
+- 响应标明 `day_basis: "device-local"`
+- 设备时区不一致时 `mixed_time_zones: true`
+- `device_id` 筛选时返回该设备的 `device_time_zone`
+- **不允许静默改日期口径**
+
+## GET /api/v1/tm/history/daily
+
+ACCESS_TOKEN。查询参数：`cursor`（上一页最后一天，继续读更早）、
+`limit`（默认 30，1–90）、可选 `device_id` / `from` / `to`（YYYY-MM-DD）。
+
+数据源 `tm_snapshot_buckets`。每台设备每个 `local_day` 取真正最后一条：
+
+```
+ORDER BY bucket_start DESC, server_received_at DESC, id DESC
+```
+
+然后跨设备按 day 聚合（`today_total→tokens`，`today_cost→costUsd`，
+`clients_json→perClient`，`models_json→perModel`，`deviceCount`，
+`complete`/`coverage`）。
+
+SQL 分页，不加载 370 天全表再在 Python 切片。使用组合索引
+`(device_id, local_day, bucket_start)` / `local_day`。游标稳定；重试同一
+cursor 不得把同一天再返回一遍。JSON 损坏标 `partial`，不 500。
+
+```jsonc
+{
+  "schema_version": 1,
+  "day_basis": "device-local",
+  "dashboard_time_zone": "Asia/Tokyo",
+  "retention_days": 370,
+  "mixed_time_zones": false,
+  "device_time_zone": null,
+  "items": [
+    {
+      "day": "2026-08-22",
+      "tokens": 123456,
+      "costUsd": 12.34,
+      "perClient": { "claude": 100000, "codex": 23456 },
+      "perModel": { "claude-sonnet": 100000, "gpt-5": 23456 },
+      "deviceCount": 2,
+      "complete": true,
+      "coverage": null
+    }
+  ],
+  "next_cursor": "2026-07-23",
+  "has_more": true,
+  "partial": false,
+  "partial_errors": []
+}
+```
+
+## GET /api/v1/tm/provider-status
+
+Cloud 扩展。环境变量：`PROVIDER_STATUS_ENABLED`（默认 true）、
+`PROVIDER_STATUS_CACHE_SECONDS`（300）、`PROVIDER_STATUS_TIMEOUT_SECONDS`
+（2.5）。总请求预算 ≤3s，并发 `httpx.AsyncClient`，禁止串行 3×5s。
+
+提供商发现来源：`stats.periods.today.clients`、`stats.limits.providers`、
+`subscriptions[].provider`。别名：`claude|anthropic→anthropic`，
+`codex|openai→openai`，`cursor→cursor`。不得因状态页 key 是
+anthropic/openai 而丢掉真实的 claude/codex。
+
+只请求固定 allowlist（客户端不能传 URL，防 SSRF）：
+
+| canonical | summary | fallback |
+|---|---|---|
+| anthropic | https://status.claude.com/api/v2/summary.json | …/status.json |
+| openai | https://status.openai.com/api/v2/summary.json | …/status.json |
+| cursor | https://status.cursor.com/api/v2/summary.json | …/status.json |
+
+优先 API / Claude Code / Cursor 组件。ChatGPT 网页故障不得必然把
+OpenAI API 标成中断。
+
+缓存：singleflight + stale-while-revalidate（未过期直返；过期立即返 stale
+并后台刷新；完全无缓存且失败才 `unknown`）。不记录账户、密钥或完整
+请求 Header。
+
+```jsonc
+{
+  "schema_version": 1,
+  "generated_at": "…",
+  "providers": [
+    {
+      "provider": "anthropic",
+      "observed_as": ["claude"],
+      "name": "Anthropic",
+      "status": "operational",  // operational|degraded|maintenance|outage|unknown
+      "description": "…",
+      "checked_at": "…",
+      "source_updated_at": "…",
+      "stale": false,
+      "error_code": null,
+      "url": "https://status.claude.com"
+    }
+  ],
+  "partial": false,
+  "errors": []
+}
+```
+
+## 快照压缩
+
+近 7 天全分辨率；更早每个 `(device_id, local_day)` 保留 **时间上最后一条**
+（`ROW_NUMBER() OVER (PARTITION BY device_id, local_day ORDER BY
+bucket_start DESC, server_received_at DESC, id DESC)` 的 `rn=1`），
+**不是 `MAX(id)`**。370 天硬删除。
+
+截止时间统一毫秒精度 UTC + `Z` 后缀。禁止 `datetime.isoformat()` 的
+`+00:00` 与 `Z` 文本互比。存量 `+00:00` 行迁移为 `Z`。
 
 ## /api/v1/tm/subscriptions
 

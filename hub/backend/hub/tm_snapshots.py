@@ -76,23 +76,50 @@ def ensure_schema(db: Database) -> None:
     _migrate_timestamp_format(db)
 
 
+def utc_z(dt: datetime) -> str:
+    """统一截止/比较时间：毫秒精度 UTC + Z 后缀。禁止 isoformat() 的 +00:00。"""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
 def _migrate_timestamp_format(db: Database) -> None:
-    """历史版本混存 '+00:00' 秒级文本：统一为毫秒 Z 格式（幂等）。"""
-    if _meta_get(db, "ts_format_ms_z") == "2":
+    """历史版本混存 '+00:00' 秒级文本：统一为毫秒 Z 格式（幂等）。
+
+    meta 标记不能让后续新插入的 +00:00 行跳过；只要表里还有非 Z 文本就重跑。
+    """
+    leftover = db.fetchone(
+        "SELECT 1 AS x FROM tm_snapshot_buckets"
+        " WHERE instr(bucket_start, '+00:00') > 0"
+        "    OR instr(server_received_at, '+00:00') > 0"
+        "    OR instr(producer_updated_at, '+00:00') > 0"
+        " LIMIT 1"
+    )
+    if _meta_get(db, "ts_format_ms_z") == "2" and leftover is None:
         return
     rows = db._conn.execute(
-        "SELECT id, bucket_start, server_received_at FROM tm_snapshot_buckets"
+        "SELECT id, bucket_start, server_received_at, producer_updated_at"
+        " FROM tm_snapshot_buckets"
     ).fetchall()
     updates = []
     for row in rows:
         norm_bucket = norm_ts(row["bucket_start"]) if row["bucket_start"] else ""
         norm_recv = norm_ts(row["server_received_at"]) if row["server_received_at"] else ""
-        if norm_bucket != row["bucket_start"] or norm_recv != row["server_received_at"]:
-            updates.append((norm_bucket, norm_recv, row["id"]))
+        norm_prod = (
+            norm_ts(row["producer_updated_at"]) if row["producer_updated_at"] else ""
+        )
+        if (
+            norm_bucket != row["bucket_start"]
+            or norm_recv != row["server_received_at"]
+            or norm_prod != row["producer_updated_at"]
+        ):
+            updates.append((norm_bucket, norm_recv, norm_prod, row["id"]))
     if updates:
         with db.transaction():
             db.executemany(
-                "UPDATE tm_snapshot_buckets SET bucket_start=?, server_received_at=? WHERE id=?",
+                "UPDATE tm_snapshot_buckets"
+                " SET bucket_start=?, server_received_at=?, producer_updated_at=?"
+                " WHERE id=?",
                 updates,
             )
     _meta_set(db, "ts_format_ms_z", "2")
@@ -343,31 +370,252 @@ def _day_cutoff(now_dt: datetime, days: int) -> str:
 
 
 def prune_snapshots(db: Database, *, now: Optional[datetime] = None) -> dict:
-    """阈值触发的维护函数：也可手动/定时调用。"""
+    """阈值触发的维护函数：也可手动/定时调用。
+
+    7 天外每个 (device_id, local_day) 只保留真正最后一条快照
+    （bucket_start DESC, server_received_at DESC, id DESC），不是 MAX(id)。
+    截止时间统一毫秒 UTC Z，禁止 +00:00 文本与 Z 互比。
+    """
+    _migrate_timestamp_format(db)
     now_dt = now or datetime.now(timezone.utc)
-    full_cutoff = (now_dt - timedelta(days=FULL_RESOLUTION_DAYS)).isoformat()
-    hard_cutoff = (now_dt - timedelta(days=HARD_RETENTION_DAYS)).isoformat()
+    if now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=timezone.utc)
+    now_dt = now_dt.astimezone(timezone.utc)
+    full_cutoff = utc_z(now_dt - timedelta(days=FULL_RESOLUTION_DAYS))
+    hard_cutoff = utc_z(now_dt - timedelta(days=HARD_RETENTION_DAYS))
     removed = {"full_res": 0, "hard": 0}
     with db.transaction():
         cur = db.execute(
             """
             DELETE FROM tm_snapshot_buckets
-            WHERE bucket_start < ?
-              AND id NOT IN (
-                  SELECT MAX(id) FROM tm_snapshot_buckets
-                  WHERE bucket_start >= ?
-                  GROUP BY device_id, local_day
-              )
+            WHERE id IN (
+                SELECT id FROM (
+                    SELECT id,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY device_id, local_day
+                               ORDER BY bucket_start DESC,
+                                        server_received_at DESC,
+                                        id DESC
+                           ) AS rn
+                    FROM tm_snapshot_buckets
+                    WHERE bucket_start < ?
+                ) ranked
+                WHERE ranked.rn > 1
+            )
             """,
-            (full_cutoff, hard_cutoff),
+            (full_cutoff,),
         )
         removed["full_res"] = cur.rowcount or 0
         cur = db.execute(
             "DELETE FROM tm_snapshot_buckets WHERE bucket_start < ?", (hard_cutoff,)
         )
         removed["hard"] = cur.rowcount or 0
-        _meta_set(db, "last_prune_at", now_dt.isoformat())
+        _meta_set(db, "last_prune_at", utc_z(now_dt))
     return removed
+
+
+LAST_ROW_WINDOW = """
+    ROW_NUMBER() OVER (
+        PARTITION BY device_id, local_day
+        ORDER BY bucket_start DESC, server_received_at DESC, id DESC
+    )
+"""
+
+DISTINCT_DAYS_SQL = """
+SELECT DISTINCT local_day AS day
+FROM tm_snapshot_buckets
+WHERE {where}
+ORDER BY local_day DESC
+LIMIT ?
+"""
+
+LAST_ROWS_FOR_DAYS_SQL = """
+SELECT device_id, local_day, today_total, today_cost,
+       clients_json, models_json, device_time_zone,
+       bucket_start, server_received_at, id
+FROM (
+    SELECT device_id, local_day, today_total, today_cost,
+           clients_json, models_json, device_time_zone,
+           bucket_start, server_received_at, id,
+           {window} AS rn
+    FROM tm_snapshot_buckets
+    WHERE local_day IN ({days})
+      {device_clause}
+)
+WHERE rn = 1
+"""
+
+
+def valid_day_key(key: Any) -> Optional[str]:
+    return _valid_day_key(key)
+
+
+def _merge_token_map(dest: dict[str, int], raw: Any) -> bool:
+    """合并 clients_json / models_json。损坏返回 False，调用方标 partial。"""
+    if raw is None or raw == "":
+        return True
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    for key, value in data.items():
+        if not isinstance(key, str):
+            continue
+        try:
+            token = int(value or 0)
+        except (TypeError, ValueError):
+            continue
+        dest[key] = dest.get(key, 0) + max(token, 0)
+    return True
+
+
+def build_distinct_days_query(
+    *,
+    cursor: Optional[str] = None,
+    from_day: Optional[str] = None,
+    to_day: Optional[str] = None,
+    device_id: Optional[str] = None,
+) -> tuple[str, list[Any]]:
+    """SQL 分页：按 local_day DESC 取页，不把 370 天载入 Python 再切片。"""
+    clauses: list[str] = []
+    params: list[Any] = []
+    if device_id:
+        clauses.append("device_id = ?")
+        params.append(device_id)
+    if cursor:
+        clauses.append("local_day < ?")
+        params.append(cursor)
+    if from_day:
+        clauses.append("local_day >= ?")
+        params.append(from_day)
+    if to_day:
+        clauses.append("local_day <= ?")
+        params.append(to_day)
+    where = " AND ".join(clauses) if clauses else "1=1"
+    return DISTINCT_DAYS_SQL.format(where=where), params
+
+
+def query_daily_archive(
+    db: Database,
+    *,
+    cursor: Optional[str] = None,
+    limit: int = 30,
+    device_id: Optional[str] = None,
+    from_day: Optional[str] = None,
+    to_day: Optional[str] = None,
+) -> dict[str, Any]:
+    """每 (device_id, local_day) 取真正最后一条，再按 day 跨设备聚合。
+
+    day_basis 是设备本地日：多时区聚合不得声称 UTC/仪表盘日。
+    """
+    limit = max(1, min(int(limit), 90))
+    cursor_day = valid_day_key(cursor) if cursor else None
+    from_ok = valid_day_key(from_day) if from_day else None
+    to_ok = valid_day_key(to_day) if to_day else None
+    device = str(device_id).strip() if device_id else None
+
+    sql, params = build_distinct_days_query(
+        cursor=cursor_day, from_day=from_ok, to_day=to_ok, device_id=device
+    )
+    day_rows = db.fetchall(sql, (*params, limit + 1))
+    has_more = len(day_rows) > limit
+    days = [r["day"] for r in day_rows[:limit]]
+    next_cursor = days[-1] if has_more and days else None
+
+    if not days:
+        return {
+            "day_basis": "device-local",
+            "items": [],
+            "next_cursor": None,
+            "has_more": False,
+            "partial": False,
+            "partial_errors": [],
+            "mixed_time_zones": False,
+            "device_time_zone": None,
+            "retention_days": HARD_RETENTION_DAYS,
+        }
+
+    placeholders = ",".join("?" * len(days))
+    device_clause = "AND device_id = ?" if device else ""
+    last_sql = LAST_ROWS_FOR_DAYS_SQL.format(
+        window=LAST_ROW_WINDOW.strip(),
+        days=placeholders,
+        device_clause=device_clause,
+    )
+    last_params: list[Any] = list(days)
+    if device:
+        last_params.append(device)
+    last_rows = db.fetchall(last_sql, last_params)
+
+    grouped: dict[str, dict[str, Any]] = {
+        day: {
+            "day": day,
+            "tokens": 0,
+            "costUsd": 0.0,
+            "perClient": {},
+            "perModel": {},
+            "deviceCount": 0,
+            "complete": True,
+            "coverage": None,
+            "time_zones": [],
+        }
+        for day in days
+    }
+    partial = False
+    partial_errors: list[dict[str, str]] = []
+    zones: set[str] = set()
+    device_zone: Optional[str] = None
+
+    for row in last_rows:
+        day = row["local_day"]
+        item = grouped.get(day)
+        if item is None:
+            continue
+        item["tokens"] += int(row["today_total"] or 0)
+        try:
+            item["costUsd"] += max(float(row["today_cost"] or 0), 0.0)
+        except (TypeError, ValueError):
+            pass
+        item["deviceCount"] += 1
+        tz_name = str(row["device_time_zone"] or "").strip()
+        if tz_name:
+            zones.add(tz_name)
+            item["time_zones"].append(tz_name)
+            device_zone = tz_name
+        if not _merge_token_map(item["perClient"], row.get("clients_json")):
+            partial = True
+            item["complete"] = False
+            partial_errors.append(
+                {"code": "clients_json_corrupt", "day": day, "device_id": row["device_id"]}
+            )
+        if not _merge_token_map(item["perModel"], row.get("models_json")):
+            partial = True
+            item["complete"] = False
+            partial_errors.append(
+                {"code": "models_json_corrupt", "day": day, "device_id": row["device_id"]}
+            )
+
+    items = []
+    for day in days:
+        item = grouped[day]
+        item["costUsd"] = round(item["costUsd"], 6)
+        item.pop("time_zones", None)
+        items.append(item)
+
+    mixed = len(zones) > 1
+    return {
+        "day_basis": "device-local",
+        "items": items,
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+        "partial": partial,
+        "partial_errors": partial_errors,
+        "mixed_time_zones": mixed,
+        "device_time_zone": device_zone if device else None,
+        "retention_days": HARD_RETENTION_DAYS,
+    }
 
 
 def trend_by_day(db: Database, days: int = 30) -> list[dict]:
