@@ -17,6 +17,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 MAX_SAFE_INT = 2**63 - 1
 MAX_COST = 1e12
 MAX_FUTURE_SKEW = timedelta(hours=24)
+# 配额窗口 resetsAt 常为数天到数周后（周/月重置），不能套用 ingest 时钟的 24h 上限。
+MAX_RESET_SKEW = timedelta(days=400)
 MAX_DEPTH = 12
 
 LIMITS = {
@@ -184,15 +186,19 @@ def _walk(value: Any, path: str, depth: int) -> None:
                     _reject(f"{child}: token 数必须是数字")
             elif key in ("costUsd", "balanceUsd", "usedPercent"):
                 _check_cost(item, child)
-            elif key in ("updatedAt", "receivedAt", "resetsAt", "startedAt", "lastUsedAt", "date"):
-                if key in ("updatedAt", "receivedAt", "resetsAt", "startedAt", "lastUsedAt"):
-                    if item is not None and not isinstance(item, str):
-                        _reject(f"{child}: 时间戳必须是字符串")
-                    else:
-                        _check_timestamp(item, child, allow_future=MAX_FUTURE_SKEW)
-                elif key == "date" and item is not None:
-                    if not isinstance(item, str) or not _valid_day_key(item[:10]):
-                        _reject(f"{child}: 非法日期 {item!r}")
+            elif key in ("updatedAt", "receivedAt", "startedAt", "lastUsedAt"):
+                if item is not None and not isinstance(item, str):
+                    _reject(f"{child}: 时间戳必须是字符串")
+                else:
+                    _check_timestamp(item, child, allow_future=MAX_FUTURE_SKEW)
+            elif key == "resetsAt":
+                if item is not None and not isinstance(item, str):
+                    _reject(f"{child}: 时间戳必须是字符串")
+                else:
+                    _check_timestamp(item, child, allow_future=MAX_RESET_SKEW)
+            elif key == "date" and item is not None:
+                if not isinstance(item, str) or not _valid_day_key(item[:10]):
+                    _reject(f"{child}: 非法日期 {item!r}")
             _walk(item, child, depth + 1)
     elif isinstance(value, list):
         for i, item in enumerate(value):

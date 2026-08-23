@@ -167,3 +167,25 @@ def test_provider_full_failure_preserves_last_known_good(monkeypatch):
         assert stale["providers"][0]["stale"] is True
 
     asyncio.run(run())
+
+
+def test_quota_resets_at_days_ahead_is_accepted():
+    from hub.tm_validate import validate_ingest_payload
+
+    payload = {
+        "deviceId": "Mac Mini",
+        "updatedAt": "2026-08-23T16:08:11.259Z",
+        "today": {"totalTokens": 1},
+        "limits": {
+            "providers": [
+                {
+                    "id": "claude",
+                    "windows": [
+                        {"kind": "session", "resetsAt": "2026-08-23T18:00:00.000Z"},
+                        {"kind": "weekly", "resetsAt": "2026-08-28T09:59:59.638Z"},
+                    ],
+                }
+            ]
+        },
+    }
+    assert validate_ingest_payload(payload) is payload
