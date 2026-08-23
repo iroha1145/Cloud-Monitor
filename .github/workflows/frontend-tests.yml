@@ -1,0 +1,41 @@
+# §13 CI 片段：放入仓库 .github/workflows/frontend-tests.yml 即可复跑。
+# 前置：仓库根含后端基线（hub/backend + hub/frontend），前端测试位于 hub/frontend/tests。
+name: frontend-tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: 安装后端依赖（FastAPI/uvicorn）
+        run: pip install fastapi uvicorn httpx
+      - name: 安装测试依赖
+        run: |
+          cd hub/frontend/tests
+          npm ci --no-bin-links   # 某些文件系统（fuse/9p）不支持 symlink
+          npx playwright install --with-deps chromium
+      - name: 静态检查 + 全部 Playwright 测试（含真实 FastAPI 夹具、axe、截图）
+        run: cd hub/frontend/tests && npm test
+        env:
+          CM_BASELINE: ${{ github.workspace }}          # 后端基线路径（start-e2e-server.sh 会复制为 scratch 夹具）
+          CM_E2E_PORT: "18787"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evidence
+          path: hub/frontend/tests/evidence/
+
+# 本地复跑：
+#   cd hub/frontend/tests
+#   npm install --no-bin-links && npx playwright install chromium
+#   CM_BASELINE=/path/to/cm-current npm test   # 默认自动使用仓库根目录
+# 说明：playwright.config.js 的 webServer 会自动执行 start-e2e-server.sh，
+# 将 CM_BASELINE 复制到 $HOME/cm-e2e、仅覆盖 hub/frontend/ 五个文件后起
+# 真实 uvicorn（ACCESS_TOKEN=test-token）。reuseExistingServer=true，
+# 已起服务时直接复用。

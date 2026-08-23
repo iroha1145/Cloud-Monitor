@@ -31,6 +31,7 @@ from .tm_outbox import (
     ensure_schema as ensure_outbox_schema,
     mark_done,
     mark_failed,
+    mark_rejected,
     new_request_id,
     record_pending,
     replay_pending,
@@ -40,6 +41,7 @@ from .tm_snapshots import (
     delete_device_snapshots,
     ensure_schema,
     legacy_device_payloads,
+    mark_legacy_reingested,
     migrate_legacy_tables,
     write_snapshot,
 )
@@ -95,10 +97,8 @@ class TmCore:
                     headers=self.headers(),
                     timeout=timeout or httpx.Timeout(CONNECT_TIMEOUT, read=READ_TIMEOUT),
                 )
-            except httpx.ConnectError as exc:
-                raise UpstreamUnavailable(f"tm-core 不可达: {exc}") from exc
-            except httpx.ConnectTimeout as exc:
-                raise UpstreamUnavailable(f"tm-core 连接超时: {exc}") from exc
+            except httpx.HTTPError as exc:
+                raise UpstreamUnavailable(f"tm-core 请求失败: {exc}") from exc
         try:
             return self._client.request(
                 method,
@@ -107,10 +107,8 @@ class TmCore:
                 headers=self.headers(),
                 timeout=timeout or httpx.Timeout(CONNECT_TIMEOUT, read=READ_TIMEOUT),
             )
-        except httpx.ConnectError as exc:
-            raise UpstreamUnavailable(f"tm-core 不可达: {exc}") from exc
-        except httpx.ConnectTimeout as exc:
-            raise UpstreamUnavailable(f"tm-core 连接超时: {exc}") from exc
+        except httpx.HTTPError as exc:
+            raise UpstreamUnavailable(f"tm-core 请求失败: {exc}") from exc
 
     def health(self) -> Optional[dict]:
         try:
@@ -221,11 +219,19 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             log.warning("tm-core 不可达（outbox pending 留待重放/重试）: %s", exc)
             return _unavailable_response(exc)
         if resp.status_code != 200:
+            if 400 <= resp.status_code < 500:
+                mark_rejected(db, request_id, f"upstream HTTP {resp.status_code}")
+            else:
+                mark_failed(db, request_id, f"upstream HTTP {resp.status_code}")
             return _proxy_response(resp)
 
         try:
             body = resp.json()
         except ValueError:
+            mark_failed(db, request_id, "upstream response is not JSON")
+            set_snapshot_status(
+                db, success=False, error="upstream response is not JSON"
+            )
             return JSONResponse(status_code=502, content={"error": "bad_gateway"})
 
         # 快照：直接取本次响应内的规范化记录（同请求闭环，不串批）
@@ -238,6 +244,10 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
                 ),
                 None,
             )
+            if record is None:
+                raise ValueError(
+                    f"tm-core ingest response missing normalized device {device_id!r}"
+                )
             write_snapshot(
                 db,
                 device_id=device_id,
@@ -371,6 +381,9 @@ class TmBackground:
 
     def stop(self) -> None:
         self._stop.set()
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=5.0)
 
     def _loop(self) -> None:
         bootstrapped = self._bootstrap()
@@ -394,6 +407,8 @@ class TmBackground:
             except (UpstreamUnavailable, httpx.HTTPError) as exc:
                 log.warning("v1 设备回灌失败（将随后台周期重试）: %s", exc)
                 return False
+        # 只有全部 payload 成功提交后才写幂等标记；失败时下一轮仍能重试。
+        mark_legacy_reingested(self.db)
         try:
             replay_pending(self.db, self.core)
         except Exception as exc:  # noqa: BLE001

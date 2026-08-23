@@ -1,0 +1,185 @@
+[
+  {
+    "case": "gate-landmark",
+    "role": "main",
+    "labelledby": "gate-title",
+    "h1id": "gate-title"
+  },
+  {
+    "case": "viewport",
+    "viewport": "desktop",
+    "view": "overview",
+    "overflow": 0,
+    "visible": [
+      "view-overview"
+    ],
+    "errors": []
+  },
+  {
+    "case": "viewport",
+    "viewport": "desktop",
+    "view": "devices",
+    "overflow": 0,
+    "visible": [
+      "view-devices"
+    ],
+    "errors": []
+  },
+  {
+    "case": "viewport",
+    "viewport": "desktop",
+    "view": "quota",
+    "overflow": 0,
+    "visible": [
+      "view-quota"
+    ],
+    "errors": []
+  },
+  {
+    "case": "viewport",
+    "viewport": "desktop",
+    "view": "history",
+    "overflow": 0,
+    "visible": [
+      "view-history"
+    ],
+    "errors": []
+  },
+  {
+    "case": "viewport",
+    "viewport": "tablet",
+    "view": "overview",
+    "overflow": 0,
+    "visible": [
+      "view-overview"
+    ],
+    "errors": []
+  },
+  {
+    "case": "viewport",
+    "viewport": "tablet",
+    "view": "devices",
+    "overflow": 0,
+    "visible": [
+      "view-devices"
+    ],
+    "errors": []
+  },
+  {
+    "case": "viewport",
+    "viewport": "tablet",
+    "view": "quota",
+    "overflow": 0,
+    "visible": [
+      "view-quota"
+    ],
+    "errors": []
+  },
+  {
+    "case": "viewport",
+    "viewport": "tablet",
+    "view": "history",
+    "overflow": 0,
+    "visible": [
+      "view-history"
+    ],
+    "errors": []
+  },
+  {
+    "case": "viewport",
+    "viewport": "mobile",
+    "view": "overview",
+    "overflow": 0,
+    "visible": [
+      "view-overview"
+    ],
+    "errors": []
+  },
+  {
+    "case": "viewport",
+    "viewport": "mobile",
+    "view": "devices",
+    "overflow": 0,
+    "visible": [
+      "view-devices"
+    ],
+    "errors": []
+  },
+  {
+    "case": "viewport",
+    "viewport": "mobile",
+    "view": "quota",
+    "overflow": 0,
+    "visible": [
+      "view-quota"
+    ],
+    "errors": []
+  },
+  {
+    "case": "viewport",
+    "viewport": "mobile",
+    "view": "history",
+    "overflow": 0,
+    "visible": [
+      "view-history"
+    ],
+    "errors": []
+  },
+  {
+    "case": "viewport",
+    "viewport": "small",
+    "view": "overview",
+    "overflow": 0,
+    "visible": [
+      "view-overview"
+    ],
+    "errors": []
+  },
+  {
+    "case": "viewport",
+    "viewport": "small",
+    "view": "devices",
+    "overflow": 0,
+    "visible": [
+      "view-devices"
+    ],
+    "errors": []
+  },
+  {
+    "case": "viewport",
+    "viewport": "small",
+    "view": "quota",
+    "overflow": 0,
+    "visible": [
+      "view-quota"
+    ],
+    "errors": []
+  },
+  {
+    "case": "viewport",
+    "viewport": "small",
+    "view": "history",
+    "overflow": 0,
+    "visible": [
+      "view-history"
+    ],
+    "errors": []
+  },
+  {
+    "case": "nocap-kpi",
+    "legend": "组成未知\n488.8万",
+    "note": "后端未提供精确 Token 组成，未将剩余量猜作非缓存输入。"
+  },
+  {
+    "case": "diagnostics",
+    "toolCount": 1,
+    "text": "claude\n异常",
+    "heading": "H2"
+  },
+  {
+    "case": "stale-fallback",
+    "slow": "在线",
+    "fast": "离线",
+    "summary": "在线\n1\n/ 共 2 台\n追踪客户端\n0\n个\n今日合计\n0\ntokens\n离线状态由服务端按每台设备的上传间隔判定"
+  }
+]
