@@ -1719,11 +1719,13 @@ function renderLimits(limits) {
       let meter = "";
       let meta;
       if (hasPct && showMeter) {
-        // percentage 窗口：圆环仪表
-        const pct = Math.max(0, Math.min(100, Number(w.usedPercent)));
-        const lv = pct < 60 ? "ok" : pct < 85 ? "warn" : "crit";
-        meter = ringSvg(pct, lv, state.entryFx);
-        meta = reset || "已用 " + pct.toFixed(0) + "%";
+        // percentage 窗口：圆环仪表。语义=剩余配额：未使用=整圈绿，
+        // 随使用逐渐减少；颜色按已用量分档（用量越高越红）
+        const used = Math.max(0, Math.min(100, Number(w.usedPercent)));
+        const remain = 100 - used;
+        const lv = used < 60 ? "ok" : used < 85 ? "warn" : "crit";
+        meter = ringSvg(remain, lv, state.entryFx);
+        meta = reset || "已用 " + used.toFixed(0) + "%";
       } else if (metric === "credits" && w.remaining != null && Number.isFinite(Number(w.remaining))) {
         // credits 只有余额：显示绝对余额
         meta = "剩余 " + fmtCompact(w.remaining) +
