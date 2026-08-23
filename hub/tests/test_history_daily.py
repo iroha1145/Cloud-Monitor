@@ -176,6 +176,11 @@ def test_explain_uses_composite_index(tmp_path):
     detail = " ".join(r["detail"] for r in plan)
     assert "USING INDEX" in detail or "INDEX" in detail, detail
     assert "SCAN tm_snapshot_buckets" not in detail or "USING INDEX" in detail
+
+    sql_dev, params_dev = build_distinct_days_query(device_id="d", cursor="2026-08-23")
+    plan_dev = db.fetchall(f"EXPLAIN QUERY PLAN {sql_dev}", (*params_dev, 30))
+    detail_dev = " ".join(r["detail"] for r in plan_dev)
+    assert "idx_tm_buckets_dev_day_bucket" in detail_dev or "USING INDEX" in detail_dev, detail_dev
     db.close()
 
 

@@ -152,11 +152,12 @@ def test_hourly_filters_other_dashboard_days(tmp_path):
     assert report["time_zone"] == "Asia/Tokyo"
     assert report["hourly_today"]["day"] == "2026-08-23"
     hourly = {h["hour"]: h["total"] for h in report["hourly"]}
-    assert hourly.get(10, 0) >= 50  # 01:00Z delta relative to previous
-    # 08-23 15:00Z is 08-24 00:00 JST → 不得进入今日 hourly
-    assert report["hourly"]
-    tomorrow = [d for d in report["daily"] if d["day"] == "2026-08-24"]
-    # 次日总量走 daily，不进今日 24h
+    assert hourly.get(10) == 100  # 01:00Z = 10:00 JST, 新本地日首桶
+    assert hourly.get(0) == 50  # 08-22 15:00Z = 今日 00:00 JST
+    # 08-23 15:00Z = 08-24 00:00 JST → 不得并入今日 hour=0
+    assert sum(hourly.values()) == 150
+    tomorrow = {d["day"]: d["total"] for d in report["daily"]}
+    assert tomorrow.get("2026-08-24") == 100
     db.close()
 
 
