@@ -355,9 +355,9 @@ def activity_report(db: Database, dashboard_tz, now: Any = None) -> dict:
                 continue
             local = moment.astimezone(tz)
             dash_day = local.date().isoformat()
-            age = (local_now.date() - local.date()).days
-            if 0 <= age < FINE_ACTIVITY_DAYS:
-                fine_daily[dash_day] = fine_daily.get(dash_day, 0) + entry["delta"]
+            # 5 分钟差分按仪表盘日入 daily（含跨日溢出的次日）；
+            # 只有转换后日期 == 仪表盘今日 才进 24 小时图。
+            fine_daily[dash_day] = fine_daily.get(dash_day, 0) + entry["delta"]
             if dash_day == today_key:
                 hourly[local.hour] = hourly.get(local.hour, 0) + entry["delta"]
                 has_today_hourly = True

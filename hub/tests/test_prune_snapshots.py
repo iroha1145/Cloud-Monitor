@@ -90,6 +90,54 @@ def test_same_bucket_later_received_at_wins_via_order(tmp_path):
     db.close()
 
 
+def test_same_bucket_later_received_at_wins_on_upsert(tmp_path):
+    """同 (device, local_day, bucket) 后到的 received_at 覆盖，更早的补写不能回滚。"""
+    from hub.tm_snapshots import write_snapshot
+
+    db = Database(tmp_path / "p4b.db")
+    ensure_schema(db)
+    stamp = "2026-08-01T12:03:00.000Z"
+    windows = {
+        "timeZone": "UTC",
+        "today": {"key": "2026-08-01", "endsAt": "2026-08-02T00:00:00.000Z"},
+        "month": {"key": "2026-08", "endsAt": "2026-09-01T00:00:00.000Z"},
+    }
+
+    def rec(total: int, received: str) -> dict:
+        return {
+            "deviceId": "d",
+            "updatedAt": stamp,
+            "receivedAt": received,
+            "periodWindows": windows,
+            "periods": {
+                "today": {"totalTokens": total, "clients": {"claude": total}},
+                "month": {},
+                "allTime": {},
+            },
+        }
+
+    write_snapshot(
+        db, device_id="d", record=rec(1, "2026-08-01T12:03:01.000Z"),
+        limits_only=False, incoming=rec(1, "2026-08-01T12:03:01.000Z"),
+        force_received_at="2026-08-01T12:03:01.000Z",
+    )
+    write_snapshot(
+        db, device_id="d", record=rec(9, "2026-08-01T12:03:09.000Z"),
+        limits_only=False, incoming=rec(9, "2026-08-01T12:03:09.000Z"),
+        force_received_at="2026-08-01T12:03:09.000Z",
+    )
+    write_snapshot(
+        db, device_id="d", record=rec(99, "2026-08-01T12:03:00.000Z"),
+        limits_only=False, incoming=rec(99, "2026-08-01T12:03:00.000Z"),
+        force_received_at="2026-08-01T12:03:00.000Z",
+    )
+    rows = kept(db)
+    assert len(rows) == 1
+    assert rows[0]["today_total"] == 9
+    assert rows[0]["server_received_at"].endswith("Z")
+    db.close()
+
+
 def test_seven_day_boundary(tmp_path):
     db = Database(tmp_path / "p5.db")
     ensure_schema(db)
