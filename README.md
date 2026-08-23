@@ -35,6 +35,10 @@ tm-core 容器中，本机 widget 在设置里把 hub 指向你的服务器即�
 | `GET /api/devices` | ✅ `{devices:[...]}` | 透传 |
 | `DELETE /api/devices/:id` | ✅ `{ok,deviceId}` | 透传 + 清理 SQLite 快照 |
 | `GET /api/history` | ✅ | 透传 |
+| `GET /api/v1/tm/overview` | ✅ Cloud 扩展 | ACCESS_TOKEN；官方 stats + SQLite 时间序列 |
+| `GET /api/v1/tm/subscriptions` | ✅ Cloud 扩展 | ACCESS_TOKEN |
+| `GET /api/v1/tm/provider-status` | ✅ Cloud 扩展 | ACCESS_TOKEN；allowlist 并发状态页 |
+| `GET /api/v1/tm/history/daily` | ✅ Cloud 扩展 | ACCESS_TOKEN；370 天本地日 SQL 分页 |
 | `GET/PUT /api/subscriptions` | ✅（含 stale_write 409 / 非法币种 400） | 透传 |
 | `OPTIONS`（官方 204） | ⚠️ 未特殊处理 | 如有需要可加 |
 | Worker 专属 `/api/public/*` | ❌ 不适用 | 官方 Node hub 亦无此端点 |
@@ -51,9 +55,10 @@ tm-core 容器中，本机 widget 在设置里把 hub 指向你的服务器即�
   一律 400，官方仅限 1MiB 体积）；ASGI receive 层 1MiB 实测限流（分块、
   无/伪造 Content-Length 均按实际字节判定）。
 - **网关增加的能力**：SQLite 5 分钟桶长期时间序列（官方 devices.json 只保留
-  每设备最新状态，不含历史点）；`/api/v1/tm/overview` 面板接口与
-  `/api/v1/tm/subscriptions` 只读订阅接口（ACCESS_TOKEN）；
-  v1 旧表自动迁移。
+  每设备最新状态，不含历史点）；`/api/v1/tm/overview` 面板接口、
+  `/api/v1/tm/subscriptions` 只读订阅、`/api/v1/tm/provider-status`
+  （官方状态页 allowlist）、`/api/v1/tm/history/daily`（370 天设备本地日
+  分页）（ACCESS_TOKEN）；v1 旧表自动迁移。
 - **部署形态**：官方 hub 单进程；本方案为 compose 内 python + node 两容器。
 
 ## 本轮加固（v4：可靠性/口径/供应链）
@@ -69,11 +74,13 @@ tm-core 容器中，本机 widget 在设置里把 hub 指向你的服务器即�
   HEALTHCHECK 改用 ready；compose 为 `depends_on: service_healthy`。
   tm-core 不可达时代理接口统一 503（不散落 500），延迟启动由后台线程
   自动重试初始化与旧数据回填。
-- **活动时间口径**：`DASHBOARD_TIME_ZONE`（默认 Asia/Tokyo）。每设备独立
-  最新本地日 → 相邻桶差分（回退钳 0/缺口标记）→ 桶起点换算仪表盘时区
-  小时；coverage 暴露 first/last_sample_at、expected/observed_buckets、
-  coverage_percent、attribution_mode（低覆盖不伪装精确小时数据）。
-  activity.daily 采用仪表盘日（写入 docs/TM_OVERVIEW_CONTRACT.md）。
+- **活动时间口径**：`DASHBOARD_TIME_ZONE`（默认 Asia/Tokyo）。hourly 只收
+  换算后日期等于仪表盘今日的桶；coverage 按设备求和后钳制 0–100%；
+  `attribution_mode` 为 none/delta/delta-low-coverage/delta-with-reset
+  （本地日开始处的自然首桶不是自动 low-coverage）。activity.daily 近 7 天
+  用 5 分钟桶、更早用日锚点，与 `/api/v1/tm/history/daily` 共用查询核心
+  （写入 docs/TM_OVERVIEW_CONTRACT.md）。快照压缩按时间 `ROW_NUMBER`，
+  截止时间为毫秒 UTC `Z`。
 - **会话主键**：`deviceId:client:sessionId`，跨设备同 client:sessionId
   不再互相删除；返回 sessions_meta（total/returned/omitted_count/
   session_details_incomplete）。
@@ -156,17 +163,20 @@ ARCHITECTURE——token-monitor 走上面主路径时不需要它。
 | `DEVICE_KEYS_JSON` | 每设备写密钥（记录链路） | 空 |
 | `CORS_ORIGINS` / `DOCS_ENABLED` | 默认均关闭 | 关 |
 | `MAX_RECORDS_PER_PUSH` | 记录单批上限 | `500` |
+| `DASHBOARD_TIME_ZONE` | 面板活动统计时区 | `Asia/Tokyo` |
+| `PROVIDER_STATUS_ENABLED` | Cloud 扩展：官方状态页 | `true` |
+| `PROVIDER_STATUS_CACHE_SECONDS` | 状态页缓存 TTL（SWR） | `300` |
+| `PROVIDER_STATUS_TIMEOUT_SECONDS` | 单页超时（总预算 3s） | `2.5` |
 
 agent（OpenWebUI 链路）的环境变量见 `agent/.env.example`。
 
 ## 测试
 
 ```bash
-cd hub   && PYTHONPATH=backend python -m pytest tests/ -q   # 83 项
-cd agent && python -m pytest tests/ -q                       # 28 项
+cd hub   && PYTHONPATH=backend python -m pytest tests/ -q
+cd agent && python -m pytest tests/ -q
 ```
 
-整体验证：111 项 pytest 全绿；32 线程并发压测零异常；10 万条 SQL 分页/聚合
-与基准一致；token-monitor 双设备真实风格 payload（含缓存拆分）端到端入库、
-聚合与面板展示正常。
+hub 测试覆盖 provider-status（Mock 网络）、history/daily SQL 分页、
+100×370 查询计划、activity 覆盖率、乱序快照压缩与前端契约 fixture 导出。
 

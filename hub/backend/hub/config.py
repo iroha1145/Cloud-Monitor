@@ -88,13 +88,38 @@ class Settings:
     tm_outbox_max_pending: int = 1000  # 快照发件箱 pending 上限（背压阈值）
     max_sync_body_bytes: int = 2 * 1024 * 1024  # /api/v1/sync/push 实际正文字节上限
     tm_background_enabled: bool = True  # 后台重放/回填线程（测试可关）
+    provider_status_enabled: bool = True
+    provider_status_cache_seconds: int = 300
+    provider_status_timeout_seconds: float = 2.5
+    provider_status_budget_seconds: float = 3.0
 
 
-def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
+def _int_env(name: str, default: int, *, minimum: int = 1, maximum: int | None = None) -> int:
     try:
-        return max(int(os.environ.get(name) or default), minimum)
+        value = max(int(os.environ.get(name) or default), minimum)
     except ValueError:
-        return default
+        value = default
+    if maximum is not None:
+        value = min(value, maximum)
+    return value
+
+
+def _float_env(
+    name: str,
+    default: float,
+    *,
+    minimum: float = 0.1,
+    maximum: float | None = None,
+) -> float:
+    raw = os.environ.get(name)
+    try:
+        value = float(raw) if raw not in (None, "") else default
+    except ValueError:
+        value = default
+    value = max(value, minimum)
+    if maximum is not None:
+        value = min(value, maximum)
+    return value
 
 
 def load_settings() -> Settings:
@@ -188,4 +213,14 @@ def load_settings() -> Settings:
         tm_outbox_max_pending=_int_env("TM_OUTBOX_MAX_PENDING", 1000),
         max_sync_body_bytes=_int_env("MAX_SYNC_BODY_BYTES", 2 * 1024 * 1024),
         tm_background_enabled=_env_bool(os.environ.get("TM_BACKGROUND_ENABLED", "true")),
+        provider_status_enabled=_env_bool(
+            os.environ.get("PROVIDER_STATUS_ENABLED", "true")
+        ),
+        provider_status_cache_seconds=_int_env(
+            "PROVIDER_STATUS_CACHE_SECONDS", 300, minimum=0, maximum=86400
+        ),
+        provider_status_timeout_seconds=_float_env(
+            "PROVIDER_STATUS_TIMEOUT_SECONDS", 2.5, minimum=0.1, maximum=3.0
+        ),
+        provider_status_budget_seconds=3.0,
     )

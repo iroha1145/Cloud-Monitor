@@ -78,6 +78,13 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     tm_core = bootstrap_tm_layer(settings, app.state.db)
     app.state.tm_core = tm_core
     app.state.tm_background = None
+    from .tm_provider_status import ProviderStatusService
+
+    app.state.provider_status = ProviderStatusService(
+        cache_seconds=settings.provider_status_cache_seconds,
+        timeout_seconds=settings.provider_status_timeout_seconds,
+        budget_seconds=settings.provider_status_budget_seconds,
+    )
     app.include_router(build_tm_router(settings, app.state.db))
     # 云端用量面板数据（/api/v1/tm/overview + /api/v1/tm/subscriptions）
     app.include_router(build_tm_overview_router(settings, app.state.db))

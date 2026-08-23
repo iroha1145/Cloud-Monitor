@@ -330,54 +330,63 @@ def test_delayed_tm_core_bootstrap_retries_and_replay_once(node_hub, tmp_path):
 @requires_node
 def test_activity_dashboard_timezone_shifts_hours(node_hub, tmp_path):
     """设备 UTC 桶 → 仪表盘 Asia/Tokyo：01:00Z 的用量落在 hour=10。"""
+    from hub.tm_overview import activity_report
+    from zoneinfo import ZoneInfo
+
     cloud = make_cloud_app(tmp_path, node_hub.url, background=False)
     db = cloud.app.state.db
     with cloud:
-        day = dt.datetime.now(dt.timezone.utc).date().isoformat()
-        seed_bucket(db, "utc-dev", day, f"{day}T01:00:00.000Z", 500)
-        data = overview(cloud)
-        assert data["dashboard_time_zone"] == "Asia/Tokyo"
-        hourly = {h["hour"]: h["total"] for h in data["activity"]["hourly"]}
+        now = dt.datetime(2026, 8, 23, 12, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+        seed_bucket(db, "utc-dev", "2026-08-23", "2026-08-23T01:00:00.000Z", 500)
+        data = activity_report(db, "Asia/Tokyo", now=now)
+        hourly = {h["hour"]: h["total"] for h in data["hourly"]}
         assert hourly.get(10) == 500  # UTC 01:00 = 东京 10:00
-        assert data["activity"]["time_zone"] == "Asia/Tokyo"
+        assert data["time_zone"] == "Asia/Tokyo"
+        assert data["hourly_day"] == "2026-08-23"
 
 
 @requires_node
 def test_activity_two_timezones_same_timeline(node_hub, tmp_path):
-    """东京与洛杉矶设备（本地日不同）同处一条全局小时时间轴。"""
+    """东京与洛杉矶设备同处仪表盘今日时间轴；跨日的桶不得并入今日 hourly。"""
+    from hub.tm_overview import activity_report
+    from zoneinfo import ZoneInfo
+
     cloud = make_cloud_app(tmp_path, node_hub.url, background=False)
     db = cloud.app.state.db
     with cloud:
-        day = dt.datetime.now(dt.timezone.utc).date().isoformat()
-        seed_bucket(db, "tky", day, f"{day}T15:00:00.000Z", 100)
-        la_day = (dt.date.fromisoformat(day) - dt.timedelta(days=1)).isoformat()
-        seed_bucket(db, "lax", la_day, f"{day}T05:00:00.000Z", 200)
-        data = overview(cloud)
-        hourly = {h["hour"]: h["total"] for h in data["activity"]["hourly"]}
-        assert hourly.get(0, 0) >= 100
+        now = dt.datetime(2026, 8, 23, 16, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+        # 05:00Z = 14:00 JST 08-23；15:00Z = 00:00 JST 08-24（次日，不进今日 hourly）
+        seed_bucket(db, "tky", "2026-08-23", "2026-08-23T05:00:00.000Z", 200)
+        seed_bucket(db, "lax", "2026-08-22", "2026-08-22T15:00:00.000Z", 100)
+        data = activity_report(db, "Asia/Tokyo", now=now)
+        hourly = {h["hour"]: h["total"] for h in data["hourly"]}
+        assert data["hourly_day"] == "2026-08-23"
         assert hourly.get(14, 0) >= 200
+        # 08-22 15:00Z → 08-23 00:00 JST，属于今日
+        assert hourly.get(0, 0) >= 100
         assert sum(hourly.values()) == 300
 
 
 @requires_node
 def test_activity_coverage_marks_low_coverage(node_hub, tmp_path):
     """首次中午接入（首桶全量）与 30 分钟间隔 → 低覆盖标记。"""
+    from hub.tm_overview import activity_report
+
     cloud = make_cloud_app(tmp_path, node_hub.url, background=False)
     db = cloud.app.state.db
     with cloud:
-        day = dt.datetime.now(dt.timezone.utc).date().isoformat()
+        now = dt.datetime(2026, 8, 23, 14, 0, tzinfo=dt.timezone.utc)
+        day = "2026-08-23"
         seed_bucket(db, "first", day, f"{day}T12:00:00.000Z", 1000)
-        data = overview(cloud)
-        cov = data["activity"]["coverage"]
+        cov = activity_report(db, "UTC", now=now)["coverage"]
         assert cov["attribution_mode"] == "delta-low-coverage"
-        assert cov["first_sample_at"] == f"{day}T12:00:00Z"
+        assert cov["first_sample_at"] == f"{day}T12:00:00.000Z"
         assert cov["observed_buckets"] == 1
         assert cov["expected_buckets"] == 1
         assert cov["coverage_percent"] == 100.0
 
         seed_bucket(db, "first", day, f"{day}T12:30:00.000Z", 1500)
-        data = overview(cloud)
-        cov = data["activity"]["coverage"]
+        cov = activity_report(db, "UTC", now=now)["coverage"]
         assert cov["attribution_mode"] == "delta-low-coverage"
         assert cov["expected_buckets"] == 7  # 12:00..12:30
         assert cov["observed_buckets"] == 2
@@ -387,14 +396,18 @@ def test_activity_coverage_marks_low_coverage(node_hub, tmp_path):
 @requires_node
 def test_activity_dst_spring_forward_preserves_totals(node_hub, tmp_path):
     """夏令时跳变日：23 小时日总量守恒（桶按 UTC，换算到仪表盘时区）。"""
+    from hub.tm_overview import activity_report
+    from zoneinfo import ZoneInfo
+
     cloud = make_cloud_app(tmp_path, node_hub.url, background=False)
     db = cloud.app.state.db
     with cloud:
         day = "2026-03-08"
         for i, hour_utc in enumerate((5, 6, 7, 8)):
             seed_bucket(db, "dst", day, f"{day}T0{hour_utc}:00:00.000Z", 100 * (i + 1))
-        data = overview(cloud)
-        assert sum(h["total"] for h in data["activity"]["hourly"]) == 400
+        now = dt.datetime(2026, 3, 8, 20, 0, tzinfo=ZoneInfo("Asia/Tokyo"))
+        data = activity_report(db, "Asia/Tokyo", now=now)
+        assert sum(h["total"] for h in data["hourly"]) == 400
 
 
 @requires_node
