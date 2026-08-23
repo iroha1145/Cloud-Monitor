@@ -4,16 +4,21 @@
 - Node tm-core（vendored 官方代码, 未修改）: payload 规范化、设备记录合并、
   多设备聚合（过期/陈旧判定）、history、limits、subscriptions、SSE 广播、
   devices.json 持久化。所有官方响应原样透传，不重造。
-- Python 本层: 鉴权（TOKEN_MONITOR_SECRET，只作用于 token-monitor 端点，
-  与 OpenWebUI 链路的 API_KEY/ACCESS_TOKEN 完全隔离）、转发前的严格载荷
-  校验、ASGI 级 1MiB 限流、SQLite 5 分钟桶历史快照（长期时间序列，官方
-  不提供）、v1 旧表迁移。面板数据（/api/v1/tm/*）在 tm_overview.py。
+- Python 本层: 鉴权（TOKEN_MONITOR_SECRET，与 OpenWebUI 链路密钥隔离）、
+  转发前的严格载荷校验、ASGI 级 1MiB 限流、事务发件箱保证的 SQLite
+  5 分钟桶快照、健康检查（live/ready）、/api/v1/tm/*（tm_overview.py）、
+  v1 旧表迁移。
+
+可靠性（P0-1）: ingest 先记 pending outbox → 转发 → 从响应 stats.devices
+取规范化记录写快照并标记 done（同请求闭环，不再额外 GET /api/devices）；
+快照失败时 outbox 留待重放（官方数据不丢，健康暴露 snapshot_degraded）。
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+import threading
+from typing import Optional
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -21,26 +26,50 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from .config import Settings
 from .db import Database
+from .tm_outbox import (
+    OutboxFullError,
+    ensure_schema as ensure_outbox_schema,
+    mark_done,
+    mark_failed,
+    new_request_id,
+    record_pending,
+    replay_pending,
+    set_snapshot_status,
+)
 from .tm_snapshots import (
     delete_device_snapshots,
+    ensure_schema,
     legacy_device_payloads,
     migrate_legacy_tables,
     write_snapshot,
 )
-from .tm_validate import PayloadValidationError, is_limits_only_update, validate_ingest_payload
+from .tm_validate import (
+    PayloadValidationError,
+    is_limits_only_update,
+    validate_ingest_payload,
+)
 
 log = logging.getLogger("tm-proxy")
 
-UPSTREAM_TIMEOUT = 15.0
-SSE_HEARTBEAT_HINT = b": hb"
+CONNECT_TIMEOUT = 5.0
+READ_TIMEOUT = 15.0
+
+
+class UpstreamUnavailable(Exception):
+    """tm-core 连接层不可达（统一映射 503，允许客户端重连/重试）。"""
 
 
 class TmCore:
-    """官方 Node hub 的 HTTP 客户端。"""
+    """官方 Node hub 的 HTTP 客户端（复用注入的 httpx.Client 连接池）。"""
 
-    def __init__(self, base_url: str, secret: str):
+    def __init__(self, base_url: str, secret: str, client: Optional[httpx.Client] = None):
         self.base_url = base_url.rstrip("/")
         self.secret = secret
+        self._client = client
+
+    def bind_client(self, client: httpx.Client) -> "TmCore":
+        self._client = client
+        return self
 
     def headers(self) -> dict[str, str]:
         return {
@@ -54,15 +83,34 @@ class TmCore:
         path: str,
         *,
         json_body: Optional[dict] = None,
-        timeout: float = UPSTREAM_TIMEOUT,
+        timeout: Optional[httpx.Timeout] = None,
     ) -> httpx.Response:
-        return httpx.request(
-            method,
-            f"{self.base_url}{path}",
-            json=json_body,
-            headers=self.headers(),
-            timeout=timeout,
-        )
+        if self._client is None:
+            # 非 lifespan 用法（直连 ASGI 测试等）：临时客户端兜底
+            try:
+                return httpx.request(
+                    method,
+                    f"{self.base_url}{path}",
+                    json=json_body,
+                    headers=self.headers(),
+                    timeout=timeout or httpx.Timeout(CONNECT_TIMEOUT, read=READ_TIMEOUT),
+                )
+            except httpx.ConnectError as exc:
+                raise UpstreamUnavailable(f"tm-core 不可达: {exc}") from exc
+            except httpx.ConnectTimeout as exc:
+                raise UpstreamUnavailable(f"tm-core 连接超时: {exc}") from exc
+        try:
+            return self._client.request(
+                method,
+                f"{self.base_url}{path}",
+                json=json_body,
+                headers=self.headers(),
+                timeout=timeout or httpx.Timeout(CONNECT_TIMEOUT, read=READ_TIMEOUT),
+            )
+        except httpx.ConnectError as exc:
+            raise UpstreamUnavailable(f"tm-core 不可达: {exc}") from exc
+        except httpx.ConnectTimeout as exc:
+            raise UpstreamUnavailable(f"tm-core 连接超时: {exc}") from exc
 
     def health(self) -> Optional[dict]:
         try:
@@ -73,12 +121,25 @@ class TmCore:
 
 
 def _proxy_response(resp: httpx.Response) -> JSONResponse:
-    return JSONResponse(status_code=resp.status_code, content=resp.json())
+    try:
+        return JSONResponse(status_code=resp.status_code, content=resp.json())
+    except ValueError:
+        return JSONResponse(status_code=502, content={"error": "bad_gateway"})
 
 
-def build_tm_router(settings: Settings, db: Database, core: TmCore) -> APIRouter:
+def _unavailable_response(exc: Exception) -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={"error": "upstream_unavailable", "message": str(exc)[:200]},
+    )
+
+
+def build_tm_router(settings: Settings, db: Database) -> APIRouter:
+    """路由在调用期从 app.state 取 core（lifespan 绑定共享客户端）。"""
     router = APIRouter()
-    _async_client: Optional[httpx.AsyncClient] = None
+
+    def core_of(request: Request) -> TmCore:
+        return request.app.state.tm_core
 
     def tm_auth(request: Request) -> None:
         if not settings.tm_ingest_secret:
@@ -86,20 +147,29 @@ def build_tm_router(settings: Settings, db: Database, core: TmCore) -> APIRouter
                 status_code=404,
                 detail="未启用 token-monitor 接入（缺少 TOKEN_MONITOR_SECRET）",
             )
+        import hmac
+
         secret = settings.tm_ingest_secret
         header = request.headers.get("x-token-monitor-secret") or ""
         auth = request.headers.get("authorization") or ""
         bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-        import hmac
-
         if not hmac.compare_digest((header or bearer).encode(), secret.encode()):
             raise HTTPException(status_code=401, detail="unauthorized")
 
     # ------------------------------------------------------------ health
 
     @router.get("/api/health")
-    def tm_health() -> JSONResponse:
-        upstream = core.health()
+    def tm_health(request: Request) -> JSONResponse:
+        if not settings.tm_ingest_secret:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "ok": False,
+                    "error": "disabled",
+                    "detail": "TOKEN_MONITOR_SECRET 未配置，token-monitor 接入已停用",
+                },
+            )
+        upstream = core_of(request).health()
         if upstream is None:
             return JSONResponse(
                 status_code=503,
@@ -108,11 +178,17 @@ def build_tm_router(settings: Settings, db: Database, core: TmCore) -> APIRouter
                     "role": "hub",
                     "runtime": "cloud-monitor",
                     "error": "tm-core 上游不可用",
+                    "snapshot": snapshot_health_of(db),
                 },
             )
         return JSONResponse(status_code=200, content=upstream)
 
-    # ------------------------------------------------------------ ingest
+    def snapshot_health_of(db: Database) -> dict:
+        from .tm_outbox import snapshot_health
+
+        return snapshot_health(db)
+
+    # ------------------------------------------------------------ ingest（outbox 闭环）
 
     @router.post("/api/ingest")
     def tm_ingest(request: Request, payload: dict) -> JSONResponse:
@@ -123,62 +199,90 @@ def build_tm_router(settings: Settings, db: Database, core: TmCore) -> APIRouter
             return JSONResponse(
                 status_code=400, content={"error": "bad_request", "message": str(exc)}
             )
+        device_id = str(payload.get("deviceId") or payload.get("id") or "")
+        request_id = new_request_id()
         try:
-            resp = core.request("POST", "/api/ingest", json_body=payload)
-        except httpx.HTTPError as exc:
-            log.error("tm-core 转发失败: %s", exc)
-            return JSONResponse(
-                status_code=502, content={"error": "bad_gateway", "message": str(exc)}
+            record_pending(
+                db,
+                request_id=request_id,
+                device_id=device_id,
+                payload=payload,
+                max_pending=settings.tm_outbox_max_pending,
             )
-        if resp.status_code == 200:
-            try:
-                write_snapshot_for_device(db, core, payload)
-            except Exception as exc:  # 快照失败不阻断协议路径
-                log.warning("快照写入失败（不影响官方协议响应）: %s", exc)
+        except OutboxFullError as exc:
+            return JSONResponse(
+                status_code=503,
+                content={"error": "snapshot_backpressure", "message": str(exc)},
+            )
+
         try:
-            return JSONResponse(status_code=resp.status_code, content=resp.json())
+            resp = core_of(request).request("POST", "/api/ingest", json_body=payload)
+        except UpstreamUnavailable as exc:
+            log.warning("tm-core 不可达（outbox pending 留待重放/重试）: %s", exc)
+            return _unavailable_response(exc)
+        if resp.status_code != 200:
+            return _proxy_response(resp)
+
+        try:
+            body = resp.json()
         except ValueError:
             return JSONResponse(status_code=502, content={"error": "bad_gateway"})
 
-    def write_snapshot_for_device(db: Database, core: TmCore, payload: dict) -> None:
-        device_id = str(payload.get("deviceId") or payload.get("id") or "")
-        if not device_id:
-            return
-        devices = core.request("GET", "/api/devices")
-        if devices.status_code != 200:
-            return
-        for record in devices.json().get("devices") or []:
-            if str(record.get("deviceId")) == device_id:
-                write_snapshot(
-                    db,
-                    device_id=device_id,
-                    record=record,
-                    incoming=payload,
-                    limits_only=is_limits_only_update(payload),
-                )
-                return
+        # 快照：直接取本次响应内的规范化记录（同请求闭环，不串批）
+        try:
+            record = next(
+                (
+                    r
+                    for r in (body.get("stats") or {}).get("devices") or []
+                    if str(r.get("deviceId")) == device_id
+                ),
+                None,
+            )
+            write_snapshot(
+                db,
+                device_id=device_id,
+                record=record or {},
+                incoming=payload,
+                limits_only=is_limits_only_update(payload),
+            )
+            mark_done(db, request_id)
+            set_snapshot_status(db, success=True)
+        except Exception as exc:  # noqa: BLE001 — outbox 兜底，不阻断协议响应
+            mark_failed(db, request_id, str(exc))
+            set_snapshot_status(db, success=False, error=str(exc))
+            log.warning("快照写入失败（outbox 留待重放）: %s", exc)
+        return JSONResponse(status_code=200, content=body)
 
-    # ------------------------------------------------------------ 只读透传
+    # ------------------------------------------------------------ 只读透传（统一 503）
+
+    def _proxied(request: Request, method: str, path: str) -> JSONResponse:
+        try:
+            return _proxy_response(core_of(request).request(method, path))
+        except UpstreamUnavailable as exc:
+            return _unavailable_response(exc)
 
     @router.get("/api/stats")
     def tm_stats(request: Request) -> JSONResponse:
         tm_auth(request)
-        return _proxy_response(core.request("GET", "/api/stats"))
+        return _proxied(request, "GET", "/api/stats")
 
     @router.get("/api/devices")
     def tm_devices(request: Request) -> JSONResponse:
         tm_auth(request)
-        return _proxy_response(core.request("GET", "/api/devices"))
+        return _proxied(request, "GET", "/api/devices")
 
     @router.get("/api/history")
     def tm_history(request: Request) -> JSONResponse:
         tm_auth(request)
-        return _proxy_response(core.request("GET", "/api/history"))
+        return _proxied(request, "GET", "/api/history")
 
     @router.delete("/api/devices/{device_id}")
     def tm_delete_device(device_id: str, request: Request) -> JSONResponse:
         tm_auth(request)
-        resp = core.request("DELETE", f"/api/devices/{device_id}")
+        try:
+            resp = core_of(request).request("DELETE", f"/api/devices/{device_id}")
+        except UpstreamUnavailable as exc:
+            return _unavailable_response(exc)
         if resp.status_code == 200:
             deleted = delete_device_snapshots(db, device_id)
             log.info("设备 %s 已删除（清理 %d 条快照）", device_id, deleted)
@@ -189,30 +293,45 @@ def build_tm_router(settings: Settings, db: Database, core: TmCore) -> APIRouter
     @router.get("/api/subscriptions")
     def tm_get_subscriptions(request: Request) -> JSONResponse:
         tm_auth(request)
-        return _proxy_response(core.request("GET", "/api/subscriptions"))
+        return _proxied(request, "GET", "/api/subscriptions")
 
     @router.put("/api/subscriptions")
     def tm_put_subscriptions(request: Request, payload: dict) -> JSONResponse:
         tm_auth(request)
-        return _proxy_response(
-            core.request("PUT", "/api/subscriptions", json_body=payload)
-        )
+        try:
+            resp = core_of(request).request(
+                "PUT", "/api/subscriptions", json_body=payload
+            )
+        except UpstreamUnavailable as exc:
+            return _unavailable_response(exc)
+        return _proxy_response(resp)
 
-    # ------------------------------------------------------------ SSE
+    # ------------------------------------------------------------ SSE（错误不伪装成事件流）
 
     @router.get("/api/stats/stream")
     async def tm_stats_stream(request: Request):
         tm_auth(request)
-        nonlocal _async_client
-        if _async_client is None:
-            _async_client = httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=None))
-
-        upstream_req = _async_client.build_request(
+        async_client: httpx.AsyncClient = request.app.state.http_async
+        core = core_of(request)
+        upstream_req = async_client.build_request(
             "GET",
             f"{core.base_url}/api/stats/stream",
             headers=core.headers(),
         )
-        upstream = await _async_client.send(upstream_req, stream=True)
+        try:
+            upstream = await async_client.send(upstream_req, stream=True)
+        except httpx.HTTPError as exc:
+            return JSONResponse(
+                status_code=503,
+                content={"error": "upstream_unavailable", "message": str(exc)[:200]},
+            )
+        if upstream.status_code != 200:
+            status = upstream.status_code
+            await upstream.aclose()
+            return JSONResponse(
+                status_code=502,
+                content={"error": "bad_gateway", "upstream_status": status},
+            )
 
         async def event_stream():
             try:
@@ -224,7 +343,7 @@ def build_tm_router(settings: Settings, db: Database, core: TmCore) -> APIRouter
 
         return StreamingResponse(
             event_stream(),
-            status_code=upstream.status_code,
+            status_code=200,
             media_type="text/event-stream",
             headers={
                 "cache-control": "no-cache, no-transform",
@@ -236,25 +355,65 @@ def build_tm_router(settings: Settings, db: Database, core: TmCore) -> APIRouter
     return router
 
 
-def bootstrap_tm_layer(settings: Settings, db: Database) -> Optional[TmCore]:
-    """启动时接线：建表、迁移旧表、回灌 v1 设备到官方 hub。"""
-    from .tm_snapshots import ensure_schema
+class TmBackground:
+    """后台维护：outbox 重放 + tm-core 延迟初始化/旧数据回填重试。"""
 
+    def __init__(self, settings: Settings, db: Database, core: TmCore):
+        self.settings = settings
+        self.db = db
+        self.core = core
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self) -> None:
+        self._thread = threading.Thread(target=self._loop, name="tm-maintenance", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def _loop(self) -> None:
+        bootstrapped = self._bootstrap()
+        while not self._stop.wait(60.0):
+            try:
+                replay_pending(self.db, self.core)
+            except Exception as exc:  # noqa: BLE001 — 后台任务不得崩溃进程
+                log.warning("outbox 后台重放异常: %s", exc)
+            if not bootstrapped:
+                bootstrapped = self._bootstrap()
+
+    def _bootstrap(self) -> bool:
+        """tm-core 延迟就绪时自动重试初始化与 v2 旧数据回填（幂等标记）。"""
+        if not self.settings.tm_ingest_secret:
+            return True
+        if self.core.health() is None:
+            return False
+        for payload in legacy_device_payloads(self.db):
+            try:
+                self.core.request("POST", "/api/ingest", json_body=payload)
+            except (UpstreamUnavailable, httpx.HTTPError) as exc:
+                log.warning("v1 设备回灌失败（将随后台周期重试）: %s", exc)
+                return False
+        try:
+            replay_pending(self.db, self.core)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("启动重放异常: %s", exc)
+        return True
+
+
+def bootstrap_tm_layer(
+    settings: Settings, db: Database, client: Optional[httpx.Client] = None
+) -> Optional[TmCore]:
+    """启动接线：建表、迁移旧表、构造 core（后台线程负责重试与重放）。"""
     ensure_schema(db)
+    ensure_outbox_schema(db)
     migrate_legacy_tables(db)
     if not settings.tm_ingest_secret:
         return None
-    core = TmCore(settings.tm_core_url, settings.tm_ingest_secret)
+    core = TmCore(settings.tm_core_url, settings.tm_ingest_secret, client)
     if core.health() is None:
         log.warning(
-            "tm-core 上游不可达 (%s)：token-monitor 端点将返回 502/503，"
-            "OpenWebUI 链路不受影响",
+            "tm-core 上游暂不可达 (%s)：后台线程将自动重试初始化与回填",
             settings.tm_core_url,
         )
-        return core
-    for payload in legacy_device_payloads(db):
-        try:
-            core.request("POST", "/api/ingest", json_body=payload)
-        except httpx.HTTPError as exc:
-            log.warning("v1 设备回灌失败（可在 tm-core 恢复后重启服务重试）: %s", exc)
     return core

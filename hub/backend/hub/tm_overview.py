@@ -21,7 +21,22 @@
 - projects: 官方聚合 periods.allTime.projects 规范化输出，附 devices 归属。
 - diagnostics: 每设备 clientHealth/clientStatus/wslStatus 透传（官方 stats
   devices 原生携带，缺失为 None，前端自动隐藏对应行）。
-- period_windows: 最新设备的 periodWindows 透传（无则 None）。
+- period_windows: （deprecated，保留兼容）最新设备的 periodWindows 透传。
+- period_windows_by_device / dashboard_period: 每设备窗口 + 仪表盘时区窗口。
+- activity（v2 口径，P0-3）:
+  * 每台设备独立取其最新有效本地日（不取全表最大 local_day）；
+  * 每设备相邻快照差分（累计回退视为缺口），桶起点换算到
+    DASHBOARD_TIME_ZONE 的小时——东京/洛杉矶设备同处一条全局时间轴；
+  * coverage: first/last_sample_at、expected/observed_buckets、
+    coverage_percent、attribution_mode（首次接入/断线缺口→低覆盖标记，
+    不伪装成精确小时数据）；
+  * activity.daily 采用【仪表盘日】（写入契约 docs/TM_OVERVIEW_CONTRACT.md，
+    与小时口径一致；设备本地日仍在 trend/trend_models 使用）。
+- sessions（P1-1）: 跨设备主键 deviceId:client:sessionId（不同设备同
+  client:sessionId 均保留，不再互相删除），附 sessions_total/returned/
+  omitted_count/session_details_incomplete。
+- overview v2（P1-4）: overview_schema_version/features/partial/partial_errors
+  /dashboard_time_zone；辅助来源失败标记 partial + 稳定错误码，不伪装成空。
 """
 
 from __future__ import annotations
@@ -44,6 +59,7 @@ log = logging.getLogger("tm-overview")
 TREND_DAYS = 30
 ACTIVITY_DAILY_DAYS = 90
 SESSIONS_LIMIT = 100
+GAP_BUCKETS = 2  # 相邻桶间隔超过 2 个槽位视为采样缺口（低覆盖）
 
 
 def _int(value: Any) -> int:
@@ -68,18 +84,27 @@ def _device_display(device: dict) -> str:
 
 
 def trend_models_by_day(db: Database, days: int = TREND_DAYS) -> list[dict]:
-    """每设备每本地日最后一个桶，按天合并 today_total 与 models_json。"""
+    """每设备每本地日最后一个桶，按天合并 today_total 与 models_json。
+
+    日期范围在窗口函数之前收敛（local_day >= 下界），不加载 370 天全量
+    后再在 Python 切 30 天。
+    """
+    from datetime import datetime, timedelta, timezone
+
+    day_floor = (datetime.now(timezone.utc) - timedelta(days=days + 1)).date().isoformat()
     rows = db.fetchall(
         """
         SELECT local_day, today_total, models_json FROM (
             SELECT local_day, today_total, models_json,
                    ROW_NUMBER() OVER (
                        PARTITION BY device_id, local_day
-                       ORDER BY bucket_start DESC
+                       ORDER BY bucket_start DESC, server_received_at DESC, id DESC
                    ) AS rn
             FROM tm_snapshot_buckets
+            WHERE local_day >= ?
         ) WHERE rn = 1 ORDER BY local_day
-        """
+        """,
+        (day_floor,),
     )
     totals: dict[str, int] = {}
     models_by_day: dict[str, dict[str, int]] = {}
@@ -103,41 +128,148 @@ def trend_models_by_day(db: Database, days: int = TREND_DAYS) -> list[dict]:
     ]
 
 
-def hourly_activity(db: Database) -> list[dict]:
-    """最新本地日的 24 小时活动：today_total 相邻差分（钳 0）跨设备求和。"""
-    row = db.fetchone("SELECT MAX(local_day) AS day FROM tm_snapshot_buckets")
-    latest = row["day"] if row else None
-    if not latest:
-        return []
-    rows = db.fetchall(
-        """
-        SELECT device_id, bucket_start, today_total
-        FROM tm_snapshot_buckets
-        WHERE local_day = ?
-        ORDER BY device_id, bucket_start
-        """,
-        (latest,),
+def _device_deltas(db: Database) -> list[dict]:
+    """每设备最新本地日的相邻桶差分：[{device_id, bucket_start, delta, gap}]。
+
+    - 每台设备独立选择其最新有效 local_day（不取全表最大）；
+    - 累计值回退/重置（delta<0）视为缺口，丢弃该差分并重置基线；
+    - 日内首桶计入总量但标记 first=True（首次接入/断线后的累计量），
+      供覆盖率口径标注低覆盖。
+    """
+    devices = db.fetchall(
+        "SELECT device_id, MAX(local_day) AS day FROM tm_snapshot_buckets"
+        " GROUP BY device_id"
     )
-    buckets = [0] * 24
-    last_seen: dict[str, int] = {}
-    for row in rows:
-        value = _int(row["today_total"])
-        delta = max(0, value - last_seen.get(row["device_id"], 0))
-        last_seen[row["device_id"]] = value
+    out: list[dict] = []
+    for row in devices:
+        buckets = db.fetchall(
+            """
+            SELECT bucket_start, today_total FROM tm_snapshot_buckets
+            WHERE device_id = ? AND local_day = ?
+            ORDER BY bucket_start ASC, server_received_at ASC, id ASC
+            """,
+            (row["device_id"], row["day"]),
+        )
+        prev_total: int | None = None
+        prev_bucket: str | None = None
+        for i, bucket in enumerate(buckets):
+            value = _int(bucket["today_total"])
+            stamp = str(bucket["bucket_start"])
+            if prev_total is None:
+                out.append(
+                    {"device_id": row["device_id"], "bucket_start": stamp,
+                     "delta": value, "first": True, "gap": True}
+                )
+            else:
+                gap = _bucket_gap_slots(prev_bucket, stamp) > GAP_BUCKETS
+                delta = value - prev_total
+                if delta < 0:  # 累计回退/重置：计 0 并标记缺口（旧契约：负值钳 0）
+                    out.append(
+                        {"device_id": row["device_id"], "bucket_start": stamp,
+                         "delta": 0, "first": False, "gap": True}
+                    )
+                else:
+                    out.append(
+                        {"device_id": row["device_id"], "bucket_start": stamp,
+                         "delta": delta, "first": False, "gap": gap}
+                    )
+            prev_total = value
+            prev_bucket = stamp
+    return out
+
+
+def _bucket_gap_slots(prev: str | None, curr: str) -> int:
+    """相邻桶之间隔了多少个 5 分钟槽位（时间差/5min，同桶为 0）。"""
+    from datetime import datetime, timezone
+
+    def parse(stamp: str | None):
+        if not stamp:
+            return None
         try:
-            hour = int(str(row["bucket_start"])[11:13])
-        except (TypeError, ValueError):
+            return datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+    a, b = parse(prev), parse(curr)
+    if a is None or b is None:
+        return GAP_BUCKETS + 1
+    return max(int((b - a).total_seconds() // 300), 0)
+
+
+def activity_report(db: Database, dashboard_tz) -> dict:
+    """P0-3 统一活动口径：hourly（仪表盘时区小时）+ daily（仪表盘日）。"""
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo(dashboard_tz)
+    deltas = _device_deltas(db)
+    hourly: dict[int, int] = {}
+    daily: dict[str, int] = {}
+    stamps: list[datetime] = []
+    observed = 0
+    low_coverage = False
+    for entry in deltas:
+        try:
+            moment = datetime.fromisoformat(entry["bucket_start"].replace("Z", "+00:00"))
+        except ValueError:
             continue
-        if 0 <= hour < 24:
-            buckets[hour] += delta
-    return [{"hour": hour, "total": buckets[hour]} for hour in range(24)]
+        stamps.append(moment)
+        observed += 1
+        if entry["gap"] or entry["first"]:
+            low_coverage = True
+        local = moment.astimezone(tz)
+        hourly[local.hour] = hourly.get(local.hour, 0) + entry["delta"]
+        day = local.date().isoformat()
+        daily[day] = daily.get(day, 0) + entry["delta"]
+
+    first_sample = min(stamps).isoformat().replace("+00:00", "Z") if stamps else None
+    last_sample = max(stamps).isoformat().replace("+00:00", "Z") if stamps else None
+    if stamps:
+        span_slots = int((max(stamps) - min(stamps)).total_seconds() // 300) + 1
+    else:
+        span_slots = 0
+    expected = span_slots  # 每设备差分窗口的理想桶数总和的近似下界
+    coverage = round(observed / expected * 100, 1) if expected else 0.0
+    if not deltas:  # 无数据保持旧契约（空数组，前端据此隐藏图表）
+        return {
+            "time_zone": str(tz), "hourly": [], "daily": [],
+            "coverage": {
+                "first_sample_at": None, "last_sample_at": None,
+                "expected_buckets": 0, "observed_buckets": 0,
+                "coverage_percent": 0.0, "attribution_mode": "none",
+            },
+        }
+    return {
+        "time_zone": str(tz),
+        "hourly": [{"hour": h, "total": hourly.get(h, 0)} for h in range(24)],
+        "daily": [
+            {"day": d, "total": daily[d]} for d in sorted(daily)[-ACTIVITY_DAILY_DAYS:]
+        ],
+        "coverage": {
+            "first_sample_at": first_sample,
+            "last_sample_at": last_sample,
+            "expected_buckets": expected,
+            "observed_buckets": observed,
+            "coverage_percent": coverage,
+            "attribution_mode": (
+                "delta-low-coverage" if low_coverage else "delta"
+            ),
+        },
+    }
+
+
+def hourly_activity(db: Database, dashboard_tz: str = "UTC") -> list[dict]:
+    """兼容旧调用：返回 24 小时桶。"""
+    return activity_report(db, dashboard_tz)["hourly"]
 
 
 def daily_activity(
-    db: Database, history: Optional[dict], days: int = ACTIVITY_DAILY_DAYS
+    db: Database, history: Optional[dict], days: int = ACTIVITY_DAILY_DAYS,
+    *, dashboard_tz: str = "UTC",
 ) -> list[dict]:
-    """近 N 天每日总量：快照趋势为主，缺失日用官方 history.daily 回填。"""
-    totals = {row["day"]: row["total"] for row in trend_by_day(db, days)}
+    """近 N 天每日总量【仪表盘日口径】：快照差分聚合为主，缺失日用官方
+    history.daily 回填（同一天快照优先）。"""
+    totals = {row["day"]: row["total"] for row in activity_report(db, dashboard_tz)["daily"]}
     if isinstance(history, dict):
         daily = history.get("daily")
         if isinstance(daily, list):
@@ -147,7 +279,6 @@ def daily_activity(
                 day = str(entry.get("date") or entry.get("day") or "")[:10]
                 if not day:
                     continue
-                # 同一天已有快照数据时快照优先（不回填覆盖）
                 totals.setdefault(day, _int(entry.get("tokens") or entry.get("totalTokens")))
     days_sorted = sorted(totals)[-days:]
     return [{"day": d, "total": totals[d]} for d in days_sorted]
@@ -171,8 +302,13 @@ def _collect_limits(stats: dict) -> list[dict]:
     return out
 
 
-def _collect_sessions(stats: dict) -> tuple[list[dict], bool]:
-    """各设备 today 周期 sessions 拍平去重（留 tokens 大者），降序截 100。"""
+def _collect_sessions(stats: dict) -> tuple[dict, list[dict]]:
+    """各设备 today 周期 sessions 拍平。
+
+    跨设备主键 deviceId:client:sessionId——不同设备出现相同 client:sessionId
+    时两条都保留（不互相删除）；仅在存在官方稳定跨设备标识且内容一致时才
+    会附 duplicate_group（当前官方无此标识，恒不附）。
+    """
     by_key: dict[str, dict] = {}
     for device in stats.get("devices") or []:
         periods = device.get("periods") or {}
@@ -199,13 +335,23 @@ def _collect_sessions(stats: dict) -> tuple[list[dict], bool]:
                 "lastUsedAt": value.get("lastUsedAt"),
                 "device": display,
             }
-            existing = by_key.get(f"{client}:{session_id}")
-            if existing is None or tokens > existing["tokens"]:
-                by_key[f"{client}:{session_id}"] = item
-    sessions = sorted(by_key.values(), key=lambda s: s["tokens"], reverse=True)
+            item["deviceId"] = device.get("deviceId")
+            item["key"] = f"{device.get('deviceId')}:{client}:{session_id}"
+            by_key[item["key"]] = item
+    all_sessions = sorted(by_key.values(), key=lambda s: s["tokens"], reverse=True)
     omitted_counts = stats.get("sessionDetailsOmitted")
-    omitted = bool(isinstance(omitted_counts, dict) and omitted_counts.get("today"))
-    return sessions[:SESSIONS_LIMIT], omitted
+    omitted_count = (
+        int(omitted_counts.get("today") or 0)
+        if isinstance(omitted_counts, dict)
+        else 0
+    )
+    meta = {
+        "sessions_total": len(all_sessions),
+        "sessions_returned": min(len(all_sessions), SESSIONS_LIMIT),
+        "sessions_omitted_count": omitted_count,
+        "session_details_incomplete": omitted_count > 0,
+    }
+    return meta, all_sessions[:SESSIONS_LIMIT]
 
 
 def _collect_projects(stats: dict) -> list[dict]:
@@ -279,6 +425,7 @@ def build_overview(
     *,
     history: Optional[dict] = None,
     raw_devices: Optional[list] = None,
+    dashboard_time_zone: str = "UTC",
 ) -> dict:
     """网页面板数据：官方 stats 透传 + 快照时间序列 + 面板扩展字段。"""
     badges: dict[str, dict] = {}
@@ -317,71 +464,164 @@ def build_overview(
         item.update(badges.get(str(device.get("deviceId")), {}))
         devices.append(item)
 
-    sessions, sessions_omitted = _collect_sessions(stats)
-    return {
+    sessions_meta, sessions = _collect_sessions(stats)
+
+    # v2 扩展：活动口径 / 每设备窗口 / 降级信息（P0-3 / P1-4）
+    partial_errors: list[dict] = []
+    try:
+        from zoneinfo import ZoneInfo
+
+        activity = activity_report(db, dashboard_time_zone)
+        daily = daily_activity(db, history, dashboard_tz=dashboard_time_zone)
+        activity["daily"] = daily
+    except Exception as exc:  # noqa: BLE001 — SQLite 异常不伪装成空数据
+        log.warning("activity 计算失败: %s", exc)
+        partial_errors.append({"code": "activity_unavailable", "source": "sqlite"})
+        activity = {"time_zone": dashboard_time_zone, "hourly": [], "daily": [],
+                    "coverage": None}
+
+    windows_by_device = {
+        str(d.get("deviceId")): d.get("periodWindows")
+        for d in stats.get("devices") or []
+        if isinstance(d.get("periodWindows"), dict) and d.get("periodWindows")
+    }
+    dashboard_period = _dashboard_period(dashboard_time_zone)
+
+    from .tm_outbox import snapshot_health
+
+    overview = {
+        "overview_schema_version": 2,
         "generated_at": stats.get("updatedAt") or stats.get("generatedAt"),
+        **snapshot_health(db),
         "staleAfterMs": stats.get("staleAfterMs"),
+        "dashboard_time_zone": dashboard_time_zone,
+        "features": {
+            "trend_models": True,
+            "activity_hourly": True,
+            "subscriptions": True,
+        },
+        "partial": bool(partial_errors),
+        "partial_errors": partial_errors,
         "totals": stats.get("periods"),
         "devices": devices,
         "trend": trend_by_day(db),
         "trend_models": trend_models_by_day(db),
-        "activity": {
-            "hourly": hourly_activity(db),
-            "daily": daily_activity(db, history),
-        },
-        "period_windows": _latest_period_windows(stats),
+        "activity": activity,
+        "period_windows": _latest_period_windows(stats),  # deprecated
+        "period_windows_by_device": windows_by_device,
+        "dashboard_period": dashboard_period,
         "limits": _collect_limits(stats),
         "sessions": sessions,
-        "sessions_omitted": sessions_omitted,
+        "sessions_omitted": sessions_meta["session_details_incomplete"],  # deprecated
+        "sessions_meta": sessions_meta,
         "projects": _collect_projects(stats),
         "diagnostics": _collect_diagnostics(stats),
     }
+    if history is None:
+        overview["partial"] = True
+        overview["partial_errors"].append({"code": "history_unavailable", "source": "tm-core"})
+    return overview
 
 
-def build_tm_overview_router(settings: Settings, db: Database, core: TmCore) -> APIRouter:
+def _dashboard_period(dashboard_tz: str) -> dict:
+    """仪表盘时区的当前 today/month 窗口（供前端展示口径）。"""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo(dashboard_tz)
+    now = datetime.now(tz)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if now.month == 12:
+        next_month = today_start.replace(year=now.year + 1, month=1)
+    else:
+        next_month = today_start.replace(month=now.month + 1)
+
+    def utc(dt) -> str:
+        return dt.astimezone(tz).astimezone(
+            __import__("datetime").timezone.utc
+        ).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+    return {
+        "time_zone": dashboard_tz,
+        "today": {"key": today_start.date().isoformat(), "endsAt": utc(today_start)},
+        "month": {
+            "key": today_start.strftime("%Y-%m"),
+            "endsAt": utc(next_month),
+        },
+    }
+
+
+def build_tm_overview_router(settings: Settings, db: Database) -> APIRouter:
     router = APIRouter()
+
+    def _core(request: Request) -> TmCore:
+        return request.app.state.tm_core
 
     def _require_core() -> None:
         if not settings.tm_ingest_secret:
             raise HTTPException(status_code=404, detail="未启用 token-monitor 接入")
 
-    def _fetch(path: str) -> Optional[dict]:
-        """辅助上游读取：失败时降级为 None（面板尽力展示，不 5xx）。"""
+    def _fetch(core: TmCore, path: str) -> tuple[Optional[dict], Optional[str]]:
+        """辅助上游读取：失败返回 (None, 稳定错误码)，不伪装成空。"""
+        from .tm_proxy import UpstreamUnavailable
+
         try:
             resp = core.request("GET", path)
-        except httpx.HTTPError as exc:
-            log.warning("tm-core %s 读取失败（降级处理）: %s", path, exc)
-            return None
+        except (httpx.HTTPError, UpstreamUnavailable) as exc:
+            log.warning("tm-core %s 读取失败: %s", path, exc)
+            return None, "upstream_unavailable"
         if resp.status_code != 200:
-            return None
+            return None, f"upstream_status_{resp.status_code}"
         try:
             data = resp.json()
         except ValueError:
-            return None
-        return data if isinstance(data, dict) else None
+            return None, "upstream_invalid_json"
+        if not isinstance(data, dict):
+            return None, "upstream_invalid_shape"
+        return data, None
 
     @router.get("/api/v1/tm/overview")
     def tm_overview(request: Request) -> dict:
         require_access_token(request, settings)
         _require_core()
+        core = _core(request)
+        from .tm_proxy import UpstreamUnavailable
+
         try:
             resp = core.request("GET", "/api/stats")
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, UpstreamUnavailable) as exc:
             raise HTTPException(status_code=502, detail="tm-core 聚合不可用") from exc
         if resp.status_code != 200:
             raise HTTPException(status_code=502, detail="tm-core 聚合不可用")
         stats = resp.json()
-        history = _fetch("/api/history")
-        raw = _fetch("/api/devices")
+        history, history_error = _fetch(core, "/api/history")
+        raw, devices_error = _fetch(core, "/api/devices")
         raw_devices = raw.get("devices") if isinstance(raw, dict) else None
-        return build_overview(db, stats, history=history, raw_devices=raw_devices)
+        overview = build_overview(
+            db,
+            stats,
+            history=history,
+            raw_devices=raw_devices,
+            dashboard_time_zone=settings.dashboard_time_zone,
+        )
+        if history_error:
+            overview["partial"] = True
+            overview["partial_errors"].append(
+                {"code": "history_unavailable", "source": "tm-core", "reason": history_error}
+            )
+        if devices_error:
+            overview["partial"] = True
+            overview["partial_errors"].append(
+                {"code": "devices_badges_unavailable", "source": "tm-core", "reason": devices_error}
+            )
+        return overview
 
     @router.get("/api/v1/tm/subscriptions")
     def tm_subscriptions_read(request: Request) -> dict:
         """面板只读订阅清单：服务端持 TM 密钥向 tm-core 取数，ACCESS_TOKEN 鉴权。"""
         require_access_token(request, settings)
         _require_core()
-        data = _fetch("/api/subscriptions")
+        data, error = _fetch(_core(request), "/api/subscriptions")
         if data is None:
             raise HTTPException(status_code=502, detail="tm-core 订阅数据不可用")
         subscriptions = data.get("subscriptions")

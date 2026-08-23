@@ -56,6 +56,32 @@ tm-core 容器中，本机 widget 在设置里把 hub 指向你的服务器即�
   v1 旧表自动迁移。
 - **部署形态**：官方 hub 单进程；本方案为 compose 内 python + node 两容器。
 
+## 本轮加固（v4：可靠性/口径/供应链）
+
+- **快照可靠性（事务发件箱）**：ingest 先记 pending outbox → 转发 → 从本次
+  响应的 stats.devices 取规范化记录写快照并标记 done（同请求闭环，不再
+  额外 GET /api/devices）。快照失败不静默丢失：outbox 留待后台/启动重放
+  （幂等，不重复建桶），`/api/v1/health`、ready、overview 暴露
+  pending_outbox / snapshot_degraded / last_snapshot_error；pending 超上限
+  （默认 1000）返回 503 背压。
+- **健康检查**：`/api/v1/health/live`（存活）、`/api/v1/health/ready`
+  （SQLite 读写 + tm-core + 快照状态；任一组件失败 503）。Docker
+  HEALTHCHECK 改用 ready；compose 为 `depends_on: service_healthy`。
+  tm-core 不可达时代理接口统一 503（不散落 500），延迟启动由后台线程
+  自动重试初始化与旧数据回填。
+- **活动时间口径**：`DASHBOARD_TIME_ZONE`（默认 Asia/Tokyo）。每设备独立
+  最新本地日 → 相邻桶差分（回退钳 0/缺口标记）→ 桶起点换算仪表盘时区
+  小时；coverage 暴露 first/last_sample_at、expected/observed_buckets、
+  coverage_percent、attribution_mode（低覆盖不伪装精确小时数据）。
+  activity.daily 采用仪表盘日（写入 docs/TM_OVERVIEW_CONTRACT.md）。
+- **会话主键**：`deviceId:client:sessionId`，跨设备同 client:sessionId
+  不再互相删除；返回 sessions_meta（total/returned/omitted_count/
+  session_details_incomplete）。
+- **供应链**：`hub/scripts/backup.sh` / `restore.sh`（两卷一致性备份恢复，
+  含时间点校验）；vendor SHA-256 manifest（CI 逐文件校验）；
+  `requirements-lock.txt` 哈希锁定；基础镜像固定补丁版本；统一安全
+  响应头（CSP/nosniff/no-referrer/frame-ancestors）。
+
 ## 数据保留 / 时区语义 / 隐私 / 备份
 
 - **保留**：SQLite 快照近 7 天 5 分钟级（按设备本地日 5 分钟桶 UPSERT，

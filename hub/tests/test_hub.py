@@ -636,7 +636,7 @@ def test_strict_token_validation(client: TestClient):
 
 
 def test_body_size_limit(tmp_path):
-    settings = make_settings(tmp_path, max_body_bytes=1000)
+    settings = make_settings(tmp_path, max_sync_body_bytes=1000)
     client = TestClient(create_app(settings))
     payload = push_payload(local_ids=tuple(range(1, 60)))
     resp = client.post("/api/v1/sync/push", json=payload, headers=AUTH)

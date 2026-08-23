@@ -84,6 +84,17 @@ class Settings:
     protocol_version: int = PROTOCOL_VERSION
     tm_ingest_secret: str = ""  # token-monitor 接入密钥（TOKEN_MONITOR_SECRET），空 = 停用
     tm_core_url: str = "http://127.0.0.1:17321"  # vendored 官方 Node hub 地址
+    dashboard_time_zone: str = "Asia/Tokyo"  # 面板活动统计时区（DASHBOARD_TIME_ZONE）
+    tm_outbox_max_pending: int = 1000  # 快照发件箱 pending 上限（背压阈值）
+    max_sync_body_bytes: int = 2 * 1024 * 1024  # /api/v1/sync/push 实际正文字节上限
+    tm_background_enabled: bool = True  # 后台重放/回填线程（测试可关）
+
+
+def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
+    try:
+        return max(int(os.environ.get(name) or default), minimum)
+    except ValueError:
+        return default
 
 
 def load_settings() -> Settings:
@@ -127,6 +138,14 @@ def load_settings() -> Settings:
     except ValueError:
         max_body = 2 * 1024 * 1024
 
+    dashboard_tz = (os.environ.get("DASHBOARD_TIME_ZONE") or "Asia/Tokyo").strip()
+    try:
+        from zoneinfo import ZoneInfo
+
+        ZoneInfo(dashboard_tz)
+    except Exception as exc:
+        raise ConfigError(f"DASHBOARD_TIME_ZONE 非法 IANA 时区: {dashboard_tz!r}") from exc
+
     device_keys = parse_device_keys(os.environ.get("DEVICE_KEYS_JSON"))
     for device_id, key in device_keys.items():
         validate_secret(f"DEVICE_KEYS_JSON[{device_id}]", key)
@@ -165,4 +184,8 @@ def load_settings() -> Settings:
         protocol_version=PROTOCOL_VERSION,
         tm_ingest_secret=tm_secret,
         tm_core_url=(os.environ.get("TM_CORE_URL") or "http://127.0.0.1:17321").strip(),
+        dashboard_time_zone=dashboard_tz,
+        tm_outbox_max_pending=_int_env("TM_OUTBOX_MAX_PENDING", 1000),
+        max_sync_body_bytes=_int_env("MAX_SYNC_BODY_BYTES", 2 * 1024 * 1024),
+        tm_background_enabled=_env_bool(os.environ.get("TM_BACKGROUND_ENABLED", "true")),
     )

@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.12.11-slim
 
 # 非 root 运行；/data 由 compose 卷挂载并在启动前修正属主
 RUN groupadd -r monitor && useradd -r -g monitor monitor \

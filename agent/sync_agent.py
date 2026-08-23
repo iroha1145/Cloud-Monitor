@@ -103,6 +103,7 @@ class AgentConfig:
     token_monitor_secret: str = ""
     token_monitor_device_id: str = ""
     token_monitor_interval_seconds: float = 300.0
+    allow_legacy_fallback: bool = False
     extra: dict = field(default_factory=dict)
 
 
@@ -164,6 +165,7 @@ def load_config(env: Optional[dict[str, str]] = None) -> AgentConfig:
         token_monitor_secret=get("TOKEN_MONITOR_SECRET"),
         token_monitor_device_id=get("TOKEN_MONITOR_DEVICE_ID"),
         token_monitor_interval_seconds=_float("TOKEN_MONITOR_INTERVAL_SECONDS", 300.0, minimum=30.0),
+        allow_legacy_fallback=_env_bool(env.get("ALLOW_LEGACY_FALLBACK")),
     )
 
 
@@ -206,6 +208,19 @@ class AgentState:
             self._backup_corrupt("顶层不是对象")
             raise StateCorruptError("state json is not an object")
         version = loaded.get("schema_version")
+        if version is None:
+            # v1 状态文件（无 schema_version）：识别并迁移为 v2，保留既有身份
+            # 与游标（不悄悄改变设备身份）。
+            if "device_id" in loaded or "watermark" in loaded or "cursor" in loaded:
+                migrated = self._fresh()
+                for key in ("device_id", "watermark", "cursor"):
+                    if key in loaded:
+                        migrated[key] = loaded[key]
+                self.data = migrated
+                log.warning("检测到 v1 状态文件，已就地迁移为 schema_version=2")
+                return
+            self._backup_corrupt("缺少 schema_version")
+            raise StateCorruptError("missing schema_version")
         if not isinstance(version, int) or version != STATE_SCHEMA_VERSION:
             self._backup_corrupt(f"schema_version={version!r} 不支持")
             raise StateCorruptError(f"unsupported schema_version {version!r}")
@@ -279,11 +294,22 @@ class AgentState:
 
 
 def resolve_device_id(config: AgentConfig, state: AgentState) -> str:
-    """身份优先级: 环境变量 > 状态文件 > 首次生成 UUID 并持久化。"""
+    """身份优先级: 环境变量 > 状态文件 > 首次生成 UUID 并持久化。
+
+    DEVICE_ID 与状态文件冲突时默认失败关闭（P1-7），防止静默切换身份；
+    仅显式 ALLOW_STATE_CONFLICT=true 时以环境变量为准。
+    """
     if config.device_id:
         if state.device_id and state.device_id != config.device_id:
+            if not config.extra.get("allow_state_conflict", False):
+                raise SystemExit(
+                    "DEVICE_ID 环境变量 (%s) 与状态文件中的身份 (%s) 不同。"
+                    "为避免静默切换设备身份，agent 拒绝启动；如确需切换，"
+                    "请显式设置 ALLOW_STATE_CONFLICT=true 并确认云端设备列表。"
+                    % (config.device_id, state.device_id)
+                )
             log.warning(
-                "DEVICE_ID 环境变量 (%s) 与状态文件中的身份 (%s) 不同，以环境变量为准",
+                "ALLOW_STATE_CONFLICT=true：以环境变量身份 %s 覆盖状态文件身份 %s",
                 config.device_id,
                 state.device_id,
             )
@@ -420,11 +446,22 @@ class SyncAgent:
         ]
 
     def probe_sync_meta(self) -> Optional[dict]:
-        """新版 monitor 提供 /api/v1/sync/meta；404 则回退时间窗口模式。"""
+        """新版 monitor 提供 /api/v1/sync/meta。
+
+        404（旧版 monitor）默认拒绝启动（P1-7）：时间窗口回退在数据源
+        变更时会产生重复或丢数据。仅显式同时配置
+        ALLOW_LEGACY_FALLBACK=true 与 SOURCE_INSTANCE_ID=<稳定值> 才允许。
+        """
         try:
             return self.local_get("/api/v1/sync/meta", {})
         except requests.HTTPError as exc:
             if exc.response is not None and exc.response.status_code == 404:
+                if not self.config.allow_legacy_fallback or not self.config.source_instance_id:
+                    raise SystemExit(
+                        "本地 monitor 不支持 /api/v1/sync/meta（协议 v2 游标接口）。"
+                        "请升级 openwebui-monitor；如确需旧版时间窗口回退，显式配置 "
+                        "ALLOW_LEGACY_FALLBACK=true 与 SOURCE_INSTANCE_ID=<稳定值>。"
+                    ) from exc
                 return None
             raise
 
@@ -649,6 +686,8 @@ class SyncAgent:
             except (TransientError, requests.RequestException, ValueError) as exc:
                 self._record_error("transient", str(exc))
                 log.error("本轮同步失败，下个周期重试: %s", exc)
+                if self.config.run_once:
+                    raise SystemExit(3) from exc
             if self.config.run_once:
                 break
             time.sleep(interval)
@@ -687,7 +726,12 @@ def main() -> int:
         log.warning("状态文件损坏，但 DEVICE_ID 已显式配置，以环境变量身份继续")
         state = AgentState(config.state_path)
 
-    state.device_id = resolve_device_id(config, state)
+    config.__dict__.setdefault("extra", {})["allow_state_conflict"] = config.allow_legacy_fallback  # 临时键
+    try:
+        state.device_id = resolve_device_id(config, state)
+    except SystemExit as exc:
+        log.error("%s", exc)
+        return 1
     state.save()
 
     agent = SyncAgent(config, state)

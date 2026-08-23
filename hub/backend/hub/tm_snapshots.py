@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS tm_snapshot_buckets (
 CREATE INDEX IF NOT EXISTS idx_tm_buckets_day ON tm_snapshot_buckets(local_day);
 CREATE INDEX IF NOT EXISTS idx_tm_buckets_device_time
     ON tm_snapshot_buckets(device_id, bucket_start);
+CREATE INDEX IF NOT EXISTS idx_tm_buckets_dev_day_bucket
+    ON tm_snapshot_buckets(device_id, local_day, bucket_start);
 
 CREATE TABLE IF NOT EXISTS tm_meta (
     key TEXT PRIMARY KEY,
@@ -71,6 +73,29 @@ CREATE TABLE IF NOT EXISTS tm_meta (
 def ensure_schema(db: Database) -> None:
     with db._lock:
         db._conn.executescript(SCHEMA)
+    _migrate_timestamp_format(db)
+
+
+def _migrate_timestamp_format(db: Database) -> None:
+    """历史版本混存 '+00:00' 秒级文本：统一为毫秒 Z 格式（幂等）。"""
+    if _meta_get(db, "ts_format_ms_z") == "2":
+        return
+    rows = db._conn.execute(
+        "SELECT id, bucket_start, server_received_at FROM tm_snapshot_buckets"
+    ).fetchall()
+    updates = []
+    for row in rows:
+        norm_bucket = norm_ts(row["bucket_start"]) if row["bucket_start"] else ""
+        norm_recv = norm_ts(row["server_received_at"]) if row["server_received_at"] else ""
+        if norm_bucket != row["bucket_start"] or norm_recv != row["server_received_at"]:
+            updates.append((norm_bucket, norm_recv, row["id"]))
+    if updates:
+        with db.transaction():
+            db.executemany(
+                "UPDATE tm_snapshot_buckets SET bucket_start=?, server_received_at=? WHERE id=?",
+                updates,
+            )
+    _meta_set(db, "ts_format_ms_z", "2")
 
 
 # ---------------------------------------------------------------- 本地日
@@ -133,13 +158,26 @@ def resolve_local_day(
     return datetime.now(timezone.utc).date().isoformat(), ""
 
 
+def norm_ts(value: Any) -> str:
+    """统一 UTC 存储/比较格式：毫秒精度 + Z 后缀。
+
+    官方 receivedAt 为 '.792Z' 毫秒形态，历史版本曾混存 '+00:00' 秒级
+    文本，文本比较会错序；所有写入统一经此函数。
+    """
+    dt = _parse_iso(value)
+    if dt is None:
+        raw = str(value or "")
+        return raw
+    return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
 def bucket_start_of(producer: Optional[datetime]) -> str:
     base = producer or datetime.now(timezone.utc)
     ms = int(base.timestamp() * 1000)
     floored = (ms // BUCKET_MS) * BUCKET_MS
     return (
         datetime.fromtimestamp(floored / 1000, tz=timezone.utc)
-        .isoformat(timespec="seconds")
+        .isoformat(timespec="milliseconds")
         .replace("+00:00", "Z")
     )
 
@@ -187,6 +225,7 @@ def write_snapshot(
     record: dict,
     limits_only: bool,
     incoming: Optional[dict] = None,
+    force_received_at: Optional[str] = None,
 ) -> Optional[dict]:
     """record = 官方合并后的设备记录；incoming = 本次上报的原始载荷。
 
@@ -216,7 +255,8 @@ def write_snapshot(
         received_at=record.get("receivedAt"),
     )
     producer = _parse_iso(producer_stamp) or _parse_iso(record.get("updatedAt")) or _parse_iso(record.get("receivedAt"))
-    received_at = record.get("receivedAt") or utc_now()
+    received_at = force_received_at or record.get("receivedAt") or utc_now()
+    received_at = norm_ts(received_at)
     bucket = bucket_start_of(producer)
 
     with db.transaction():
@@ -249,6 +289,7 @@ def write_snapshot(
                 server_received_at = excluded.server_received_at,
                 today_ends_at = excluded.today_ends_at,
                 month_ends_at = excluded.month_ends_at
+            WHERE excluded.server_received_at >= tm_snapshot_buckets.server_received_at
             """,
             (
                 device_id, local_day, bucket,
@@ -263,10 +304,10 @@ def write_snapshot(
                 _stringify_dict(today, "clients"),
                 _stringify_dict(today, "models"),
                 tz_name,
-                str(record.get("updatedAt") or ""),
-                str(received_at),
-                str(((windows or {}).get("today") or {}).get("endsAt") or ""),
-                str(((windows or {}).get("month") or {}).get("endsAt") or ""),
+                norm_ts(record.get("updatedAt") or ""),
+                received_at,
+                norm_ts(((windows or {}).get("today") or {}).get("endsAt") or ""),
+                norm_ts(((windows or {}).get("month") or {}).get("endsAt") or ""),
             ),
         )
     _prune_if_due(db)
@@ -295,6 +336,10 @@ def _prune_if_due(db: Database) -> None:
     if last is not None and (now_dt - last).total_seconds() < PRUNE_INTERVAL_SECONDS:
         return
     prune_snapshots(db, now=now_dt)
+
+
+def _day_cutoff(now_dt: datetime, days: int) -> str:
+    return (now_dt - timedelta(days=days)).date().isoformat()
 
 
 def prune_snapshots(db: Database, *, now: Optional[datetime] = None) -> dict:
@@ -326,19 +371,25 @@ def prune_snapshots(db: Database, *, now: Optional[datetime] = None) -> dict:
 
 
 def trend_by_day(db: Database, days: int = 30) -> list[dict]:
-    """每设备每天取最后一个桶的 today_total，按 local_day 汇总。"""
+    """每设备每天取最后一个桶的 today_total，按 local_day 汇总。
+
+    日期范围在窗口函数之前以 local_day >= ? 收敛（配合
+    idx_tm_buckets_day 索引），不整表开窗。
+    """
+    day_floor = (datetime.now(timezone.utc) - timedelta(days=days + 1)).date().isoformat()
     rows = db.fetchall(
         """
         SELECT local_day, SUM(today_total) AS total FROM (
             SELECT local_day, today_total,
                    ROW_NUMBER() OVER (
                        PARTITION BY device_id, local_day
-                       ORDER BY bucket_start DESC
+                       ORDER BY bucket_start DESC, server_received_at DESC, id DESC
                    ) AS rn
             FROM tm_snapshot_buckets
+            WHERE local_day >= ?
         ) WHERE rn = 1 GROUP BY local_day ORDER BY local_day DESC LIMIT ?
         """,
-        (days,),
+        (day_floor, days),
     )
     return [{"day": r["local_day"], "total": int(r["total"] or 0)} for r in reversed(rows)]
 

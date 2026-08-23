@@ -1,4 +1,4 @@
-FROM node:22-slim
+FROM node:22.18.0-slim
 
 # vendored 官方 hub（见 vendor/NOTICE.md），零 npm 依赖
 RUN groupadd -r monitor && useradd -r -g monitor monitor \

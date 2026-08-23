@@ -148,7 +148,14 @@ def test_env_device_id_wins_over_state(tmp_path):
     cfg = make_config(tmp_path, device_id="explicit-id")
     state = AgentState(cfg.state_path)
     state.device_id = "old-id"
-    assert resolve_device_id(cfg, state) == "explicit-id"
+    # P1-7：冲突默认失败关闭
+    import pytest
+    with pytest.raises(SystemExit):
+        resolve_device_id(cfg, state)
+    # 显式放行则以环境变量为准
+    cfg2 = make_config(tmp_path, device_id="explicit-id", allow_legacy_fallback=True)
+    cfg2.__dict__.setdefault("extra", {})["allow_state_conflict"] = True
+    assert resolve_device_id(cfg2, state) == "explicit-id"
 
 
 def test_corrupt_state_backed_up_and_refused(tmp_path):
@@ -163,11 +170,15 @@ def test_corrupt_state_backed_up_and_refused(tmp_path):
 
 def test_state_schema_version_enforced(tmp_path):
     cfg = make_config(tmp_path)
+    # v1 状态（无 schema_version，有 device_id/cursor）→ 就地迁移为 v2
     cfg.state_path.write_text(
         json.dumps({"device_id": "d", "cursor": 5}), encoding="utf-8"
     )
-    with pytest.raises(StateCorruptError):
-        AgentState(cfg.state_path).load()
+    state = AgentState(cfg.state_path)
+    state.load()
+    assert state.data["schema_version"] == 2
+    assert state.device_id == "d" and state.cursor == 5
+    # 显式非法版本仍拒绝
     cfg.state_path.write_text(
         json.dumps({"schema_version": 99, "device_id": "d"}), encoding="utf-8"
     )
@@ -321,7 +332,7 @@ def test_users_created_at_passed_through(tmp_path):
 
 
 def test_time_mode_fallback_with_warning(tmp_path, caplog):
-    cfg = make_config(tmp_path)
+    cfg = make_config(tmp_path, allow_legacy_fallback=True, source_instance_id="stable-src")
     state = AgentState(cfg.state_path)
     state.device_id = cfg.device_id
     session = FakeSession()
@@ -342,11 +353,38 @@ def test_time_mode_fallback_with_warning(tmp_path, caplog):
     ))
 
     agent = make_agent(cfg, state, session)
-    with caplog.at_level("WARNING"):
-        summary = agent.run_once()
+    summary = agent.run_once()
     assert summary["mode"] == "time"
-    assert any("回退" in r.message for r in caplog.records)
-    assert state.source_instance_id.startswith("fallback-")
+    # 显式配置了稳定 SOURCE_INSTANCE_ID 的回退模式：模式正确且实例为显式值
+    assert state.source_instance_id == "stable-src"
+
+
+def test_legacy_fallback_refused_by_default(tmp_path):
+    """P1-7：缺 /sync/meta 且未显式配置回退 → SystemExit 拒绝启动。"""
+    cfg = make_config(tmp_path)  # allow_legacy_fallback=False, source_instance_id=""
+    state = AgentState(cfg.state_path)
+    state.device_id = cfg.device_id
+    session = FakeSession()
+    not_found = requests.HTTPError("404")
+    not_found.response = FakeResponse(404)
+    session.route("GET", "/api/v1/sync/meta", not_found)
+    agent = make_agent(cfg, state, session)
+    with pytest.raises(SystemExit):
+        agent.probe_sync_meta()
+
+
+def test_legacy_fallback_requires_stable_source_instance(tmp_path):
+    """P1-7：仅开 ALLOW_LEGACY_FALLBACK 但未给稳定 SOURCE_INSTANCE_ID 仍拒绝。"""
+    cfg = make_config(tmp_path, allow_legacy_fallback=True, source_instance_id="")
+    state = AgentState(cfg.state_path)
+    state.device_id = cfg.device_id
+    session = FakeSession()
+    not_found = requests.HTTPError("404")
+    not_found.response = FakeResponse(404)
+    session.route("GET", "/api/v1/sync/meta", not_found)
+    agent = make_agent(cfg, state, session)
+    with pytest.raises(SystemExit):
+        agent.probe_sync_meta()
 
 
 def test_source_instance_rotation_resets_cursor(tmp_path):

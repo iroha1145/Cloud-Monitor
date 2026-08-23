@@ -22,7 +22,8 @@ services:
     volumes:
       - cloud-hub-data:/data
     depends_on:
-      - tm-core
+      tm-core:
+        condition: service_healthy
     security_opt:
       - no-new-privileges:true
     cap_drop:

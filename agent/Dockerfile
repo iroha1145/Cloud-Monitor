@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.12.11-slim
 
 RUN groupadd -r monitor && useradd -r -g monitor monitor \
     && mkdir -p /data && chown monitor:monitor /data

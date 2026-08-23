@@ -46,6 +46,51 @@ PROTOTYPE_KEYS = {"__proto__", "constructor", "prototype"}
 PERIOD_NAMES = ("today", "month", "allTime")
 TOKEN_INT_SUFFIXES = ("tokens", "Tokens")
 
+# 旧别名：官方核心不识别（发送方 bug，静默忽略会产生错误聚合数据），
+# 官方客户端只发送规范字段——因此明确拒绝并提示规范名。
+LEGACY_ALIAS_FIELDS = {
+    "input": "totalTokens/cacheReadTokens 等规范字段",
+    "output": "outputTokens",
+    "cacheRead": "cacheReadTokens",
+    "cacheWrite": "cacheWriteTokens",
+    "totalInput": "unclassifiedTokens + cacheReadTokens",
+    "totalOutput": "outputTokens",
+    "cost": "costUsd",
+    "cost_usd": "costUsd",
+}
+
+# 周期内必须做数值校验的映射字段（key→数值）
+PERIOD_NUMERIC_MAPS = (
+    "clients", "clientCosts", "clientCacheReads", "clientCacheWrites",
+    "clientOutputs", "clientUnclassifiedTokens",
+    "models", "modelCosts", "modelCacheReads", "modelCacheWrites",
+    "modelOutputs", "modelUnclassifiedTokens",
+)
+
+
+def _valid_day_key(key: Any) -> bool:
+    if not isinstance(key, str) or len(key) != 10:
+        return False
+    from datetime import datetime
+
+    try:
+        datetime.strptime(key, "%Y-%m-%d")
+    except ValueError:
+        return False
+    return True
+
+
+def _valid_month_key(key: Any) -> bool:
+    if not isinstance(key, str) or len(key) != 7:
+        return False
+    from datetime import datetime
+
+    try:
+        datetime.strptime(key, "%Y-%m")
+    except ValueError:
+        return False
+    return True
+
 
 class PayloadValidationError(ValueError):
     pass
@@ -140,8 +185,14 @@ def _walk(value: Any, path: str, depth: int) -> None:
             elif key in ("costUsd", "balanceUsd", "usedPercent"):
                 _check_cost(item, child)
             elif key in ("updatedAt", "receivedAt", "resetsAt", "startedAt", "lastUsedAt", "date"):
-                if key in ("updatedAt", "receivedAt"):
-                    _check_timestamp(item, child, allow_future=MAX_FUTURE_SKEW)
+                if key in ("updatedAt", "receivedAt", "resetsAt", "startedAt", "lastUsedAt"):
+                    if item is not None and not isinstance(item, str):
+                        _reject(f"{child}: 时间戳必须是字符串")
+                    else:
+                        _check_timestamp(item, child, allow_future=MAX_FUTURE_SKEW)
+                elif key == "date" and item is not None:
+                    if not isinstance(item, str) or not _valid_day_key(item[:10]):
+                        _reject(f"{child}: 非法日期 {item!r}")
             _walk(item, child, depth + 1)
     elif isinstance(value, list):
         for i, item in enumerate(value):
@@ -195,6 +246,31 @@ def validate_ingest_payload(payload: Any) -> dict:
             continue
         if not isinstance(period, dict):
             _reject(f"{name}: 周期必须是对象")
+        for alias, canonical in LEGACY_ALIAS_FIELDS.items():
+            if alias in period:
+                _reject(
+                    f"{name}.{alias}: 旧别名不被接受（官方核心不识别，会产生错误"
+                    f"聚合），请改用 {canonical}"
+                )
+        for map_name in PERIOD_NUMERIC_MAPS:
+            values = period.get(map_name)
+            if values is None:
+                continue
+            if not isinstance(values, dict):
+                _reject(f"{name}.{map_name}: 必须是对象")
+            for entry_key, entry_value in values.items():
+                if not isinstance(entry_key, str) or len(entry_key) > LIMITS["generic_key"]:
+                    _reject(f"{name}.{map_name}: 非法键")
+                if isinstance(entry_value, bool):
+                    _reject(f"{name}.{map_name}[{entry_key}]: 布尔值不是数值")
+                if entry_value is not None and not isinstance(entry_value, (int, float)):
+                    _reject(f"{name}.{map_name}[{entry_key}]: 数值必须是数字")
+                if isinstance(entry_value, (int, float)):
+                    target = f"{name}.{map_name}[{entry_key}]"
+                    if map_name.endswith(("Cost", "Costs")):
+                        _check_cost(entry_value, target)
+                    else:
+                        _check_int(entry_value, target)
         if _count_dict(period.get("clients")) > COUNT_LIMITS["clients"]:
             _reject(f"{name}.clients 超过 {COUNT_LIMITS['clients']} 项")
         if _count_dict(period.get("models")) > COUNT_LIMITS["models"]:
@@ -216,8 +292,10 @@ def validate_ingest_payload(payload: Any) -> dict:
             window = windows.get(name)
             if isinstance(window, dict):
                 key = window.get("key")
-                if key is not None and not isinstance(key, str):
-                    _reject(f"periodWindows.{name}.key 必须是字符串")
+                if key is not None:
+                    valid = _valid_day_key(key) if name == "today" else _valid_month_key(key)
+                    if not valid:
+                        _reject(f"periodWindows.{name}.key 格式非法（{key!r}）")
                 _check_timestamp(
                     window.get("endsAt"), f"periodWindows.{name}.endsAt",
                     allow_future=timedelta(days=45),

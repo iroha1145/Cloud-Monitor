@@ -92,7 +92,14 @@ class NodeHub:
             self.proc.kill()
 
 
-def make_cloud_app(tmp_path: Path, node_url: str, *, database_path: Path | None = None) -> TestClient:
+def make_cloud_app(
+    tmp_path: Path,
+    node_url: str,
+    *,
+    database_path: Path | None = None,
+    outbox_max: int = 1000,
+    background: bool = False,
+) -> TestClient:
     settings = Settings(
         api_key=API_KEY,
         access_token=READ_KEY,
@@ -101,6 +108,8 @@ def make_cloud_app(tmp_path: Path, node_url: str, *, database_path: Path | None 
         max_records_per_push=500,
         tm_ingest_secret=TM_SECRET,
         tm_core_url=node_url,
+        tm_outbox_max_pending=outbox_max,
+        tm_background_enabled=background,
     )
     app = create_app(settings)
     return TestClient(app)

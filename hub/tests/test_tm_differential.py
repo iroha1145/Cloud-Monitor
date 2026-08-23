@@ -15,6 +15,7 @@ import pytest
 
 from conftest import (
     TM_SECRET,
+    _now_iso,
     agent_style_payload,
     limits_only_payload,
     make_cloud_app,
@@ -72,7 +73,7 @@ def test_differential_full_sequence(node_hub, tmp_path):
                 "periodWindows": widget_style_payload()["periodWindows"],
                 "today": {"totalTokens": 2000000, "clients": {"claude": 1400000, "codex": 600000}},
                 "syncUploadIntervalMs": 300000,
-                "updatedAt": "2026-08-22T06:10:00.000Z",
+                "updatedAt": _now_iso(),
             }),
             # limits-only：不得把 token 量归零
             ("limits-only", limits_only_payload()),
@@ -123,7 +124,7 @@ def test_differential_models_authoritative_vs_client_models(node_hub, tmp_path):
     payload = {
         "deviceId": "dev-models",
         "syncUploadIntervalMs": 300000,
-        "updatedAt": "2026-08-22T06:00:00.000Z",
+        "updatedAt": _now_iso(),
         "today": {"models": {"gpt-5": 1000}, "clientModels": {"codex": {"gpt-5": 800}}},
     }
     cloud = make_cloud_app(tmp_path, node_hub.url)
