@@ -189,3 +189,21 @@ def test_quota_resets_at_days_ahead_is_accepted():
         },
     }
     assert validate_ingest_payload(payload) is payload
+
+
+def test_merge_trend_with_history_sqlite_wins_same_day():
+    from hub.tm_overview import merge_trend_with_history
+
+    sqlite = [{"day": "2026-08-24", "total": 100, "models": {"grok": 100}}]
+    history = {
+        "daily": [
+            {"date": "2026-08-23", "tokens": 50, "perModel": {"opus": {"tokens": 50}}},
+            {"date": "2026-08-24", "tokens": 9, "perModel": {"opus": {"tokens": 9}}},
+        ]
+    }
+    rows = merge_trend_with_history(sqlite, history, days=30, with_models=True)
+    by_day = {r["day"]: r for r in rows}
+    assert by_day["2026-08-23"]["total"] == 50
+    assert by_day["2026-08-23"]["models"]["opus"] == 50
+    assert by_day["2026-08-24"]["total"] == 100
+    assert by_day["2026-08-24"]["models"] == {"grok": 100}

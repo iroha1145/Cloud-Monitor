@@ -918,9 +918,9 @@ function renderKpis(data) {
     `<article class="kpi-card kpi-conn-card${isOnline ? " is-online" : " is-offline"}${riseCls()}"${riseStyle(2)}>
       <div class="kpi-tag"><span>连接状态</span><svg class="ic" aria-hidden="true"><use href="${iconHref("i-activity")}"/></svg></div>
       <div class="conn-diagram" aria-hidden="true">
-        <span class="conn-node"><svg class="ic"><use href="${iconHref("i-terminal")}"/></svg><em>AGENT</em></span>
+        <span class="conn-node conn-node-agent"><svg class="ic"><use href="${iconHref("i-terminal")}"/></svg><em>AGENT</em></span>
         ${connLine}
-        <span class="conn-node"><svg class="ic"><use href="${iconHref("i-cloud")}"/></svg><em>CLOUD</em></span>
+        <span class="conn-node conn-node-cloud"><svg class="ic"><use href="${iconHref("i-cloud")}"/></svg><em>CLOUD</em></span>
       </div>
       <div class="conn-meta">${connState}<span class="conn-seen">${connSeen}</span></div>
       <p class="kpi-sub">在线设备 <b>${online}</b> / ${devices.length} 台${unknown ? `（${unknown} 台状态未知）` : ""}</p>
@@ -944,12 +944,36 @@ function renderKpis(data) {
 }
 
 /* ---------- 近 30 天趋势（按模型堆叠） ---------- */
+const TREND_WINDOW_DAYS = 30;
+
 function trendRows() {
   const d = state.data || {};
-  const tm = Array.isArray(d.trend_models) ? d.trend_models.filter((r) => r && r.day) : [];
-  if (tm.length) return tm;
-  const t = Array.isArray(d.trend) ? d.trend.filter((r) => r && r.day) : [];
-  return t.map((r) => ({ day: r.day, total: r.total, models: {} }));
+  const byDay = new Map();
+  const take = (day, total, models) => {
+    day = String(day || "").slice(0, 10);
+    if (!day) return;
+    const prev = byDay.get(day) || { day, total: 0, models: {} };
+    const n = Number(total) || 0;
+    if (n > prev.total) prev.total = n;
+    if (models && typeof models === "object") {
+      for (const [k, v] of Object.entries(models)) {
+        const nv = Number(typeof v === "object" && v ? v.tokens ?? v.totalTokens : v) || 0;
+        if (nv > (Number(prev.models[k]) || 0)) prev.models[k] = nv;
+      }
+    }
+    byDay.set(day, prev);
+  };
+  ((d.activity || {}).daily || []).forEach((r) => r && take(r.day, r.total, r.models));
+  (Array.isArray(d.trend) ? d.trend : []).forEach((r) => r && take(r.day, r.total, null));
+  (Array.isArray(d.trend_models) ? d.trend_models : []).forEach((r) => r && take(r.day, r.total, r.models));
+
+  const end = ((d.dashboard_period || {}).today || {}).key || dayKeyTz(new Date(), dashTz());
+  const rows = [];
+  for (let i = TREND_WINDOW_DAYS - 1; i >= 0; i--) {
+    const day = keyAdd(end, -i);
+    rows.push(byDay.get(day) || { day, total: 0, models: {} });
+  }
+  return rows;
 }
 
 function renderTrend() {
@@ -961,9 +985,9 @@ function renderTrend() {
   svg.classList.remove("has-hot");
   legend.hidden = true;
   legend.innerHTML = "";
-  if (!rows.length) {
+  if (!rows.some((r) => Number(r.total) > 0)) {
     $("#trend-empty").hidden = false;
-    const old = wrap.querySelector(".chart-data");
+    const old = wrap.parentElement && wrap.parentElement.querySelector(":scope > .chart-data");
     if (old) old.remove();
     return;
   }
@@ -997,7 +1021,9 @@ function renderTrend() {
     }
     const stackSum = vals.reduce((a, b) => a + b, 0);
     const total = Number(r.total) || 0;
-    return { day: r.day, vals, total, v: stackSum > 0 ? stackSum : total };
+    const rem = Math.max(0, total - stackSum);
+    if (rem > 0 && cats[cats.length - 1] === "其他") vals[vals.length - 1] += rem;
+    return { day: r.day, vals, total, v: stackSum + rem || total };
   });
 
   const W = wrap.clientWidth || 800;
@@ -1083,7 +1109,8 @@ function renderTrend() {
       return;
     }
     const bh = (d.v / max) * ih;
-    if (cats.length) {
+    const hasStack = (d.vals || []).some((v) => v > 0);
+    if (cats.length && hasStack) {
       let yBase = padT + ih;
       cats.forEach((m, j) => {
         const val = d.vals[j];
@@ -1126,18 +1153,23 @@ function renderTrend() {
     legend.hidden = false;
   }
 
-  /* §10：等价数据表（details 折叠，屏幕阅读器/键盘可取数） */
-  let dataTbl = wrap.querySelector(".chart-data");
-  if (!dataTbl) {
+  /* §10：等价数据表放在图容器外，避免被 .chart-wrap 固定高度裁切 */
+  const panel = wrap.parentElement;
+  let dataTbl = panel && panel.querySelector(":scope > .chart-data");
+  const wasOpen = !!(dataTbl && dataTbl.open);
+  if (!dataTbl && panel) {
     dataTbl = document.createElement("details");
     dataTbl.className = "chart-data";
-    wrap.appendChild(dataTbl);
+    panel.appendChild(dataTbl);
   }
-  dataTbl.innerHTML =
-    `<summary>查看数据表</summary><div class="tbl-scroll"><table class="tbl"><caption>近 30 天每日 tokens 合计</caption>` +
-    `<thead><tr><th scope="col">日期</th><th scope="col" class="num">Tokens</th></tr></thead><tbody>` +
-    days.map((d) => `<tr><td class="mono">${esc(d.day)}</td><td class="num">${fmtInt(d.total || d.v)}</td></tr>`).join("") +
-    `</tbody></table></div>`;
+  if (dataTbl) {
+    dataTbl.innerHTML =
+      `<summary>查看数据表</summary><div class="tbl-scroll"><table class="tbl"><caption>近 30 天每日 tokens 合计</caption>` +
+      `<thead><tr><th scope="col">日期</th><th scope="col" class="num">Tokens</th></tr></thead><tbody>` +
+      days.map((d) => `<tr><td class="mono">${esc(d.day)}</td><td class="num">${fmtInt(d.total || d.v)}</td></tr>`).join("") +
+      `</tbody></table></div>`;
+    dataTbl.open = wasOpen;
+  }
 }
 
 /* ---------- 模型分布：环形图（中央总量 + 图例占比） ---------- */
@@ -2720,7 +2752,7 @@ window.addEventListener("resize", () => {
   positionAllPills(true); // resize 重定位必须瞬时，pill 不应跟着窗口滑
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
-    if (state.data && state.view === "overview" && (state.data.trend || state.data.trend_models)) renderTrend();
+    if (state.data && state.view === "overview") renderTrend();
   }, 160);
 });
 

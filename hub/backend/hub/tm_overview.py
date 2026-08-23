@@ -131,6 +131,64 @@ def trend_models_by_day(db: Database, days: int = TREND_DAYS) -> list[dict]:
     ]
 
 
+def _history_trend_row(entry: dict) -> Optional[dict]:
+    """把官方 /api/history daily 行收成 trend_models 同形。"""
+    if not isinstance(entry, dict):
+        return None
+    day = str(entry.get("date") or entry.get("day") or "")[:10]
+    if not valid_day_key(day):
+        return None
+    models: dict[str, int] = {}
+    per = entry.get("perModel")
+    if isinstance(per, dict):
+        for name, value in per.items():
+            if isinstance(value, dict):
+                models[str(name)] = _int(value.get("tokens") or value.get("totalTokens"))
+            else:
+                models[str(name)] = _int(value)
+    return {
+        "day": day,
+        "total": _int(entry.get("tokens") or entry.get("totalTokens")),
+        "models": models,
+    }
+
+
+def merge_trend_with_history(
+    sqlite_rows: list[dict],
+    history: Optional[dict],
+    *,
+    days: int = TREND_DAYS,
+    with_models: bool = False,
+) -> list[dict]:
+    """官方 history.daily 回填 SQLite 没有的日期；同一天以快照为准。"""
+    by_day: dict[str, dict] = {}
+    if isinstance(history, dict):
+        daily = history.get("daily")
+        if isinstance(daily, list):
+            for entry in daily:
+                row = _history_trend_row(entry)
+                if not row:
+                    continue
+                by_day[row["day"]] = (
+                    row if with_models else {"day": row["day"], "total": row["total"]}
+                )
+    for row in sqlite_rows or []:
+        day = str((row or {}).get("day") or "")[:10]
+        if not day:
+            continue
+        if with_models:
+            models = row.get("models") if isinstance(row.get("models"), dict) else {}
+            by_day[day] = {
+                "day": day,
+                "total": _int(row.get("total")),
+                "models": dict(models),
+            }
+        else:
+            by_day[day] = {"day": day, "total": _int(row.get("total"))}
+    days_sorted = sorted(by_day)[-days:]
+    return [by_day[d] for d in days_sorted]
+
+
 def _now_for_dashboard(dashboard_tz: str, now: Any = None):
     from datetime import datetime, timezone
     from zoneinfo import ZoneInfo
@@ -766,8 +824,10 @@ def build_overview(
         "partial_errors": partial_errors,
         "totals": stats.get("periods"),
         "devices": devices,
-        "trend": trend_by_day(db),
-        "trend_models": trend_models_by_day(db),
+        "trend": merge_trend_with_history(trend_by_day(db), history, days=TREND_DAYS),
+        "trend_models": merge_trend_with_history(
+            trend_models_by_day(db), history, days=TREND_DAYS, with_models=True
+        ),
         "activity": activity,
         "period_windows": _latest_period_windows(stats),  # deprecated
         "period_windows_by_device": windows_by_device,

@@ -39,7 +39,7 @@
     <path d="M21 12H9"/>
   </symbol>
   <symbol id="i-cloud" viewBox="0 0 24 24">
-    <path d="M17.5 19H9a6.5 6.5 0 1 1 1.06-12.92A7 7 0 0 1 23 12.5 4.75 4.75 0 0 1 17.5 19Z"/>
+    <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
   </symbol>
   <symbol id="i-chart" viewBox="0 0 24 24">
     <path d="M3 3v16a2 2 0 0 0 2 2h16"/>
