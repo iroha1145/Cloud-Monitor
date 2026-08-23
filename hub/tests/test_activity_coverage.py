@@ -156,8 +156,11 @@ def test_hourly_filters_other_dashboard_days(tmp_path):
     assert hourly.get(0) == 50  # 08-22 15:00Z = 今日 00:00 JST
     # 08-23 15:00Z = 08-24 00:00 JST → 不得并入今日 hour=0
     assert sum(hourly.values()) == 150
-    tomorrow = {d["day"]: d["total"] for d in report["daily"]}
-    assert tomorrow.get("2026-08-24") == 100
+    daily = {d["day"]: d["total"] for d in report["daily"]}
+    assert daily.get("2026-08-24") == 100
+    # 08-22 15:00Z 已滚进仪表盘 08-23；设备本地昨日不得再占一格（双计）
+    assert "2026-08-22" not in daily
+    assert daily.get("2026-08-22") != 50
     db.close()
 
 

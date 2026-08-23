@@ -373,12 +373,19 @@ def activity_report(db: Database, dashboard_tz, now: Any = None) -> dict:
         {k: v for k, v in d.items() if k != "late_start"} for d in device_diags
     ]
 
+    # 近 7 个仪表盘日（含今日）用 5 分钟差分；更早才用设备本地日锚点。
+    # 归档不得覆盖 rollup 窗口，否则「设备本地昨日」会与滚进仪表盘今日的
+    # 同一笔 5 分钟用量双计。
+    rollup_start = local_now.date() - timedelta(days=FINE_ACTIVITY_DAYS - 1)
     archive_from = (local_now.date() - timedelta(days=ACTIVITY_DAILY_DAYS)).isoformat()
+    archive_to = (rollup_start - timedelta(days=1)).isoformat()
     archive = query_daily_archive(
-        db, from_day=archive_from, to_day=None, limit=ACTIVITY_DAILY_DAYS
+        db, from_day=archive_from, to_day=archive_to, limit=ACTIVITY_DAILY_DAYS
     )
     daily_map: dict[str, int] = {
-        item["day"]: int(item["tokens"] or 0) for item in archive["items"]
+        item["day"]: int(item["tokens"] or 0)
+        for item in archive["items"]
+        if item["day"] not in fine_daily
     }
     for day, total in fine_daily.items():
         daily_map[day] = total
