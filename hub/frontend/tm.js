@@ -1459,6 +1459,20 @@ function renderModelDonut(per, animate) {
   });
 }
 
+function refitDonutCenters() {
+  document.querySelectorAll(".donut").forEach((donutEl) => {
+    const centerNum = donutEl.querySelector(".donut-center b");
+    if (!centerNum) return;
+    const avail = donutEl.clientWidth * 0.58;
+    let fs = 25;
+    centerNum.style.fontSize = fs + "px";
+    while (fs > 13 && centerNum.scrollWidth > avail) {
+      fs -= 1;
+      centerNum.style.fontSize = fs + "px";
+    }
+  });
+}
+
 /* ---------- 分布（客户端条形） ---------- */
 function renderDist(listSel, emptySel, subSel, per, kind) {
   const box = $(listSel);
@@ -3110,10 +3124,13 @@ if ("IntersectionObserver" in window) {
 
 let resizeTimer = null;
 window.addEventListener("resize", () => {
-  positionAllPills(true); // resize 重定位必须瞬时，pill 不应跟着窗口滑
+  positionAllPills(true);
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
-    if (state.data && state.view === "overview") renderTrend();
+    if (state.data && state.view === "overview") {
+      renderTrend();
+      refitDonutCenters();
+    }
   }, 160);
 });
 

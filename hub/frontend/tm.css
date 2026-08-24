@@ -41,7 +41,7 @@
   --hm-5: #173cda;
 
   /* 字体 */
-  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Segoe UI", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
   /* 圆角 */
@@ -180,7 +180,7 @@ code {
   letter-spacing: 0;
   line-height: 1;
   margin-left: 0.06em;
-  vertical-align: 0.16em;
+  vertical-align: 0.14em;
 }
 .num-compact { font: inherit; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .num-int { font-variant-numeric: tabular-nums; }
@@ -453,7 +453,7 @@ code {
   font-family: var(--font-mono); font-variant-numeric: tabular-nums;
   font-size: 27px; font-weight: 600; line-height: 32px; letter-spacing: -0.02em;
 }
-.kpi-value .num-unit { font-size: 15px; vertical-align: 0.12em; padding-bottom: 3px; }
+.kpi-value .num-unit { font-size: 15px; vertical-align: 0.14em; padding-bottom: 3px; }
 .kpi-sub { margin-top: 5px; font-size: 12.5px; color: var(--ink-2); }
 .kpi-sub b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); }
 .kpi-bar { display: flex; height: 10px; border-radius: var(--r-pill); overflow: hidden; margin-top: 14px; background: var(--bg); }
@@ -701,16 +701,19 @@ code {
   font-family: var(--font-mono); font-variant-numeric: tabular-nums;
   font-size: 25px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1;
 }
-.donut-center b .num-unit { font-size: 0.48em; font-weight: 650; vertical-align: 0.18em; }
+.donut-center b .num-unit { font-size: 0.48em; font-weight: 650; vertical-align: 0.14em; }
 .donut-center > span {
   position: absolute;
   left: 50%;
   top: 50%;
-  transform: translate(-50%, 18px);
+  transform: translate(-50%, 16px);
   margin: 0;
   font-family: var(--font-ui);
   font-size: 11px; line-height: 1.2; color: var(--mute);
   white-space: nowrap;
+}
+@media (max-width: 1100px) {
+  .donut-center > span { transform: translate(-50%, 14px); font-size: 10px; }
 }
 .donut-legend {
   list-style: none; margin: 0; padding: 0; flex: 1; min-width: 0;
@@ -1322,7 +1325,7 @@ code {
   .dist-row { grid-template-columns: minmax(96px, 128px) 1fr; }
   .dist-val { grid-column: 2; justify-content: flex-start; }
 
-  .toast-root { right: 12px; left: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .toast-root { right: 12px; left: 12px; bottom: calc(82px + env(safe-area-inset-bottom, 0px)); }
   .toast { justify-content: center; }
 }
 
@@ -1510,6 +1513,7 @@ code {
 }
 .t-tt {
   position: absolute;
+  z-index: 90;
   bottom: calc(100% + 8px);
   left: 50%;
   transform: translate(-50%, 0) scale(var(--tt-scale));
@@ -1527,8 +1531,6 @@ code {
     0 4px 42px 0 rgba(0, 0, 0, 0.06);
   opacity: 0;
   pointer-events: none;
-  /* Default rule controls the LEAVE state. transition-delay
-     stays unset so leaving plays without delay. */
   transition:
     opacity   var(--tt-out-dur) var(--tt-out-ease),
     transform var(--tt-out-dur) var(--tt-out-ease);
@@ -1567,7 +1569,7 @@ code {
 
 /* ================= 附加组件（§6 覆盖率 / §10 无障碍） ================= */
 .scroll-hint { display: none; font-size: 11px; color: var(--mute); margin: 0 0 6px; }
-@media (max-width: 760px) { .scroll-hint { display: block; } }
+@media (max-width: 768px) { .scroll-hint { display: block; } }
 .tbl caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .hm-coverage { font-size: 11.5px; color: var(--mute); margin: 10px 0 0; }
 .hm-coverage b { color: var(--ink); font-weight: 600; }
