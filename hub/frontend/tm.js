@@ -1283,7 +1283,7 @@ function renderModelDonut(per, animate) {
 
   box.innerHTML = `
     <div class="donut" role="img" aria-label="模型分布环形图">
-      <svg viewBox="0 0 120 120">
+      <svg viewBox="0 0 120 120" width="120" height="120">
         <title>模型分布环形图</title>
         <desc>${entries.length} 个模型，合计 ${fmtInt(total)} tokens</desc>
         <circle class="donut-bg" cx="60" cy="60" r="${R}"/>
