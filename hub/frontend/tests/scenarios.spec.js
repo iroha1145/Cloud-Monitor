@@ -519,6 +519,24 @@ test.describe("XSS 名称转义（真实后端 + [拦截] overview）", () => {
   });
 });
 
+test.describe("模型分布环形图中心文字（demo）", () => {
+  test("主数字落在圆环几何中心", async ({ page }) => {
+    await page.goto("/?demo=1");
+    await expect(page.locator("#shell")).toBeVisible();
+    const donut = page.locator("#model-dist .donut");
+    await expect(donut).toBeVisible();
+    const svgBox = await donut.locator("svg").boundingBox();
+    const numBox = await donut.locator(".donut-center b").boundingBox();
+    expect(svgBox).toBeTruthy();
+    expect(numBox).toBeTruthy();
+    const dx = (numBox.x + numBox.width / 2) - (svgBox.x + svgBox.width / 2);
+    const dy = (numBox.y + numBox.height / 2) - (svgBox.y + svgBox.height / 2);
+    expect(Math.abs(dx), `horizontal offset ${dx}`).toBeLessThan(3);
+    expect(Math.abs(dy), `vertical offset ${dy}`).toBeLessThan(3);
+    expect(Math.abs(svgBox.width - svgBox.height), "donut svg not square").toBeLessThan(1);
+  });
+});
+
 test.describe("§10 键盘导航（demo）", () => {
   test("seg 支持 ArrowRight/Home/End 与 aria-selected 切换", async ({ page }) => {
     await page.goto("/?demo=1");

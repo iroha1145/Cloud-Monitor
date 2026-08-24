@@ -627,25 +627,57 @@ code {
 
 /* ---------- 模型分布环形图（donut + 图例） ---------- */
 .donut-wrap { display: flex; align-items: center; gap: 30px; }
-.donut { position: relative; width: 196px; flex: none; }
-.donut svg { display: block; width: 100%; height: auto; }
+.donut {
+  /* 正方形画布：SVG 与中心文字叠同一格。SVG height:auto 在部分引擎会落到默认 150px，
+     叠加层 inset:0 跟着变矮，主数字就会偏离圆环几何中心。 */
+  display: grid;
+  grid-template: 1fr / 1fr;
+  width: 196px;
+  aspect-ratio: 1;
+  flex: none;
+  position: relative;
+}
+.donut svg {
+  grid-area: 1 / 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
 .donut-bg { fill: none; stroke: var(--bg); stroke-width: 14; }
 .donut-arc {
   fill: none; stroke-width: 14;
   transition: opacity var(--dur) var(--ease), stroke-width var(--dur) var(--ease);
 }
 .donut-center {
-  position: absolute; inset: 0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  text-align: center; pointer-events: none;
+  grid-area: 1 / 1;
+  position: relative;
+  pointer-events: none;
+  text-align: center;
 }
+/* 主数字钉在圆环几何中心；副标题挂在数字下方，不参与居中（避免两行块把数字顶离圆心） */
 .donut-center b {
-  display: inline-block; white-space: nowrap; max-width: 62%;
-  overflow: hidden; text-overflow: ellipsis;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-block;
+  white-space: nowrap;
+  max-width: 62%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-family: var(--font-mono); font-variant-numeric: tabular-nums;
-  font-size: 25px; font-weight: 700; letter-spacing: -0.02em; line-height: 28px;
+  font-size: 25px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1;
 }
-.donut-center span { margin-top: 3px; font-size: 11px; color: var(--mute); }
+.donut-center span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, 16px);
+  margin: 0;
+  font-size: 11px; line-height: 1.2; color: var(--mute);
+  white-space: nowrap;
+}
 .donut-legend {
   list-style: none; margin: 0; padding: 0; flex: 1; min-width: 0;
   display: flex; flex-direction: column; gap: 7px;
