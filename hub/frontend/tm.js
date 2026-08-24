@@ -25,6 +25,22 @@ function fmtCompact(v) {
   return fmtInt(v);
 }
 
+/* 环心专用限长压缩：随量级封顶有效位（≥1000万 去小数、≥10亿 一位小数、
+   ≥100亿 取整），任何量级都 ≤6 个字形 —— 25px 字号在环内孔恒定容纳，
+   周期切换（今日/本月/累计）时环心字号不再随数字长短漂移 */
+function fmtCompactTight(v) {
+  v = Number(v) || 0;
+  if (v >= 1e8) {
+    const y = v / 1e8;
+    return (y >= 100 ? y.toFixed(0) : y >= 10 ? y.toFixed(1) : y.toFixed(2)).replace(/\.?0+$/, "") + "亿";
+  }
+  if (v >= 1e4) {
+    const w = v / 1e4;
+    return (w >= 1000 ? w.toFixed(0) : w.toFixed(1)).replace(/\.0$/, "") + "万";
+  }
+  return fmtInt(v);
+}
+
 function fmtUsd(v) {
   v = Number(v) || 0;
   if (v === 0) return "$0.00";
@@ -131,10 +147,13 @@ function maskEmail(v) {
   return local.slice(0, Math.min(2, local.length)) + "***" + s.slice(at);
 }
 
-/* 分类调色板（按名称稳定 hash 分配） */
+/* 分类调色板：16 色，前 10 保持原序（存量截图/习惯连续性），后 6 为
+   与前 10 拉开「色相 + 明度」双通道距离的补充档（真实部署模型数常 >10，
+   10 色时 hash 溢出会随机撞色——趋势图堆叠段/图例同色不可分辨） */
 const PALETTE = [
   "#3b59f2", "#f59e0b", "#0ea5e9", "#8b5cf6", "#10b981",
   "#ef4444", "#ec4899", "#14b8a6", "#f97316", "#64748b",
+  "#84cc16", "#0e7490", "#a21caf", "#854d0e", "#1e40af", "#15803d",
 ];
 const OTHER_COLOR = "#96a0b5";
 
@@ -144,22 +163,31 @@ function hexA(hex, a) {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 }
 
-/* 同一列表内撞槽时顺移到下一个空槽：同屏不同名不同色（同名恒同色） */
+/* 跨色相族铺排序（PALETTE 下标）：相邻取色跳到不同色相族，
+   保证「前 N 名」拿到的是族间最大化拉开的一组，而不是碰巧全落蓝绿族
+   （旧 hash 锚点会随机聚族——3 个名字抽中 sky/teal/cyan 全青蓝不可辨）。 */
+const PALETTE_SPREAD = [0, 1, 3, 4, 6, 2, 8, 12, 10, 9, 5, 13, 7, 14, 15, 11];
+
+/* 取色 = 名次直取铺排序列：names 的先后即优先级（调用方按全局用量降序传入，
+   趋势图 top-N / 图例头部这些「被看到最多」的名字必占族间拉开的唯一色）；
+   同一映射表内同名恒同色；槽位耗尽后取「最少被复用」的槽（确定性：计数最小、
+   并列按铺排序靠前优先），复用均匀摊在长尾而不是随机撞。
+   稳定性依据：优先级取累计周期用量，名次在实际部署中几乎不漂移。 */
 function assignColors(names) {
-  const base = (name) => {
-    let h = 5381;
-    for (let i = 0; i < name.length; i++) h = ((h << 5) + h + name.charCodeAt(i)) >>> 0;
-    return h % PALETTE.length;
-  };
-  const used = new Set();
+  const counts = new Array(PALETTE.length).fill(0);
   const out = {};
-  for (const name of [...names].sort()) {
-    let idx = base(name);
-    if (used.size < PALETTE.length) {
-      while (used.has(idx)) idx = (idx + 1) % PALETTE.length;
-      used.add(idx);
+  let rank = 0;
+  for (const name of names) {
+    let idx;
+    if (rank < PALETTE.length) {
+      idx = PALETTE_SPREAD[rank];
+    } else {
+      idx = PALETTE_SPREAD[0];
+      for (const s of PALETTE_SPREAD) if (counts[s] < counts[idx]) idx = s;
     }
+    counts[idx]++;
     out[name] = PALETTE[idx];
+    rank++;
   }
   return out;
 }
@@ -279,6 +307,10 @@ const ICON_SVG = "/static/icons.svg";
 const iconHref = (id) => ICON_SVG + "#" + id;
 const POLL_MS = 5 * 60 * 1000;
 const TREND_TOP_MODELS = 8;
+/* 模型分布图例：超过 COLLAPSE_AT 行时只展开前 TOP 行，其余收进手风琴
+   （本月/累计周期真实部署常见 10+ 模型，全量平铺会把面板撑到 700px+） */
+const DONUT_LEGEND_TOP = 6;
+const DONUT_LEGEND_COLLAPSE_AT = 8;
 const MATRIX_TOP = 8;
 const SESSIONS_SHOW = 5;
 const HIST_PAGE = 30;
@@ -308,6 +340,8 @@ const VIEWS = {
   quota: ["配额与订阅", "ACCOUNTS · 配额窗口与订阅清单"],
   history: ["历史", "HISTORY · 活动热力与日归档"],
 };
+/* 导航次序：page-enter 的方向依据（前进从右进、后退从左进） */
+const VIEW_ORDER = Object.keys(VIEWS);
 
 const store = {
   get token() {
@@ -675,16 +709,19 @@ function updateTopbar() {
 
 function switchView(view) {
   if (!VIEWS[view]) return;
+  const prev = state.view;
   state.view = view;
   document.querySelectorAll(".view").forEach((s) => {
     s.hidden = s.dataset.view !== view;
   });
-  /* page-enter：只动 transform 的 250ms 位移（from 帧不碰 opacity，防白屏）；
+  /* page-enter：250ms 方向位移 + cross-blur（from 帧不碰 opacity，防白屏）；
+     方向随 VIEW_ORDER（后退加 .page-from-left 从左进）；
      remove → reflow → re-add 保证连续切换可重播 */
   const shown = document.querySelector(`.view[data-view="${view}"]`);
   if (shown && !shown.hidden) {
-    shown.classList.remove("page-enter");
+    shown.classList.remove("page-enter", "page-from-left");
     void shown.offsetWidth;
+    if (VIEW_ORDER.indexOf(view) < VIEW_ORDER.indexOf(prev)) shown.classList.add("page-from-left");
     shown.classList.add("page-enter");
   }
   document.querySelectorAll("[data-view].nav-item, [data-view].bn-item").forEach((b) => {
@@ -693,6 +730,7 @@ function switchView(view) {
     if (on) b.setAttribute("aria-current", "page");
     else b.removeAttribute("aria-current");
   });
+  positionNavPills(); // is-active 更新后滑块滑向新条目（16-tabs-sliding 纵/横向）
   updateTopbar();
   floatTip.hide();
   // §4-3/§4-4：辅助数据切到对应页才加载
@@ -729,8 +767,8 @@ function renderView(view) {
 /* 动画总时长上限 ≈ 280ms(stagger 封顶) + 500ms(pop) / 700ms(draw)，900ms 兜底 */
 function clearEntryFxSoon() {
   setTimeout(() => {
-    document.querySelectorAll(".t-rise, .t-pop, .grow, .is-drawing").forEach((el) => {
-      el.classList.remove("t-rise", "t-pop", "grow", "is-drawing");
+    document.querySelectorAll(".t-rise, .t-pop, .grow, .is-drawing, .t-swap-enter").forEach((el) => {
+      el.classList.remove("t-rise", "t-pop", "grow", "is-drawing", "t-swap-enter");
       el.style.animationDelay = "";
     });
     const c = $(".content");
@@ -776,8 +814,14 @@ function rebuildColorMaps(data) {
     Object.keys((h && h.perClient) || {}).forEach((c) => clients.add(c));
     Object.keys((h && h.perModel) || {}).forEach((m) => models.add(m));
   });
-  state.modelColors = assignColors([...models]);
-  state.clientColors = assignColors([...clients]);
+  /* 取色优先级 = 全局用量降序（累计周期 tokens；缺数据的按名序垫底）：
+     调色板槽位有限，唯一色必须先给「被看到最多」的名字——趋势图 top-N、
+     图例头部；溢出复用只落在小占比长尾上（assignColors 契约见其注释） */
+  const totalsAll = ((data.totals || {}).allTime || {});
+  const byUsage = (usageMap) => (a, b) =>
+    (Number((usageMap || {})[b]) || 0) - (Number((usageMap || {})[a]) || 0) || (a < b ? -1 : 1);
+  state.modelColors = assignColors([...models].sort(byUsage(totalsAll.models)));
+  state.clientColors = assignColors([...clients].sort(byUsage(totalsAll.clients)));
 }
 
 /* ---------- §7：Token 组成统一判定 ----------
@@ -1211,7 +1255,7 @@ function renderModelDonut(per, animate) {
     return arc;
   }).join("");
 
-  const legend = entries.map(([name, v]) => {
+  const rowHtml = ([name, v]) => {
     const color = state.modelColors[name] || OTHER_COLOR;
     return `<li class="donut-lg-row" data-name="${esc(name)}">
       <i style="background:${color}"></i>
@@ -1219,7 +1263,23 @@ function renderModelDonut(per, animate) {
       <span class="donut-lg-pct">${pct1(v, total)}</span>
       <b class="donut-lg-val" title="${fmtInt(v)} tokens">${fmtCompact(v)}</b>
     </li>`;
-  }).join("");
+  };
+  /* 图例折叠（catalog 21 accordion）：行数超阈值时只平铺头部大占比行，
+     长尾收进 0fr↔1fr 手风琴；间隙放在裁剪层「后代」的 padding-top 上
+     （0fr 轨道压不掉裁剪元素自身的 padding——PR#111 实测残条教训） */
+  const collapsible = entries.length > DONUT_LEGEND_COLLAPSE_AT;
+  const headEntries = collapsible ? entries.slice(0, DONUT_LEGEND_TOP) : entries;
+  const tailEntries = collapsible ? entries.slice(DONUT_LEGEND_TOP) : [];
+  const tailHtml = collapsible ? `
+      <div class="t-acc-panel" id="model-lg-tail">
+        <div class="t-acc-panel-inner">
+          <ul class="donut-legend donut-legend-tail">${tailEntries.map(rowHtml).join("")}</ul>
+        </div>
+      </div>
+      <button type="button" class="donut-lg-toggle" aria-expanded="false" aria-controls="model-lg-tail">
+        <span>展开其余 ${tailEntries.length} 个模型</span>
+        <span class="t-acc-chevron" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M4 6.5L8 10.5L12 6.5"/></svg></span>
+      </button>` : "";
 
   box.innerHTML = `
     <div class="donut" role="img" aria-label="模型分布环形图">
@@ -1230,11 +1290,27 @@ function renderModelDonut(per, animate) {
         ${arcs}
       </svg>
       <div class="donut-center">
-        <b title="${fmtInt(total)} tokens">${fmtCompact(total)}</b>
+        <b title="${fmtInt(total)} tokens">${fmtCompactTight(total)}</b>
         <span>${periodLabel} tokens</span>
       </div>
     </div>
-    <ul class="donut-legend">${legend}</ul>`;
+    <div class="donut-lg-wrap t-acc" data-open="false">
+      <ul class="donut-legend">${headEntries.map(rowHtml).join("")}</ul>${tailHtml}
+    </div>`;
+
+  /* 手风琴开合：CSS 负责高度与 chevron 翻转（scaleY 翻转跨浏览器，
+     d: 路径插值是 Chromium-only——catalog 21）；重渲染默认收起 */
+  const accWrap = box.querySelector(".donut-lg-wrap");
+  const lgToggle = box.querySelector(".donut-lg-toggle");
+  if (lgToggle) {
+    lgToggle.addEventListener("click", () => {
+      const open = accWrap.dataset.open !== "true";
+      accWrap.dataset.open = String(open);
+      lgToggle.setAttribute("aria-expanded", String(open));
+      lgToggle.querySelector("span").textContent =
+        open ? "收起模型列表" : `展开其余 ${tailEntries.length} 个模型`;
+    });
+  }
 
   /* 中央总量数字按内孔可用宽度自适应收缩（25→13px），
      避免大数值（如 6773.8万）在窄屏/小环上溢出错位 */
@@ -2296,8 +2372,88 @@ function positionPill(seg, instant) {
   }
 }
 
+/* 16-tabs-sliding 的导航适配：侧栏（纵向）/底栏（横向）共用一支定位器，
+   与 positionPill 同一纪律 —— 首次与 resize 必须 transition:none 快照写入，
+   否则滑块从 (0,0)/0×0 动画滑进来（catalog 16 常见错误清单）。
+   对侧断点下容器 display:none → 尺寸为 0 直接跳过，resize 兜底重定位。 */
+function positionNavPill(nav, instant) {
+  if (!nav) return;
+  const pill = nav.querySelector(".nav-pill, .bn-pill");
+  const active = nav.querySelector(".is-active");
+  if (!pill || !active) return;
+  const w = active.offsetWidth;
+  const h = active.offsetHeight;
+  if (!w || !h) return;
+  const snap = instant || !pill.dataset.set;
+  if (snap) pill.style.transition = "none";
+  pill.style.width = w + "px";
+  pill.style.height = h + "px";
+  pill.style.transform = `translate(${active.offsetLeft}px, ${active.offsetTop}px)`;
+  if (snap) {
+    void pill.offsetWidth; // force reflow
+    pill.style.transition = "";
+    pill.dataset.set = "1";
+  }
+}
+
+function positionNavPills(instant) {
+  positionNavPill($("#side-nav"), instant);
+  positionNavPill(document.querySelector(".bottom-nav"), instant);
+}
+
 function positionAllPills(instant) {
   document.querySelectorAll(".seg").forEach((s) => positionPill(s, instant));
+  positionNavPills(instant);
+}
+
+/* 分段内容换面：07-panel-reveal 同区双层 + 01-card-resize 舞台高度补间。
+   stage = 裁剪/定位舞台（.t-swap-stage），content = 被 renderFn 以 innerHTML
+   重建的容器。旧内容节点整体挪入幽灵层反向退场（挪移比克隆便宜；剥离全部
+   data-* 防测试严格选择器双匹配，aria-hidden 防读屏重复），新内容 cross-blur
+   进场，方向与分段滑块一致；快速连点先立刻结算上一次换面再开新面。 */
+function animateContentSwap(stage, content, dir, renderFn) {
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!stage || !content || reduced || !content.childElementCount || !stage.offsetHeight) {
+    renderFn();
+    return;
+  }
+  if (stage._swapDone) stage._swapDone();
+  const oldH = stage.offsetHeight;
+  const ghost = document.createElement("div");
+  ghost.className = "t-swap-ghost";
+  ghost.setAttribute("aria-hidden", "true");
+  ghost.style.width = content.offsetWidth + "px";
+  ghost.style.left = -stage.scrollLeft + "px";
+  while (content.firstChild) ghost.appendChild(content.firstChild);
+  ghost.querySelectorAll("*").forEach((el) => {
+    for (const k of Object.keys(el.dataset)) delete el.dataset[k];
+  });
+  renderFn();
+  stage.appendChild(ghost);
+  /* 目标高取舞台自然高（此刻仍 auto；幽灵层 absolute 不参与），
+     而非 content.offsetHeight —— 后者不含子元素外边距，结算时会跳 */
+  const newH = stage.offsetHeight;
+  stage.style.setProperty("--swap-from-x", (dir < 0 ? -1 : 1) * 12 + "px");
+  content.classList.remove("t-swap-enter");
+  void content.offsetWidth; // force reflow：连续换面可重播
+  content.classList.add("t-swap-enter");
+  /* 高度补间：显式旧高 → reflow → is-swapping(transition) 写新高 */
+  stage.style.height = oldH + "px";
+  stage.classList.add("is-swapping");
+  void stage.offsetHeight;
+  stage.style.height = newH + "px";
+  const done = () => {
+    if (stage._swapDone !== done) return;
+    stage._swapDone = null;
+    clearTimeout(timer);
+    ghost.remove();
+    content.classList.remove("t-swap-enter");
+    stage.classList.remove("is-swapping");
+    stage.style.height = "";
+    stage.style.removeProperty("--swap-from-x");
+  };
+  stage._swapDone = done;
+  const timer = setTimeout(done, 520); // ≥ max(进 400 / 出 350 / 补间 300) + 余量
 }
 
 function initSeg(sel, onChange, attr) {
@@ -2444,7 +2600,10 @@ async function load(manual) {
     hideGate();
     if (firstBoot) state.entryFx = true; // 首载：skeleton → reveal + 入场 stagger
     renderAll();
-    requestAnimationFrame(() => positionAllPills(true));
+    /* 同步快照定位（offsetWidth 会强制布局，无需等帧）：挂 rAF 的话，
+       后台标签页/隐藏面板 rAF 冻结会让滑块一直停在 0×0（option-pro
+       PR#111 教训——关键定位不挂 rAF） */
+    positionAllPills(true);
     updateConn();
     $("#updated").textContent = "更新于 " + fmtDateTime(new Date().toISOString()).slice(11);
     if (manual) toast(state.demo ? "已重新生成演示数据" : "已刷新");
@@ -2738,28 +2897,49 @@ document.querySelectorAll("[data-view].nav-item, [data-view].bn-item").forEach((
   b.addEventListener("click", () => switchView(b.dataset.view));
 });
 
+/* 周期/视图分段的方向：索引差的符号 → 换面进场方向与滑块一致 */
+const periodIdx = (p) => PERIODS.findIndex((x) => x[0] === p);
+const ACT_ORDER = ["day", "week", "month"];
+
+/* 无舞台的轻量换面（环形图/分布列表：高度稳定，无幽灵层）：
+   纯 cross-blur 重进场（--swap-from-x 未设 → 位移 0），类由 clearEntryFxSoon 回收 */
+function replayEnter(el) {
+  if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  el.classList.remove("t-swap-enter");
+  void el.offsetWidth;
+  el.classList.add("t-swap-enter");
+}
+
 initSeg("#model-seg", (p) => {
   state.modelPeriod = p;
   if (state.data) {
     renderModelDonut((state.data.totals || {})[p], true);
-    clearEntryFxSoon(); // 周期切换的 is-drawing 也要清，不留常驻动画类
+    replayEnter($("#model-dist"));
+    clearEntryFxSoon(); // 周期切换的 is-drawing / t-swap-enter 也要清，不留常驻动画类
   }
 });
 initSeg("#client-seg", (p) => {
   state.clientPeriod = p;
-  if (state.data) renderDist("#client-dist", "#client-empty", "#client-dist-sub", (state.data.totals || {})[p], "client");
+  if (state.data) {
+    renderDist("#client-dist", "#client-empty", "#client-dist-sub", (state.data.totals || {})[p], "client");
+    replayEnter($("#client-dist"));
+    clearEntryFxSoon();
+  }
 });
 initSeg("#act-seg", (v) => {
+  const dir = ACT_ORDER.indexOf(v) - ACT_ORDER.indexOf(state.actView);
   state.actView = v;
-  if (state.data) renderActivity();
+  if (state.data) animateContentSwap($(".hm-scroll"), $("#hm"), dir, renderActivity);
 }, "data-v");
 initSeg("#mx-metric-seg", (m) => {
+  const dir = m === "cost" ? 1 : -1;
   state.mxMetric = m;
-  if (state.data) renderMatrix();
+  if (state.data) animateContentSwap($(".mx-scroll"), $("#mx"), dir, renderMatrix);
 }, "data-m");
 initSeg("#mx-period-seg", (p) => {
+  const dir = periodIdx(p) - periodIdx(state.mxPeriod);
   state.mxPeriod = p;
-  if (state.data) renderMatrix();
+  if (state.data) animateContentSwap($(".mx-scroll"), $("#mx"), dir, renderMatrix);
 });
 
 /* §9：日归档服务端分页滚动加载：IntersectionObserver + 按钮兜底（防重复由 aux.loading 保证） */

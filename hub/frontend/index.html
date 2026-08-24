@@ -52,6 +52,7 @@
           <span class="side-brand-text"><strong>云端用量面板</strong><em>Cloud Monitor</em></span>
         </div>
         <nav class="side-nav" id="side-nav">
+          <span class="nav-pill" aria-hidden="true"></span>
           <button type="button" class="nav-item is-active" data-view="overview">
             <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-grid"/></svg><span>概览</span>
           </button>
@@ -212,7 +213,7 @@
                 </div>
               </div>
               <p class="scroll-hint" aria-hidden="true">左右滑动查看</p>
-              <div class="mx-scroll">
+              <div class="mx-scroll t-swap-stage">
                 <div class="mx" id="mx"></div>
               </div>
             </div>
@@ -300,7 +301,7 @@
                   <button role="tab" aria-selected="true" tabindex="0" type="button" data-v="month" class="is-active">月</button>
                 </div>
               </div>
-              <div class="hm-scroll">
+              <div class="hm-scroll t-swap-stage">
                 <div class="hm" id="hm"></div>
               </div>
               <p class="hm-coverage" id="hm-coverage" hidden></p>
@@ -357,6 +358,7 @@
 
       <!-- 移动端底部导航 -->
       <nav class="bottom-nav glass" aria-label="主导航">
+        <span class="bn-pill" aria-hidden="true"></span>
         <button type="button" class="bn-item is-active" data-view="overview">
           <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-grid"/></svg><span>概览</span>
         </button>
