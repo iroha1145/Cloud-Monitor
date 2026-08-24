@@ -287,13 +287,20 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     frontend_dir: Path = settings.frontend_dir
     if frontend_dir.is_dir():
-        index_file = frontend_dir / "index.html"
+        live_index = frontend_dir / "index.html"
+        demo_index = frontend_dir / "demo.html"
+        root_index = demo_index if settings.cm_demo and demo_index.is_file() else live_index
 
         @app.get("/")
         def index() -> FileResponse:
-            if not index_file.is_file():
+            if not root_index.is_file():
                 raise HTTPException(status_code=404, detail="未找到前端页面")
-            return FileResponse(index_file)
+            return FileResponse(root_index)
+
+        if (settings.cm_demo or settings.serve_demo_route) and demo_index.is_file():
+            @app.get("/demo", include_in_schema=False)
+            def demo_page() -> FileResponse:
+                return FileResponse(demo_index)
 
         app.mount("/static", StaticFiles(directory=str(frontend_dir)), name="static")
 

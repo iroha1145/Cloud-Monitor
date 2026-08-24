@@ -1,13 +1,17 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-cm-demo="1">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>云端用量面板 · Cloud Monitor</title>
-    <meta name="description" content="token-monitor 设备用量云端面板" />
+    <title>云端用量面板 · 演示</title>
+    <meta name="description" content="Cloud Monitor 演示站点（假数据，无需密钥）" />
     <meta name="theme-color" content="#f6f7f9" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%233B59F2'/%3E%3Cpath d='M10.2 21.5c-2.5 0-4.5-1.9-4.5-4.3 0-2.4 2-4.3 4.5-4.3.4-1.7 1.7-3.1 3.5-3.6 1.8-.5 3.8-.2 5.2 1 1.4 1.1 2.1 2.9 1.7 4.6h1c1.8 0 3.3 1.5 3.3 3.3s-1.5 3.3-3.3 3.3h-11.4z' stroke='%23ffffff' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+    <meta name="cm-demo" content="on" />
     <link rel="stylesheet" href="/static/tm.css" />
+    <style>
+      html[data-cm-demo] #logout { display: none; }
+    </style>
   </head>
   <body>
     <!-- ================= 访问密钥门（玻璃浮层） ================= -->
@@ -19,7 +23,7 @@
           <svg viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="var(--brand-500)"/><path d="M10.2 21.5c-2.5 0-4.5-1.9-4.5-4.3 0-2.4 2-4.3 4.5-4.3.4-1.7 1.7-3.1 3.5-3.6 1.8-.5 3.8-.2 5.2 1 1.4 1.1 2.1 2.9 1.7 4.6h1c1.8 0 3.3 1.5 3.3 3.3s-1.5 3.3-3.3 3.3h-11.4z" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </span>
         <h1 class="gate-title" id="gate-title">云端用量面板</h1>
-        <p class="gate-desc">输入访问密钥查看各设备的 AI 用量全景。密钥只保存在当前标签页会话中，关闭标签页后自动清除。</p>
+        <p class="gate-desc">这是演示站点，使用假数据预览面板。公开演示见 GitHub Pages，实机请用 ACCESS_TOKEN 登录。</p>
         <form id="gate-form" novalidate>
           <label class="field">
             <span class="field-label">访问密钥</span>
@@ -79,6 +83,9 @@
             <p id="view-sub" class="mono"></p>
           </div>
           <div class="topbar-actions">
+            <span class="demo-badge" id="demo-badge" hidden>
+              <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-play"/></svg>演示数据
+            </span>
             <span class="t-tt-wrap">
               <button type="button" class="icon-btn t-tt-trigger" id="refresh" aria-label="刷新数据" aria-describedby="tt-refresh">
                 <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-refresh"/></svg>
@@ -374,6 +381,7 @@
 
     <div class="toast-root" id="toast-root" aria-live="assertive"></div>
 
+    <script src="/static/mock.js" defer></script>
     <script src="/static/tm.js" defer></script>
   </body>
 </html>

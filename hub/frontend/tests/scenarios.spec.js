@@ -412,7 +412,7 @@ test.describe("§5 设备离线判定服从官方上传间隔（真实后端 + [
 
 test.describe("§7 capabilities.tokenComponents=false（demo ?cm-scenario=nocap）", () => {
   test("nocap → 单色条且不标「真实构成」", async ({ page }) => {
-    await page.goto("/?demo=1&cm-scenario=nocap");
+    await page.goto("/demo?cm-scenario=nocap");
     await expect(page.locator("#shell")).toBeVisible();
     await expect(page.locator("#client-dist-sub")).toContainText("后端未提供真实构成");
     await expect(page.locator("#client-dist-sub")).not.toContainText("真实构成分段");
@@ -424,13 +424,13 @@ test.describe("§7 capabilities.tokenComponents=false（demo ?cm-scenario=nocap�
   });
 
   test("默认场景（tokenComponents=true）→ 标注真实构成分段", async ({ page }) => {
-    await page.goto("/?demo=1");
+    await page.goto("/demo");
     await expect(page.locator("#shell")).toBeVisible();
     await expect(page.locator("#client-dist-sub")).toContainText("真实构成分段");
   });
 
   test("nocap 的今日 KPI 不把未知来源伪装成非缓存输入", async ({ page }) => {
-    await page.goto("/?demo=1&cm-scenario=nocap");
+    await page.goto("/demo?cm-scenario=nocap");
     await expect(page.locator("#shell")).toBeVisible();
     const firstKpi = page.locator("#kpis .kpi-card").first();
     await expect(firstKpi.locator(".kpi-legend")).toContainText("组成未知");
@@ -480,7 +480,7 @@ test.describe("设备诊断官方结构与显式状态枚举（真实后端 + [�
 
 test.describe("§8 配额与订阅渲染（demo）", () => {
   test("credits 窗口、topup 充值台账、intervalCount=3 显示「每 3 个月」", async ({ page }) => {
-    await page.goto("/?demo=1#quota");
+    await page.goto("/demo#quota");
     await expect(page.locator("#shell")).toBeVisible();
     // credits 窗口（余额型，绝对余额展示）
     await expect(page.locator("#lim-grid")).toContainText("预付费额度");
@@ -521,7 +521,7 @@ test.describe("XSS 名称转义（真实后端 + [拦截] overview）", () => {
 
 test.describe("模型分布环形图中心文字（demo）", () => {
   test("主数字落在圆环几何中心", async ({ page }) => {
-    await page.goto("/?demo=1");
+    await page.goto("/demo");
     await expect(page.locator("#shell")).toBeVisible();
     const donut = page.locator("#model-dist .donut");
     await expect(donut).toBeVisible();
@@ -539,7 +539,7 @@ test.describe("模型分布环形图中心文字（demo）", () => {
 
 test.describe("模型分布今日缓存率（demo）", () => {
   test("今日可切换缓存率，本月不显示该切换", async ({ page }) => {
-    await page.goto("/?demo=1");
+    await page.goto("/demo");
     await expect(page.locator("#shell")).toBeVisible();
     const metric = page.locator("#model-metric-seg");
     await expect(metric).toBeVisible();
@@ -561,7 +561,7 @@ test.describe("模型分布今日缓存率（demo）", () => {
 
 test.describe("§10 键盘导航（demo）", () => {
   test("seg 支持 ArrowRight/Home/End 与 aria-selected 切换", async ({ page }) => {
-    await page.goto("/?demo=1");
+    await page.goto("/demo");
     await expect(page.locator("#shell")).toBeVisible();
     const seg = page.locator("#model-seg");
     const btns = seg.locator("button[data-p]");
@@ -580,7 +580,7 @@ test.describe("§10 键盘导航（demo）", () => {
     await expect(btns.nth(0)).toHaveAttribute("aria-selected", "true");
     // act-seg（data-v 属性）同样可用（hash 变化不触发重载，需新页面）
     const page2 = await page.context().newPage();
-    await page2.goto("/?demo=1#history");
+    await page2.goto("/demo#history");
     await expect(page2.locator("#shell")).toBeVisible();
     const actSeg = page2.locator("#act-seg");
     const monthBtn = actSeg.locator('button[data-v="month"]');
@@ -663,7 +663,7 @@ test.describe("移动端无页面级横向溢出（demo，§13 四档尺寸）",
       await expect(page.locator("#gate")).toBeVisible();
       await check("gate");
       for (const view of ["overview", "devices", "quota", "history"]) {
-        await page.goto(`/?demo=1#${view}`);
+        await page.goto(`/demo#${view}`);
         await expect(page.locator("#shell")).toBeVisible();
         await page.waitForTimeout(300);
         await check(view);

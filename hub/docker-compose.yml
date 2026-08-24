@@ -23,6 +23,8 @@ services:
       PROVIDER_STATUS_ENABLED: ${PROVIDER_STATUS_ENABLED:-true}
       PROVIDER_STATUS_CACHE_SECONDS: ${PROVIDER_STATUS_CACHE_SECONDS:-300}
       PROVIDER_STATUS_TIMEOUT_SECONDS: ${PROVIDER_STATUS_TIMEOUT_SECONDS:-2.5}
+      # true：/ 直接进入演示面板（假数据）；实机务必 false
+      CM_DEMO: ${CM_DEMO:-false}
     volumes:
       - cloud-hub-data:/data
     depends_on:

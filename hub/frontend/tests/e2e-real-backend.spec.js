@@ -8,11 +8,20 @@ const ORIGIN = `http://127.0.0.1:${process.env.CM_E2E_PORT || 18787}`;
 const TOKEN = process.env.CM_E2E_TOKEN || "test-token";
 
 test.describe("真实 FastAPI 后端（零拦截）", () => {
-  test("GET / 与 /static/* 五个资源全部 200", async ({ request }) => {
-    for (const path of ["/", "/static/tm.css", "/static/tm.js", "/static/mock.js", "/static/icons.svg"]) {
+  test("GET / 与 /static 核心资源全部 200", async ({ request }) => {
+    for (const path of ["/", "/static/tm.css", "/static/tm.js", "/static/icons.svg"]) {
       const res = await request.get(path);
       expect(res.status(), `GET ${path}`).toBe(200);
     }
+  });
+
+  test("GET /demo 在测试夹具中可打开演示页", async ({ request, page }) => {
+    const res = await request.get("/demo");
+    expect(res.status()).toBe(200);
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    await expect(page.locator("#demo-badge")).toBeVisible();
+    await expect(page.locator("#gate-demo")).toHaveCount(0);
   });
 
   test("GET / 带后端 CSP 安全头", async ({ request }) => {
@@ -29,6 +38,8 @@ test.describe("真实 FastAPI 后端（零拦截）", () => {
     await expect(page.locator("#gate")).toBeVisible();
     await expect(page.locator("#gate-token")).toBeVisible();
     await expect(page.locator("#gate-form button[type=submit]")).toBeVisible();
+    await expect(page.locator("#gate-demo")).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText("查看演示数据");
     // 无 404 响应
     expect(watch.notFound, "控制台/网络 404").toEqual([]);
     // CSP 下无外部资源请求（fonts.googleapis / fonts.gstatic 等）

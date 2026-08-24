@@ -17,7 +17,7 @@ async function loginWithToken(context, token) {
 /** 用 demo 模式生成一份契约合法的 overview 载荷（供路由拦截改造） */
 async function sampleOverview(browser, baseURL) {
   const page = await browser.newPage({ baseURL });
-  await page.goto("/?demo=1");
+  await page.goto("/demo");
   await page.waitForSelector("#shell:not([hidden])");
   const payload = await page.evaluate(() => window.CM_MOCK.buildOverview());
   const subs = await page.evaluate(() => window.CM_MOCK.buildSubscriptions());

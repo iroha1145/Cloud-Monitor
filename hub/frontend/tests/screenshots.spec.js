@@ -20,7 +20,7 @@ for (const vp of viewports) {
         /* 仅 hash 变化的 goto 是同文档导航（不重载、无 hashchange 监听）：
            先到 about:blank 强制整页加载，保证各视图截图落在正确视图 */
         await page.goto("about:blank");
-        await page.goto(`/?demo=1#${view}`);
+        await page.goto(`/demo#${view}`);
         await expect(page.locator("#shell")).toBeVisible();
         await expect(page.locator(`.view[data-view="${view}"]`)).toBeVisible();
         await page.waitForTimeout(600);

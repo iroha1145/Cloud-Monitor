@@ -3,7 +3,7 @@
  *       渲染层（概览 KPI/趋势/分布/矩阵/会话 · 设备 · 配额环/订阅卡 · 热力图/日归档）→
  *       分段控件 → 加载与轮询 → 事件 → 启动
  * 真实模式：GET /api/v1/tm/overview + GET /api/v1/tm/subscriptions（Bearer ACCESS_TOKEN，401 回到密钥门）
- * 演示模式：?demo=1 或密钥门「查看演示数据」→ mock.js 生成数据
+ * 演示模式：仅 demo.html（安装脚本 CM_DEMO=true 或 GitHub Pages）；生产 index 不加载 mock
  */
 "use strict";
 
@@ -341,7 +341,14 @@ const SUBS_API = "/api/v1/tm/subscriptions";
 const PROVIDER_STATUS_API = "/api/v1/tm/provider-status";
 const HISTORY_DAILY_API = "/api/v1/tm/history/daily";
 /* §1：动态 SVG 图标路径唯一封装，禁止散落硬编码 */
-const ICON_SVG = "/static/icons.svg";
+const ICON_SVG = (() => {
+  const el = document.querySelector("script[src*=\"tm.js\"]");
+  try {
+    return el ? new URL("icons.svg", el.src).href : "/static/icons.svg";
+  } catch (e) {
+    return "/static/icons.svg";
+  }
+})();
 const iconHref = (id) => ICON_SVG + "#" + id;
 const POLL_MS = 5 * 60 * 1000;
 const TREND_TOP_MODELS = 8;
@@ -3053,9 +3060,12 @@ function enterDemo() {
   store.token = ""; // §12：演示模式不写入 sessionStorage Token
   state.tokenRevision++;
   resetAux();
-  $("#demo-badge").hidden = false;
-  $("#logout-text").textContent = "退出演示";
-  $("#logout").setAttribute("aria-label", "退出演示");
+  const badge = $("#demo-badge");
+  if (badge) badge.hidden = false;
+  const logoutText = $("#logout-text");
+  if (logoutText) logoutText.textContent = "退出演示";
+  const logout = $("#logout");
+  if (logout) logout.setAttribute("aria-label", "退出演示");
   load(false);
 }
 
@@ -3065,9 +3075,12 @@ function exitDemo() {
   state.booted = false;
   state.staleData = false;
   resetAux();
-  $("#demo-badge").hidden = true;
-  $("#logout-text").textContent = "更换密钥";
-  $("#logout").setAttribute("aria-label", "更换密钥");
+  const badge = $("#demo-badge");
+  if (badge) badge.hidden = true;
+  const logoutText = $("#logout-text");
+  if (logoutText) logoutText.textContent = "更换密钥";
+  const logout = $("#logout");
+  if (logout) logout.setAttribute("aria-label", "更换密钥");
   setConn("off", "未连接");
   showGate();
 }
@@ -3095,7 +3108,8 @@ $("#gate-token").addEventListener("input", () => {
   if (box) box.classList.remove("is-error", "is-shaking");
 });
 
-$("#gate-demo").addEventListener("click", enterDemo);
+const gateDemo = $("#gate-demo");
+if (gateDemo) gateDemo.addEventListener("click", enterDemo);
 
 $("#logout").addEventListener("click", () => {
   if (state.demo) {
@@ -3210,16 +3224,10 @@ window.addEventListener("beforeunload", abortAllRequests);
 
 /* ================= 启动 ================= */
 (function boot() {
-  const params = new URLSearchParams(location.search);
-  /* §12：生产环境可通过 <meta name="cm-demo" content="off"> 隐藏演示入口 */
   const demoMeta = document.querySelector('meta[name="cm-demo"]');
-  const demoEnabled = !demoMeta || String(demoMeta.content).toLowerCase() !== "off";
-  if (!demoEnabled) {
-    const demoBtn = $("#gate-demo");
-    if (demoBtn) demoBtn.hidden = true;
-    const or = document.querySelector(".gate-or");
-    if (or) or.hidden = true;
-  }
+  const isDemoPage =
+    document.documentElement.getAttribute("data-cm-demo") === "1" ||
+    (demoMeta && String(demoMeta.content).toLowerCase() === "on");
   const hashView = location.hash.replace("#", "");
   if (VIEWS[hashView]) state.view = hashView;
   // 初始应用视图可见性
@@ -3231,7 +3239,7 @@ window.addEventListener("beforeunload", abortAllRequests);
   });
   $("#view-title").textContent = VIEWS[state.view][0];
 
-  if (demoEnabled && params.get("demo") === "1") enterDemo();
+  if (isDemoPage) enterDemo();
   else if (store.token) load(false);
   else showGate();
 })();

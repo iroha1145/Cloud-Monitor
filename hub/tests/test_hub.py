@@ -662,3 +662,41 @@ def test_shutdown_closes_database(tmp_path):
     with TestClient(app):
         pass
     assert app.state.db._closed
+
+
+def test_live_root_hides_demo_route(tmp_path):
+    fe = tmp_path / "fe"
+    fe.mkdir()
+    (fe / "index.html").write_text("LIVE-INDEX", encoding="utf-8")
+    (fe / "demo.html").write_text("DEMO-INDEX", encoding="utf-8")
+    settings = make_settings(tmp_path, frontend_dir=fe)
+    with TestClient(create_app(settings)) as client:
+        root = client.get("/")
+        assert root.status_code == 200
+        assert "LIVE-INDEX" in root.text
+        assert client.get("/demo").status_code == 404
+
+
+def test_cm_demo_serves_demo_at_root(tmp_path):
+    fe = tmp_path / "fe"
+    fe.mkdir()
+    (fe / "index.html").write_text("LIVE-INDEX", encoding="utf-8")
+    (fe / "demo.html").write_text("DEMO-INDEX", encoding="utf-8")
+    settings = make_settings(tmp_path, frontend_dir=fe, cm_demo=True)
+    with TestClient(create_app(settings)) as client:
+        root = client.get("/")
+        assert root.status_code == 200
+        assert "DEMO-INDEX" in root.text
+
+
+def test_serve_demo_route_keeps_live_root(tmp_path):
+    fe = tmp_path / "fe"
+    fe.mkdir()
+    (fe / "index.html").write_text("LIVE-INDEX", encoding="utf-8")
+    (fe / "demo.html").write_text("DEMO-INDEX", encoding="utf-8")
+    settings = make_settings(tmp_path, frontend_dir=fe, serve_demo_route=True)
+    with TestClient(create_app(settings)) as client:
+        assert "LIVE-INDEX" in client.get("/").text
+        demo = client.get("/demo")
+        assert demo.status_code == 200
+        assert "DEMO-INDEX" in demo.text

@@ -619,7 +619,7 @@
     };
   }
 
-  /* ---------- 场景变体（?demo=1&cm-scenario=xxx；默认健康场景） ----------
+  /* ---------- 场景变体（/demo?cm-scenario=xxx；默认健康场景） ----------
    * stale   : 设备上报字段缺失 → 「状态未知」示例
    * partial : partial_errors + snapshot_degraded + pending_outbox 示例
    * lowcov  : 低采样覆盖率（attribution_mode=delta-low-coverage）

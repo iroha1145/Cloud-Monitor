@@ -36,6 +36,6 @@ jobs:
 #   npm install --no-bin-links && npx playwright install chromium
 #   CM_BASELINE=/path/to/cm-current npm test   # 默认自动使用仓库根目录
 # 说明：playwright.config.js 的 webServer 会自动执行 start-e2e-server.sh，
-# 将 CM_BASELINE 复制到 $HOME/cm-e2e、仅覆盖 hub/frontend/ 五个文件后起
+# 将 CM_BASELINE 复制到 $HOME/cm-e2e、覆盖 hub/frontend/ 页面文件后起
 # 真实 uvicorn（ACCESS_TOKEN=test-token）。reuseExistingServer=true，
 # 已起服务时直接复用。

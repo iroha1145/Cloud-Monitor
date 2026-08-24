@@ -1,5 +1,7 @@
 # Cloud Monitor — token-monitor 的云端用量面板
 
+**在线演示（假数据，无需安装）：** https://iroha1145.github.io/Cloud-Monitor/
+
 把**本机 [token-monitor](https://github.com/Javis603/token-monitor) 的数据搬到云端**：
 官方 hub 实现被原样 vendored（固定提交 b925865，逐字节未改）作为**协议权威**运行在
 tm-core 容器中，本机 widget 在设置里把 hub 指向你的服务器即可原生直连；Python
@@ -105,14 +107,31 @@ tm-core 容器中，本机 widget 在设置里把 hub 指向你的服务器即�
 
 ## 快速开始（token-monitor 上云）
 
-**服务器**：
+**服务器（推荐安装脚本）**：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iroha1145/Cloud-Monitor/main/install.sh | sudo bash
+```
+
+脚本会问选 **演示** 还是 **实机**。演示模式打开面板即可看假数据；之后再跑一次同一脚本，选实机即可关掉演示、改用 `ACCESS_TOKEN` 登录。
+
+已克隆仓库时：
+
+```bash
+sudo ./install.sh            # 交互选择
+sudo ./install.sh --mode demo
+sudo ./install.sh --mode live
+```
+
+也可手动：
 
 ```bash
 git clone https://github.com/iroha1145/Cloud-Monitor.git
-cd Cloud-monitor/hub
+cd Cloud-Monitor/hub
 cp .env.example .env
 # 必填三个互不相同、各≥32 随机字符的密钥：
 #   API_KEY / ACCESS_TOKEN（OpenWebUI 链路） + TOKEN_MONITOR_SECRET（TM 链路）
+# 演示预览把 CM_DEMO=true，实机保持 false
 docker compose up -d --build
 curl http://127.0.0.1:7878/api/health   # {"ok":true,"role":"hub",...}
 ```
@@ -160,6 +179,7 @@ ARCHITECTURE——token-monitor 走上面主路径时不需要它。
 | `API_KEY` | 记录写入密钥（弱值拒绝启动） | — |
 | `ACCESS_TOKEN` | 只读密钥（面板/查询用，须与 API_KEY 不同） | — |
 | `TOKEN_MONITOR_SECRET` | token-monitor 接入密钥（空=停用该接入） | 空 |
+| `CM_DEMO` | `true` 时 `/` 直接进演示面板（假数据） | `false` |
 | `DEVICE_KEYS_JSON` | 每设备写密钥（记录链路） | 空 |
 | `CORS_ORIGINS` / `DOCS_ENABLED` | 默认均关闭 | 关 |
 | `MAX_RECORDS_PER_PUSH` | 记录单批上限 | `500` |

@@ -40,7 +40,7 @@ test.describe("axe-core 可访问性（gate + demo 四视图）", () => {
 
   for (const view of ["overview", "devices", "quota", "history"]) {
     test(`demo 视图 ${view}`, async ({ page }) => {
-      await page.goto(`/?demo=1#${view}`);
+      await page.goto(`/demo#${view}`);
       await expect(page.locator("#shell")).toBeVisible();
       await page.waitForTimeout(500); // 等 quota/history 辅助数据渲染
       await scan(page, view);

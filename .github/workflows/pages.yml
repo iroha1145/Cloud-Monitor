@@ -1,0 +1,44 @@
+# 独立演示站点：https://iroha1145.github.io/Cloud-Monitor/
+name: GitHub Pages demo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hub/frontend/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 组装静态演示目录
+        run: |
+          mkdir -p _site
+          cp hub/frontend/tm.css hub/frontend/tm.js hub/frontend/mock.js hub/frontend/icons.svg _site/
+          python3 - <<'PY'
+          from pathlib import Path
+          html = Path("hub/frontend/demo.html").read_text(encoding="utf-8")
+          html = html.replace('href="/static/', 'href="./').replace('src="/static/', 'src="./')
+          Path("_site/index.html").write_text(html, encoding="utf-8")
+          PY
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
