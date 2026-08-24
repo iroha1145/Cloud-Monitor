@@ -839,22 +839,19 @@ code {
 .mx-col span, .mx-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mx-col i, .mx-row i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .mx-cell {
-  display: flex; align-items: center; justify-content: center;
+  display: block;
   aspect-ratio: 1 / 1; border-radius: var(--r-sm);
-  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
-  font-size: 10.5px; font-weight: 500; color: var(--ink-2);
-  min-width: 0; overflow: hidden; padding: 0 2px;
+  min-width: 0;
   transition: transform var(--dur), opacity var(--dur);
 }
-/* 离散蓝色阶：低档也清晰可辨 */
-.mx-cell.mx-lv0 { background: #eef1fe; color: #3c4770; }
-.mx-cell.mx-lv1 { background: #c7d2fe; color: #263272; }
+/* 离散蓝色阶：低档也清晰可辨；数值只在 hover/点按的浮层里显示 */
+.mx-cell.mx-lv0 { background: #eef1fe; }
+.mx-cell.mx-lv1 { background: #c7d2fe; }
 .mx-cell.mx-lv2 { background: #818cf8; }
-.mx-cell.mx-lv2.is-deep { color: #1e2547; /* §13 axe：#818cf8 上白字仅 2.98:1 */ }
 .mx-cell.mx-lv3 { background: #3b59f2; }
 .mx-cell.mx-lv4 { background: #173cda; }
-.mx-cell.is-deep { color: #fff; font-weight: 600; }
 .mx-cell.is-zero { background: #f2f3f7; }
+.mx-cell[data-v] { cursor: pointer; }
 .mx-grid.has-hot .mx-cell[data-v] { opacity: 0.35; }
 .mx-grid.has-hot .mx-cell.is-hot { opacity: 1; transform: scale(1.04); box-shadow: var(--sh-1); z-index: 1; }
 
@@ -1300,7 +1297,7 @@ code {
   .mx-grid { min-width: 0; gap: 3px; }
   .mx-corner { min-height: 26px; }
   .mx-col, .mx-row { min-height: 26px; font-size: 10px; gap: 4px; }
-  .mx-cell { font-size: 9px; padding: 0 1px; border-radius: 6px; }
+  .mx-cell { border-radius: 6px; }
   .mx-scale { margin-top: 9px; }
 
   /* 热力图：周/月适配屏宽；日视图保持 24 列，窄屏横向滑动 */

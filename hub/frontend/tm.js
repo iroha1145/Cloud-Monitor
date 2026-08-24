@@ -1604,8 +1604,9 @@ function renderMatrix() {
       const t = maxV > 0 ? v / maxV : 0;
       // 离散 5 档：低值也清晰可见，避免连续渐变导致浅档看不清
       const lv = Math.min(MX_SCALE.length - 1, Math.floor(t * MX_SCALE.length));
-      return `<span class="mx-cell mx-lv${lv}${lv >= 2 ? " is-deep" : ""}" data-c="${esc(c)}" data-m="${esc(m)}" data-v="${v}" ` +
-        `data-lv="${lv}">${esc(fmtV(v))}</span>`;
+      const label = `${c} × ${m}，${isCost ? "费用" : "tokens"} ${fmtV(v)}`;
+      return `<span class="mx-cell mx-lv${lv}" data-c="${esc(c)}" data-m="${esc(m)}" data-v="${v}" ` +
+        `data-lv="${lv}" aria-label="${esc(label)}"></span>`;
     }).join("");
     return `<span class="mx-row" title="${esc(c)}"><i style="background:${color}"></i><span>${esc(c)}</span></span>${cells}`;
   }).join("");
