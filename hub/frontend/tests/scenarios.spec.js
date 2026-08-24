@@ -537,25 +537,22 @@ test.describe("模型分布环形图中心文字（demo）", () => {
   });
 });
 
-test.describe("模型分布今日缓存率（demo）", () => {
-  test("今日可切换缓存率，本月不显示该切换", async ({ page }) => {
+test.describe("模型分布缓存率（demo）", () => {
+  test("无缓存率切换，悬停图例行显示该模型缓存率", async ({ page }) => {
     await page.goto("/demo");
     await expect(page.locator("#shell")).toBeVisible();
-    const metric = page.locator("#model-metric-seg");
-    await expect(metric).toBeVisible();
-    await metric.locator('button[data-m="cache"]').click();
-    await expect(page.locator("#model-dist-sub")).toContainText("缓存命中率");
-    await expect(page.locator("#model-dist .donut-center > span")).toHaveText("今日缓存率");
-    await expect(page.locator("#model-dist .donut-center b")).toContainText("%");
-    const rates = await page.locator("#model-dist .donut-lg-val .num-int").allTextContents();
-    expect(rates.length, "cache-mode legend rows").toBeGreaterThanOrEqual(2);
-    expect(new Set(rates).size, `legend rates should differ, got ${rates.join(",")}`).toBe(rates.length);
-    await page.locator('#model-seg button[data-p="month"]').click();
-    await expect(metric).toBeHidden();
+    await expect(page.locator("#model-metric-seg")).toHaveCount(0);
+    await expect(page.locator("#model-dist-sub")).toContainText("按 token 占比");
     await expect(page.locator("#model-dist-sub")).not.toContainText("缓存");
-    await page.locator('#model-seg button[data-p="today"]').click();
-    await expect(metric).toBeVisible();
-    await expect(metric.locator('button[data-m="tokens"]')).toHaveClass(/is-active/);
+    const row = page.locator("#model-dist .donut-lg-row").first();
+    await expect(row).toBeVisible();
+    await row.hover();
+    const tip = page.locator(".float-tip");
+    await expect(tip).toBeVisible();
+    await expect(tip).toContainText("tokens");
+    await expect(tip).toContainText("占比");
+    await expect(tip).toContainText("缓存率");
+    await expect(tip.locator(".tip-row")).toHaveCount(3);
   });
 });
 

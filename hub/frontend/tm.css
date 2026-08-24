@@ -1288,8 +1288,6 @@ code {
   .seg { width: 100%; }
   .seg button { flex: 1; min-height: 40px; }
   .mx-segs { width: 100%; }
-  #model-seg-group { width: 100%; }
-  #model-seg-group .seg { max-width: 100%; }
   .panel-head .seg { max-width: 100%; }
 
   /* 表格横滚（表头玻璃吸附已内置） */

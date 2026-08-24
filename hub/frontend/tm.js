@@ -406,7 +406,6 @@ const state = {
   view: "overview",
   demo: false,
   modelPeriod: "today",
-  modelMetric: "tokens", // today 可用 "cache"；本月/累计强制 tokens
   clientPeriod: "today",
   actView: "month",
   mxMetric: "tokens",
@@ -943,23 +942,6 @@ function cacheHitRate(bd) {
   return segValue(bd, "cacheRead") / bd.total;
 }
 
-function syncModelMetricSeg() {
-  const seg = $("#model-metric-seg");
-  if (!seg) return;
-  const show = state.modelPeriod === "today";
-  seg.hidden = !show;
-  if (!show && state.modelMetric !== "tokens") {
-    state.modelMetric = "tokens";
-    seg.querySelectorAll("button[data-m]").forEach((b) => {
-      const on = b.getAttribute("data-m") === "tokens";
-      b.classList.toggle("is-active", on);
-      b.setAttribute("aria-selected", on ? "true" : "false");
-      b.setAttribute("tabindex", on ? "0" : "-1");
-    });
-  }
-  if (show) requestAnimationFrame(() => positionPill(seg, true));
-}
-
 /* ================= 渲染层 · 概览 ================= */
 function renderKpis(data) {
   const totals = data.totals || {};
@@ -1325,97 +1307,41 @@ function renderModelDonut(per, animate) {
   const box = $("#model-dist");
   if (animate === undefined) animate = state.entryFx;
   per = per || {};
-  syncModelMetricSeg();
-  const cacheMode = state.modelPeriod === "today" && state.modelMetric === "cache";
   const periodLabel = PERIOD_LABELS[state.modelPeriod] || "";
   const sub = $("#model-dist-sub");
-  if (sub) {
-    sub.textContent = cacheMode
-      ? "今日各模型缓存命中率 · 缓存读 / 该模型总量"
-      : `按 token 占比 · ${periodLabel}周期`;
-  }
+  if (sub) sub.textContent = `按 token 占比 · ${periodLabel}周期`;
 
-  const tokenEntries = Object.entries(per.models || {})
+  const entries = Object.entries(per.models || {})
     .map(([name, v]) => [name, Number(v) || 0])
     .filter(([, v]) => v > 0)
     .sort((a, b) => b[1] - a[1]);
 
-  if (!tokenEntries.length) {
+  if (!entries.length) {
     showModelEmpty("该周期暂无模型数据");
     return;
   }
 
-  let entries; // [name, sliceValue]
-  let meta = new Map(); // name -> { tokens, cacheRead, rate, bd }
-  let sliceTotal;
-  let centerHtml;
-  let centerTitle;
-  let centerSub;
-  let ariaLabel;
-  let desc;
-  let tipOf;
+  const cacheMeta = new Map();
+  entries.forEach(([name]) => {
+    const rate = cacheHitRate(componentBreakdown(per, "model", name));
+    if (rate != null) cacheMeta.set(name, rate);
+  });
 
-  if (cacheMode) {
-    const overall = componentBreakdown(per, null, null);
-    tokenEntries.forEach(([name, tokens]) => {
-      const bd = componentBreakdown(per, "model", name);
-      meta.set(name, {
-        tokens,
-        cacheRead: segValue(bd, "cacheRead"),
-        rate: cacheHitRate(bd),
-        bd,
-      });
-    });
-    const anyKnown = [...meta.values()].some((m) => m.bd.known);
-    if (!anyKnown) {
-      showModelEmpty("后端未提供缓存构成，无法显示缓存率");
-      return;
-    }
-    const withRead = tokenEntries
-      .map(([name]) => [name, meta.get(name).cacheRead])
-      .filter(([, v]) => v > 0)
-      .sort((a, b) => {
-        const ra = meta.get(a[0]).rate;
-        const rb = meta.get(b[0]).rate;
-        if (rb !== ra) return (rb || 0) - (ra || 0);
-        return b[1] - a[1];
-      });
-    if (!withRead.length) {
-      showModelEmpty("今日暂无缓存读数据");
-      return;
-    }
-    entries = withRead;
-    sliceTotal = entries.reduce((a, [, v]) => a + v, 0);
-    const overallRate = cacheHitRate(overall);
-    centerHtml = fmtPctHtml(overallRate);
-    centerTitle = `今日缓存率 ${fmtPct(overallRate)}（缓存读 ${fmtInt(segValue(overall, "cacheRead"))} / ${fmtInt(overall.total)}）`;
-    centerSub = "今日缓存率";
-    ariaLabel = "今日模型缓存率环形图";
-    desc = `${entries.length} 个有缓存读的模型，整体缓存率 ${fmtPct(overallRate)}`;
-    tipOf = (name) => () => {
-      const m = meta.get(name) || {};
-      return tipHtml(name, [
-        ["缓存率", fmtPct(m.rate)],
-        ["缓存读", fmtInt(m.cacheRead || 0)],
-        ["总量", fmtInt(m.tokens || 0)],
-      ]);
-    };
-  } else {
-    entries = tokenEntries;
-    sliceTotal = entries.reduce((a, [, v]) => a + v, 0);
-    centerHtml = fmtCompactHtml(sliceTotal, true);
-    centerTitle = `${fmtInt(sliceTotal)} tokens`;
-    centerSub = `${periodLabel} tokens`;
-    ariaLabel = "模型分布环形图";
-    desc = `${entries.length} 个模型，合计 ${fmtInt(sliceTotal)} tokens`;
-    tipOf = (name) => () => {
-      const e = entries.find(([n]) => n === name);
-      return tipHtml(name, [
-        ["tokens", fmtInt(e ? e[1] : 0)],
-        ["占比", pct1(e ? e[1] : 0, sliceTotal)],
-      ]);
-    };
-  }
+  const sliceTotal = entries.reduce((a, [, v]) => a + v, 0);
+  const centerHtml = fmtCompactHtml(sliceTotal, true);
+  const centerTitle = `${fmtInt(sliceTotal)} tokens`;
+  const centerSub = `${periodLabel} tokens`;
+  const ariaLabel = "模型分布环形图";
+  const desc = `${entries.length} 个模型，合计 ${fmtInt(sliceTotal)} tokens`;
+  const tipOf = (name) => () => {
+    const e = entries.find(([n]) => n === name);
+    const rows = [
+      ["tokens", fmtInt(e ? e[1] : 0)],
+      ["占比", pct1(e ? e[1] : 0, sliceTotal)],
+    ];
+    if (cacheMeta.has(name)) rows.push(["缓存率", fmtPct(cacheMeta.get(name))]);
+    return tipHtml(name, rows);
+  };
 
   $("#model-empty").hidden = true;
   box.style.display = "";
@@ -1442,22 +1368,12 @@ function renderModelDonut(per, animate) {
 
   const rowHtml = ([name, v]) => {
     const color = state.modelColors[name] || OTHER_COLOR;
-    const m = meta.get(name);
-    const pctText = cacheMode
-      ? `读 ${fmtCompact(m && m.cacheRead)}`
-      : pct1(v, total);
-    const valHtml = cacheMode
-      ? fmtPctHtml(m && m.rate)
-      : fmtCompactHtml(v);
-    const valTitle = cacheMode
-      ? `缓存率 ${fmtPct(m && m.rate)} · 缓存读 ${fmtInt(m && m.cacheRead)} / 总量 ${fmtInt(m && m.tokens)}`
-      : `${fmtInt(v)} tokens`;
     return `<li class="donut-lg-row" data-name="${esc(name)}">
       <i style="background:${color}"></i>
       <span class="donut-lg-name" title="${esc(name)}">${esc(name)}</span>
       <span class="donut-lg-stats">
-        <span class="donut-lg-pct">${pctText}</span>
-        <b class="donut-lg-val" title="${esc(valTitle)}">${valHtml}</b>
+        <span class="donut-lg-pct">${pct1(v, total)}</span>
+        <b class="donut-lg-val" title="${esc(fmtInt(v) + " tokens")}">${fmtCompactHtml(v)}</b>
       </span>
     </li>`;
   };
@@ -3157,14 +3073,6 @@ initSeg("#model-seg", (p) => {
     clearEntryFxSoon(); // 周期切换的 is-drawing / t-swap-enter 也要清，不留常驻动画类
   }
 });
-initSeg("#model-metric-seg", (m) => {
-  state.modelMetric = m;
-  if (state.data) {
-    renderModelDonut((state.data.totals || {})[state.modelPeriod], true);
-    replayEnter($("#model-dist"));
-    clearEntryFxSoon();
-  }
-}, "data-m");
 initSeg("#client-seg", (p) => {
   state.clientPeriod = p;
   if (state.data) {

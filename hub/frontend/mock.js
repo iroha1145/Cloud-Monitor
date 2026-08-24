@@ -24,7 +24,7 @@
   const CLIENT_SHARE = { claude: 0.46, codex: 0.33, cursor: 0.21 };
   // 每百万 tokens 混合成本（美元）
   const COST_PER_M = { "claude-opus-4.1": 12.5, "claude-sonnet-4.5": 4.8, "gpt-5-codex": 7.2 };
-  /* 各模型缓存命中率刻意拉开（opus 高、codex 低），方便「今日缓存率」视图对照 */
+  /* 各模型缓存命中率刻意拉开（opus 高、codex 低），方便悬停图例对照 */
   const CACHE_HIT = { "claude-opus-4.1": 0.62, "claude-sonnet-4.5": 0.39, "gpt-5-codex": 0.17 };
 
   const DAY = 86400000;

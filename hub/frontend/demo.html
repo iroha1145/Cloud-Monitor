@@ -155,18 +155,11 @@
                     <h2>模型分布</h2>
                     <p class="panel-sub" id="model-dist-sub">按 token 占比 · 环形图 + 占比图例</p>
                   </div>
-                  <div class="mx-segs" id="model-seg-group">
-                    <div class="seg" id="model-seg" role="tablist" aria-label="模型分布周期">
-                      <span class="seg-pill" aria-hidden="true"></span>
-                      <button role="tab" aria-selected="true" tabindex="0" type="button" data-p="today" class="is-active">今日</button>
-                      <button role="tab" aria-selected="false" tabindex="-1" type="button" data-p="month">本月</button>
-                      <button role="tab" aria-selected="false" tabindex="-1" type="button" data-p="allTime">累计</button>
-                    </div>
-                    <div class="seg" id="model-metric-seg" role="tablist" aria-label="模型分布指标">
-                      <span class="seg-pill" aria-hidden="true"></span>
-                      <button role="tab" aria-selected="true" tabindex="0" type="button" data-m="tokens" class="is-active">用量</button>
-                      <button role="tab" aria-selected="false" tabindex="-1" type="button" data-m="cache">缓存率</button>
-                    </div>
+                  <div class="seg" id="model-seg" role="tablist" aria-label="模型分布周期">
+                    <span class="seg-pill" aria-hidden="true"></span>
+                    <button role="tab" aria-selected="true" tabindex="0" type="button" data-p="today" class="is-active">今日</button>
+                    <button role="tab" aria-selected="false" tabindex="-1" type="button" data-p="month">本月</button>
+                    <button role="tab" aria-selected="false" tabindex="-1" type="button" data-p="allTime">累计</button>
                   </div>
                 </div>
                 <div class="donut-wrap" id="model-dist"></div>
