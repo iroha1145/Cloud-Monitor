@@ -537,6 +537,71 @@ test.describe("模型分布环形图中心文字（demo）", () => {
   });
 });
 
+test.describe("模型分布环形图选中态（颜色不串 / 100% 整环外凸）", () => {
+  test("悬停非最大弧段时各弧 stroke 不变，底环不用最大段色", async ({ page }) => {
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    await page.locator('#model-seg button[data-p="month"]').click();
+    const arcs = page.locator("#model-dist .donut-arc");
+    await expect(arcs).not.toHaveCount(0);
+    const n = await arcs.count();
+    expect(n).toBeGreaterThan(2);
+    const strokeByName = {};
+    for (let i = 0; i < n; i++) {
+      const name = await arcs.nth(i).getAttribute("data-name");
+      strokeByName[name] = await arcs.nth(i).getAttribute("stroke");
+    }
+    expect(new Set(Object.values(strokeByName)).size, "多模型应有多种弧色").toBeGreaterThan(1);
+
+    const bgStroke = await page.locator("#model-dist .donut-bg").evaluate((el) => getComputedStyle(el).stroke);
+    const firstStroke = await arcs.first().evaluate((el) => getComputedStyle(el).stroke);
+    expect(bgStroke, "底环不得垫最大段色").not.toBe(firstStroke);
+
+    const row = page.locator("#model-dist .donut-lg-row").nth(1);
+    const hotName = await row.getAttribute("data-name");
+    expect(hotName).toBeTruthy();
+    await row.hover();
+    await expect(page.locator("#model-dist")).toHaveClass(/has-hot/);
+    await expect(page.locator(`#model-dist .donut-arc[data-name="${hotName}"]`)).toHaveClass(/is-hot/);
+    await expect(page.locator("#model-dist .donut-arc.is-hot")).toHaveCount(1);
+    const after = await page.locator("#model-dist .donut-arc").evaluateAll((els) =>
+      Object.fromEntries(els.map((el) => [el.getAttribute("data-name"), el.getAttribute("stroke")]))
+    );
+    expect(after, "选中后各弧 stroke 必须保持").toEqual(strokeByName);
+    const bgAfter = await page.locator("#model-dist .donut-bg").evaluate((el) => getComputedStyle(el).stroke);
+    expect(bgAfter).toBe(bgStroke);
+    expect(bgAfter).not.toBe(firstStroke);
+  });
+
+  test("单模型 100% 弧无接缝，悬停整环 scale 外凸", async ({ page, context }) => {
+    await loginWithToken(context);
+    const p = clone(base.payload);
+    const only = { "solo-model": 12638361 };
+    for (const key of ["today", "month", "allTime"]) {
+      if (p.totals && p.totals[key]) p.totals[key].models = { ...only };
+    }
+    await stubOverview(page, p);
+    await page.goto("/");
+    await expect(page.locator("#shell")).toBeVisible();
+    const arc = page.locator("#model-dist .donut-arc");
+    await expect(arc).toHaveCount(1);
+    await expect(arc).toHaveAttribute("data-full", "1");
+    const dash = String(await arc.getAttribute("stroke-dasharray") || "").replace(/\s+/g, " ").trim();
+    expect(dash, "满环 gap 必须为 0，禁止 100 100 接缝").toMatch(/^100(?:\.0+)? 0$/);
+
+    await page.locator("#model-dist .donut-lg-row").first().hover();
+    await expect(page.locator("#model-dist")).toHaveClass(/has-hot/);
+    await expect(arc).toHaveClass(/is-hot/);
+    const scale = await arc.evaluate((el) => {
+      const t = getComputedStyle(el).transform;
+      if (!t || t === "none") return 1;
+      const m = t.match(/matrix\(([^)]+)\)/);
+      return m ? parseFloat(m[1].split(",")[0]) : 1;
+    });
+    expect(scale, "100% 悬停应整环 scale 外凸").toBeGreaterThan(1.03);
+  });
+});
+
 test.describe("模型分布缓存率（demo）", () => {
   test("无缓存率切换，悬停图例行显示该模型缓存率", async ({ page }) => {
     await page.goto("/demo");

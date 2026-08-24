@@ -1303,6 +1303,15 @@ function showModelEmpty(message) {
   if (p) p.textContent = message;
 }
 
+/* 弧段 dash：不满环用「长度 100」的 gap；满环必须 gap=0。
+   旧写法 `min(100,pct) 100` 在 100% 变成 `100 100`——闭合圆上留一条 butt 接缝，
+   加粗/外凸时 6 点方向会裂开，看起来像「只鼓了一块」。 */
+function donutArcDash(pct, offset, overlap) {
+  if (pct >= 99.95) return { dash: "100.00 0", dashoffset: "0.00", full: true };
+  const span = Math.min(99.94, Math.max(pct + (overlap || 0), 0.15));
+  return { dash: `${span.toFixed(2)} 100`, dashoffset: (-offset).toFixed(2), full: false };
+}
+
 function renderModelDonut(per, animate) {
   const box = $("#model-dist");
   if (animate === undefined) animate = state.entryFx;
@@ -1349,19 +1358,20 @@ function renderModelDonut(per, animate) {
 
   /* SVG donut：pathLength=100 让每段直接用百分比画弧；
      入场/换周期时 is-drawing 从 0 画到 dasharray 目标值（700ms，spark-draw 同款）。
-     段与段贴合：底环用最大段同色垫底，多段重叠 0.8，避免浅色空档。 */
+     底环只做中性轨道（禁止用最大段色垫底——has-hot 淡化其它弧时会整圈串色）。
+     段与段重叠 0.8 填浅色空档。 */
   const R = 45;
   let offset = 25; // 12 点方向起笔
   const overlap = entries.length > 1 ? 0.8 : 0;
-  const underlay = state.modelColors[entries[0][0]] || OTHER_COLOR;
   const arcs = entries.map(([name, v]) => {
     const pct = (v / total) * 100;
     const color = state.modelColors[name] || OTHER_COLOR;
-    const dash = Math.min(100, Math.max(pct + overlap, 0.15));
+    const spec = donutArcDash(pct, offset, overlap);
     const arc =
       `<circle class="donut-arc${animate ? " is-drawing" : ""}" cx="60" cy="60" r="${R}" pathLength="100" ` +
-      `stroke="${color}" stroke-dasharray="${dash.toFixed(2)} 100" ` +
-      `stroke-dashoffset="${(-offset).toFixed(2)}" data-name="${esc(name)}"/>`;
+      `stroke="${color}" stroke-dasharray="${spec.dash}" ` +
+      `stroke-dashoffset="${spec.dashoffset}" data-name="${esc(name)}"` +
+      `${spec.full ? ' data-full="1"' : ""}/>`;
     offset += pct;
     return arc;
   }).join("");
@@ -1399,7 +1409,7 @@ function renderModelDonut(per, animate) {
       <svg viewBox="0 0 120 120" width="120" height="120">
         <title>${esc(ariaLabel)}</title>
         <desc>${esc(desc)}</desc>
-        <circle class="donut-bg" cx="60" cy="60" r="${R}" style="stroke:${underlay}"/>
+        <circle class="donut-bg" cx="60" cy="60" r="${R}"/>
         ${arcs}
       </svg>
       <div class="donut-center">
@@ -1445,7 +1455,11 @@ function renderModelDonut(per, animate) {
   const hot = (name, on) => {
     box.classList.toggle("has-hot", on);
     rows.forEach((r) => r.classList.toggle("is-hot", on && r.dataset.name === name));
-    arcEls.forEach((a) => a.classList.toggle("is-hot", on && a.dataset.name === name));
+    arcEls.forEach((a) => {
+      const match = on && a.dataset.name === name;
+      a.classList.toggle("is-hot", match);
+      if (match && a.parentNode) a.parentNode.appendChild(a);
+    });
   };
   rows.forEach((r) => {
     r.addEventListener("mouseenter", (e) => { hot(r.dataset.name, true); floatTip.show(tipOf(r.dataset.name)(), e.clientX, e.clientY); });
