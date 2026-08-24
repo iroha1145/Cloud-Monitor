@@ -537,6 +537,28 @@ test.describe("模型分布环形图中心文字（demo）", () => {
   });
 });
 
+test.describe("模型分布今日缓存率（demo）", () => {
+  test("今日可切换缓存率，本月不显示该切换", async ({ page }) => {
+    await page.goto("/?demo=1");
+    await expect(page.locator("#shell")).toBeVisible();
+    const metric = page.locator("#model-metric-seg");
+    await expect(metric).toBeVisible();
+    await metric.locator('button[data-m="cache"]').click();
+    await expect(page.locator("#model-dist-sub")).toContainText("缓存命中率");
+    await expect(page.locator("#model-dist .donut-center > span")).toHaveText("今日缓存率");
+    await expect(page.locator("#model-dist .donut-center b")).toContainText("%");
+    const rates = await page.locator("#model-dist .donut-lg-val .num-int").allTextContents();
+    expect(rates.length, "cache-mode legend rows").toBeGreaterThanOrEqual(2);
+    expect(new Set(rates).size, `legend rates should differ, got ${rates.join(",")}`).toBe(rates.length);
+    await page.locator('#model-seg button[data-p="month"]').click();
+    await expect(metric).toBeHidden();
+    await expect(page.locator("#model-dist-sub")).not.toContainText("缓存");
+    await page.locator('#model-seg button[data-p="today"]').click();
+    await expect(metric).toBeVisible();
+    await expect(metric.locator('button[data-m="tokens"]')).toHaveClass(/is-active/);
+  });
+});
+
 test.describe("§10 键盘导航（demo）", () => {
   test("seg 支持 ArrowRight/Home/End 与 aria-selected 切换", async ({ page }) => {
     await page.goto("/?demo=1");

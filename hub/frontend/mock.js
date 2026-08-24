@@ -24,6 +24,8 @@
   const CLIENT_SHARE = { claude: 0.46, codex: 0.33, cursor: 0.21 };
   // 每百万 tokens 混合成本（美元）
   const COST_PER_M = { "claude-opus-4.1": 12.5, "claude-sonnet-4.5": 4.8, "gpt-5-codex": 7.2 };
+  /* 各模型缓存命中率刻意拉开（opus 高、codex 低），方便「今日缓存率」视图对照 */
+  const CACHE_HIT = { "claude-opus-4.1": 0.62, "claude-sonnet-4.5": 0.39, "gpt-5-codex": 0.17 };
 
   const DAY = 86400000;
   const rand = (a, b) => a + Math.random() * (b - a);
@@ -103,7 +105,6 @@
   /* ---------- 周期对象（含全部拆分字段；capabilities 按周期嵌套，契约 §7） ---------- */
   function periodFrom(totalTokens, modelTokens, clientTokens) {
     const output = clamp0(totalTokens * rand(0.16, 0.2));
-    const cacheRead = clamp0(totalTokens * rand(0.38, 0.46));
     const cacheWrite = clamp0(totalTokens * rand(0.06, 0.09));
     const unclassified = clamp0(totalTokens * rand(0.004, 0.012));
     const p = {
@@ -112,7 +113,7 @@
       capabilities: { tokenComponents: true },
       totalTokens,
       outputTokens: output,
-      cacheReadTokens: cacheRead,
+      cacheReadTokens: 0,
       cacheWriteTokens: cacheWrite,
       unclassifiedTokens: unclassified,
       timedTokens: clamp0(totalTokens * rand(0.6, 0.8)),
@@ -125,16 +126,23 @@
       clientModels: {}, clientModelCosts: {},
     };
     let costSum = 0;
+    const outShare = output / totalTokens || 0;
+    const writeShare = cacheWrite / totalTokens || 0;
+    const unclsShare = unclassified / totalTokens || 0;
+    const room = Math.max(0, 0.92 - outShare - writeShare - unclsShare);
     for (const m of MODELS) {
       const v = clamp0(modelTokens[m] || 0);
       p.models[m] = v;
       p.modelCosts[m] = Math.round(((v / 1e6) * COST_PER_M[m]) * 100) / 100;
-      p.modelOutputs[m] = clamp0(v * (output / totalTokens || 0));
-      p.modelCacheReads[m] = clamp0(v * (cacheRead / totalTokens || 0));
-      p.modelCacheWrites[m] = clamp0(v * (cacheWrite / totalTokens || 0));
-      p.modelUnclassifiedTokens[m] = clamp0(v * (unclassified / totalTokens || 0));
+      p.modelOutputs[m] = clamp0(v * outShare);
+      p.modelCacheWrites[m] = clamp0(v * writeShare);
+      p.modelUnclassifiedTokens[m] = clamp0(v * unclsShare);
+      const hit = Math.min(CACHE_HIT[m] ?? 0.35, room) * rand(0.97, 1.03);
+      p.modelCacheReads[m] = clamp0(v * hit);
       costSum += p.modelCosts[m];
     }
+    const cacheRead = MODELS.reduce((s, m) => s + (p.modelCacheReads[m] || 0), 0);
+    p.cacheReadTokens = cacheRead;
     for (const c of CLIENTS) {
       const v = clamp0(clientTokens[c] || 0);
       p.clients[c] = v;
@@ -155,10 +163,10 @@
         cCost += mc;
       }
       p.clientCosts[c] = Math.round(cCost * 100) / 100;
-      p.clientOutputs[c] = clamp0(v * (output / totalTokens || 0));
+      p.clientOutputs[c] = clamp0(v * outShare);
       p.clientCacheReads[c] = clamp0(v * (cacheRead / totalTokens || 0));
-      p.clientCacheWrites[c] = clamp0(v * (cacheWrite / totalTokens || 0));
-      p.clientUnclassifiedTokens[c] = clamp0(v * (unclassified / totalTokens || 0));
+      p.clientCacheWrites[c] = clamp0(v * writeShare);
+      p.clientUnclassifiedTokens[c] = clamp0(v * unclsShare);
     }
     p.costUsd = Math.round(costSum * 100) / 100;
     return p;

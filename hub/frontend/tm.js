@@ -18,27 +18,65 @@ const esc = (v) =>
 const nf = new Intl.NumberFormat("zh-Hans-CN");
 const fmtInt = (v) => nf.format(Math.round(Number(v) || 0));
 
-function fmtCompact(v) {
+/* 压缩数字与中文单位拆开：等宽栈没有中文字形，「419万」混排会基线错位 */
+function compactParts(v, tight) {
   v = Number(v) || 0;
-  if (v >= 1e8) return (v / 1e8).toFixed(2).replace(/\.?0+$/, "") + "亿";
-  if (v >= 1e4) return (v / 1e4).toFixed(1).replace(/\.0$/, "") + "万";
-  return fmtInt(v);
+  if (v >= 1e8) {
+    const y = v / 1e8;
+    const n = (tight
+      ? (y >= 100 ? y.toFixed(0) : y >= 10 ? y.toFixed(1) : y.toFixed(2))
+      : y.toFixed(2)
+    ).replace(/\.?0+$/, "");
+    return { n, u: "亿" };
+  }
+  if (v >= 1e4) {
+    const w = v / 1e4;
+    const n = (tight && w >= 1000 ? w.toFixed(0) : w.toFixed(1)).replace(/\.0$/, "");
+    return { n, u: "万" };
+  }
+  return { n: fmtInt(v), u: "" };
+}
+
+function fmtCompact(v) {
+  const p = compactParts(v, false);
+  return p.n + p.u;
 }
 
 /* 环心专用限长压缩：随量级封顶有效位（≥1000万 去小数、≥10亿 一位小数、
    ≥100亿 取整），任何量级都 ≤6 个字形 —— 25px 字号在环内孔恒定容纳，
    周期切换（今日/本月/累计）时环心字号不再随数字长短漂移 */
 function fmtCompactTight(v) {
-  v = Number(v) || 0;
-  if (v >= 1e8) {
-    const y = v / 1e8;
-    return (y >= 100 ? y.toFixed(0) : y >= 10 ? y.toFixed(1) : y.toFixed(2)).replace(/\.?0+$/, "") + "亿";
-  }
-  if (v >= 1e4) {
-    const w = v / 1e4;
-    return (w >= 1000 ? w.toFixed(0) : w.toFixed(1)).replace(/\.0$/, "") + "万";
-  }
-  return fmtInt(v);
+  const p = compactParts(v, true);
+  return p.n + p.u;
+}
+
+function fmtCompactHtml(v, tight) {
+  const p = compactParts(v, !!tight);
+  const inner = p.u
+    ? `<span class="num-int">${esc(p.n)}</span><span class="num-unit">${p.u}</span>`
+    : `<span class="num-int">${esc(p.n)}</span>`;
+  return `<span class="num-compact">${inner}</span>`;
+}
+
+function fmtPctParts(ratio) {
+  if (ratio == null || !Number.isFinite(Number(ratio))) return { n: "—", u: "" };
+  const pct = Number(ratio) * 100;
+  if (pct > 0 && pct < 0.1) return { n: "<0.1", u: "%" };
+  const n = (Math.round(pct * 10) / 10).toFixed(1).replace(/\.0$/, "");
+  return { n, u: "%" };
+}
+
+function fmtPct(ratio) {
+  const p = fmtPctParts(ratio);
+  return p.n + p.u;
+}
+
+function fmtPctHtml(ratio) {
+  const p = fmtPctParts(ratio);
+  const inner = p.u
+    ? `<span class="num-int">${esc(p.n)}</span><span class="num-unit">${p.u}</span>`
+    : `<span class="num-int">${esc(p.n)}</span>`;
+  return `<span class="num-compact">${inner}</span>`;
 }
 
 function fmtUsd(v) {
@@ -361,6 +399,7 @@ const state = {
   view: "overview",
   demo: false,
   modelPeriod: "today",
+  modelMetric: "tokens", // today 可用 "cache"；本月/累计强制 tokens
   clientPeriod: "today",
   actView: "month",
   mxMetric: "tokens",
@@ -587,7 +626,7 @@ const floatTip = {
 function tipHtml(title, rows) {
   return (
     `<div class="tip-title">${esc(title)}</div>` +
-    rows.map(([k, v]) => `<div class="tip-row"><span>${esc(k)}</span><b>${v}</b></div>`).join("")
+    rows.map(([k, v]) => `<div class="tip-row"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("")
   );
 }
 
@@ -658,6 +697,7 @@ function gateShake() {
 }
 
 function showGate(message) {
+  floatTip.hide();
   state.alive = false;
   state.requestGeneration++; // §3-2：退出时中止全部请求并使在途响应失效
   abortAllRequests();
@@ -885,6 +925,34 @@ function componentBreakdown(period, entityType, entityName) {
   return { total, known: true, complete, capable: true, segs };
 }
 
+function segValue(bd, key) {
+  if (!bd || !bd.known) return 0;
+  const s = bd.segs.find((x) => x.key === key);
+  return s ? s.value : 0;
+}
+
+function cacheHitRate(bd) {
+  if (!bd || !bd.known || bd.total <= 0) return null;
+  return segValue(bd, "cacheRead") / bd.total;
+}
+
+function syncModelMetricSeg() {
+  const seg = $("#model-metric-seg");
+  if (!seg) return;
+  const show = state.modelPeriod === "today";
+  seg.hidden = !show;
+  if (!show && state.modelMetric !== "tokens") {
+    state.modelMetric = "tokens";
+    seg.querySelectorAll("button[data-m]").forEach((b) => {
+      const on = b.getAttribute("data-m") === "tokens";
+      b.classList.toggle("is-active", on);
+      b.setAttribute("aria-selected", on ? "true" : "false");
+      b.setAttribute("tabindex", on ? "0" : "-1");
+    });
+  }
+  if (show) requestAnimationFrame(() => positionPill(seg, true));
+}
+
 /* ================= 渲染层 · 概览 ================= */
 function renderKpis(data) {
   const totals = data.totals || {};
@@ -907,7 +975,7 @@ function renderKpis(data) {
     `<i class="seg-${s.cls}" data-label="${esc(s.label)}" data-v="${s.value}" data-pct="${((s.value / (sum || 1)) * 100).toFixed(1)}" style="width:${((s.value / (sum || 1)) * 100).toFixed(2)}%"></i>`
   ).join("");
   const legend = segs
-    .map((s) => `<span><i class="seg-${s.cls}"></i>${esc(s.label)} <b>${fmtCompact(s.value)}</b></span>`)
+    .map((s) => `<span><i class="seg-${s.cls}"></i>${esc(s.label)} <b>${fmtCompactHtml(s.value)}</b></span>`)
     .join("");
   const mixNote = breakdown.total > 0 && !breakdown.known
     ? '<p class="kpi-mix-note comp-warn">后端未提供精确 Token 组成，未将剩余量猜作非缓存输入。</p>'
@@ -917,7 +985,7 @@ function renderKpis(data) {
   const timedTokens = Number(today.timedTokens) || 0;
   const timedMs = Number(today.timedDurationMs) || 0;
   const timed = timedTokens > 0
-    ? `计时 <b>${fmtCompact(timedTokens)}</b> tokens${timedMs > 0 ? " / " + esc(fmtTimedMs(timedMs)) : ""}`
+    ? `计时 <b>${fmtCompactHtml(timedTokens)}</b> tokens${timedMs > 0 ? " / " + esc(fmtTimedMs(timedMs)) : ""}`
     : "今日暂无计时用量";
 
   const seen = devices
@@ -945,7 +1013,7 @@ function renderKpis(data) {
   const cards = [
     `<article class="kpi-card${riseCls()}"${riseStyle(0)}>
       <div class="kpi-tag"><span>今日 Tokens</span><svg class="ic" aria-hidden="true"><use href="${iconHref("i-zap")}"/></svg></div>
-      <div class="kpi-value${pop}" title="${fmtInt(today.totalTokens)} tokens">${fmtCompact(today.totalTokens)}</div>
+      <div class="kpi-value${pop}" title="${fmtInt(today.totalTokens)} tokens">${fmtCompactHtml(today.totalTokens)}</div>
       <p class="kpi-sub">${timed}</p>
       <div class="kpi-bar" id="kpi-mix">${bar}</div>
       <div class="kpi-legend">${legend}</div>
@@ -956,8 +1024,8 @@ function renderKpis(data) {
       <div class="kpi-value${pop}">${fmtUsd(today.costUsd)}<small class="kpi-unit">今日</small></div>
       <div class="kpi-rows">
         <div class="kpi-row"><span>本月成本</span><b>${fmtUsd(month.costUsd)}</b></div>
-        <div class="kpi-row"><span>本月 Tokens</span><b title="${fmtInt(month.totalTokens)} tokens">${fmtCompact(month.totalTokens)}</b></div>
-        <div class="kpi-row"><span>历史累计</span><b title="${fmtInt(allTime.totalTokens)} tokens">${fmtCompact(allTime.totalTokens)}</b></div>
+        <div class="kpi-row"><span>本月 Tokens</span><b title="${fmtInt(month.totalTokens)} tokens">${fmtCompactHtml(month.totalTokens)}</b></div>
+        <div class="kpi-row"><span>历史累计</span><b title="${fmtInt(allTime.totalTokens)} tokens">${fmtCompactHtml(allTime.totalTokens)}</b></div>
       </div>
     </article>`,
     `<article class="kpi-card kpi-conn-card${isOnline ? " is-online" : " is-offline"}${riseCls()}"${riseStyle(2)}>
@@ -1237,26 +1305,114 @@ function renderTrend() {
 /* ---------- 模型分布：环形图（中央总量 + 图例占比） ---------- */
 const PERIOD_LABELS = { today: "今日", month: "本月", allTime: "累计" };
 
+function showModelEmpty(message) {
+  const box = $("#model-dist");
+  box.innerHTML = "";
+  box.style.display = "none";
+  $("#model-empty").hidden = false;
+  const p = $("#model-empty p");
+  if (p) p.textContent = message;
+}
+
 function renderModelDonut(per, animate) {
   const box = $("#model-dist");
   if (animate === undefined) animate = state.entryFx;
   per = per || {};
-  const entries = Object.entries(per.models || {})
+  syncModelMetricSeg();
+  const cacheMode = state.modelPeriod === "today" && state.modelMetric === "cache";
+  const periodLabel = PERIOD_LABELS[state.modelPeriod] || "";
+  const sub = $("#model-dist-sub");
+  if (sub) {
+    sub.textContent = cacheMode
+      ? "今日各模型缓存命中率 · 缓存读 / 该模型总量"
+      : `按 token 占比 · ${periodLabel}周期`;
+  }
+
+  const tokenEntries = Object.entries(per.models || {})
     .map(([name, v]) => [name, Number(v) || 0])
     .filter(([, v]) => v > 0)
     .sort((a, b) => b[1] - a[1]);
-  const periodLabel = PERIOD_LABELS[state.modelPeriod] || "";
-  const sub = $("#model-dist-sub");
-  if (sub) sub.textContent = `按 token 占比 · ${periodLabel}周期`;
-  if (!entries.length) {
-    box.innerHTML = "";
-    box.style.display = "none";
-    $("#model-empty").hidden = false;
+
+  if (!tokenEntries.length) {
+    showModelEmpty("该周期暂无模型数据");
     return;
   }
+
+  let entries; // [name, sliceValue]
+  let meta = new Map(); // name -> { tokens, cacheRead, rate, bd }
+  let sliceTotal;
+  let centerHtml;
+  let centerTitle;
+  let centerSub;
+  let ariaLabel;
+  let desc;
+  let tipOf;
+
+  if (cacheMode) {
+    const overall = componentBreakdown(per, null, null);
+    tokenEntries.forEach(([name, tokens]) => {
+      const bd = componentBreakdown(per, "model", name);
+      meta.set(name, {
+        tokens,
+        cacheRead: segValue(bd, "cacheRead"),
+        rate: cacheHitRate(bd),
+        bd,
+      });
+    });
+    const anyKnown = [...meta.values()].some((m) => m.bd.known);
+    if (!anyKnown) {
+      showModelEmpty("后端未提供缓存构成，无法显示缓存率");
+      return;
+    }
+    const withRead = tokenEntries
+      .map(([name]) => [name, meta.get(name).cacheRead])
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => {
+        const ra = meta.get(a[0]).rate;
+        const rb = meta.get(b[0]).rate;
+        if (rb !== ra) return (rb || 0) - (ra || 0);
+        return b[1] - a[1];
+      });
+    if (!withRead.length) {
+      showModelEmpty("今日暂无缓存读数据");
+      return;
+    }
+    entries = withRead;
+    sliceTotal = entries.reduce((a, [, v]) => a + v, 0);
+    const overallRate = cacheHitRate(overall);
+    centerHtml = fmtPctHtml(overallRate);
+    centerTitle = `今日缓存率 ${fmtPct(overallRate)}（缓存读 ${fmtInt(segValue(overall, "cacheRead"))} / ${fmtInt(overall.total)}）`;
+    centerSub = "今日缓存率";
+    ariaLabel = "今日模型缓存率环形图";
+    desc = `${entries.length} 个有缓存读的模型，整体缓存率 ${fmtPct(overallRate)}`;
+    tipOf = (name) => () => {
+      const m = meta.get(name) || {};
+      return tipHtml(name, [
+        ["缓存率", fmtPct(m.rate)],
+        ["缓存读", fmtInt(m.cacheRead || 0)],
+        ["总量", fmtInt(m.tokens || 0)],
+      ]);
+    };
+  } else {
+    entries = tokenEntries;
+    sliceTotal = entries.reduce((a, [, v]) => a + v, 0);
+    centerHtml = fmtCompactHtml(sliceTotal, true);
+    centerTitle = `${fmtInt(sliceTotal)} tokens`;
+    centerSub = `${periodLabel} tokens`;
+    ariaLabel = "模型分布环形图";
+    desc = `${entries.length} 个模型，合计 ${fmtInt(sliceTotal)} tokens`;
+    tipOf = (name) => () => {
+      const e = entries.find(([n]) => n === name);
+      return tipHtml(name, [
+        ["tokens", fmtInt(e ? e[1] : 0)],
+        ["占比", pct1(e ? e[1] : 0, sliceTotal)],
+      ]);
+    };
+  }
+
   $("#model-empty").hidden = true;
   box.style.display = "";
-  const total = entries.reduce((a, [, v]) => a + v, 0);
+  const total = sliceTotal;
 
   /* SVG donut：pathLength=100 让每段直接用百分比画弧；
      入场/换周期时 is-drawing 从 0 画到 dasharray 目标值（700ms，spark-draw 同款）。
@@ -1279,12 +1435,22 @@ function renderModelDonut(per, animate) {
 
   const rowHtml = ([name, v]) => {
     const color = state.modelColors[name] || OTHER_COLOR;
+    const m = meta.get(name);
+    const pctText = cacheMode
+      ? `读 ${fmtCompact(m && m.cacheRead)}`
+      : pct1(v, total);
+    const valHtml = cacheMode
+      ? fmtPctHtml(m && m.rate)
+      : fmtCompactHtml(v);
+    const valTitle = cacheMode
+      ? `缓存率 ${fmtPct(m && m.rate)} · 缓存读 ${fmtInt(m && m.cacheRead)} / 总量 ${fmtInt(m && m.tokens)}`
+      : `${fmtInt(v)} tokens`;
     return `<li class="donut-lg-row" data-name="${esc(name)}">
       <i style="background:${color}"></i>
       <span class="donut-lg-name" title="${esc(name)}">${esc(name)}</span>
       <span class="donut-lg-stats">
-        <span class="donut-lg-pct">${pct1(v, total)}</span>
-        <b class="donut-lg-val" title="${fmtInt(v)} tokens">${fmtCompact(v)}</b>
+        <span class="donut-lg-pct">${pctText}</span>
+        <b class="donut-lg-val" title="${esc(valTitle)}">${valHtml}</b>
       </span>
     </li>`;
   };
@@ -1306,16 +1472,16 @@ function renderModelDonut(per, animate) {
       </button>` : "";
 
   box.innerHTML = `
-    <div class="donut" role="img" aria-label="模型分布环形图">
+    <div class="donut" role="img" aria-label="${esc(ariaLabel)}">
       <svg viewBox="0 0 120 120" width="120" height="120">
-        <title>模型分布环形图</title>
-        <desc>${entries.length} 个模型，合计 ${fmtInt(total)} tokens</desc>
+        <title>${esc(ariaLabel)}</title>
+        <desc>${esc(desc)}</desc>
         <circle class="donut-bg" cx="60" cy="60" r="${R}" style="stroke:${underlay}"/>
         ${arcs}
       </svg>
       <div class="donut-center">
-        <b title="${fmtInt(total)} tokens">${fmtCompactTight(total)}</b>
-        <span>${periodLabel} tokens</span>
+        <b title="${esc(centerTitle)}">${centerHtml}</b>
+        <span>${esc(centerSub)}</span>
       </div>
     </div>
     <div class="donut-lg-wrap t-acc" data-open="false">
@@ -1357,13 +1523,6 @@ function renderModelDonut(per, animate) {
     box.classList.toggle("has-hot", on);
     rows.forEach((r) => r.classList.toggle("is-hot", on && r.dataset.name === name));
     arcEls.forEach((a) => a.classList.toggle("is-hot", on && a.dataset.name === name));
-  };
-  const tipOf = (name) => () => {
-    const e = entries.find(([n]) => n === name);
-    return tipHtml(name, [
-      ["tokens", fmtInt(e ? e[1] : 0)],
-      ["占比", pct1(e ? e[1] : 0, total)],
-    ]);
   };
   rows.forEach((r) => {
     r.addEventListener("mouseenter", (e) => { hot(r.dataset.name, true); floatTip.show(tipOf(r.dataset.name)(), e.clientX, e.clientY); });
@@ -1451,7 +1610,7 @@ function renderDist(listSel, emptySel, subSel, per, kind) {
     return `<div class="dist-row">
       <span class="dist-name" title="${esc(name)}"><i style="background:${color}"></i>${esc(name)}</span>
       <div class="dist-track"><div class="dist-bar" style="width:${w}%">${barInner}</div></div>
-      <span class="dist-val" title="${fmtInt(v)} tokens"><b>${fmtCompact(v)}</b>${pct1(v, sumAll)}${costHtml}${warnHtml}</span>
+      <span class="dist-val" title="${fmtInt(v)} tokens"><b>${fmtCompactHtml(v)}</b>${pct1(v, sumAll)}${costHtml}${warnHtml}</span>
     </div>`;
   }).join("");
 
@@ -1735,7 +1894,7 @@ function renderDevicesView() {
   $("#dev-summary").innerHTML = [
     `<span class="sum-pill${riseCls()}"${riseStyle(0)}><svg class="ic" aria-hidden="true"><use href="${iconHref("i-monitor")}"/></svg>在线 <b>${online}</b> / 共 ${list.length} 台</span>`,
     `<span class="sum-pill${riseCls()}"${riseStyle(1)}><svg class="ic" aria-hidden="true"><use href="${iconHref("i-terminal")}"/></svg>追踪客户端 <b>${clientSet.size}</b> 个</span>`,
-    `<span class="sum-pill${riseCls()}"${riseStyle(2)}><svg class="ic" aria-hidden="true"><use href="${iconHref("i-zap")}"/></svg>今日合计 <b>${fmtCompact(todaySum)}</b> tokens</span>`,
+    `<span class="sum-pill${riseCls()}"${riseStyle(2)}><svg class="ic" aria-hidden="true"><use href="${iconHref("i-zap")}"/></svg>今日合计 <b>${fmtCompactHtml(todaySum)}</b> tokens</span>`,
     `<span class="sum-pill${riseCls()}"${riseStyle(3)}><svg class="ic" aria-hidden="true"><use href="${iconHref("i-clock")}"/></svg>离线状态由服务端按每台设备的上传间隔判定</span>`,
   ].join("");
 
@@ -1770,7 +1929,7 @@ function renderDevicesView() {
 
     const stat = (label, key) => {
       const v = Number(((d[key] || {}).totalTokens) || 0);
-      return `<div class="dev-stat"><span>${label}</span><b title="${fmtInt(v)} tokens">${fmtCompact(v)}</b></div>`;
+      return `<div class="dev-stat"><span>${label}</span><b title="${fmtInt(v)} tokens">${fmtCompactHtml(v)}</b></div>`;
     };
     const cost = `<div class="dev-stat"><span>累计费用</span><b>${fmtUsd((d.allTime || {}).costUsd)}</b></div>`;
 
@@ -2146,18 +2305,18 @@ function renderHmMonth(hm, daily) {
     <div class="hm-mon-sum">
       <p class="hm-mon-sum-title">${m + 1} 月摘要</p>
       <div class="hm-sum-grid">
-        <div class="hm-sum"><span>本月总量</span><b title="${fmtInt(total)} tokens">${fmtCompact(total)}</b></div>
+        <div class="hm-sum"><span>本月总量</span><b title="${fmtInt(total)} tokens">${fmtCompactHtml(total)}</b></div>
         <div class="hm-sum"><span>活跃天数</span><b>${activeDays} 天</b></div>
         <div class="hm-sum"><span>最高单日</span>${best
-          ? `<b title="${fmtInt(best.v)} tokens">${fmtCompact(best.v)} · ${m + 1}月${best.d}日</b>`
+          ? `<b title="${fmtInt(best.v)} tokens">${fmtCompactHtml(best.v)} · ${m + 1}月${best.d}日</b>`
           : `<b>—</b>`}</div>
       </div>
       <div class="hm-sum-mid">
-        <div class="hm-avg"><span>日均 tokens</span><b title="${fmtInt(avg)} tokens">${fmtCompact(avg)}</b><em>按活跃天</em></div>
+        <div class="hm-avg"><span>日均 tokens</span><b title="${fmtInt(avg)} tokens">${fmtCompactHtml(avg)}</b><em>按活跃天</em></div>
         ${wow}
       </div>
       <div class="hm-spark">
-        <div class="hm-spark-head"><span>近 7 天趋势</span><b title="${fmtInt(sum7)} tokens">合计 ${fmtCompact(sum7)}</b></div>
+        <div class="hm-spark-head"><span>近 7 天趋势</span><b title="${fmtInt(sum7)} tokens">合计 ${fmtCompactHtml(sum7)}</b></div>
         <div class="hm-spark-bars">${sparkBars}</div>
       </div>
     </div>
@@ -2896,6 +3055,7 @@ function enterDemo() {
   resetAux();
   $("#demo-badge").hidden = false;
   $("#logout-text").textContent = "退出演示";
+  $("#logout").setAttribute("aria-label", "退出演示");
   load(false);
 }
 
@@ -2907,6 +3067,7 @@ function exitDemo() {
   resetAux();
   $("#demo-badge").hidden = true;
   $("#logout-text").textContent = "更换密钥";
+  $("#logout").setAttribute("aria-label", "更换密钥");
   setConn("off", "未连接");
   showGate();
 }
@@ -2956,6 +3117,10 @@ $("#refresh").addEventListener("click", () => load(true));
 document.querySelectorAll("[data-view].nav-item, [data-view].bn-item").forEach((b) => {
   b.addEventListener("click", () => switchView(b.dataset.view));
 });
+window.addEventListener("hashchange", () => {
+  const hashView = location.hash.replace(/^#/, "");
+  if (VIEWS[hashView] && hashView !== state.view) switchView(hashView);
+});
 
 /* 周期/视图分段的方向：索引差的符号 → 换面进场方向与滑块一致 */
 const periodIdx = (p) => PERIODS.findIndex((x) => x[0] === p);
@@ -2978,6 +3143,14 @@ initSeg("#model-seg", (p) => {
     clearEntryFxSoon(); // 周期切换的 is-drawing / t-swap-enter 也要清，不留常驻动画类
   }
 });
+initSeg("#model-metric-seg", (m) => {
+  state.modelMetric = m;
+  if (state.data) {
+    renderModelDonut((state.data.totals || {})[state.modelPeriod], true);
+    replayEnter($("#model-dist"));
+    clearEntryFxSoon();
+  }
+}, "data-m");
 initSeg("#client-seg", (p) => {
   state.clientPeriod = p;
   if (state.data) {
