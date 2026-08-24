@@ -662,6 +662,7 @@ function showGate(message) {
   state.requestGeneration++; // §3-2：退出时中止全部请求并使在途响应失效
   abortAllRequests();
   stopPolling();
+  endRefreshSpin($("#refresh"), true);
   $("#shell").hidden = true;
   $("#gate").hidden = false;
   const err = $("#gate-error");
@@ -1141,10 +1142,13 @@ function renderTrend() {
     const x = padL + step * i + (step - bw) / 2;
     const growCls = grow ? " grow" : "";
     const growDelay = grow ? `animation-delay:${Math.min(i, STAGGER_CAP) * 40}ms` : "";
+    const radius = Math.min(4, bw / 2);
     if (d.v <= 0) {
       const bar = mk("rect", {
         x: x.toFixed(2), y: (padT + ih - 2).toFixed(2),
         width: bw.toFixed(2), height: "2",
+        rx: radius.toFixed(2),
+        ry: radius.toFixed(2),
         class: "trend-bar is-zero" + growCls,
         style: growDelay,
       });
@@ -1155,6 +1159,18 @@ function renderTrend() {
     const bh = (d.v / max) * ih;
     const hasStack = (d.vals || []).some((v) => v > 0);
     if (cats.length && hasStack) {
+      const clipId = `trend-col-clip-${i}`;
+      const clip = mk("clipPath", { id: clipId });
+      clip.appendChild(mk("rect", {
+        x: x.toFixed(2),
+        y: (padT + ih - bh).toFixed(2),
+        width: bw.toFixed(2),
+        height: Math.max(0.6, bh).toFixed(2),
+        rx: radius.toFixed(2),
+        ry: radius.toFixed(2),
+      }));
+      defs.appendChild(clip);
+      const col = mk("g", { "clip-path": `url(#${clipId})` });
       let yBase = padT + ih;
       cats.forEach((m, j) => {
         const val = d.vals[j];
@@ -1175,13 +1191,15 @@ function renderTrend() {
             ["当日合计", fmtCompact(d.total || d.v)],
           ])
         );
-        barsG.appendChild(rect);
+        col.appendChild(rect);
       });
+      barsG.appendChild(col);
     } else {
       const bar = mk("rect", {
         x: x.toFixed(2), y: (padT + ih - bh).toFixed(2),
         width: bw.toFixed(2), height: bh.toFixed(2),
-        rx: Math.min(5, bw / 2),
+        rx: radius.toFixed(2),
+        ry: radius.toFixed(2),
         class: "trend-bar" + growCls,
         style: growDelay,
       });
@@ -1241,15 +1259,19 @@ function renderModelDonut(per, animate) {
   const total = entries.reduce((a, [, v]) => a + v, 0);
 
   /* SVG donut：pathLength=100 让每段直接用百分比画弧；
-     入场/换周期时 is-drawing 从 0 画到 dasharray 目标值（700ms，spark-draw 同款） */
+     入场/换周期时 is-drawing 从 0 画到 dasharray 目标值（700ms，spark-draw 同款）。
+     段与段贴合：底环用最大段同色垫底，多段重叠 0.8，避免浅色空档。 */
   const R = 45;
   let offset = 25; // 12 点方向起笔
+  const overlap = entries.length > 1 ? 0.8 : 0;
+  const underlay = state.modelColors[entries[0][0]] || OTHER_COLOR;
   const arcs = entries.map(([name, v]) => {
     const pct = (v / total) * 100;
     const color = state.modelColors[name] || OTHER_COLOR;
+    const dash = Math.min(100, Math.max(pct + overlap, 0.15));
     const arc =
       `<circle class="donut-arc${animate ? " is-drawing" : ""}" cx="60" cy="60" r="${R}" pathLength="100" ` +
-      `stroke="${color}" stroke-dasharray="${Math.max(pct - 0.8, 0.4).toFixed(2)} 100" ` +
+      `stroke="${color}" stroke-dasharray="${dash.toFixed(2)} 100" ` +
       `stroke-dashoffset="${(-offset).toFixed(2)}" data-name="${esc(name)}"/>`;
     offset += pct;
     return arc;
@@ -1260,8 +1282,10 @@ function renderModelDonut(per, animate) {
     return `<li class="donut-lg-row" data-name="${esc(name)}">
       <i style="background:${color}"></i>
       <span class="donut-lg-name" title="${esc(name)}">${esc(name)}</span>
-      <span class="donut-lg-pct">${pct1(v, total)}</span>
-      <b class="donut-lg-val" title="${fmtInt(v)} tokens">${fmtCompact(v)}</b>
+      <span class="donut-lg-stats">
+        <span class="donut-lg-pct">${pct1(v, total)}</span>
+        <b class="donut-lg-val" title="${fmtInt(v)} tokens">${fmtCompact(v)}</b>
+      </span>
     </li>`;
   };
   /* 图例折叠（catalog 21 accordion）：行数超阈值时只平铺头部大占比行，
@@ -1286,7 +1310,7 @@ function renderModelDonut(per, animate) {
       <svg viewBox="0 0 120 120" width="120" height="120">
         <title>模型分布环形图</title>
         <desc>${entries.length} 个模型，合计 ${fmtInt(total)} tokens</desc>
-        <circle class="donut-bg" cx="60" cy="60" r="${R}"/>
+        <circle class="donut-bg" cx="60" cy="60" r="${R}" style="stroke:${underlay}"/>
         ${arcs}
       </svg>
       <div class="donut-center">
@@ -2279,10 +2303,10 @@ function histRowHtml(row) {
       .filter(([, v]) => v > 0)
       .sort((a, b) => b[1] - a[1]);
     if (parts.length) {
-      mixHtml = `<span class="hist-mix" title="${esc(parts.map(([k, v]) => `${k} ${pct1(v, row.tokens)}`).join(" · "))}">` +
+      mixHtml = `<span class="hist-mix-wrap"><span class="hist-mix" title="${esc(parts.map(([k, v]) => `${k} ${pct1(v, row.tokens)}`).join(" · "))}">` +
         parts.map(([k, v]) =>
           `<i style="width:${((v / row.tokens) * 100).toFixed(2)}%;background:${colorMap[k] || OTHER_COLOR}"></i>`
-        ).join("") + `</span>`;
+        ).join("") + `</span></span>`;
     }
   }
   /* complete=false 或 coverage 偏低 → 该日数据不完整标记 */
@@ -2528,6 +2552,49 @@ function skeletonAll() {
 }
 
 /* ================= 加载与轮询 ================= */
+const REFRESH_SPIN_MS = 900;
+let refreshSpinTimer = null;
+let refreshSpinStartedAt = 0;
+
+function beginRefreshSpin(btn) {
+  if (!btn) return;
+  if (refreshSpinTimer) {
+    clearTimeout(refreshSpinTimer);
+    refreshSpinTimer = null;
+  }
+  refreshSpinStartedAt = performance.now();
+  btn.disabled = true;
+  btn.setAttribute("aria-busy", "true");
+  btn.classList.add("is-spinning");
+}
+
+function endRefreshSpin(btn, immediate) {
+  if (!btn) return;
+  const finish = () => {
+    refreshSpinTimer = null;
+    btn.disabled = false;
+    btn.removeAttribute("aria-busy");
+    btn.classList.remove("is-spinning");
+  };
+  if (refreshSpinTimer) {
+    clearTimeout(refreshSpinTimer);
+    refreshSpinTimer = null;
+  }
+  if (immediate || !btn.classList.contains("is-spinning")) {
+    finish();
+    return;
+  }
+  const elapsed = performance.now() - refreshSpinStartedAt;
+  const remain = elapsed % REFRESH_SPIN_MS === 0 && elapsed > 0
+    ? 0
+    : REFRESH_SPIN_MS - (elapsed % REFRESH_SPIN_MS);
+  if (remain <= 16) {
+    finish();
+    return;
+  }
+  refreshSpinTimer = setTimeout(finish, remain);
+}
+
 function stopPolling() {
   if (state.pollTimer) {
     clearTimeout(state.pollTimer);
@@ -2582,12 +2649,7 @@ async function load(manual) {
   state.loading = true;
   const fresh = () => gen === state.requestGeneration && rev === state.tokenRevision; // §3-4
   const refreshBtn = $("#refresh");
-  if (manual) {
-    // §3-5：手动刷新期间按钮 disabled + aria-busy
-    refreshBtn.disabled = true;
-    refreshBtn.setAttribute("aria-busy", "true");
-    refreshBtn.classList.add("is-spinning");
-  }
+  if (manual) beginRefreshSpin(refreshBtn);
   const firstBoot = !state.booted;
   if (firstBoot) skeletonAll();
   try {
@@ -2634,9 +2696,7 @@ async function load(manual) {
     if (fresh()) {
       state.loading = false;
       state.activeRequest = null;
-      refreshBtn.disabled = false;
-      refreshBtn.removeAttribute("aria-busy");
-      refreshBtn.classList.remove("is-spinning");
+      endRefreshSpin(refreshBtn, !manual);
     }
   }
 }

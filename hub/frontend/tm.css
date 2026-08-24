@@ -220,7 +220,12 @@ code {
   transition: color var(--dur), border-color var(--dur), transform var(--dur);
 }
 .icon-btn:hover { color: var(--brand-700); border-color: var(--brand-500); }
-.icon-btn.is-spinning .ic { animation: spin 0.9s linear infinite; }
+.icon-btn.is-spinning .ic {
+  /* SVG 默认绕视口 0,0 转，图标会甩出按钮；fill-box + center 才能原地转完一圈 */
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: spin 0.9s linear infinite;
+}
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- 密钥门 ---------- */
@@ -644,9 +649,9 @@ code {
   height: 100%;
   overflow: visible;
 }
-.donut-bg { fill: none; stroke: var(--bg); stroke-width: 14; }
+.donut-bg { fill: none; stroke-width: 14; }
 .donut-arc {
-  fill: none; stroke-width: 14;
+  fill: none; stroke-width: 14; stroke-linecap: butt;
   transition: opacity var(--dur) var(--ease), stroke-width var(--dur) var(--ease);
 }
 .donut-center {
@@ -683,16 +688,27 @@ code {
   display: flex; flex-direction: column; gap: 7px;
 }
 .donut-lg-row {
-  display: flex; align-items: center; gap: 9px;
+  display: flex; align-items: baseline; gap: 8px;
   padding: 6px 9px; border-radius: var(--r-md); font-size: 12.5px;
   transition: background var(--dur), opacity var(--dur);
 }
-.donut-lg-row i { width: 9px; height: 9px; border-radius: 50%; flex: none; }
-.donut-lg-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--ink); }
-.donut-lg-pct { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11.5px; color: var(--mute); flex: none; }
-.donut-lg-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; font-weight: 600; flex: none; }
-/* 百分比列定宽右对齐：0.3% 与 39.7% 左缘对齐，数字列不再参差 */
-.donut-lg-pct { min-width: 42px; text-align: right; }
+.donut-lg-row i { width: 9px; height: 9px; border-radius: 50%; flex: none; align-self: center; }
+.donut-lg-name {
+  flex: 0 1 auto;
+  max-width: 46%;
+  min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 500; color: var(--ink);
+}
+/* 名称 / 占比 / 用量同一簇，不再把数字甩到行尾 */
+.donut-lg-stats {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  flex: none;
+}
+.donut-lg-pct { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11.5px; color: var(--mute); }
+.donut-lg-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; font-weight: 600; }
 
 /* 图例长尾折叠：21-accordion —— 高度走 grid-rows 0fr↔1fr（无 JS 量高），
    间隙在裁剪层后代（.donut-legend-tail 的 padding-top），panel/inner 严禁 padding */
@@ -910,7 +926,14 @@ code {
 }
 .diag-tool .dt-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; color: var(--ink); overflow: hidden; white-space: nowrap; }
 .diag-tool .dt-name i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
-.diag-tool .dt-track { height: 5px; border-radius: var(--r-pill); background: var(--bg); overflow: hidden; }
+.diag-tool .dt-track {
+  height: 5px;
+  border-radius: var(--r-pill);
+  background: var(--bg);
+  overflow: hidden;
+  filter: drop-shadow(0 1px 2px rgba(13, 22, 38, 0.16))
+          drop-shadow(0 3px 6px rgba(13, 22, 38, 0.08));
+}
 .diag-tool .dt-track i { display: block; height: 100%; border-radius: var(--r-pill); }
 .diag-tool em { font-style: normal; font-family: var(--font-mono); font-size: 10.5px; color: var(--mute); }
 .diag-line { font-size: 11.5px; color: var(--mute); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
@@ -947,7 +970,11 @@ code {
 /* 配额窗口：进度环 */
 .lim-wins { display: flex; flex-direction: column; gap: 13px; }
 .lim-win { display: flex; align-items: center; gap: 14px; }
-.ring { position: relative; width: 64px; height: 64px; flex: none; }
+.ring {
+  position: relative; width: 64px; height: 64px; flex: none;
+  filter: drop-shadow(0 2px 3px rgba(13, 22, 38, 0.16))
+          drop-shadow(0 6px 10px rgba(13, 22, 38, 0.08));
+}
 .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
 .ring .ring-bg { fill: none; stroke: var(--bg); stroke-width: 7; }
 .ring .ring-fg { fill: none; stroke-width: 7; stroke-linecap: round; transition: stroke-dashoffset 700ms var(--ease-smooth-out); }
@@ -1069,8 +1096,22 @@ code {
 .hm-foot .hm-s { width: 11px; height: 11px; aspect-ratio: auto; }
 .hm-scale-label { font-size: 10.5px; color: var(--mute); margin: 0 4px; }
 
-/* 日归档 */
-.hist-mix { display: flex; height: 10px; border-radius: var(--r-pill); overflow: hidden; background: var(--bg); min-width: 140px; max-width: 260px; }
+/* 日归档：阴影挂在包装层，避免 overflow:hidden 把投影裁掉 */
+.hist-mix-wrap {
+  display: block;
+  min-width: 140px;
+  max-width: 260px;
+  padding: 3px 1px 5px;
+  filter: drop-shadow(0 1px 2px rgba(13, 22, 38, 0.16))
+          drop-shadow(0 3px 6px rgba(13, 22, 38, 0.08));
+}
+.hist-mix {
+  display: flex;
+  height: 10px;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  background: var(--bg);
+}
 .hist-mix i { display: block; height: 100%; }
 .hist-dow { display: inline-block; margin-left: 7px; font-size: 10.5px; color: var(--mute); }
 .hist-today { color: var(--brand-700); font-weight: 600; }
