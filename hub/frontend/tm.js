@@ -189,11 +189,11 @@ function maskEmail(v) {
    与前 10 拉开「色相 + 明度」双通道距离的补充档（真实部署模型数常 >10，
    10 色时 hash 溢出会随机撞色——趋势图堆叠段/图例同色不可分辨） */
 const PALETTE = [
-  "#3b59f2", "#f59e0b", "#0ea5e9", "#8b5cf6", "#10b981",
-  "#ef4444", "#ec4899", "#14b8a6", "#f97316", "#64748b",
-  "#84cc16", "#0e7490", "#a21caf", "#854d0e", "#1e40af", "#15803d",
+  "#533afd", "#f59e0b", "#0ea5e9", "#7f7dfc", "#00b261",
+  "#d8351e", "#ec4899", "#14b8a6", "#f97316", "#64748d",
+  "#84cc16", "#0e7490", "#a21caf", "#854d0e", "#4032c8", "#006f3a",
 ];
-const OTHER_COLOR = "#96a0b5";
+const OTHER_COLOR = "#95a4ba";
 
 function hexA(hex, a) {
   const n = parseInt(String(hex).slice(1), 16);
@@ -360,9 +360,9 @@ const MATRIX_TOP = 8;
 const SESSIONS_SHOW = 5;
 const HIST_PAGE = 30;
 
-/* 矩阵色阶：5 档蓝色阶（低值可辨），空格另用极浅灰 */
-const MX_SCALE = ["#eef1fe", "#c7d2fe", "#818cf8", "#3b59f2", "#173cda"];
-const MX_ZERO = "#f2f3f7";
+/* 矩阵色阶：5 档品牌紫阶（低值可辨），空格另用画布灰 */
+const MX_SCALE = ["#e8e9ff", "#d6d9fc", "#b9b9f9", "#533afd", "#2e2b8c"];
+const MX_ZERO = "#f8fafd";
 
 const PERIODS = [
   ["today", "今日"],
@@ -1158,10 +1158,10 @@ function renderTrend() {
   const defs = mk("defs", {});
   defs.innerHTML =
     `<filter id="trend-shadow" x="-30%" y="-30%" width="160%" height="180%">` +
-    `<feDropShadow dx="0" dy="1.5" stdDeviation="2.2" flood-color="#0d1626" flood-opacity="0.13"/>` +
+    `<feDropShadow dx="0" dy="1.5" stdDeviation="2.2" flood-color="#003770" flood-opacity="0.13"/>` +
     `</filter>` +
     `<filter id="trend-shadow-hot" x="-30%" y="-30%" width="160%" height="180%">` +
-    `<feDropShadow dx="0" dy="2.5" stdDeviation="3.4" flood-color="#0d1626" flood-opacity="0.24"/>` +
+    `<feDropShadow dx="0" dy="2.5" stdDeviation="3.4" flood-color="#003770" flood-opacity="0.24"/>` +
     `</filter>`;
   svg.appendChild(defs);
 
@@ -1605,7 +1605,7 @@ function renderMatrix() {
       // 离散 5 档：低值也清晰可见，避免连续渐变导致浅档看不清
       const lv = Math.min(MX_SCALE.length - 1, Math.floor(t * MX_SCALE.length));
       const label = `${c} × ${m}，${isCost ? "费用" : "tokens"} ${fmtV(v)}`;
-      return `<span class="mx-cell mx-lv${lv}" data-c="${esc(c)}" data-m="${esc(m)}" data-v="${v}" ` +
+      return `<span class="mx-cell mx-lv${lv}" role="img" data-c="${esc(c)}" data-m="${esc(m)}" data-v="${v}" ` +
         `data-lv="${lv}" aria-label="${esc(label)}"></span>`;
     }).join("");
     return `<span class="mx-row" title="${esc(c)}"><i style="background:${color}"></i><span>${esc(c)}</span></span>${cells}`;
