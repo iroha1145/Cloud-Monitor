@@ -9,8 +9,10 @@ const {
 } = require("./helpers");
 
 /* 后端官方前端契约夹具（金标准，只读） */
+/* 契约夹具随仓库分发（hub/tests/fixtures/frontend-contract）：
+   回退路径按本文件位置解析，不再硬编码原开发机的绝对路径 */
 const CONTRACT_FIXTURES = process.env.CM_CONTRACT_FIXTURES ||
-  "/mnt/agents/work/cm-current/hub/tests/fixtures/frontend-contract";
+  path.join(__dirname, "..", "..", "tests", "fixtures", "frontend-contract");
 const readFixture = (name) => JSON.parse(fs.readFileSync(path.join(CONTRACT_FIXTURES, name), "utf8"));
 
 const ORIGIN = `http://127.0.0.1:${process.env.CM_E2E_PORT || 18787}`;
@@ -587,7 +589,10 @@ test.describe("官方前端契约夹具对齐（金标准，真实后端 + [拦�
     });
     await page.goto("/#history");
     await expect(page.locator("#hist-body tr")).toHaveCount(1);
-    await expect(page.locator("#hist-body")).toContainText("2026-08-23");
+    /* 日期断言取夹具自身的 day：夹具由后端导出测试按当天日期再生，
+       硬编码日期字面量会在再生后过期（原 "2026-08-23" 即此病） */
+    const histDay = readFixture("history_daily.json").items[0].day;
+    await expect(page.locator("#hist-body")).toContainText(histDay);
     await expect(page.locator("#hist-body")).toContainText("$4.82");
     await expect(page.locator("#hist-sub")).toContainText("保留 370 天");
     await expect(page.locator("#hist-sub")).toContainText("日口径：设备本地日");

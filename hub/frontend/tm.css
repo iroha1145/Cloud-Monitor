@@ -97,9 +97,25 @@
   --shake-dur-a: 80ms;
   --shake-dur-b: 60ms;
   --shake-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  /* Tabs sliding（分段控件滑块） */
+  /* Tabs sliding（分段控件滑块 + 侧栏/底栏导航滑块） */
   --tabs-dur: 250ms;
   --tabs-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* 08-page-side-by-side（视图切换入场半边；红线：不碰 opacity，见 page-enter 注释） */
+  --page-blur: 3px;
+  /* 07-panel-reveal 同区双层适配（分段内容换面：热力图/矩阵/分布） */
+  --swap-open-dur: 400ms;
+  --swap-close-dur: 350ms;
+  --swap-blur: 2px;
+  --swap-distance: 12px;
+  --swap-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* 01-card-resize（换面舞台高度补间） */
+  --resize-dur: 300ms;
+  --resize-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* 21-accordion（模型分布图例长尾折叠） */
+  --acc-expand: 250ms;
+  --acc-collapse: 250ms;
+  --acc-chevron: 250ms;
+  --acc-ease: cubic-bezier(0.22, 1, 0.36, 1);
   /* Tooltip open/close（图表 floatTip + 图标按钮 t-tt） */
   --tt-in-dur: 150ms;
   --tt-out-dur: 50ms;
@@ -278,17 +294,29 @@ code {
   font-style: normal; font-family: var(--font-mono);
   font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em; color: var(--mute);
 }
-.side-nav { display: flex; flex-direction: column; gap: 4px; }
+.side-nav { position: relative; display: flex; flex-direction: column; gap: 4px; }
+/* 16-tabs-sliding 纵向适配：高亮底色与阴影由滑块承载，在条目间滑动
+   （尺寸/位移由 JS 内联写入；首次与 resize 快照写入不带过渡） */
+.nav-pill {
+  position: absolute; z-index: 0; top: 0; left: 0; width: 0; height: 0;
+  background: var(--brand-500); border-radius: var(--r-md);
+  box-shadow: 0 6px 16px rgba(59, 89, 242, 0.3);
+  transition: transform var(--tabs-dur) var(--tabs-ease),
+    width var(--tabs-dur) var(--tabs-ease), height var(--tabs-dur) var(--tabs-ease);
+  will-change: transform;
+}
 .nav-item {
+  position: relative; z-index: 1;
   display: flex; align-items: center; gap: 10px;
   padding: 0 14px; min-height: 44px; border-radius: var(--r-md);
   color: var(--ink-2); font-weight: 500; font-size: 14px; text-align: left;
   transition: background var(--dur), color var(--dur);
 }
-.nav-item:hover { background: var(--bg); color: var(--ink); }
-.nav-item.is-active {
-  background: var(--brand-500); color: #fff; font-weight: 600;
-  box-shadow: 0 6px 16px rgba(59, 89, 242, 0.3);
+/* hover 底色只给非选中项：选中项之下是滑块，条目自身背景会盖住它 */
+.nav-item:not(.is-active):hover { background: var(--bg); color: var(--ink); }
+.nav-item.is-active { color: #fff; font-weight: 600; }
+@media (prefers-reduced-motion: reduce) {
+  .nav-pill { transition: none !important; }
 }
 .side-foot { margin-top: auto; padding: 14px 10px 0; border-top: 1px solid var(--border); }
 .side-conn { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -631,6 +659,59 @@ code {
 .donut-lg-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--ink); }
 .donut-lg-pct { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11.5px; color: var(--mute); flex: none; }
 .donut-lg-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; font-weight: 600; flex: none; }
+/* 百分比列定宽右对齐：0.3% 与 39.7% 左缘对齐，数字列不再参差 */
+.donut-lg-pct { min-width: 42px; text-align: right; }
+
+/* 图例长尾折叠：21-accordion —— 高度走 grid-rows 0fr↔1fr（无 JS 量高），
+   间隙在裁剪层后代（.donut-legend-tail 的 padding-top），panel/inner 严禁 padding */
+.donut-lg-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.donut-lg-wrap .donut-legend { flex: none; }
+.t-acc-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--acc-collapse) var(--acc-ease);
+}
+.t-acc[data-open="true"] .t-acc-panel {
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--acc-expand) var(--acc-ease);
+}
+.t-acc-panel-inner {
+  overflow: hidden;
+  opacity: 0;
+  filter: blur(2px);
+  transition: opacity var(--acc-collapse) var(--acc-ease), filter var(--acc-collapse) var(--acc-ease);
+}
+.t-acc[data-open="true"] .t-acc-panel-inner {
+  opacity: 1;
+  filter: blur(0);
+  transition: opacity var(--acc-expand) var(--acc-ease), filter var(--acc-expand) var(--acc-ease);
+}
+.donut-legend-tail { padding-top: 7px; }
+.donut-lg-toggle {
+  margin-top: 7px; align-self: flex-start;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 9px; border-radius: var(--r-md);
+  font-size: 12px; font-weight: 500; color: var(--ink-2);
+  transition: background var(--dur), color var(--dur);
+}
+.donut-lg-toggle:hover { background: var(--bg); color: var(--ink); }
+.donut-lg-toggle svg {
+  width: 14px; height: 14px; fill: none;
+  stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
+}
+/* chevron 纵向翻转 v↔^（scaleY 跨浏览器；d: 路径插值 Chromium-only）；
+   path 关于 viewBox 中心对称 + non-scaling-stroke 保证翻转中线宽恒定 */
+.t-acc-chevron {
+  display: inline-flex;
+  transform: scaleY(1);
+  transform-origin: center;
+  transition: transform var(--acc-chevron) var(--acc-ease);
+}
+.t-acc-chevron path { vector-effect: non-scaling-stroke; }
+.t-acc[data-open="true"] .t-acc-chevron { transform: scaleY(-1); }
+@media (prefers-reduced-motion: reduce) {
+  .t-acc-panel, .t-acc-panel-inner, .t-acc-chevron { transition: none !important; }
+}
 .donut-wrap.has-hot .donut-arc { opacity: 0.22; }
 .donut-wrap.has-hot .donut-arc.is-hot { opacity: 1; stroke-width: 17; }
 .donut-wrap.has-hot .donut-lg-row { opacity: 0.4; }
@@ -1033,14 +1114,26 @@ code {
   border-top: 1px solid rgba(233, 236, 241, 0.85);
   padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
 }
+/* 16-tabs-sliding 横向适配（底栏）：绝对定位不占网格轨道 */
+.bn-pill {
+  position: absolute; z-index: 0; top: 0; left: 0; width: 0; height: 0;
+  background: var(--brand-50); border-radius: var(--r-md);
+  transition: transform var(--tabs-dur) var(--tabs-ease),
+    width var(--tabs-dur) var(--tabs-ease), height var(--tabs-dur) var(--tabs-ease);
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bn-pill { transition: none !important; }
+}
 .bn-item {
+  position: relative; z-index: 1;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
   min-height: 48px; border-radius: var(--r-md);
   font-size: 10.5px; font-weight: 500; color: var(--mute);
   transition: color var(--dur), background var(--dur);
 }
 .bn-item .ic { width: 20px; height: 20px; }
-.bn-item.is-active { color: var(--brand-700); font-weight: 600; background: var(--brand-50); }
+.bn-item.is-active { color: var(--brand-700); font-weight: 600; }
 
 /* ---------- 响应式 ---------- */
 @media (max-width: 1100px) {
@@ -1080,7 +1173,7 @@ code {
   /* 环形图：上下排布，图例全宽 */
   .donut-wrap { flex-direction: column; align-items: center; gap: 18px; }
   .donut { width: 172px; }
-  .donut-legend { width: 100%; }
+  .donut-legend, .donut-lg-wrap { width: 100%; }
 
   /* 触控目标 ≥ 40px */
   .seg { width: 100%; }
@@ -1139,16 +1232,59 @@ code {
    skeleton reveal / 柱子生长 / 弧段 draw / gate modal / error shake / t-tt）
    ============================================================ */
 
-/* 视图切换 page-enter：只动 transform，from 帧严禁 opacity:0 ——
-   动画时钟被饿死/冻结时 opacity:0 的 from 帧表现为「内容已挂载的全白页」，
-   transform 的 from 帧最坏只是停在 6px 偏移，内容始终可读（option-pro 注释教训）。
-   250ms = --duration-fast 的 page slide 档，与分段滑块同一节拍。 */
-.page-enter { animation: page-enter var(--duration-fast) var(--ease-smooth-out); }
+/* 视图切换 page-enter：08-page-side-by-side 的入场半边（出场即
+   --page-exit-enabled:0 —— 旧视图 hidden 即隐，双视图同挂会撑爆文档流）。
+   方向随导航次序：前进从右进、后退从左进（.page-from-left 由 JS 按
+   VIEW_ORDER 写入）。红线不变：from 帧严禁 opacity:0 —— 动画时钟被
+   饿死/冻结时 opacity:0 的 from 帧表现为「内容已挂载的全白页」；方向感由
+   位移 + cross-blur 承载，blur 冻结时内容仍可读（option-pro 注释教训）。
+   250ms = --duration-fast 的 page slide 档，与分段/导航滑块同一节拍。 */
+.page-enter {
+  --page-from-x: var(--distance-base);
+  animation: page-enter var(--duration-fast) var(--ease-smooth-out);
+}
+.page-enter.page-from-left { --page-from-x: calc(var(--distance-base) * -1); }
 @keyframes page-enter {
-  from { transform: translateY(var(--distance-small)); }
+  from { transform: translateX(var(--page-from-x, 8px)); filter: blur(var(--page-blur)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .page-enter { animation: none; }
+}
+
+/* 分段内容换面：07-panel-reveal 的同区双层适配 —— 旧内容整层挪入幽灵层
+   反向退场（cross-blur + 反向位移），新内容同区进场，方向与分段滑块一致；
+   舞台（.hm-scroll / .mx-scroll）做 01-card-resize 高度补间，换面期间收紧
+   overflow 防滚动条闪烁。幽灵层 aria-hidden 且由 JS 剥离全部 data-*
+   （防测试严格选择器双匹配），清理由 JS 定时结算。 */
+.t-swap-stage { position: relative; }
+.t-swap-stage.is-swapping {
+  overflow: hidden !important;
+  transition: height var(--resize-dur) var(--resize-ease);
+}
+.t-swap-ghost {
+  position: absolute; z-index: 1; top: 0; left: 0;
+  pointer-events: none;
+  animation: t-swap-out var(--swap-close-dur) var(--swap-ease) both;
+}
+@keyframes t-swap-out {
+  to {
+    opacity: 0;
+    filter: blur(var(--swap-blur));
+    transform: translateX(calc(var(--swap-from-x, 0px) * -1));
+  }
+}
+.t-swap-enter { animation: t-swap-in var(--swap-open-dur) var(--swap-ease) both; }
+@keyframes t-swap-in {
+  from {
+    opacity: 0;
+    filter: blur(var(--swap-blur));
+    transform: translateX(var(--swap-from-x, 0px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .t-swap-stage.is-swapping { transition: none !important; }
+  .t-swap-ghost { animation: none !important; opacity: 0 !important; }
+  .t-swap-enter { animation: none !important; }
 }
 
 /* 卡片入场 stagger：JS 逐项写 animation-delay（--duration-stagger 40ms，
