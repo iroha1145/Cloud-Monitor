@@ -4,9 +4,9 @@ commit: b92586595d9770b907183fbafa0865cba5906cff
 license: MIT (LICENSE-token-monitor)
 
 files:
-37752eb7c3b608ccd3302e9a84a1e95470a482c39509c74f8f23dbe7b2c26de5  src/hub/server.js
+dbe39f7a9eb7303718d859b6705b8b7544e34dfac58a203ab044be5be86b7592  src/hub/server.js
 7f86220638426e0bf8a742e29eda7d670c0e92a7703273f159ba36f8be78a5ca  src/shared/clientHealth.js
-263ddf008c2c1929012edb0d57047239bc756d37a01495a3d0c353c111b59a78  src/shared/config.js
+24b074ae3185ee7a0f4d698d525daad72c192245067a095befa6a1dded96e077  src/shared/config.js
 f2b6b8ec8d2404052b48d783a7309e72da1b268f9827ab22da366bdcb12782e6  src/shared/currency.js
 7490cece793df867d5543767a872930c5166efdbfb9869dbb96693b928155b96  src/shared/dshPaths.js
 9cc685146fbb4bdd891812e5d0f9ade2a01cdad73751f711956d78b451827452  src/shared/history.js
