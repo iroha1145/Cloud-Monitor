@@ -2836,12 +2836,15 @@ async function load(manual) {
     // §4：主加载只等 Overview；辅助接口独立异步
     const data = await dataApi.overview(ctl.signal);
     if (!fresh()) return; // 旧响应不得覆盖新密钥/新请求状态
+    const dataUnchanged = !firstBoot && state.data
+      && state.data.generated_at === data.generated_at
+      && state.data.total_tokens === data.total_tokens;
     state.data = data;
     state.staleData = false;
     state.booted = true;
     hideGate();
     if (firstBoot) state.entryFx = true; // 首载：skeleton → reveal + 入场 stagger
-    renderAll();
+    if (!dataUnchanged) renderAll();
     /* 同步快照定位（offsetWidth 会强制布局，无需等帧）：挂 rAF 的话，
        后台标签页/隐藏面板 rAF 冻结会让滑块一直停在 0×0（option-pro
        PR#111 教训——关键定位不挂 rAF） */

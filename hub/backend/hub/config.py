@@ -92,6 +92,8 @@ class Settings:
     provider_status_cache_seconds: int = 300
     provider_status_timeout_seconds: float = 2.5
     provider_status_budget_seconds: float = 3.0
+    overview_cache_seconds: int = 30  # overview 响应缓存 TTL（0=禁用）
+    tm_background_interval: int = 300  # 后台维护循环间隔秒（outbox 重放等）
     cm_demo: bool = False  # true 时 / 返回演示页（假数据）
     serve_demo_route: bool = False  # 测试夹具：额外开放 GET /demo
 
@@ -225,6 +227,12 @@ def load_settings() -> Settings:
             "PROVIDER_STATUS_TIMEOUT_SECONDS", 2.5, minimum=0.1, maximum=3.0
         ),
         provider_status_budget_seconds=3.0,
+        overview_cache_seconds=_int_env(
+            "OVERVIEW_CACHE_SECONDS", 30, minimum=0, maximum=300
+        ),
+        tm_background_interval=_int_env(
+            "TM_BACKGROUND_INTERVAL", 300, minimum=10, maximum=3600
+        ),
         cm_demo=_env_bool(os.environ.get("CM_DEMO")),
         serve_demo_route=_env_bool(os.environ.get("CM_SERVE_DEMO")),
     )

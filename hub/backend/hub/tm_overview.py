@@ -875,8 +875,43 @@ def _dashboard_period(dashboard_tz: str, now: Any = None) -> dict:
     }
 
 
-def build_tm_overview_router(settings: Settings, db: Database) -> APIRouter:
+class OverviewCache:
+    """Overview 响应的内存缓存：TTL 过期 + 写入端显式失效。
+
+    单 worker 单进程，不需要跨进程共享。缓存粒度是整个 overview
+    JSON dict——命中时零 HTTP + 零 SQLite + 零 CPU 组装。
+    """
+
+    __slots__ = ("_ttl", "_data", "_expires_at")
+
+    def __init__(self, ttl_seconds: float = 30.0):
+        self._ttl = ttl_seconds
+        self._data: Optional[dict] = None
+        self._expires_at: float = 0.0
+
+    def get(self) -> Optional[dict]:
+        import time as _time
+
+        if self._data is not None and _time.monotonic() < self._expires_at:
+            return self._data
+        return None
+
+    def put(self, data: dict) -> None:
+        import time as _time
+
+        self._data = data
+        self._expires_at = _time.monotonic() + self._ttl
+
+    def invalidate(self) -> None:
+        self._data = None
+        self._expires_at = 0.0
+
+
+def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRouter, OverviewCache]:
     router = APIRouter()
+    overview_cache = OverviewCache(
+        ttl_seconds=float(settings.overview_cache_seconds)
+    )
 
     def _core(request: Request) -> TmCore:
         return request.app.state.tm_core
@@ -885,8 +920,9 @@ def build_tm_overview_router(settings: Settings, db: Database) -> APIRouter:
         if not settings.tm_ingest_secret:
             raise HTTPException(status_code=404, detail="未启用 token-monitor 接入")
 
-    def _fetch(core: TmCore, path: str) -> tuple[Optional[dict], Optional[str]]:
-        """辅助上游读取：失败返回 (None, 稳定错误码)，不伪装成空。"""
+
+    def _fetch_sync(core: TmCore, path: str) -> tuple[Optional[dict], Optional[str]]:
+        """同步辅助读取（测试 TestClient 回退）。"""
         from .tm_proxy import UpstreamUnavailable
 
         try:
@@ -904,30 +940,13 @@ def build_tm_overview_router(settings: Settings, db: Database) -> APIRouter:
             return None, "upstream_invalid_shape"
         return data, None
 
-    @router.get("/api/v1/tm/overview")
-    def tm_overview(request: Request) -> dict:
-        require_access_token(request, settings)
-        _require_core()
-        core = _core(request)
-        from .tm_proxy import UpstreamUnavailable
-
-        try:
-            resp = core.request("GET", "/api/stats")
-        except (httpx.HTTPError, UpstreamUnavailable) as exc:
-            raise HTTPException(status_code=502, detail="tm-core 聚合不可用") from exc
-        if resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="tm-core 聚合不可用")
-        try:
-            stats = resp.json()
-        except ValueError as exc:
-            # 非 JSON 的 200（如网关错误页）：与非 200 分支一致给结构化 502，
-            # 而非裸 500（_fetch 对 history/devices 已有同款守卫）
-            raise HTTPException(status_code=502, detail="tm-core 聚合不可用") from exc
-        if not isinstance(stats, dict):
-            raise HTTPException(status_code=502, detail="tm-core 聚合不可用")
-        history, history_error = _fetch(core, "/api/history")
-        raw, devices_error = _fetch(core, "/api/devices")
-        raw_devices = raw.get("devices") if isinstance(raw, dict) else None
+    def _assemble_overview(
+        stats: dict,
+        history: Optional[dict],
+        history_error: Optional[str],
+        raw_devices: Optional[list],
+        devices_error: Optional[str],
+    ) -> dict:
         overview = build_overview(
             db,
             stats,
@@ -948,12 +967,57 @@ def build_tm_overview_router(settings: Settings, db: Database) -> APIRouter:
             )
         return overview
 
+    @router.get("/api/v1/tm/overview")
+    async def tm_overview(request: Request) -> dict:
+        require_access_token(request, settings)
+        _require_core()
+
+        cached = overview_cache.get()
+        if cached is not None:
+            return cached
+
+        core = _core(request)
+        import asyncio
+        from .tm_proxy import UpstreamUnavailable
+
+        def _stats_sync():
+            try:
+                resp = core.request("GET", "/api/stats")
+            except (httpx.HTTPError, UpstreamUnavailable) as exc:
+                raise HTTPException(
+                    status_code=502, detail="tm-core 聚合不可用"
+                ) from exc
+            if resp.status_code != 200:
+                raise HTTPException(status_code=502, detail="tm-core 聚合不可用")
+            try:
+                data = resp.json()
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=502, detail="tm-core 聚合不可用"
+                ) from exc
+            if not isinstance(data, dict):
+                raise HTTPException(status_code=502, detail="tm-core 聚合不可用")
+            return data
+
+        stats, (history, history_error), (raw, devices_error) = await asyncio.gather(
+            asyncio.to_thread(_stats_sync),
+            asyncio.to_thread(_fetch_sync, core, "/api/history"),
+            asyncio.to_thread(_fetch_sync, core, "/api/devices"),
+        )
+
+        raw_devices = raw.get("devices") if isinstance(raw, dict) else None
+        overview = _assemble_overview(
+            stats, history, history_error, raw_devices, devices_error
+        )
+        overview_cache.put(overview)
+        return overview
+
     @router.get("/api/v1/tm/subscriptions")
     def tm_subscriptions_read(request: Request) -> dict:
         """面板只读订阅清单：服务端持 TM 密钥向 tm-core 取数，ACCESS_TOKEN 鉴权。"""
         require_access_token(request, settings)
         _require_core()
-        data, error = _fetch(_core(request), "/api/subscriptions")
+        data, error = _fetch_sync(_core(request), "/api/subscriptions")
         if data is None:
             raise HTTPException(status_code=502, detail="tm-core 订阅数据不可用")
         subscriptions = data.get("subscriptions")
@@ -973,8 +1037,12 @@ def build_tm_overview_router(settings: Settings, db: Database) -> APIRouter:
         from .tm_provider_status import discover_providers
 
         core = _core(request)
-        stats, stats_error = _fetch(core, "/api/stats")
-        subs, subs_error = _fetch(core, "/api/subscriptions")
+        import asyncio
+
+        (stats, stats_error), (subs, subs_error) = await asyncio.gather(
+            asyncio.to_thread(_fetch_sync, core, "/api/stats"),
+            asyncio.to_thread(_fetch_sync, core, "/api/subscriptions"),
+        )
         observed = discover_providers(stats, subs)
         service = request.app.state.provider_status
         client = request.app.state.http_async
@@ -989,7 +1057,6 @@ def build_tm_overview_router(settings: Settings, db: Database) -> APIRouter:
             envelope["errors"].append(
                 {"error_code": "subscriptions_unavailable", "source": "tm-core"}
             )
-        # 忽略任何客户端传入的 url 参数：allowlist 之外永不请求
         if request.query_params.get("url"):
             log.warning("provider-status ignored client url parameter")
         return envelope
@@ -1040,4 +1107,4 @@ def build_tm_overview_router(settings: Settings, db: Database) -> APIRouter:
             "partial_errors": page["partial_errors"],
         }
 
-    return router
+    return router, overview_cache
