@@ -29,6 +29,11 @@
   <symbol id="i-play" viewBox="0 0 24 24">
     <path d="M7 4.8v14.4a.8.8 0 0 0 1.22.68l11.3-7.2a.8.8 0 0 0 0-1.32L8.22 4.12A.8.8 0 0 0 7 4.8Z"/>
   </symbol>
+  <symbol id="i-download" viewBox="0 0 24 24">
+    <path d="M12 3v12"/>
+    <path d="m7 11 5 5 5-5"/>
+    <path d="M5 21h14"/>
+  </symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24">
     <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
     <path d="M21 3v6h-6"/>

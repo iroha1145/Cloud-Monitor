@@ -1,0 +1,38 @@
+# 推送 v* 标签时创建 GitHub Release。面板「检索更新」读的就是这些 Release。
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 创建 GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag 已存在，跳过"
+            exit 0
+          fi
+          ver="$(tr -d '[:space:]' < VERSION 2>/dev/null || true)"
+          gh release create "$tag" \
+            --title "$tag" \
+            --verify-tag \
+            --notes "$(cat <<EOF
+Cloud Monitor ${ver:-$tag}
+
+- 面板顶栏可检索 GitHub Releases 与 origin/main
+- 在线升级由宿主机监视器执行（git + docker compose rebuild）
+- 安装或再跑 install.sh 会启动更新监视器
+EOF
+)"

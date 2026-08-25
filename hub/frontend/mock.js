@@ -738,5 +738,52 @@
     return s;
   };
 
-  window.CM_MOCK = { buildOverview, buildSubscriptions, buildProviderStatus, buildHistoryPage };
+  let demoUpdateJob = { state: "idle", message: "", ref: "" };
+  function buildUpdateCheck() {
+    return {
+      current: { version: "0.1.0", git_sha: "demo000" },
+      repo: "https://github.com/iroha1145/Cloud-Monitor",
+      latest_release: {
+        tag: "v0.2.0",
+        name: "v0.2.0",
+        published_at: new Date().toISOString(),
+        html_url: "https://github.com/iroha1145/Cloud-Monitor/releases/tag/v0.2.0",
+        prerelease: false,
+        notes: "演示数据：假的新版本说明。",
+      },
+      releases: [
+        {
+          tag: "v0.2.0",
+          name: "v0.2.0",
+          published_at: new Date().toISOString(),
+          html_url: "https://github.com/iroha1145/Cloud-Monitor/releases/tag/v0.2.0",
+          prerelease: false,
+          notes: "演示数据：假的新版本说明。",
+        },
+      ],
+      main: { sha: "abcdef1234567890", short_sha: "abcdef1", message: "docs: README 增加 LINUX DO 友情链接" },
+      release_ahead: true,
+      main_ahead: true,
+      update_available: true,
+      github_error: "",
+      checked_at: new Date().toISOString(),
+      apply_enabled: true,
+      job: Object.assign({}, demoUpdateJob),
+    };
+  }
+  function applyUpdate(ref) {
+    demoUpdateJob = {
+      id: "demo",
+      state: "ok",
+      ref: String(ref || "v0.2.0"),
+      message: "演示模式不会改服务器，只走一遍界面。",
+      updated_at: new Date().toISOString(),
+    };
+    return Object.assign({}, demoUpdateJob);
+  }
+
+  window.CM_MOCK = {
+    buildOverview, buildSubscriptions, buildProviderStatus, buildHistoryPage,
+    buildUpdateCheck, applyUpdate,
+  };
 })();

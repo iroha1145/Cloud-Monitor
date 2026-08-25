@@ -216,6 +216,33 @@ HUB="$INSTALL_DIR/hub"
 ENVF="$HUB/.env"
 ensure_env "$ENVF" "$HUB/.env.example"
 
+upsert_env "$ENVF" CM_VERSION "$(tr -d '[:space:]' <"$INSTALL_DIR/VERSION" 2>/dev/null || echo dev)"
+upsert_env "$ENVF" CM_GIT_SHA "$(git -C "$INSTALL_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+
+ensure_updater() {
+  mkdir -p "$HUB/update-control"
+  chmod 777 "$HUB/update-control" 2>/dev/null || true
+  chmod +x "$HUB/scripts/self-update.sh" "$HUB/scripts/update-watcher.sh" 2>/dev/null || true
+  if command -v systemctl >/dev/null 2>&1 && [[ "$(id -u)" == "0" ]] && systemctl list-unit-files >/dev/null 2>&1; then
+    local unit="/etc/systemd/system/cloud-monitor-updater.service"
+    sed "s|__INSTALL_DIR__|$INSTALL_DIR|g" "$HUB/scripts/systemd/cloud-monitor-updater.service" >"$unit"
+    systemctl daemon-reload
+    systemctl enable --now cloud-monitor-updater.service >/dev/null
+    echo "已启用宿主机更新监视器（systemd）"
+    return
+  fi
+  local pidf="$HUB/update-control/watcher.pid"
+  if [[ -f "$pidf" ]] && kill -0 "$(cat "$pidf")" 2>/dev/null; then
+    echo "宿主机更新监视器已在运行"
+    return
+  fi
+  nohup "$HUB/scripts/update-watcher.sh" "$INSTALL_DIR" \
+    >>"$HUB/update-control/watcher.log" 2>&1 &
+  echo $! >"$pidf"
+  echo "已在后台启动宿主机更新监视器（pid $(cat "$pidf")）"
+}
+ensure_updater
+
 CURRENT="$(read_mode_file "$INSTALL_DIR")"
 CHOSEN="$(pick_mode "$CURRENT")"
 

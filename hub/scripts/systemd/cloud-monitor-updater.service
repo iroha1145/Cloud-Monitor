@@ -1,0 +1,13 @@
+[Unit]
+Description=Cloud Monitor in-app updater
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=3
+ExecStart=__INSTALL_DIR__/hub/scripts/update-watcher.sh __INSTALL_DIR__
+
+[Install]
+WantedBy=multi-user.target

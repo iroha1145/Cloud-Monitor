@@ -110,4 +110,22 @@ test.describe("真实 FastAPI 后端（零拦截）", () => {
     // 回退行来自 overview 内嵌 trend/activity（非空）
     await expect(page.locator("#hist-body tr").first()).toBeVisible();
   });
+
+  test("更新检索 API 需要 ACCESS_TOKEN，带密钥返回检索结果", async ({ request }) => {
+    const anon = await request.get("/api/v1/system/update");
+    expect(anon.status()).toBe(401);
+    const ok = await request.get("/api/v1/system/update", {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+    expect(ok.status()).toBe(200);
+    const data = await ok.json();
+    expect(data.current).toBeTruthy();
+    expect(data).toHaveProperty("release_ahead");
+    expect(data).toHaveProperty("apply_enabled");
+    const apply = await request.post("/api/v1/system/update", {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+      data: { ref: "main" },
+    });
+    expect(apply.status()).toBe(503);
+  });
 });

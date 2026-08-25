@@ -30,6 +30,7 @@ from .services import (
 )
 from .tm_overview import build_tm_overview_router
 from .tm_proxy import bootstrap_tm_layer, build_tm_router
+from .tm_update import UpdateService, build_update_router
 
 
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
@@ -90,6 +91,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     overview_router, overview_cache = build_tm_overview_router(settings, app.state.db)
     app.state.overview_cache = overview_cache
     app.include_router(overview_router)
+    app.state.update_service = UpdateService(settings)
+    app.include_router(build_update_router(settings, app.state.update_service))
 
     # ASGI receive 层实测限流：TM 写入端点 1MiB（官方上限），
     # /api/v1/sync/push 为可配置实际字节上限（P1-6，统一覆盖所有写接口）

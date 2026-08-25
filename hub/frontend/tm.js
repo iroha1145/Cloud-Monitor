@@ -340,6 +340,7 @@ const OVERVIEW_API = "/api/v1/tm/overview";
 const SUBS_API = "/api/v1/tm/subscriptions";
 const PROVIDER_STATUS_API = "/api/v1/tm/provider-status";
 const HISTORY_DAILY_API = "/api/v1/tm/history/daily";
+const UPDATE_API = "/api/v1/system/update";
 /* §1：动态 SVG 图标路径唯一封装，禁止散落硬编码 */
 const ICON_SVG = (() => {
   const el = document.querySelector("script[src*=\"tm.js\"]");
@@ -579,11 +580,18 @@ class ApiError extends Error {
 }
 
 async function apiFetch(path, opts) {
+  opts = opts || {};
   const headers = { Accept: "application/json" };
   if (store.token) headers.Authorization = "Bearer " + store.token;
+  if (opts.body != null) headers["Content-Type"] = "application/json";
   let res;
   try {
-    res = await fetch(path, { headers, signal: opts && opts.signal });
+    res = await fetch(path, {
+      method: opts.method || "GET",
+      headers,
+      signal: opts && opts.signal,
+      body: opts.body != null ? JSON.stringify(opts.body) : undefined,
+    });
   } catch (e) {
     if (e && e.name === "AbortError") throw e;
     throw new ApiError(0, "无法连接服务器");
@@ -638,6 +646,24 @@ const dataApi = {
     if (cursor) q.set("cursor", cursor);
     if (deviceId) q.set("device_id", deviceId);
     return apiFetch(HISTORY_DAILY_API + "?" + q.toString(), { signal });
+  },
+  async updateCheck(signal, refresh) {
+    if (state.demo) {
+      await new Promise((r) => setTimeout(r, 80));
+      if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
+      if (!window.CM_MOCK || !window.CM_MOCK.buildUpdateCheck) throw new ApiError(0, "演示数据模块未加载");
+      return window.CM_MOCK.buildUpdateCheck();
+    }
+    return apiFetch(UPDATE_API + (refresh ? "?refresh=1" : ""), { signal });
+  },
+  async updateApply(ref, signal) {
+    if (state.demo) {
+      await new Promise((r) => setTimeout(r, 80));
+      if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
+      if (!window.CM_MOCK || !window.CM_MOCK.applyUpdate) throw new ApiError(0, "演示数据模块未加载");
+      return window.CM_MOCK.applyUpdate(ref);
+    }
+    return apiFetch(UPDATE_API, { method: "POST", body: { ref }, signal });
   },
 };
 
@@ -2933,6 +2959,7 @@ async function load(manual) {
     if (manual) toast(state.demo ? "已重新生成演示数据" : "已刷新");
     // §4-2/3/4：provider-status 独立异步；配额/历史切到对应页才加载
     loadProviderStatus();
+    peekUpdateBadge();
     if (state.view === "quota") ensureSubs();
     if (state.view === "history" && state.aux.history.status === "idle") resetHistory();
     schedulePoll();
@@ -3204,6 +3231,155 @@ function exitDemo() {
   showGate();
 }
 
+function peekUpdateBadge() {
+  const btn = $("#upd-btn");
+  if (!btn) return;
+  dataApi.updateCheck().then((data) => {
+    const dot = btn.querySelector(".upd-dot");
+    if (dot) dot.hidden = !data.update_available;
+    btn.classList.toggle("has-update", Boolean(data.update_available));
+  }).catch(() => {});
+}
+
+function closeUpdateDialog() {
+  const el = $("#upd-overlay");
+  if (el) el.hidden = true;
+  const btn = $("#upd-btn");
+  if (btn) btn.setAttribute("aria-expanded", "false");
+}
+
+function renderUpdateDialog(data, errMsg) {
+  const body = $("#upd-body");
+  const applyRel = $("#upd-apply-rel");
+  const applyMain = $("#upd-apply-main");
+  if (!body) return;
+  if (errMsg) {
+    body.innerHTML = `<p class="upd-error">${esc(errMsg)}</p>`;
+    if (applyRel) applyRel.hidden = true;
+    if (applyMain) applyMain.hidden = true;
+    return;
+  }
+  const cur = data.current || {};
+  const latest = data.latest_release;
+  const main = data.main;
+  const job = data.job || {};
+  const sha = cur.git_sha ? String(cur.git_sha).slice(0, 7) : "—";
+  const rows = [
+    `<p><span class="upd-k">当前</span> ${esc(cur.version || "dev")} · <span class="mono">${esc(sha)}</span></p>`,
+  ];
+  if (latest) {
+    rows.push(
+      `<p><span class="upd-k">最新 Release</span> ${esc(latest.tag)}` +
+      (latest.published_at ? ` · ${esc(String(latest.published_at).slice(0, 10))}` : "") +
+      (data.release_ahead ? ` <b class="upd-new">有新版本</b>` : " · 已是最新") +
+      `</p>`
+    );
+    if (latest.notes) rows.push(`<p class="upd-notes">${esc(latest.notes)}</p>`);
+  } else {
+    rows.push(`<p><span class="upd-k">最新 Release</span> 暂无 GitHub Release</p>`);
+  }
+  if (main) {
+    rows.push(
+      `<p><span class="upd-k">origin/main</span> <span class="mono">${esc(main.short_sha || "")}</span>` +
+      (data.main_ahead ? ` <b class="upd-new">有新提交</b>` : " · 已同步") +
+      (main.message ? ` · ${esc(main.message)}` : "") +
+      `</p>`
+    );
+  }
+  if (data.github_error) {
+    rows.push(`<p class="upd-error">${esc(data.github_error)}</p>`);
+  }
+  if (!data.apply_enabled) {
+    rows.push(`<p class="upd-hint">检索可用。在线升级需要用 install.sh 安装，宿主机才会启动更新监视器。</p>`);
+  }
+  if (job.state && job.state !== "idle" && job.state !== "unavailable") {
+    rows.push(`<p><span class="upd-k">任务</span> ${esc(job.state)} · ${esc(job.message || job.ref || "")}</p>`);
+  }
+  body.innerHTML = rows.join("");
+  const busy = job.state === "queued" || job.state === "running";
+  if (applyRel) {
+    applyRel.hidden = busy || !(data.apply_enabled && latest && data.release_ahead);
+    applyRel.dataset.ref = latest ? latest.tag : "";
+  }
+  if (applyMain) {
+    applyMain.hidden = busy || !(data.apply_enabled && data.main_ahead);
+  }
+  const btn = $("#upd-btn");
+  if (btn) {
+    const dot = btn.querySelector(".upd-dot");
+    if (dot) dot.hidden = !data.update_available;
+    btn.classList.toggle("has-update", Boolean(data.update_available));
+  }
+}
+
+async function openUpdateDialog() {
+  const overlay = $("#upd-overlay");
+  if (!overlay) return;
+  overlay.hidden = false;
+  const btn = $("#upd-btn");
+  if (btn) btn.setAttribute("aria-expanded", "true");
+  const body = $("#upd-body");
+  if (body) body.textContent = "正在检索…";
+  try {
+    renderUpdateDialog(await dataApi.updateCheck(undefined, true));
+  } catch (err) {
+    renderUpdateDialog(null, (err && err.message) || "检索失败");
+  }
+}
+
+async function applyUpdateRef(ref) {
+  if (!ref) return;
+  const body = $("#upd-body");
+  if (body) body.textContent = "已提交更新，后台执行中…";
+  const applyRel = $("#upd-apply-rel");
+  const applyMain = $("#upd-apply-main");
+  if (applyRel) applyRel.hidden = true;
+  if (applyMain) applyMain.hidden = true;
+  try {
+    const job = await dataApi.updateApply(ref);
+    if (state.demo) {
+      toast(job.message || "演示模式不会改服务器");
+      renderUpdateDialog(await dataApi.updateCheck());
+      return;
+    }
+    toast("已开始后台更新，完成后请刷新");
+    let dropped = false;
+    for (let i = 0; i < 180; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        const data = await dataApi.updateCheck();
+        const st = (data.job && data.job.state) || "";
+        if (body) body.textContent = (data.job && data.job.message) || st || "更新中…";
+        if (st === "ok") {
+          toast("更新完成，即将刷新");
+          location.reload();
+          return;
+        }
+        if (st === "error") {
+          renderUpdateDialog(data);
+          toast(data.job.message || "更新失败", true);
+          return;
+        }
+      } catch (e) {
+        dropped = true;
+        if (body) body.textContent = "服务正在重启，等待恢复…";
+        try {
+          const live = await fetch("/api/v1/health/live", { cache: "no-store" });
+          if (live.ok) {
+            toast("服务已恢复，即将刷新");
+            location.reload();
+            return;
+          }
+        } catch (e2) { /* still down */ }
+      }
+    }
+    if (dropped) toast("等待超时，请手动刷新", true);
+  } catch (err) {
+    toast((err && err.message) || "无法提交更新", true);
+    openUpdateDialog();
+  }
+}
+
 /* ================= 事件 ================= */
 $("#gate-form").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -3246,6 +3422,30 @@ $("#logout").addEventListener("click", () => {
 });
 
 $("#refresh").addEventListener("click", () => load(true));
+
+const updBtn = $("#upd-btn");
+if (updBtn) updBtn.addEventListener("click", () => openUpdateDialog());
+const updClose = $("#upd-close");
+if (updClose) updClose.addEventListener("click", closeUpdateDialog);
+const updOverlay = $("#upd-overlay");
+if (updOverlay) {
+  updOverlay.addEventListener("click", (e) => {
+    if (e.target === updOverlay) closeUpdateDialog();
+  });
+}
+const updRefresh = $("#upd-refresh");
+if (updRefresh) updRefresh.addEventListener("click", () => openUpdateDialog());
+const updApplyRel = $("#upd-apply-rel");
+if (updApplyRel) {
+  updApplyRel.addEventListener("click", () => applyUpdateRef(updApplyRel.dataset.ref));
+}
+const updApplyMain = $("#upd-apply-main");
+if (updApplyMain) {
+  updApplyMain.addEventListener("click", () => applyUpdateRef("main"));
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeUpdateDialog();
+});
 
 document.querySelectorAll("[data-view].nav-item, [data-view].bn-item").forEach((b) => {
   b.addEventListener("click", () => switchView(b.dataset.view));

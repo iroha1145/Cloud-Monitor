@@ -32,6 +32,7 @@
 - 提供商状态：只出今日有上报的提供商，数据来自各官方状态页（Anthropic、OpenAI、Cursor、DeepSeek、Kimi）。GLM 没有官方 Statuspage，不出卡
 - 日归档：最多 370 天
 - 夜间模式
+- 检索更新：从 GitHub Releases / origin/main 对比当前版本；实机面板可后台升级
 
 旧路径 `/tm/` 会 301 到 `/`。
 
@@ -108,7 +109,7 @@ widget 按自己的同步间隔推送，本机不用再装别的。然后打开 
 | `GET /api/v1/tm/overview` | Cloud 扩展 | `ACCESS_TOKEN`；官方 stats + SQLite 时间序列 |
 | `GET /api/v1/tm/subscriptions` | Cloud 扩展 | `ACCESS_TOKEN` |
 | `GET /api/v1/tm/provider-status` | Cloud 扩展 | `ACCESS_TOKEN`；allowlist 并发拉状态页 |
-| `GET /api/v1/tm/history/daily` | Cloud 扩展 | `ACCESS_TOKEN`；370 天本地日分页 |
+| `GET/POST /api/v1/system/update` | Cloud 扩展 | `ACCESS_TOKEN`；检索 GitHub Releases，POST 把目标 ref 交给宿主机监视器 |
 | `OPTIONS`（官方 204） | 未单独处理 | 要用再加 |
 | Worker 专属 `/api/public/*` | 不适用 | 官方 Node hub 也没有 |
 
@@ -161,8 +162,18 @@ docker compose up -d --build
 | `PROVIDER_STATUS_ENABLED` | 官方状态页 | `true` |
 | `PROVIDER_STATUS_CACHE_SECONDS` | 状态页缓存 TTL（SWR） | `300` |
 | `PROVIDER_STATUS_TIMEOUT_SECONDS` | 单页超时（总预算 3s） | `2.5` |
+| `CM_VERSION` / `CM_GIT_SHA` | 面板显示的当前版本（install / 在线更新写入） | `dev` / 空 |
+| `CM_GITHUB_REPO` | 检索用的 GitHub `owner/name` | `iroha1145/Cloud-Monitor` |
+| `GITHUB_TOKEN` | 可选，提高 GitHub API 限额 | 空 |
+| `CM_UPDATE_DIR` | 容器内更新请求目录（需挂载到宿主机） | `/update` |
 
 agent 变量见 `agent/.env.example`。
+
+## 在线更新
+
+面板顶栏「检索更新」会向 GitHub 拉最新 Release 和 `origin/main` 的 tip，和当前 `CM_VERSION` / `CM_GIT_SHA` 比较。真正升级不在容器里做（cloud-hub 只读、没有 git、也没有 docker.sock），而是把目标 ref 写进 `hub/update-control/request.json`，由宿主机上的 `update-watcher.sh` 调用 `self-update.sh`：`git fetch` + 快进 `main` 或检出 tag，再 `docker compose up -d --build`。
+
+用 `install.sh` 安装或再跑一遍即可创建该目录并启动监视器（有 systemd 就用服务，否则 nohup）。只 `docker compose up`、没跑过安装脚本的话，检索仍然可用，点更新会返回 503。演示页（含 GitHub Pages）只走假数据界面，不会改服务器。
 
 ## 测试
 

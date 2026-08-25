@@ -104,6 +104,13 @@
               </button>
               <span class="t-tt" id="tt-refresh" role="tooltip">刷新数据</span>
             </span>
+            <span class="t-tt-wrap">
+              <button type="button" class="icon-btn t-tt-trigger" id="upd-btn" aria-label="检索更新" aria-describedby="tt-upd" aria-haspopup="dialog" aria-expanded="false" aria-controls="upd-overlay">
+                <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-download"/></svg>
+                <i class="upd-dot" hidden></i>
+              </button>
+              <span class="t-tt" id="tt-upd" role="tooltip">检索更新</span>
+            </span>
             <button type="button" class="btn btn-ghost btn-sm btn-rect" id="logout" aria-label="更换密钥">
               <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-logout"/></svg><span id="logout-text">更换密钥</span>
             </button>
@@ -385,6 +392,24 @@
     </div>
 
     <div class="toast-root" id="toast-root" aria-live="assertive"></div>
+
+    <div class="upd-overlay" id="upd-overlay" hidden>
+      <div class="upd-card glass" role="dialog" aria-modal="true" aria-labelledby="upd-title">
+        <div class="upd-head">
+          <h2 id="upd-title">在线更新</h2>
+          <button type="button" class="icon-btn" id="upd-close" aria-label="关闭">
+            <svg class="ic" aria-hidden="true"><use href="/static/icons.svg#i-x"/></svg>
+          </button>
+        </div>
+        <p class="upd-sub" id="upd-sub">从 GitHub Releases 检索可用版本。真正升级在宿主机后台执行。</p>
+        <div class="upd-body" id="upd-body">正在检索…</div>
+        <div class="upd-actions">
+          <button type="button" class="btn btn-ghost btn-sm btn-rect" id="upd-refresh">重新检索</button>
+          <button type="button" class="btn btn-sm btn-rect" id="upd-apply-rel" hidden>更新到最新 Release</button>
+          <button type="button" class="btn btn-ghost btn-sm btn-rect" id="upd-apply-main" hidden>同步 main</button>
+        </div>
+      </div>
+    </div>
 
     <script src="/static/mock.js" defer></script>
     <script src="/static/tm.js" defer></script>

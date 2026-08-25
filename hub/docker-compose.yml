@@ -1,6 +1,10 @@
 services:
   cloud-hub:
-    build: .
+    build:
+      context: .
+      args:
+        CM_VERSION: ${CM_VERSION:-dev}
+        CM_GIT_SHA: ${CM_GIT_SHA:-unknown}
     # 默认只绑定回环地址，公网访问请经 Nginx/Caddy HTTPS 反代
     ports:
       - "127.0.0.1:7878:7878"
@@ -25,8 +29,14 @@ services:
       PROVIDER_STATUS_TIMEOUT_SECONDS: ${PROVIDER_STATUS_TIMEOUT_SECONDS:-2.5}
       # true：/ 直接进入演示面板（假数据）；实机务必 false
       CM_DEMO: ${CM_DEMO:-false}
+      CM_VERSION: ${CM_VERSION:-dev}
+      CM_GIT_SHA: ${CM_GIT_SHA:-unknown}
+      CM_GITHUB_REPO: ${CM_GITHUB_REPO:-iroha1145/Cloud-Monitor}
+      CM_UPDATE_DIR: /update
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
     volumes:
       - cloud-hub-data:/data
+      - ./update-control:/update
     depends_on:
       tm-core:
         condition: service_healthy

@@ -96,6 +96,11 @@ class Settings:
     tm_background_interval: int = 300  # 后台维护循环间隔秒（outbox 重放等）
     cm_demo: bool = False  # true 时 / 返回演示页（假数据）
     serve_demo_route: bool = False  # 测试夹具：额外开放 GET /demo
+    cm_version: str = "dev"
+    cm_git_sha: str = ""
+    cm_github_repo: str = "iroha1145/Cloud-Monitor"
+    cm_update_dir: Path | None = None
+    github_api_token: str = ""
 
 
 def _int_env(name: str, default: int, *, minimum: int = 1, maximum: int | None = None) -> int:
@@ -235,4 +240,41 @@ def load_settings() -> Settings:
         ),
         cm_demo=_env_bool(os.environ.get("CM_DEMO")),
         serve_demo_route=_env_bool(os.environ.get("CM_SERVE_DEMO")),
+        cm_version=(os.environ.get("CM_VERSION") or _file_version()).strip() or "dev",
+        cm_git_sha=(os.environ.get("CM_GIT_SHA") or "").strip(),
+        cm_github_repo=_github_repo_env(),
+        cm_update_dir=_update_dir_env(),
+        github_api_token=(os.environ.get("GITHUB_TOKEN") or "").strip(),
     )
+
+
+def _file_version() -> str:
+    for candidate in (Path("/app/VERSION"), _project_root() / "VERSION"):
+        try:
+            if candidate.is_file():
+                line = candidate.read_text(encoding="utf-8").strip().splitlines()[0]
+                return line.strip()
+        except OSError:
+            continue
+    return ""
+
+
+def _github_repo_env() -> str:
+    raw = (os.environ.get("CM_GITHUB_REPO") or "iroha1145/Cloud-Monitor").strip()
+    parts = raw.split("/")
+    if (
+        len(parts) != 2
+        or not parts[0]
+        or not parts[1]
+        or any(not p.replace(".", "").replace("-", "").replace("_", "").isalnum() for p in parts)
+    ):
+        raise ConfigError("CM_GITHUB_REPO 必须是 owner/name")
+    return raw
+
+
+def _update_dir_env() -> Path | None:
+    raw = (os.environ.get("CM_UPDATE_DIR") or "/update").strip()
+    if not raw:
+        return None
+    path = Path(raw).expanduser()
+    return path if path.is_dir() else None

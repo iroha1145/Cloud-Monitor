@@ -2,7 +2,7 @@ FROM python:3.12.11-slim
 
 # 非 root 运行；/data 由 compose 卷挂载并在启动前修正属主
 RUN groupadd -r monitor && useradd -r -g monitor monitor \
-    && mkdir -p /data && chown monitor:monitor /data
+    && mkdir -p /data /update && chown monitor:monitor /data /update
 
 WORKDIR /app
 
@@ -11,6 +11,12 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY backend /app/backend
 COPY frontend /app/frontend
+
+ARG CM_VERSION=dev
+ARG CM_GIT_SHA=unknown
+ENV CM_VERSION=$CM_VERSION \
+    CM_GIT_SHA=$CM_GIT_SHA \
+    CM_UPDATE_DIR=/update
 
 ENV PYTHONPATH=/app/backend \
     DATABASE_PATH=/data/cloud-monitor.sqlite3 \

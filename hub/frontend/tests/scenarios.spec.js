@@ -1006,3 +1006,24 @@ test.describe("系统偏好夜间（demo）", () => {
     expect(await page.evaluate(() => localStorage.getItem("cm_theme"))).toBe("light");
   });
 });
+
+test.describe("在线更新（demo mock）", () => {
+  test("顶栏可检索假 Release，并走一遍应用按钮", async ({ page }) => {
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    await expect(page.locator("#upd-btn")).toBeVisible();
+    await expect(page.locator("#upd-btn .upd-dot")).toBeVisible();
+    await page.click("#upd-btn");
+    await expect(page.locator("#upd-overlay")).toBeVisible();
+    await expect(page.locator("#upd-title")).toHaveText("在线更新");
+    await expect(page.locator("#upd-body")).toContainText("v0.2.0");
+    await expect(page.locator("#upd-body")).toContainText("有新版本");
+    await expect(page.locator("#upd-apply-rel")).toBeVisible();
+    await expect(page.locator("#upd-apply-main")).toBeVisible();
+    await page.click("#upd-apply-rel");
+    await expect(page.locator(".toast")).toContainText("演示模式不会改服务器");
+    await expect(page.locator("#upd-body")).toContainText("演示模式不会改服务器");
+    await page.click("#upd-close");
+    await expect(page.locator("#upd-overlay")).toBeHidden();
+  });
+});
