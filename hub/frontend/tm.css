@@ -672,6 +672,7 @@ code {
   aspect-ratio: 1;
   flex: none;
   position: relative;
+  overflow: visible;
 }
 .donut svg {
   grid-area: 1 / 1;
@@ -680,17 +681,13 @@ code {
   height: 100%;
   overflow: visible;
 }
-.donut-bg {
-  fill: none;
-  stroke: var(--border);
-  stroke-width: 14;
-}
 .donut-arc {
-  fill: none; stroke-width: 14; stroke-linecap: butt;
-  transform-box: view-box;
-  transform-origin: 60px 60px; /* 与 viewBox 圆心重合，禁止默认 0,0 把整环拽歪 */
+  fill-rule: nonzero;
+  stroke: none;
+  pointer-events: fill;
+  shape-rendering: geometricPrecision;
+  transform: none;
   transition: opacity var(--dur) var(--ease),
-    transform var(--dur) var(--ease),
     filter var(--dur) var(--ease);
 }
 .donut-center {
@@ -806,18 +803,17 @@ code {
 @media (prefers-reduced-motion: reduce) {
   .t-acc-panel, .t-acc-panel-inner, .t-acc-chevron { transition: none !important; }
 }
-.donut-wrap.has-hot .donut-bg { opacity: 0.22; }
-.donut-wrap.has-hot .donut-arc { opacity: 0.22; }
+.donut-wrap.has-hot .donut-arc { opacity: 0.45; }
 .donut-wrap.has-hot .donut-arc.is-hot {
   opacity: 1;
-  /* 从圆心均匀外扩：100% 整环一起鼓出，分段也不吃进内孔（旧 stroke-width 加粗会切圆心） */
-  transform: scale(1.07);
+  /* 外凸由 JS 加大外径完成；禁止 scale，否则段会错到另一圈、露出灰缝 */
+  transform: none;
   filter: drop-shadow(0 1px 2px #00377029) drop-shadow(0 3px 6px #00377014);
 }
 .donut-wrap.has-hot .donut-lg-row { opacity: 0.4; }
 .donut-wrap.has-hot .donut-lg-row.is-hot { opacity: 1; background: var(--bg); }
 @media (prefers-reduced-motion: reduce) {
-  .donut-wrap.has-hot .donut-arc.is-hot { transform: none; filter: none; }
+  .donut-wrap.has-hot .donut-arc.is-hot { filter: none; }
 }
 
 /* ---------- 分布条（模型 / 客户端 / 项目） ---------- */
@@ -1466,10 +1462,9 @@ code {
   .trend-bar.grow, .tseg.grow { animation: none !important; }
 }
 
-/* 环形图弧段入场 draw（参考 spark-draw 700ms）：隐式 to 帧 = 元素的
-   stroke-dasharray 呈现属性值，动画结束后自然回落到属性，不留 fill。 */
+/* 环形扇区入场：path 无 dash，用淡入。 */
 @keyframes donut-draw {
-  from { stroke-dasharray: 0 100; }
+  from { opacity: 0; }
 }
 .donut-arc.is-drawing { animation: donut-draw 700ms var(--ease-smooth-out); }
 @media (prefers-reduced-motion: reduce) {

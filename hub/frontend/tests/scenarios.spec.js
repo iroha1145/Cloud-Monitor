@@ -538,7 +538,7 @@ test.describe("模型分布环形图中心文字（demo）", () => {
 });
 
 test.describe("模型分布环形图选中态（颜色不串 / 100% 整环外凸）", () => {
-  test("悬停非最大弧段时各弧 stroke 不变，底环不用最大段色", async ({ page }) => {
+  test("无底环，悬停非最大段时各弧 fill 不变", async ({ page }) => {
     await page.goto("/demo");
     await expect(page.locator("#shell")).toBeVisible();
     await page.locator('#model-seg button[data-p="month"]').click();
@@ -546,16 +546,13 @@ test.describe("模型分布环形图选中态（颜色不串 / 100% 整环外凸
     await expect(arcs).not.toHaveCount(0);
     const n = await arcs.count();
     expect(n).toBeGreaterThan(2);
-    const strokeByName = {};
+    await expect(page.locator("#model-dist .donut-bg")).toHaveCount(0);
+    const fillByName = {};
     for (let i = 0; i < n; i++) {
       const name = await arcs.nth(i).getAttribute("data-name");
-      strokeByName[name] = await arcs.nth(i).getAttribute("stroke");
+      fillByName[name] = await arcs.nth(i).getAttribute("fill");
     }
-    expect(new Set(Object.values(strokeByName)).size, "多模型应有多种弧色").toBeGreaterThan(1);
-
-    const bgStroke = await page.locator("#model-dist .donut-bg").evaluate((el) => getComputedStyle(el).stroke);
-    const firstStroke = await arcs.first().evaluate((el) => getComputedStyle(el).stroke);
-    expect(bgStroke, "底环不得垫最大段色").not.toBe(firstStroke);
+    expect(new Set(Object.values(fillByName)).size, "多模型应有多种弧色").toBeGreaterThan(1);
 
     const row = page.locator("#model-dist .donut-lg-row").nth(1);
     const hotName = await row.getAttribute("data-name");
@@ -565,15 +562,46 @@ test.describe("模型分布环形图选中态（颜色不串 / 100% 整环外凸
     await expect(page.locator(`#model-dist .donut-arc[data-name="${hotName}"]`)).toHaveClass(/is-hot/);
     await expect(page.locator("#model-dist .donut-arc.is-hot")).toHaveCount(1);
     const after = await page.locator("#model-dist .donut-arc").evaluateAll((els) =>
-      Object.fromEntries(els.map((el) => [el.getAttribute("data-name"), el.getAttribute("stroke")]))
+      Object.fromEntries(els.map((el) => [el.getAttribute("data-name"), el.getAttribute("fill")]))
     );
-    expect(after, "选中后各弧 stroke 必须保持").toEqual(strokeByName);
-    const bgAfter = await page.locator("#model-dist .donut-bg").evaluate((el) => getComputedStyle(el).stroke);
-    expect(bgAfter).toBe(bgStroke);
-    expect(bgAfter).not.toBe(firstStroke);
+    expect(after, "选中后各弧 fill 必须保持").toEqual(fillByName);
+    const xf = await page.locator(`#model-dist .donut-arc[data-name="${hotName}"]`).evaluate((el) => getComputedStyle(el).transform);
+    expect(xf === "none" || xf === "matrix(1, 0, 0, 1, 0, 0)", "选中不得 scale").toBeTruthy();
   });
 
-  test("单模型 100% 弧无接缝，悬停整环 scale 外凸", async ({ page, context }) => {
+  test("两段合计 100% 时只有两段 path，无第三段灰弧", async ({ page, context }) => {
+    await loginWithToken(context);
+    const p = clone(base.payload);
+    const pair = {
+      "cursor-grok-4.6-xhigh-fast": 22630000,
+      "cursor-grok-4.6-high-fast": 3156000,
+    };
+    for (const key of ["today", "month", "allTime"]) {
+      if (p.totals && p.totals[key]) p.totals[key].models = { ...pair };
+    }
+    await stubOverview(page, p);
+    await page.goto("/");
+    await expect(page.locator("#shell")).toBeVisible();
+    const arcs = page.locator("#model-dist .donut-arc");
+    await expect(arcs).toHaveCount(2);
+    await expect(page.locator("#model-dist .donut-lg-row")).toHaveCount(2);
+    await expect(page.locator("#model-dist .donut-bg")).toHaveCount(0);
+    const meta = await arcs.evaluateAll((els) => els.map((el) => ({
+      name: el.getAttribute("data-name"),
+      fill: el.getAttribute("fill"),
+      start: Number(el.getAttribute("data-start")),
+      end: Number(el.getAttribute("data-end")),
+      tag: el.tagName,
+    })));
+    expect(meta.every((m) => m.tag === "path"), "必须是 path 扇区").toBeTruthy();
+    expect(meta[0].start).toBeLessThanOrEqual(0);
+    expect(meta[1].end).toBeGreaterThanOrEqual(360);
+    expect(meta[1].end - meta[0].start).toBeGreaterThanOrEqual(360);
+    expect(meta[0].fill).not.toBe(meta[1].fill);
+    expect(meta.every((m) => m.fill && m.fill !== "none")).toBeTruthy();
+  });
+
+  test("单模型 100% 弧无接缝，悬停只加大外径、不 scale", async ({ page, context }) => {
     await loginWithToken(context);
     const p = clone(base.payload);
     const only = { "solo-model": 12638361 };
@@ -586,19 +614,25 @@ test.describe("模型分布环形图选中态（颜色不串 / 100% 整环外凸
     const arc = page.locator("#model-dist .donut-arc");
     await expect(arc).toHaveCount(1);
     await expect(arc).toHaveAttribute("data-full", "1");
-    const dash = String(await arc.getAttribute("stroke-dasharray") || "").replace(/\s+/g, " ").trim();
-    expect(dash, "满环 gap 必须为 0，禁止 100 100 接缝").toMatch(/^100(?:\.0+)? 0$/);
+    expect((await arc.evaluate((el) => el.tagName)).toLowerCase(), "满环用 circle 避免 3 点接缝").toBe("circle");
+    await expect(page.locator("#model-dist .donut-bg")).toHaveCount(0);
+    const box0 = await arc.evaluate((el) => {
+      const b = el.getBBox();
+      return { w: b.width, h: b.height };
+    });
+    expect(Math.abs(box0.w - box0.h), "满环应为同心圆").toBeLessThan(0.5);
 
     await page.locator("#model-dist .donut-lg-row").first().hover();
     await expect(page.locator("#model-dist")).toHaveClass(/has-hot/);
     await expect(arc).toHaveClass(/is-hot/);
-    const scale = await arc.evaluate((el) => {
+    const after = await arc.evaluate((el) => {
       const t = getComputedStyle(el).transform;
-      if (!t || t === "none") return 1;
-      const m = t.match(/matrix\(([^)]+)\)/);
-      return m ? parseFloat(m[1].split(",")[0]) : 1;
+      const b = el.getBBox();
+      return { t, w: b.width, h: b.height };
     });
-    expect(scale, "100% 悬停应整环 scale 外凸").toBeGreaterThan(1.03);
+    expect(after.t === "none" || after.t === "matrix(1, 0, 0, 1, 0, 0)", "禁止 scale").toBeTruthy();
+    expect(after.w, "悬停应加大外径").toBeGreaterThan(box0.w + 6);
+    expect(Math.abs(after.w - after.h), "外凸后仍同心").toBeLessThan(0.5);
   });
 });
 

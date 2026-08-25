@@ -1303,13 +1303,51 @@ function showModelEmpty(message) {
   if (p) p.textContent = message;
 }
 
-/* 弧段 dash：不满环用「长度 100」的 gap；满环必须 gap=0。
-   旧写法 `min(100,pct) 100` 在 100% 变成 `100 100`——闭合圆上留一条 butt 接缝，
-   加粗/外凸时 6 点方向会裂开，看起来像「只鼓了一块」。 */
-function donutArcDash(pct, offset, overlap) {
-  if (pct >= 99.95) return { dash: "100.00 0", dashoffset: "0.00", full: true };
-  const span = Math.min(99.94, Math.max(pct + (overlap || 0), 0.15));
-  return { dash: `${span.toFixed(2)} 100`, dashoffset: (-offset).toFixed(2), full: false };
+/* 环形扇区：用 path 按角度画，不用 circle+dash。
+   dashoffset 在累计超过 100 时和底环/scale 叠在一起，会在 6 点方向露出灰缝、
+   选中段飘到另一圈半径上。外凸只加大外径，内孔不动。 */
+const DONUT_CX = 60;
+const DONUT_CY = 60;
+const DONUT_R_IN = 38;
+const DONUT_R_OUT = 52;
+const DONUT_R_OUT_HOT = 56;
+
+function donutPolar(r, deg) {
+  const rad = ((deg - 90) * Math.PI) / 180;
+  return [DONUT_CX + r * Math.cos(rad), DONUT_CY + r * Math.sin(rad)];
+}
+
+function donutFullRingPath(rIn, rOut) {
+  return [
+    `M${(DONUT_CX + rOut).toFixed(3)},${DONUT_CY.toFixed(3)}`,
+    `A${rOut},${rOut} 0 1 1 ${(DONUT_CX - rOut).toFixed(3)},${DONUT_CY.toFixed(3)}`,
+    `A${rOut},${rOut} 0 1 1 ${(DONUT_CX + rOut).toFixed(3)},${DONUT_CY.toFixed(3)}`,
+    `M${(DONUT_CX + rIn).toFixed(3)},${DONUT_CY.toFixed(3)}`,
+    `A${rIn},${rIn} 0 1 0 ${(DONUT_CX - rIn).toFixed(3)},${DONUT_CY.toFixed(3)}`,
+    `A${rIn},${rIn} 0 1 0 ${(DONUT_CX + rIn).toFixed(3)},${DONUT_CY.toFixed(3)}`,
+    "Z",
+  ].join("");
+}
+
+function donutSlicePath(startDeg, endDeg, rOut) {
+  const sweep = endDeg - startDeg;
+  if (sweep >= 359.94) {
+    return [
+      `M${(DONUT_CX + rOut).toFixed(3)},${DONUT_CY.toFixed(3)}`,
+      `A${rOut},${rOut} 0 1 1 ${(DONUT_CX - rOut).toFixed(3)},${DONUT_CY.toFixed(3)}`,
+      `A${rOut},${rOut} 0 1 1 ${(DONUT_CX + rOut).toFixed(3)},${DONUT_CY.toFixed(3)}`,
+      "Z",
+    ].join("");
+  }
+  const large = sweep > 180 ? 1 : 0;
+  const [x0, y0] = donutPolar(rOut, startDeg);
+  const [x1, y1] = donutPolar(rOut, endDeg);
+  return [
+    `M${DONUT_CX},${DONUT_CY}`,
+    `L${x0.toFixed(3)},${y0.toFixed(3)}`,
+    `A${rOut},${rOut} 0 ${large} 1 ${x1.toFixed(3)},${y1.toFixed(3)}`,
+    "Z",
+  ].join("");
 }
 
 function renderModelDonut(per, animate) {
@@ -1354,25 +1392,29 @@ function renderModelDonut(per, animate) {
 
   $("#model-empty").hidden = true;
   box.style.display = "";
+  box.classList.remove("has-hot");
   const total = sliceTotal;
 
-  /* SVG donut：pathLength=100 让每段直接用百分比画弧；
-     入场/换周期时 is-drawing 从 0 画到 dasharray 目标值（700ms，spark-draw 同款）。
-     底环只做中性轨道（禁止用最大段色垫底——has-hot 淡化其它弧时会整圈串色）。
-     段与段重叠 0.8 填浅色空档。 */
-  const R = 45;
-  let offset = 25; // 12 点方向起笔
-  const overlap = entries.length > 1 ? 0.8 : 0;
-  const arcs = entries.map(([name, v]) => {
-    const pct = (v / total) * 100;
+  /* SVG donut：环形扇区 path，12 点起笔顺时针。禁止底环、禁止 scale。 */
+  const overlapDeg = entries.length > 1 ? 2.2 : 0;
+  let deg = 0;
+  const last = entries.length - 1;
+  const arcs = entries.map(([name, v], i) => {
+    const sweep = (v / total) * 360;
+    const full = entries.length === 1;
+    /* 每段两端都叠一点，12 点首尾接缝也要盖住。
+       多段时禁止 sweep≥360，否则 99%+ 会被画成满环把小段吞掉。 */
+    let start = full ? 0 : deg - overlapDeg;
+    let end = full ? 360 : i === last ? 360 + overlapDeg : deg + sweep;
+    if (!full && end - start >= 359.2) end = start + 359.2;
     const color = state.modelColors[name] || OTHER_COLOR;
-    const spec = donutArcDash(pct, offset, overlap);
-    const arc =
-      `<circle class="donut-arc${animate ? " is-drawing" : ""}" cx="60" cy="60" r="${R}" pathLength="100" ` +
-      `stroke="${color}" stroke-dasharray="${spec.dash}" ` +
-      `stroke-dashoffset="${spec.dashoffset}" data-name="${esc(name)}"` +
-      `${spec.full ? ' data-full="1"' : ""}/>`;
-    offset += pct;
+    const cls = `donut-arc${animate ? " is-drawing" : ""}`;
+    const arc = full
+      ? `<circle class="${cls}" cx="${DONUT_CX}" cy="${DONUT_CY}" r="${DONUT_R_OUT}" fill="${color}" ` +
+        `data-name="${esc(name)}" data-start="0" data-end="360" data-full="1"/>`
+      : `<path class="${cls}" fill="${color}" d="${donutSlicePath(start, end, DONUT_R_OUT)}" ` +
+        `data-name="${esc(name)}" data-start="${start.toFixed(3)}" data-end="${end.toFixed(3)}"/>`;
+    deg += sweep;
     return arc;
   }).join("");
 
@@ -1409,8 +1451,12 @@ function renderModelDonut(per, animate) {
       <svg viewBox="0 0 120 120" width="120" height="120">
         <title>${esc(ariaLabel)}</title>
         <desc>${esc(desc)}</desc>
-        <circle class="donut-bg" cx="60" cy="60" r="${R}"/>
-        ${arcs}
+        <defs>
+          <clipPath id="model-donut-clip" clipPathUnits="userSpaceOnUse">
+            <path fill-rule="evenodd" d="${donutFullRingPath(DONUT_R_IN, 80)}"/>
+          </clipPath>
+        </defs>
+        <g clip-path="url(#model-donut-clip)">${arcs}</g>
       </svg>
       <div class="donut-center">
         <b title="${esc(centerTitle)}">${centerHtml}</b>
@@ -1458,6 +1504,12 @@ function renderModelDonut(per, animate) {
     arcEls.forEach((a) => {
       const match = on && a.dataset.name === name;
       a.classList.toggle("is-hot", match);
+      const r = match ? DONUT_R_OUT_HOT : DONUT_R_OUT;
+      if (a.dataset.full === "1" && a.tagName.toLowerCase() === "circle") {
+        a.setAttribute("r", r);
+      } else {
+        a.setAttribute("d", donutSlicePath(Number(a.dataset.start), Number(a.dataset.end), r));
+      }
       if (match && a.parentNode) a.parentNode.appendChild(a);
     });
   };
