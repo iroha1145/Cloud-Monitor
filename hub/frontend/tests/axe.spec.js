@@ -35,6 +35,7 @@ test.describe("axe-core 可访问性（gate + demo 四视图）", () => {
   test("登录门 gate", async ({ page }) => {
     await page.goto("/");
     await expect(page.locator("#gate")).toBeVisible();
+    await page.waitForTimeout(500); // 等 gate-in 入场动画（--modal-open-dur 200ms）结束，axe 不在半透明度下测对比度
     await scan(page, "gate");
   });
 

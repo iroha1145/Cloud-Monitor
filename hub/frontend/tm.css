@@ -456,27 +456,44 @@ html[data-theme="dark"] .theme-ic-sun { display: inline; }
 }
 html[data-theme="dark"] .upd-overlay { background: rgba(0, 0, 0, 0.5); }
 .upd-overlay[hidden] { display: none; }
+/* 浮层卡片与 gate-card 同一语言：玻璃 + --r-card 圆角 + --gate-line 描边 + --sh-glass */
 .upd-card {
-  width: min(440px, 100%);
-  padding: 18px 18px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--sh-2);
+  width: min(460px, 100%);
+  padding: 22px 24px 18px;
+  border: 1px solid var(--gate-line);
+  border-radius: var(--r-card);
+  box-shadow: var(--sh-glass);
 }
-.upd-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
-.upd-head h2 { font-size: 18px; margin: 0; }
-.upd-sub { font-size: 12.5px; color: var(--mute); margin: 0 0 14px; }
-.upd-body { font-size: 13.5px; line-height: 1.55; color: var(--ink-2); display: grid; gap: 8px; }
+.upd-overlay:not([hidden]) .upd-card { animation: gate-in var(--modal-open-dur) var(--modal-ease); }
+.upd-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+.upd-head h2 { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; margin: 0; }
+.upd-sub { font-size: 12.5px; color: var(--mute); line-height: 1.5; margin: 0 0 16px; }
+.upd-body { font-size: 13.5px; line-height: 1.55; color: var(--ink-2); }
 .upd-body p { margin: 0; }
-.upd-k { display: inline-block; min-width: 6.5em; color: var(--mute); font-size: 12px; }
-.upd-new { color: var(--brand-700); font-weight: 650; font-size: 12px; }
-.upd-notes { font-size: 12.5px; color: var(--mute); white-space: pre-wrap; }
-.upd-error { color: var(--danger, #c23d3d); }
-.upd-hint { color: var(--mute); font-size: 12.5px; }
-.upd-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 16px; }
-.upd-actions .btn:not(.btn-ghost) {
-  background: var(--brand-500); color: #fff;
+/* 标签列 + 值列定义网格：值换行保持在值列内，不再顶回行首 */
+.upd-row { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); gap: 12px; align-items: start; }
+.upd-row + .upd-row { margin-top: 10px; }
+.upd-k { color: var(--mute); font-size: 12px; white-space: nowrap; padding-top: 2px; }
+.upd-v { min-width: 0; overflow-wrap: anywhere; }
+.upd-pill {
+  display: inline-block; padding: 1px 8px; border-radius: var(--r-pill);
+  font-size: 11px; font-weight: 600; vertical-align: 0.1em;
 }
+.upd-pill.ok { background: var(--ok-bg); color: var(--ok-ink); }
+.upd-pill.new { background: var(--brand-50); color: var(--brand-700); }
+.upd-pill.err { background: var(--crit-bg); color: var(--crit); }
+.upd-notes {
+  margin-top: 12px; padding: 10px 12px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-md);
+  font-size: 12.5px; color: var(--ink-2); line-height: 1.6;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  max-height: 132px; overflow-y: auto;
+}
+.upd-notes a { color: var(--brand-700); text-decoration: none; }
+.upd-notes a:hover { text-decoration: underline; }
+.upd-error { color: var(--crit); }
+.upd-hint { margin: 12px 0 0; color: var(--mute); font-size: 12.5px; line-height: 1.5; }
+.upd-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 18px; }
 .demo-badge {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 0 12px; min-height: 30px; border-radius: var(--r-pill);
@@ -1115,8 +1132,11 @@ html[data-theme="dark"] .upd-overlay { background: rgba(0, 0, 0, 0.5); }
 .dt-track .lv-mute { background: #b6bcc9; }
 
 .dev-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; border-top: 1px solid var(--border); padding-top: 12px; }
-.dev-stat span { display: block; font-size: 10.5px; color: var(--mute); }
+/* 同 .hm-sum：只有直接子级标签才独占一行，后代选择器会把 <b> 里 fmtCompactHtml 的
+   .num-int/.num-unit 变块级，「266.6万」的「万」被挤到数字下一行 */
+.dev-stat > span { display: block; font-size: 10.5px; color: var(--mute); }
 .dev-stat b { display: block; margin-top: 2px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.dev-stat b span { display: inline; }
 
 /* ---------- 配额与订阅 ---------- */
 .lim-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; }
@@ -1306,6 +1326,8 @@ html[data-theme="dark"] .pv-card.lv-crit .pv-status { color: #ff9a94; }
 .hm-sum b { display: block; margin-top: 3px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 600; }
 .hm-sum b span, .hm-avg b span { display: inline; font-size: inherit; color: inherit; }
 .hm-sum b .num-unit, .hm-avg b .num-unit { font-size: 0.52em; color: inherit; }
+/* 日期作为一个整体折行单位，避免「8月26 / 日」断尾 */
+.hm-best-date { white-space: nowrap; }
 .hm-sum-mid { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; }
 .hm-avg > span { display: block; font-size: 10.5px; color: var(--mute); }
 .hm-avg b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 600; }

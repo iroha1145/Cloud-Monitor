@@ -2431,7 +2431,7 @@ function renderHmMonth(hm, daily) {
         <div class="hm-sum"><span>本月总量</span><b title="${fmtInt(total)} tokens">${fmtCompactHtml(total)}</b></div>
         <div class="hm-sum"><span>活跃天数</span><b>${activeDays} 天</b></div>
         <div class="hm-sum"><span>最高单日</span>${best
-          ? `<b title="${fmtInt(best.v)} tokens">${fmtCompactHtml(best.v)} · ${m + 1}月${best.d}日</b>`
+          ? `<b title="${fmtInt(best.v)} tokens">${fmtCompactHtml(best.v)}<span class="hm-best-date"> · ${m + 1}月${best.d}日</span></b>`
           : `<b>—</b>`}</div>
       </div>
       <div class="hm-sum-mid">
@@ -3258,6 +3258,16 @@ function closeUpdateDialog() {
   if (btn) btn.setAttribute("aria-expanded", "false");
 }
 
+/* Release notes 走纯文本进入，再把 GitHub 自动 notes 里常见的 **粗体** 标记剥掉、
+   URL 提升为可点链接（先 esc 转义，不产生注入面） */
+function fmtUpdNotes(raw) {
+  let t = esc(String(raw || "").trim());
+  t = t.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/__([^_]+)__/g, "$1");
+  t = t.replace(/https?:\/\/[^\s)<>"']+/g, (u) =>
+    `<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`);
+  return t;
+}
+
 function renderUpdateDialog(data, errMsg) {
   const body = $("#upd-body");
   const applyRel = $("#upd-apply-rel");
@@ -3274,27 +3284,30 @@ function renderUpdateDialog(data, errMsg) {
   const main = data.main;
   const job = data.job || {};
   const sha = cur.git_sha ? String(cur.git_sha).slice(0, 7) : "—";
+  const row = (k, vHtml) =>
+    `<div class="upd-row"><span class="upd-k">${k}</span><div class="upd-v">${vHtml}</div></div>`;
   const rows = [
-    `<p><span class="upd-k">当前</span> ${esc(cur.version || "dev")} · <span class="mono">${esc(sha)}</span></p>`,
+    row("当前", `${esc(cur.version || "dev")} · <span class="mono">${esc(sha)}</span>`),
   ];
+  let notesHtml = "";
   if (latest) {
-    rows.push(
-      `<p><span class="upd-k">最新 Release</span> ${esc(latest.tag)}` +
+    rows.push(row(
+      "最新 Release",
+      `${esc(latest.tag)}` +
       (latest.published_at ? ` · ${esc(String(latest.published_at).slice(0, 10))}` : "") +
-      (data.release_ahead ? ` <b class="upd-new">有新版本</b>` : " · 已是最新") +
-      `</p>`
-    );
-    if (latest.notes) rows.push(`<p class="upd-notes">${esc(latest.notes)}</p>`);
+      (data.release_ahead ? ` <span class="upd-pill new">有新版本</span>` : ` <span class="upd-pill ok">已是最新</span>`)
+    ));
+    if (latest.notes) notesHtml = `<div class="upd-notes">${fmtUpdNotes(latest.notes)}</div>`;
   } else {
-    rows.push(`<p><span class="upd-k">最新 Release</span> 暂无 GitHub Release</p>`);
+    rows.push(row("最新 Release", "暂无 GitHub Release"));
   }
   if (main) {
-    rows.push(
-      `<p><span class="upd-k">origin/main</span> <span class="mono">${esc(main.short_sha || "")}</span>` +
-      (data.main_ahead ? ` <b class="upd-new">有新提交</b>` : " · 已同步") +
-      (main.message ? ` · ${esc(main.message)}` : "") +
-      `</p>`
-    );
+    rows.push(row(
+      "origin/main",
+      `<span class="mono">${esc(main.short_sha || "")}</span>` +
+      (data.main_ahead ? ` <span class="upd-pill new">有新提交</span>` : ` <span class="upd-pill ok">已同步</span>`) +
+      (main.message ? ` · ${esc(main.message)}` : "")
+    ));
   }
   if (data.github_error) {
     rows.push(`<p class="upd-error">${esc(data.github_error)}</p>`);
@@ -3303,9 +3316,15 @@ function renderUpdateDialog(data, errMsg) {
     rows.push(`<p class="upd-hint">检索可用。在线升级需要用 install.sh 安装，宿主机才会启动更新监视器。</p>`);
   }
   if (job.state && job.state !== "idle" && job.state !== "unavailable") {
-    rows.push(`<p><span class="upd-k">任务</span> ${esc(job.state)} · ${esc(job.message || job.ref || "")}</p>`);
+    const JOB_LABELS = { ok: "完成", error: "失败", queued: "排队中", running: "执行中" };
+    const pillCls = job.state === "error" ? "err" : job.state === "ok" ? "ok" : "new";
+    rows.push(row(
+      "任务",
+      `<span class="upd-pill ${pillCls}">${esc(JOB_LABELS[job.state] || job.state)}</span> ` +
+      esc(job.message || job.ref || "")
+    ));
   }
-  body.innerHTML = rows.join("");
+  body.innerHTML = rows.join("") + notesHtml;
   const busy = job.state === "queued" || job.state === "running";
   if (applyRel) {
     applyRel.hidden = busy || !(data.apply_enabled && latest && data.release_ahead);
