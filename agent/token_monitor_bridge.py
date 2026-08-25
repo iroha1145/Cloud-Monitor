@@ -72,11 +72,16 @@ def _period_bounds(now_local: datetime) -> dict[str, dict[str, Any]]:
 # ---------------------------------------------------------------- payload
 
 
-def _period_payload(agent: SyncAgent, start: Optional[datetime], end: datetime) -> dict:
+def _period_payload(
+    agent: SyncAgent,
+    start: Optional[datetime],
+    end: datetime,
+    session: Optional[requests.Session] = None,
+) -> dict:
     params: dict[str, Any] = {"end_time": end.isoformat(timespec="seconds")}
     if start is not None:
         params["start_time"] = start.isoformat(timespec="seconds")
-    usage = agent.local_get("/api/v1/usage", params)
+    usage = agent.local_get("/api/v1/usage", params, session=session)
     totals = usage.get("totals") or {}
     input_tokens = int(totals.get("input_tokens") or 0)
     output_tokens = int(totals.get("output_tokens") or 0)
@@ -111,9 +116,20 @@ def _period_payload(agent: SyncAgent, start: Optional[datetime], end: datetime) 
     }
 
 
-def resolve_tm_device_id(config: AgentConfig) -> Optional[str]:
-    """桥接设备 ID：显式配置优先；默认 openwebui: 前缀；与 Cloud ID 相同则拒绝。"""
-    device_id = config.device_id or ""
+def resolve_tm_device_id(config: AgentConfig, state_device_id: str = "") -> Optional[str]:
+    """桥接设备 ID：显式配置优先；默认 openwebui: 前缀；与 Cloud ID 相同则拒绝。
+
+    Cloud 设备身份必须含状态文件持久 UUID（DEVICE_ID 留空是 .env.example
+    明示的默认玩法）：只读环境变量时所有留空设备都退化成同一个
+    "openwebui:"，多台机器在 token-monitor 面板上互相覆盖合并。
+    """
+    device_id = config.device_id or state_device_id or ""
+    if not config.token_monitor_device_id and not device_id:
+        log.error(
+            "无法确定桥接设备 ID（TOKEN_MONITOR_DEVICE_ID / DEVICE_ID / "
+            "状态文件身份均为空），桥接拒绝启动"
+        )
+        return None
     tm_id = config.token_monitor_device_id or f"{CLIENT}:{device_id}"
     if tm_id == device_id and device_id:
         log.error(
@@ -125,14 +141,19 @@ def resolve_tm_device_id(config: AgentConfig) -> Optional[str]:
     return tm_id
 
 
-def build_ingest_payload(agent: SyncAgent, config: AgentConfig, now: Optional[datetime] = None) -> dict:
+def build_ingest_payload(
+    agent: SyncAgent,
+    config: AgentConfig,
+    now: Optional[datetime] = None,
+    session: Optional[requests.Session] = None,
+) -> dict:
     tz = ZoneInfo(config.time_zone)
     now_local = now or datetime.now(tz)
     bounds = _period_bounds(now_local.astimezone(tz))
     now_utc = now_local.astimezone(timezone.utc)
 
     payload: dict[str, Any] = {
-        "deviceId": resolve_tm_device_id(config),
+        "deviceId": resolve_tm_device_id(config, agent.state.device_id),
         "hostname": config.device_name,
         "platform": config.host_platform,
         "agentVersion": AGENT_VERSION,
@@ -149,9 +170,9 @@ def build_ingest_payload(agent: SyncAgent, config: AgentConfig, now: Optional[da
             "month": {"key": bounds["month"]["key"], "endsAt": bounds["month"]["endsAt"]},
         },
     }
-    payload["today"] = _period_payload(agent, bounds["today"]["start"], now_utc)
-    payload["month"] = _period_payload(agent, bounds["month"]["start"], now_utc)
-    payload["allTime"] = _period_payload(agent, None, now_utc)
+    payload["today"] = _period_payload(agent, bounds["today"]["start"], now_utc, session=session)
+    payload["month"] = _period_payload(agent, bounds["month"]["start"], now_utc, session=session)
+    payload["allTime"] = _period_payload(agent, None, now_utc, session=session)
     return payload
 
 
@@ -191,7 +212,7 @@ def push_to_token_monitor(
     session: Optional[requests.Session] = None,
 ) -> dict:
     session = session or agent.session
-    payload = build_ingest_payload(agent, agent.config, now=now)
+    payload = build_ingest_payload(agent, agent.config, now=now, session=session)
     resp = session.post(
         f"{hub_url.rstrip('/')}{INGEST_PATH}",
         json=payload,
@@ -221,12 +242,15 @@ def start_bridge_thread(agent: SyncAgent) -> Optional[threading.Thread]:
     if not config.token_monitor_hub_url or not config.token_monitor_secret:
         log.info("未配置 TOKEN_MONITOR_HUB_URL / TOKEN_MONITOR_SECRET，桥接停用")
         return None
-    tm_device_id = resolve_tm_device_id(config)
+    tm_device_id = resolve_tm_device_id(config, agent.state.device_id)
     if tm_device_id is None:
         return None
 
+    # 桥接线程独享 Session：requests.Session 非线程安全，与主同步循环
+    # 共用会在两线程并发请求时偶发中断
+    bridge_session = requests.Session()
     try:
-        check_hub_health(agent.session, config.token_monitor_hub_url, config.request_timeout_seconds)
+        check_hub_health(bridge_session, config.token_monitor_hub_url, config.request_timeout_seconds)
     except PermanentBridgeError as exc:
         log.error("token-monitor 桥接未启动（健康检查失败，判定为永久错误）: %s", exc)
         return None
@@ -240,7 +264,10 @@ def start_bridge_thread(agent: SyncAgent) -> Optional[threading.Thread]:
         while not disabled.is_set():
             try:
                 summary = push_to_token_monitor(
-                    agent, config.token_monitor_hub_url, config.token_monitor_secret
+                    agent,
+                    config.token_monitor_hub_url,
+                    config.token_monitor_secret,
+                    session=bridge_session,
                 )
                 log.info("已推送 token-monitor 摘要: %s", json.dumps(summary))
             except PermanentBridgeError as exc:

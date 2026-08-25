@@ -17,6 +17,10 @@ services:
       SYNC_INTERVAL_SECONDS: ${SYNC_INTERVAL_SECONDS:-60}
       BATCH_SIZE: ${BATCH_SIZE:-200}
       ALLOW_INSECURE_HTTP: ${ALLOW_INSECURE_HTTP:-false}
+      # 逃生阀（错误提示引用的补救开关必须能从 compose 传进容器）
+      ALLOW_LEGACY_FALLBACK: ${ALLOW_LEGACY_FALLBACK:-false}
+      ALLOW_STATE_CONFLICT: ${ALLOW_STATE_CONFLICT:-false}
+      RUN_ONCE: ${RUN_ONCE:-false}
       # 可选：token-monitor 桥接
       TOKEN_MONITOR_HUB_URL: ${TOKEN_MONITOR_HUB_URL:-}
       TOKEN_MONITOR_SECRET: ${TOKEN_MONITOR_SECRET:-}
