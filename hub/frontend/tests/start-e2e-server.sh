@@ -22,6 +22,8 @@ cp "$FRONTEND_DIR/index.html" "$FRONTEND_DIR/demo.html" "$FRONTEND_DIR/tm.css" \
    "$FRONTEND_DIR/tm.js" "$FRONTEND_DIR/mock.js" "$FRONTEND_DIR/icons.svg" \
    "$FRONTEND_DIR/theme-boot.js" \
    "$E2E_ROOT/hub/frontend/"
+mkdir -p "$E2E_ROOT/hub/frontend/client-logos"
+cp -R "$FRONTEND_DIR/client-logos/." "$E2E_ROOT/hub/frontend/client-logos/"
 # 基线路径不变时 scratch 里的 backend 会陈旧，每次用当前仓库覆盖
 cp -R "$FRONTEND_DIR/../backend/." "$E2E_ROOT/hub/backend/"
 

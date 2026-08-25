@@ -429,6 +429,81 @@ test.describe("§7 capabilities.tokenComponents=false（demo ?cm-scenario=nocap�
     await expect(page.locator("#client-dist-sub")).toContainText("真实构成分段");
   });
 
+  test("客户端分布用 token-monitor logo 标识，不用色点", async ({ page }) => {
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    const rows = page.locator("#client-dist .dist-row");
+    const n = await rows.count();
+    expect(n).toBeGreaterThan(0);
+    await expect(page.locator("#client-dist .dist-name .client-logo")).toHaveCount(n);
+    await expect(page.locator("#client-dist .dist-name i[style*='background']")).toHaveCount(0);
+    const mask = await page.locator("#client-dist .client-logo").first().evaluate((el) => {
+      const s = getComputedStyle(el);
+      return s.maskImage || s.webkitMaskImage || "";
+    });
+    expect(mask).toMatch(/client-logos\/[a-z0-9-]+\.svg/);
+  });
+
+  test("设备 / 配额 / 矩阵用 logo；模型图例与会话明细用色点", async ({ page }) => {
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    await expect(page.locator("#mx .mx-col .client-logo").first()).toBeVisible();
+    await expect(page.locator("#mx .mx-row .client-logo").first()).toBeVisible();
+    await expect(page.locator("#mx .mx-col i[style*='background']")).toHaveCount(0);
+    await expect(page.locator("#mx .mx-row i[style*='background']")).toHaveCount(0);
+    await expect(page.locator("#model-dist .donut-lg-row .client-logo")).toHaveCount(0);
+    await expect(page.locator("#model-dist .donut-lg-row i[style*='background']").first()).toBeVisible();
+
+    const sessDots = page.locator("#sess-body .dev-chip i[style*='background']");
+    await expect(sessDots.first()).toBeVisible();
+    await expect(page.locator("#sess-body .dev-chip .client-logo")).toHaveCount(0);
+
+    await page.goto("/demo#devices");
+    await expect(page.locator("#dev-grid .dev-chip .client-logo").first()).toBeVisible();
+    await expect(page.locator("#dev-grid .dev-chip i[style*='background']")).toHaveCount(0);
+
+    await page.goto("/demo#quota");
+    await expect(page.locator("#lim-grid .lim-provider .client-logo").first()).toBeVisible();
+    await expect(page.locator("#sub-grid .sub-card").first()).toBeVisible();
+    await expect(page.locator("#sub-grid .sub-provider .client-logo").first()).toBeVisible();
+    await expect(page.locator("#sub-grid .sub-provider i[style*='background']")).toHaveCount(0);
+  });
+
+  test("提供商状态含今日 DeepSeek / Kimi，不含未上报的 GLM", async ({ page }) => {
+    await page.goto("/demo");
+    await expect(page.locator("#provider-panel")).toBeVisible();
+    await expect(page.locator("#provider-grid")).toContainText("DeepSeek");
+    await expect(page.locator("#provider-grid")).toContainText("Kimi");
+    await expect(page.locator("#provider-grid")).toContainText("Anthropic");
+    await expect(page.locator("#provider-grid")).not.toContainText("GLM");
+    await expect(page.locator("#provider-grid")).not.toContainText("智谱");
+  });
+
+  test("周/月热力格子保持正方形（桌面与手机）", async ({ page }) => {
+    const assertSquare = async (sel, minPx) => {
+      const box = await page.locator(sel).first().evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return { w: r.width, h: r.height };
+      });
+      expect(Math.abs(box.w - box.h)).toBeLessThanOrEqual(1.5);
+      expect(box.w).toBeGreaterThanOrEqual(minPx);
+    };
+    await page.goto("/demo#history");
+    await expect(page.locator("#hm .hm-m").first()).toBeVisible();
+    await assertSquare("#hm .hm-m:not(.hm-skip)", 28);
+    await page.click('#act-seg button[data-v="week"]');
+    await expect(page.locator("#hm .hm-w:not(.hm-skip)").first()).toBeVisible();
+    await assertSquare("#hm .hm-w:not(.hm-skip)", 20);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.click('#act-seg button[data-v="month"]');
+    await expect(page.locator("#hm .hm-m:not(.hm-skip)").first()).toBeVisible();
+    await assertSquare("#hm .hm-m:not(.hm-skip)", 28);
+    await page.click('#act-seg button[data-v="week"]');
+    await expect(page.locator("#hm .hm-w:not(.hm-skip)").first()).toBeVisible();
+    await assertSquare("#hm .hm-w:not(.hm-skip)", 26);
+  });
+
   test("nocap 的今日 KPI 不把未知来源伪装成非缓存输入", async ({ page }) => {
     await page.goto("/demo?cm-scenario=nocap");
     await expect(page.locator("#shell")).toBeVisible();

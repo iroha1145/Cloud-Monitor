@@ -31,6 +31,8 @@ def _ok_map():
         STATUS_PAGES["anthropic"].summary_url: (200, summary),
         STATUS_PAGES["openai"].summary_url: (200, summary),
         STATUS_PAGES["cursor"].summary_url: (200, summary),
+        STATUS_PAGES["deepseek"].summary_url: (200, summary),
+        STATUS_PAGES["kimi"].summary_url: (200, summary),
     }
 
 HEADERS = {"X-Token-Monitor-Secret": TM_SECRET}

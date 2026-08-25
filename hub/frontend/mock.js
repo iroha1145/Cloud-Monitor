@@ -26,6 +26,11 @@
   const COST_PER_M = { "claude-opus-4.1": 12.5, "claude-sonnet-4.5": 4.8, "gpt-5-codex": 7.2 };
   /* 各模型缓存命中率刻意拉开（opus 高、codex 低），方便悬停图例对照 */
   const CACHE_HIT = { "claude-opus-4.1": 0.62, "claude-sonnet-4.5": 0.39, "gpt-5-codex": 0.17 };
+  /* 最近一次 overview 的今日客户端/模型，供 provider-status 只展示今日上报 */
+  let lastTodayKeys = {
+    clients: CLIENTS.concat(["deepseek", "kimi"]),
+    models: MODELS.concat(["deepseek-chat", "kimi-k2"]),
+  };
 
   const DAY = 86400000;
   const rand = (a, b) => a + Math.random() * (b - a);
@@ -211,6 +216,16 @@
       today: periodFrom(todayTokens, todayModels, todayClients),
       month: periodFrom(monthTokens, monthModels, monthClients),
       allTime: periodFrom(allTokens, allModels, allClients),
+    };
+    /* 今日额外上报 DeepSeek / Kimi，用来演示「有上报才出状态卡」。
+       GLM 无官方 Statuspage，故意不注入。 */
+    totals.today.clients.deepseek = clamp0(todayTokens * 0.07);
+    totals.today.clients.kimi = clamp0(todayTokens * 0.05);
+    totals.today.models["deepseek-chat"] = clamp0(todayTokens * 0.05);
+    totals.today.models["kimi-k2"] = clamp0(todayTokens * 0.04);
+    lastTodayKeys = {
+      clients: Object.keys(totals.today.clients).filter((k) => Number(totals.today.clients[k]) > 0),
+      models: Object.keys(totals.today.models).filter((k) => Number(totals.today.models[k]) > 0),
     };
 
     // 近 30 天趋势（按模型）
@@ -543,6 +558,14 @@
   /* ---------- 提供商状态（与 /api/v1/tm/provider-status 契约一致，结构对齐官方夹具） ---------- */
   function buildProviderStatus() {
     const now = new Date().toISOString();
+    const names = [...(lastTodayKeys.clients || []), ...(lastTodayKeys.models || [])];
+    const catalog = [
+      { provider: "anthropic", match: /claude|anthropic|sonnet|opus|haiku/i, name: "Anthropic", url: "https://status.claude.com" },
+      { provider: "openai", match: /codex|openai|gpt/i, name: "OpenAI", url: "https://status.openai.com" },
+      { provider: "cursor", match: /^cursor/i, name: "Cursor", url: "https://status.cursor.com" },
+      { provider: "deepseek", match: /deepseek/i, name: "DeepSeek", url: "https://status.deepseek.com" },
+      { provider: "kimi", match: /kimi|moonshot/i, name: "Kimi", url: "https://status.moonshot.cn" },
+    ];
     const entry = (provider, observedAs, name, url) => ({
       provider,
       observed_as: observedAs,
@@ -555,14 +578,16 @@
       error_code: null,
       url,
     });
+    const providers = catalog
+      .map((p) => {
+        const observed = names.filter((n) => p.match.test(String(n)));
+        return observed.length ? entry(p.provider, [...new Set(observed)], p.name, p.url) : null;
+      })
+      .filter(Boolean);
     return {
       schema_version: 1,
       generated_at: now,
-      providers: [
-        entry("anthropic", ["claude"], "Anthropic", "https://status.claude.com"),
-        entry("openai", ["codex"], "OpenAI", "https://status.openai.com"),
-        entry("cursor", ["cursor"], "Cursor", "https://status.cursor.com"),
-      ],
+      providers,
       partial: false,
       errors: [],
     };

@@ -27,14 +27,21 @@ log = logging.getLogger("tm-provider-status")
 SCHEMA_VERSION = 1
 TOTAL_BUDGET_SECONDS = 3.0
 
-# 客户端名 → 状态页 canonical。claude/codex 不得因 STATUS_PAGES 只写
-# anthropic/openai 而消失。
+# 客户端 / 提供商名 → 状态页 canonical。claude/codex 不得因 STATUS_PAGES
+# 只写 anthropic/openai 而消失。GLM/智谱暂无官方 Statuspage，故不建卡。
 PROVIDER_ALIASES: dict[str, str] = {
     "claude": "anthropic",
     "anthropic": "anthropic",
     "codex": "openai",
     "openai": "openai",
     "cursor": "cursor",
+    "deepseek": "deepseek",
+    "kimi": "kimi",
+    "moonshot": "kimi",
+    "glm": "glm",
+    "zhipu": "glm",
+    "zai": "glm",
+    "chatglm": "glm",
 }
 
 _STATUS_RANK = {
@@ -111,6 +118,26 @@ STATUS_PAGES: dict[str, StatusPage] = {
         prefer=_rx(r"^api$", r"cursor\s*api", r"\bapi\b", r"agent", r"tab"),
         exclude=_rx(r"^website$", r"^marketing$", r"docs"),
     ),
+    # 正式站 status.deepseek.com 已迁 Flashduty，且对非浏览器 TLS 会 RST；
+    # 仍提供 Atlassian 镜像（summary.json），页面入口继续指向正式站。
+    "deepseek": StatusPage(
+        canonical="deepseek",
+        name="DeepSeek",
+        public_url="https://status.deepseek.com",
+        summary_url="https://deepseek.statuspage.io/api/v2/summary.json",
+        status_url="https://deepseek.statuspage.io/api/v2/status.json",
+        prefer=_rx(r"api\s*service", r"^api$"),
+        exclude=_rx(r"web\s*chat", r"网页对话"),
+    ),
+    "kimi": StatusPage(
+        canonical="kimi",
+        name="Kimi",
+        public_url="https://status.moonshot.cn",
+        summary_url="https://status.moonshot.cn/api/v2/summary.json",
+        status_url="https://status.moonshot.cn/api/v2/status.json",
+        prefer=_rx(r"open\s*api", r"api\s*service", r"^api$", r"\bmodel\b"),
+        exclude=_rx(r"^kimi$", r"^website$", r"sign\s*in", r"saas", r"portal"),
+    ),
 }
 
 ALLOWED_FETCH_URLS: frozenset[str] = frozenset(
@@ -128,13 +155,51 @@ def utc_now_z() -> str:
     )
 
 
+def _canonical_from_usage_name(key: str) -> Optional[str]:
+    """模型名 / 复合客户端名 → canonical。无状态页的厂商（如 GLM）返回 None。"""
+    if key in PROVIDER_ALIASES:
+        canon = PROVIDER_ALIASES[key]
+        return canon if canon in STATUS_PAGES else None
+    if "claude" in key or "anthropic" in key or "sonnet" in key or "opus" in key or "haiku" in key:
+        return "anthropic"
+    if "gpt" in key or "openai" in key or "chatgpt" in key or "codex" in key:
+        return "openai"
+    if re.search(r"(?:^|[^a-z])o[1-9](?:[-.]|$)", key):
+        return "openai"
+    if "deepseek" in key:
+        return "deepseek"
+    if "kimi" in key or "moonshot" in key:
+        return "kimi"
+    if key == "cursor" or key.startswith("cursor-"):
+        return "cursor"
+    return None
+
+
 def canonical_provider(raw: Any) -> Optional[str]:
     if not isinstance(raw, str):
         return None
     key = raw.strip().lower()
     if not key:
         return None
-    return PROVIDER_ALIASES.get(key)
+    return _canonical_from_usage_name(key)
+
+
+def _has_today_usage(val: Any) -> bool:
+    if val is None:
+        return False
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, (int, float)):
+        return val > 0
+    if isinstance(val, dict):
+        for field in ("totalTokens", "tokens", "total"):
+            if field in val:
+                try:
+                    return float(val[field] or 0) > 0
+                except (TypeError, ValueError):
+                    return False
+        return True
+    return True
 
 
 def discover_providers(
@@ -143,9 +208,12 @@ def discover_providers(
     *,
     extra_client_names: Optional[Iterable[str]] = None,
 ) -> dict[str, list[str]]:
-    """从 stats.periods.today.clients / stats.limits.providers /
-    subscriptions[].provider 收集 observed 名，按 alias 归到 allowlist canonical。
+    """只收集今日有上报的提供商：periods.today.clients / today.models。
+
+    订阅清单与配额窗口不再单独出卡——今日用量里没出现则不显示。
+    extra_client_names 仅供测试注入。subscriptions 保留签名兼容，忽略。
     """
+    del subscriptions  # 今日上报口径，不用订阅清单凑卡
     observed: dict[str, list[str]] = {k: [] for k in STATUS_PAGES}
 
     def add(raw: Any) -> None:
@@ -153,7 +221,7 @@ def discover_providers(
             return
         name = raw.strip()
         canon = canonical_provider(name)
-        if canon is None:
+        if canon is None or canon not in observed:
             return
         bucket = observed[canon]
         if name not in bucket:
@@ -161,26 +229,17 @@ def discover_providers(
 
     periods = (stats or {}).get("periods") if isinstance(stats, dict) else None
     today = periods.get("today") if isinstance(periods, dict) else None
-    clients = today.get("clients") if isinstance(today, dict) else None
-    if isinstance(clients, dict):
-        for key in clients:
-            add(key)
-
-    limits = (stats or {}).get("limits") if isinstance(stats, dict) else None
-    providers = limits.get("providers") if isinstance(limits, dict) else None
-    if isinstance(providers, list):
-        for entry in providers:
-            if isinstance(entry, dict):
-                add(entry.get("provider"))
-            elif isinstance(entry, str):
-                add(entry)
-
-    if isinstance(subscriptions, dict):
-        subscriptions = subscriptions.get("subscriptions")
-    if isinstance(subscriptions, list):
-        for entry in subscriptions:
-            if isinstance(entry, dict):
-                add(entry.get("provider"))
+    if isinstance(today, dict):
+        clients = today.get("clients")
+        if isinstance(clients, dict):
+            for key, val in clients.items():
+                if _has_today_usage(val):
+                    add(key)
+        models = today.get("models")
+        if isinstance(models, dict):
+            for key, val in models.items():
+                if _has_today_usage(val):
+                    add(key)
 
     if extra_client_names:
         for name in extra_client_names:
@@ -399,7 +458,7 @@ async def fetch_provider_statuses(
     """并发拉取 allowlist 状态页。总预算默认 3s，不得串行 3×5s。"""
     checked_at = utc_now_z()
     timeout = min(max(float(timeout_seconds), 0.1), budget_seconds)
-    canonicals = [c for c in ("anthropic", "openai", "cursor") if c in observed]
+    canonicals = [c for c in STATUS_PAGES if c in observed]
     if not canonicals:
         return [], []
 

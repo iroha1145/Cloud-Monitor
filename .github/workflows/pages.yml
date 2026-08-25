@@ -31,6 +31,7 @@ jobs:
           mkdir -p _site
           # theme-boot.js 必须在列：漏拷时演示站 404，夜间模式偏好每次刷新被重置
           cp hub/frontend/tm.css hub/frontend/tm.js hub/frontend/mock.js hub/frontend/icons.svg hub/frontend/theme-boot.js _site/
+          cp -R hub/frontend/client-logos _site/client-logos
           python3 - <<'PY'
           from pathlib import Path
           html = Path("hub/frontend/demo.html").read_text(encoding="utf-8")

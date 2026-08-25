@@ -98,11 +98,21 @@ class MapTransport(httpx.AsyncBaseTransport):
         return httpx.Response(status, text=str(body))
 
 
+def _deepseek_ok():
+    return _summary(components=[{"name": "API 服务 (API Service)", "status": "operational"}])
+
+
+def _kimi_ok():
+    return _summary(components=[{"name": "Open API", "status": "operational"}, {"name": "Kimi", "status": "major_outage"}])
+
+
 def _ok_map():
     return {
         STATUS_PAGES["anthropic"].summary_url: (200, _claude_ok()),
         STATUS_PAGES["openai"].summary_url: (200, _openai_ok()),
         STATUS_PAGES["cursor"].summary_url: (200, _cursor_ok()),
+        STATUS_PAGES["deepseek"].summary_url: (200, _deepseek_ok()),
+        STATUS_PAGES["kimi"].summary_url: (200, _kimi_ok()),
     }
 
 
@@ -118,7 +128,13 @@ def test_aliases_map_claude_codex_cursor():
     assert canonical_provider("codex") == "openai"
     assert canonical_provider("openai") == "openai"
     assert canonical_provider("cursor") == "cursor"
-    assert canonical_provider("deepseek") is None
+    assert canonical_provider("deepseek") == "deepseek"
+    assert canonical_provider("deepseek-chat") == "deepseek"
+    assert canonical_provider("kimi") == "kimi"
+    assert canonical_provider("moonshot") == "kimi"
+    assert canonical_provider("kimi-k2") == "kimi"
+    assert canonical_provider("glm") is None  # 无官方 Statuspage，不出卡
+    assert canonical_provider("glm-4.6") is None
 
 
 def test_discover_from_today_clients_when_limits_off():
@@ -129,16 +145,30 @@ def test_discover_from_today_clients_when_limits_off():
     assert "cursor" not in found
 
 
-def test_discover_from_limits_and_subscriptions():
+def test_discover_only_today_usage_not_limits_or_subscriptions():
     stats = {
         "periods": {"today": {"clients": {}}},
         "limits": {"providers": [{"provider": "claude"}, {"provider": "openai"}]},
     }
     subs = [{"provider": "cursor"}, {"provider": "anthropic"}]
     found = discover_providers(stats, subs)
-    assert "claude" in found["anthropic"] and "anthropic" in found["anthropic"]
-    assert found["openai"] == ["openai"]
-    assert found["cursor"] == ["cursor"]
+    assert found == {}
+
+
+def test_discover_from_today_models_and_skip_zero():
+    stats = {
+        "periods": {
+            "today": {
+                "clients": {"claude": 0, "deepseek": 8},
+                "models": {"kimi-k2": 3, "glm-4.6": 9, "claude-sonnet-4.5": 0},
+            }
+        }
+    }
+    found = discover_providers(stats)
+    assert found["deepseek"] == ["deepseek"]
+    assert found["kimi"] == ["kimi-k2"]
+    assert "anthropic" not in found
+    assert "glm" not in found
 
 
 def test_chatgpt_web_outage_does_not_mark_openai_api_down():
@@ -148,12 +178,19 @@ def test_chatgpt_web_outage_does_not_mark_openai_api_down():
     assert parsed["error_code"] is None
 
 
+def test_kimi_consumer_outage_does_not_mark_api_down():
+    parsed = parse_status_payload(STATUS_PAGES["kimi"], _kimi_ok())
+    assert parsed["status"] == "operational"
+
+
 def test_allowlist_is_fixed_and_has_no_client_url():
     assert STATUS_PAGES["anthropic"].summary_url.endswith("/api/v2/summary.json")
     assert STATUS_PAGES["openai"].status_url.endswith("/api/v2/status.json")
     for url in ALLOWED_FETCH_URLS:
-        assert url.startswith("https://status.")
+        host = httpx.URL(url).host
+        assert url.startswith("https://")
         assert "/api/v2/" in url
+        assert host.startswith("status.") or host.endswith(".statuspage.io")
 
 
 def test_three_status_pages_concurrent_not_serial():
@@ -180,6 +217,29 @@ def test_three_status_pages_concurrent_not_serial():
     assert by["cursor"]["status"] == "operational"
     hosts = {httpx.URL(u).host for u in transport.urls}
     assert hosts <= {"status.claude.com", "status.openai.com", "status.cursor.com"}
+
+
+def test_fetch_deepseek_and_kimi_when_observed_today():
+    async def run():
+        client, transport = await _client(_ok_map())
+        try:
+            providers, errors = await fetch_provider_statuses(
+                client,
+                {"deepseek": ["deepseek"], "kimi": ["kimi-k2"]},
+                timeout_seconds=2.5,
+                budget_seconds=3.0,
+            )
+        finally:
+            await client.aclose()
+        return providers, errors, transport
+
+    providers, errors, transport = asyncio.run(run())
+    assert not errors
+    by = {p["provider"]: p for p in providers}
+    assert by["deepseek"]["status"] == "operational"
+    assert by["kimi"]["status"] == "operational"
+    hosts = {httpx.URL(u).host for u in transport.urls}
+    assert hosts <= {"deepseek.statuspage.io", "status.moonshot.cn"}
 
 
 def test_single_timeout_within_budget():
@@ -335,7 +395,7 @@ def test_endpoint_auth_and_secret_isolation(cloud):
 
 
 @requires_node
-def test_endpoint_aliases_cursor_limits_off_subscriptions(cloud):
+def test_endpoint_today_usage_not_subscription_only(cloud):
     pa = widget_style_payload("dev-ps")
     pa["limits"] = {"providers": []}
     assert cloud.post("/api/ingest", json=pa, headers=HEADERS).status_code == 200
@@ -366,7 +426,7 @@ def test_endpoint_aliases_cursor_limits_off_subscriptions(cloud):
     by = {p["provider"]: p for p in body["providers"]}
     assert "anthropic" in by and "claude" in by["anthropic"]["observed_as"]
     assert "openai" in by and "codex" in by["openai"]["observed_as"]
-    assert "cursor" in by
+    assert "cursor" not in by  # 仅订阅、今日无上报 → 不出卡
     assert by["openai"]["status"] == "operational"  # ChatGPT 中断未污染 API
     features = cloud.get("/api/v1/tm/overview", headers=READ).json()["features"]
     assert features["provider_status"] is True

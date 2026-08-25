@@ -350,6 +350,83 @@ const ICON_SVG = (() => {
   }
 })();
 const iconHref = (id) => ICON_SVG + "#" + id;
+/* token-monitor 官方客户端图标（assets/icons/*.svg）。别名对齐其 row-icon CSS。 */
+const CLIENT_LOGO_DIR = (() => {
+  const el = document.querySelector("script[src*=\"tm.js\"]");
+  try {
+    return el ? new URL("client-logos/", el.src).href : "/static/client-logos/";
+  } catch (e) {
+    return "/static/client-logos/";
+  }
+})();
+const CLIENT_LOGO_ALIAS = {
+  hermes: "hermes-agent",
+  grok: "xai",
+  xai: "grok",
+  micode: "xiaomi",
+  mimo: "xiaomi",
+  zcode: "zai",
+  zaiteam: "zai",
+  thirdparty: "newapi",
+  /* 提供商 / 厂商名落到同一套 token-monitor 图标 */
+  anthropic: "claude",
+  openai: "codex",
+  chatgpt: "codex",
+  google: "gemini",
+  github: "copilot",
+  zhipu: "zai",
+  moonshot: "kimi",
+  bytedance: "doubao",
+  volc: "volcengine",
+};
+const CLIENT_LOGO_IDS = new Set([
+  "antigravity", "cherrystudio", "claude", "cline", "codebuddy", "codex",
+  "cohere", "commandcode", "copilot", "cursor", "deepseek", "doubao", "dsh",
+  "gemini", "grok", "hermes-agent", "hunyuan", "kilocode", "kimi", "kiro",
+  "meta", "minimax", "mistral", "moonshot", "newapi", "ollama", "openclaw",
+  "opencode", "openrouter", "pi", "proma", "qoder", "qodercn", "qwen",
+  "reasonix", "trae", "volcengine", "workbuddy", "xai", "xiaomi", "zai", "zed",
+]);
+/* 模型名 → 厂商图标（对齐 token-monitor usageCharts.modelVendorFor，openai 用 codex 标） */
+function modelVendorId(name) {
+  const s = String(name || "").toLowerCase();
+  if (!s) return "";
+  if (s.includes("claude") || s.includes("anthropic") || s.includes("sonnet") || s.includes("opus") || s.includes("haiku")) return "claude";
+  if (s.includes("gpt") || s.includes("openai") || s.includes("chatgpt") || s.includes("codex") || /(?:^|[^a-z])o[1-9](?:[-.]|$)/.test(s)) return "codex";
+  if (s.includes("gemini") || s.includes("gemma")) return "gemini";
+  if (s.includes("grok") || s.includes("xai")) return "grok";
+  if (s.includes("deepseek")) return "deepseek";
+  if (s.includes("qwen") || s.includes("qwq")) return "qwen";
+  if (s.includes("glm") || s.includes("zhipu") || /\bzai\b/.test(s)) return "zai";
+  if (s.includes("kimi") || s.includes("moonshot")) return "kimi";
+  if (s.includes("mistral") || s.includes("mixtral") || s.includes("codestral")) return "mistral";
+  if (s.includes("llama") || s.includes("meta")) return "meta";
+  if (s.includes("minimax")) return "minimax";
+  if (s.includes("doubao")) return "doubao";
+  if (s.includes("hunyuan")) return "hunyuan";
+  if (s.includes("command-r") || s.includes("cohere") || s.includes("aya-")) return "cohere";
+  if (s === "pi" || s.startsWith("pi-") || s.includes("inflection")) return "pi";
+  if (s.includes("cursor")) return "cursor";
+  if (s.includes("copilot")) return "copilot";
+  return "";
+}
+function clientLogoId(name) {
+  const raw = String(name || "").trim().toLowerCase();
+  const key = raw.replace(/[^a-z0-9-]/g, "");
+  const id = CLIENT_LOGO_ALIAS[key] || key;
+  if (CLIENT_LOGO_IDS.has(id)) return id;
+  const vendor = modelVendorId(raw);
+  return vendor && CLIENT_LOGO_IDS.has(vendor) ? vendor : "";
+}
+function clientLogoHtml(name) {
+  const id = clientLogoId(name);
+  if (id) {
+    const url = CLIENT_LOGO_DIR + id + ".svg";
+    return `<i class="client-logo" style="-webkit-mask-image:url('${url}');mask-image:url('${url}')" aria-hidden="true"></i>`;
+  }
+  const ch = esc(String(name || "?").trim().slice(0, 1).toUpperCase() || "?");
+  return `<i class="client-logo client-logo-fallback" aria-hidden="true">${ch}</i>`;
+}
 const POLL_MS = 5 * 60 * 1000;
 const TREND_TOP_MODELS = 8;
 /* 模型分布图例：超过 COLLAPSE_AT 行时只展开前 TOP 行，其余收进手风琴
@@ -1596,13 +1673,15 @@ function renderDist(listSel, emptySel, subSel, per, kind) {
     const w = ((v / max) * 100).toFixed(2);
     const bd = breakdowns.get(name);
     let barInner, tip, costHtml = "";
+    const solid = isModel ? color : "var(--brand-500)";
+    const mark = clientLogoHtml(name);
     if (bd.known) {
       const denom = Math.max(v, bd.segs.reduce((a, s) => a + s.value, 0));
       barInner = bd.segs.length
         ? bd.segs.map((s) =>
             `<i class="dist-part seg-${s.cls}" style="width:${((s.value / denom) * 100).toFixed(2)}%"></i>`
           ).join("")
-        : `<i class="dist-part" style="width:100%;background:${color}"></i>`;
+        : `<i class="dist-part" style="width:100%;background:${solid}"></i>`;
       const tipRows = bd.segs.map((s) => [s.label, `${fmtCompact(s.value)}（${pct1(s.value, v)}）`]);
       if (!bd.complete) tipRows.push(["完整性警告", "构成合计与总量不一致"]);
       if (costs[name] != null) {
@@ -1613,7 +1692,7 @@ function renderDist(listSel, emptySel, subSel, per, kind) {
       tip = () => tipHtml(name + (bd.complete ? "" : "（构成不完整）"), tipRows);
     } else {
       // §7-3/5：来源未知显示单色总量条，不做任何比例估算
-      barInner = `<i class="dist-part" style="width:100%;background:${color}"></i>`;
+      barInner = `<i class="dist-part" style="width:100%;background:${solid}"></i>`;
       const tipRows = [["合计", fmtInt(v)]];
       if (costs[name] != null) {
         tipRows.push(["费用", fmtUsd(costs[name])]);
@@ -1625,7 +1704,7 @@ function renderDist(listSel, emptySel, subSel, per, kind) {
     tips.push(tip);
     const warnHtml = bd.known && !bd.complete ? `<span class="comp-warn">构成不完整</span>` : "";
     return `<div class="dist-row">
-      <span class="dist-name" title="${esc(name)}"><i style="background:${color}"></i>${esc(name)}</span>
+      <span class="dist-name" title="${esc(name)}">${mark}${esc(name)}</span>
       <div class="dist-track"><div class="dist-bar" style="width:${w}%">${barInner}</div></div>
       <span class="dist-val" title="${fmtInt(v)} tokens"><b>${fmtCompactHtml(v)}</b>${pct1(v, sumAll)}${costHtml}${warnHtml}</span>
     </div>`;
@@ -1672,12 +1751,10 @@ function renderMatrix() {
   const fmtV = isCost ? fmtUsd : fmtCompact;
 
   const head = [`<span class="mx-corner"></span>`]
-    .concat(models.map((m) => {
-      const color = state.modelColors[m] || OTHER_COLOR;
-      return `<span class="mx-col" title="${esc(m)}"><i style="background:${color}"></i><span>${esc(m)}</span></span>`;
-    })).join("");
+    .concat(models.map((m) =>
+      `<span class="mx-col" title="${esc(m)}">${clientLogoHtml(m)}<span>${esc(m)}</span></span>`
+    )).join("");
   const rowsHtml = clients.map((c) => {
-    const color = state.clientColors[c] || OTHER_COLOR;
     const cells = models.map((m) => {
       const v = cellOf(c, m);
       if (v <= 0) return `<span class="mx-cell is-zero"></span>`;
@@ -1688,7 +1765,7 @@ function renderMatrix() {
       return `<span class="mx-cell mx-lv${lv}" role="img" data-c="${esc(c)}" data-m="${esc(m)}" data-v="${v}" ` +
         `data-lv="${lv}" aria-label="${esc(label)}"></span>`;
     }).join("");
-    return `<span class="mx-row" title="${esc(c)}"><i style="background:${color}"></i><span>${esc(c)}</span></span>${cells}`;
+    return `<span class="mx-row" title="${esc(c)}">${clientLogoHtml(c)}<span>${esc(c)}</span></span>${cells}`;
   }).join("");
   const scaleLegend =
     `<div class="mx-scale" aria-hidden="true"><span>低</span>` +
@@ -1750,9 +1827,10 @@ function renderSessions() {
     const color = state.clientColors[client] || OTHER_COLOR;
     const sid = String(s.sessionId || "");
     const models = modelNamesOf(s.models);
-    const modelsText = models.length > 2
-      ? models.slice(0, 2).join("、") + ` +${models.length - 2}`
-      : models.join("、");
+    const modelsHtml = models.length
+      ? models.slice(0, 2).map((m) => `<span class="sess-model">${clientLogoHtml(m)}${esc(m)}</span>`).join("")
+        + (models.length > 2 ? `<span class="sess-more">+${models.length - 2}</span>` : "")
+      : "—";
     const tokens = Number(s.tokens) || 0;
     const start = new Date(s.startedAt).getTime();
     const end = new Date(s.lastUsedAt).getTime();
@@ -1760,9 +1838,9 @@ function renderSessions() {
       ? fmtDuration(end - start)
       : "—";
     return `<tr>
-      <td><span class="dev-chip" style="background:${color}1f"><i style="background:${color}"></i>${esc(client || "—")}</span></td>
+      <td><span class="dev-chip"><i style="background:${color}"></i>${esc(client || "—")}</span></td>
       <td><span class="sess-id" title="${esc(sid)}">${esc(sid.slice(0, 12))}</span></td>
-      <td><span class="sess-models" title="${esc(models.join("、"))}">${esc(modelsText || "—")}</span></td>
+      <td><span class="sess-models" title="${esc(models.join("、"))}">${modelsHtml}</span></td>
       <td class="num" title="${fmtInt(tokens)} tokens">${fmtCompact(tokens)}</td>
       <td class="num">${fmtUsd(s.costUsd)}</td>
       <td>${esc(s.project || "—")}</td>
@@ -1871,7 +1949,6 @@ function diagHtml(diag, platform) {
   const tools = healthEntries(diag.clientHealth);
   if (tools.length) {
     parts.push(`<div class="diag-health">${tools.map(([name, v]) => {
-      const color = state.clientColors[name] || OTHER_COLOR;
       const isObj = v && typeof v === "object";
       const ver = isObj ? (v.version || v.agentVersion || v.v || "") : "";
       const stRaw = diagnosticState(name, v, diag);
@@ -1880,7 +1957,7 @@ function diagHtml(diag, platform) {
       const verText = String(ver || "").replace(/^v/, "");
       const widthPct = lv === "ok" ? 100 : lv === "warn" ? 62 : lv === "crit" ? 28 : 45;
       return `<span class="diag-tool">
-        <span class="dt-name"><i style="background:${color}"></i>${esc(name)}${verText ? ` <em>v${esc(verText)}</em>` : ""}</span>
+        <span class="dt-name">${clientLogoHtml(name)}${esc(name)}${verText ? ` <em>v${esc(verText)}</em>` : ""}</span>
         <span class="dt-track"><i class="lv-${lv}" style="width:${widthPct}%"></i></span>
         <em title="${esc(stText)}">${esc({ ok: "健康", warn: "警告", crit: "异常", mute: "未知" }[lv])}</em>
       </span>`;
@@ -1935,10 +2012,9 @@ function renderDevicesView() {
     const tz = (winMap[devId] || {}).timeZone;
     if (tz) meta.push(["i-globe", String(tz)]);
 
-    const chips = (d.trackedClients || []).map((c) => {
-      const color = state.clientColors[c] || OTHER_COLOR;
-      return `<span class="dev-chip" style="background:${color}1f"><i style="background:${color}"></i>${esc(c)}</span>`;
-    }).join("");
+    const chips = (d.trackedClients || []).map((c) =>
+      `<span class="dev-chip">${clientLogoHtml(c)}${esc(c)}</span>`
+    ).join("");
 
     const badges = [
       d.projectsEnabled ? `<span class="dev-badge">项目统计</span>` : "",
@@ -2050,7 +2126,7 @@ function renderLimits(limits) {
     }).filter(Boolean).join("");
     return `<article class="lim-card${riseCls()}"${riseStyle(li)}>
       <div class="lim-top">
-        <div class="lim-provider"><strong>${esc(fmtProvider(provider))}</strong>${plan}</div>
+        <div class="lim-provider">${clientLogoHtml(provider)}<strong>${esc(fmtProvider(provider))}</strong>${plan}</div>
         ${bal ? `<div class="lim-balance"><span>余额</span><b>${esc(bal)}</b></div>` : ""}
       </div>
       ${account ? `<div class="lim-account" title="${esc(account)}">${esc(account)}</div>` : ""}
@@ -2122,7 +2198,7 @@ function renderSubs() {
         .filter(Boolean).sort().pop();
       return `<article class="sub-card${riseCls()}"${riseStyle(si)}>
         <div class="sub-top">
-          <span class="sub-provider"><i></i>${esc(fmtProvider(it.provider))}</span>
+          <span class="sub-provider">${clientLogoHtml(it.provider)}${esc(fmtProvider(it.provider))}</span>
           <span class="renew-badge">充值台账</span>
         </div>
         <h3 class="sub-plan">${esc(it.planName || "按量充值")}</h3>
@@ -2149,7 +2225,7 @@ function renderSubs() {
       : "";
     return `<article class="sub-card${riseCls()}"${riseStyle(si)}>
       <div class="sub-top">
-        <span class="sub-provider"><i></i>${esc(fmtProvider(it.provider))}</span>
+        <span class="sub-provider">${clientLogoHtml(it.provider)}${esc(fmtProvider(it.provider))}</span>
         <span class="renew-badge${it.autoRenew !== false ? " on" : ""}">${it.autoRenew !== false ? "自动续费" : "手动续费"}</span>
       </div>
       <h3 class="sub-plan">${esc(it.planName || "—")}</h3>
