@@ -1209,10 +1209,15 @@ html[data-theme="dark"] .pv-card.lv-crit .pv-status { color: #ff9a94; }
 .hm-mon-sum { border-left: 1px solid var(--border); padding-left: 22px; }
 .hm-mon-sum-title { font-size: 13px; font-weight: 700; margin-bottom: 12px; }
 .hm-sum-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.hm-sum span { display: block; font-size: 10.5px; color: var(--mute); }
+/* 只有直接子级标签才独占一行：后代选择器会连 <b> 里 fmtCompactHtml 的
+   .num-compact/.num-int/.num-unit 一起变块级，「8687.7万」的「万」被挤到
+   数字下一行（nowrap 对块级子元素无效） */
+.hm-sum > span { display: block; font-size: 10.5px; color: var(--mute); }
 .hm-sum b { display: block; margin-top: 3px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 600; }
+.hm-sum b span, .hm-avg b span { display: inline; font-size: inherit; color: inherit; }
+.hm-sum b .num-unit, .hm-avg b .num-unit { font-size: 0.52em; color: inherit; }
 .hm-sum-mid { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; }
-.hm-avg span { display: block; font-size: 10.5px; color: var(--mute); }
+.hm-avg > span { display: block; font-size: 10.5px; color: var(--mute); }
 .hm-avg b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 600; }
 .hm-avg em { font-style: normal; display: block; font-size: 10px; color: var(--mute); }
 .hm-wow { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; font-weight: 600; padding: 4px 10px; border-radius: var(--r-pill); }

@@ -360,9 +360,10 @@ const MATRIX_TOP = 8;
 const SESSIONS_SHOW = 5;
 const HIST_PAGE = 30;
 
-/* 矩阵色阶：5 档品牌紫阶（低值可辨），空格另用画布灰 */
-const MX_SCALE = ["#e8e9ff", "#d6d9fc", "#b9b9f9", "#533afd", "#2e2b8c"];
-const MX_ZERO = "#f8fafd";
+/* 矩阵色阶档数：颜色全部由 CSS 的 .mx-lv0…4 / .is-zero 承载（含暗色反向
+   映射）。禁止 JS 内联色值——图例与格子必须走同一套类，否则夜间模式下
+   图例还是亮色色板、方向与格子完全相反 */
+const MX_LEVELS = 5;
 
 const PERIODS = [
   ["today", "今日"],
@@ -756,6 +757,7 @@ function updateTopbar() {
 
 function switchView(view) {
   if (!VIEWS[view]) return;
+  if (view === state.view && state.booted) return; // 重复点当前项不重播入场动画
   const prev = state.view;
   state.view = view;
   document.querySelectorAll(".view").forEach((s) => {
@@ -1513,16 +1515,28 @@ function renderModelDonut(per, animate) {
       if (match && a.parentNode) a.parentNode.appendChild(a);
     });
   };
-  rows.forEach((r) => {
-    r.addEventListener("mouseenter", (e) => { hot(r.dataset.name, true); floatTip.show(tipOf(r.dataset.name)(), e.clientX, e.clientY); });
-    r.addEventListener("mousemove", (e) => floatTip.place(e.clientX, e.clientY));
-    r.addEventListener("mouseleave", () => { hot(r.dataset.name, false); floatTip.hide(); });
-  });
-  arcEls.forEach((a) => {
-    a.addEventListener("mouseenter", (e) => { hot(a.dataset.name, true); floatTip.show(tipOf(a.dataset.name)(), e.clientX, e.clientY); });
-    a.addEventListener("mousemove", (e) => floatTip.place(e.clientX, e.clientY));
-    a.addEventListener("mouseleave", () => { hot(a.dataset.name, false); floatTip.hide(); });
-  });
+  /* §10：与 bindHover 同等可达性——focus/blur（键盘）与 touchstart（触摸）
+     也能触发联动与 tooltip；缓存率等 hover 信息在手机上不再不可达 */
+  const bindHot = (el) => {
+    const name = el.dataset.name;
+    if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "0");
+    const openAt = (x, y) => { hot(name, true); floatTip.trigger = el; floatTip.show(tipOf(name)(), x, y); };
+    const close = () => { hot(name, false); floatTip.hide(); };
+    el.addEventListener("mouseenter", (e) => openAt(e.clientX, e.clientY));
+    el.addEventListener("mousemove", (e) => floatTip.place(e.clientX, e.clientY));
+    el.addEventListener("mouseleave", close);
+    el.addEventListener("focus", () => {
+      const r = el.getBoundingClientRect();
+      openAt(r.left + r.width / 2, r.top);
+    });
+    el.addEventListener("blur", close);
+    el.addEventListener("touchstart", (e) => {
+      const t = e.changedTouches[0];
+      if (t) openAt(t.clientX, t.clientY);
+    }, { passive: true });
+  };
+  rows.forEach(bindHot);
+  arcEls.forEach(bindHot);
 }
 
 function refitDonutCenters() {
@@ -1669,7 +1683,7 @@ function renderMatrix() {
       if (v <= 0) return `<span class="mx-cell is-zero"></span>`;
       const t = maxV > 0 ? v / maxV : 0;
       // 离散 5 档：低值也清晰可见，避免连续渐变导致浅档看不清
-      const lv = Math.min(MX_SCALE.length - 1, Math.floor(t * MX_SCALE.length));
+      const lv = Math.min(MX_LEVELS - 1, Math.floor(t * MX_LEVELS));
       const label = `${c} × ${m}，${isCost ? "费用" : "tokens"} ${fmtV(v)}`;
       return `<span class="mx-cell mx-lv${lv}" role="img" data-c="${esc(c)}" data-m="${esc(m)}" data-v="${v}" ` +
         `data-lv="${lv}" aria-label="${esc(label)}"></span>`;
@@ -1678,8 +1692,8 @@ function renderMatrix() {
   }).join("");
   const scaleLegend =
     `<div class="mx-scale" aria-hidden="true"><span>低</span>` +
-    `<i class="mx-cell mx-zero-s" style="background:${MX_ZERO}"></i>` +
-    MX_SCALE.map((c) => `<i class="mx-cell" style="background:${c}"></i>`).join("") +
+    `<i class="mx-cell is-zero"></i>` +
+    Array.from({ length: MX_LEVELS }, (_, i) => `<i class="mx-cell mx-lv${i}"></i>`).join("") +
     `<span>高</span></div>`;
   // 格子正方形且随容器自适应，但列少时给整格网上限，避免巨型方块；
   // 窄屏（≤768px）改用 0 最小列宽 + 无整网上限，配合 CSS min-width:0 装入屏宽
@@ -2432,23 +2446,26 @@ function historyRows() {
       }))
       .sort((a, b) => (a.day < b.day ? 1 : -1));
   }
-  // 回退：trend_models（30 天，模型构成）+ activity.daily（90 天，仅总量）
+  // 回退：trend_models（30 天，模型构成）+ activity.daily（90 天，仅总量）。
+  // 同日多源取 max（与 trendRows 同一合并策略）：先到先得会让日归档与
+  // 趋势图在数据源不一致时对同一天显示不同总量
   const merged = new Map();
-  (d.trend_models || []).forEach((r) => {
-    if (!r || !r.day) return;
-    merged.set(r.day, {
-      day: r.day, tokens: Number(r.total) || 0, costUsd: null,
-      mix: null, mixModel: r.models || null,
-    });
-  });
-  (d.trend || []).forEach((r) => {
-    if (!r || !r.day) return;
-    if (!merged.has(r.day)) merged.set(r.day, { day: r.day, tokens: Number(r.total) || 0, costUsd: null, mix: null, mixModel: null });
-  });
-  ((d.activity || {}).daily || []).forEach((r) => {
-    if (!r || !r.day) return;
-    if (!merged.has(r.day)) merged.set(r.day, { day: r.day, tokens: Number(r.total) || 0, costUsd: null, mix: null, mixModel: null });
-  });
+  const take = (day, total, models) => {
+    if (!day) return;
+    const tokens = Number(total) || 0;
+    const prev = merged.get(day);
+    if (!prev) {
+      merged.set(day, {
+        day, tokens, costUsd: null, mix: null, mixModel: models || null,
+      });
+      return;
+    }
+    if (tokens > prev.tokens) prev.tokens = tokens;
+    if (models && !prev.mixModel) prev.mixModel = models;
+  };
+  (d.trend_models || []).forEach((r) => r && take(r.day, r.total, r.models));
+  (d.trend || []).forEach((r) => r && take(r.day, r.total, null));
+  ((d.activity || {}).daily || []).forEach((r) => r && take(r.day, r.total, null));
   return [...merged.values()].sort((a, b) => (a.day < b.day ? 1 : -1));
 }
 
@@ -2864,7 +2881,12 @@ async function load(manual) {
   }
 }
 
-/* ---------- §4/§9：provider-status 独立状态机 ---------- */
+/* ---------- §4/§9：provider-status 独立状态机 ----------
+ * §3-11 竞态纪律（三个辅助加载器共同遵守）：辅助接口有各自的 AbortController，
+ * 不再校验主请求的 requestGeneration——同一密钥下的在途响应永远是有效数据，
+ * 轮询/手动刷新/页面切回（gen 递增）不得作废它。真正要防的只有换密钥
+ * （tokenRevision）与显式中止。任何提前返回都必须复位状态：此前 gen 不匹配
+ * 直接 return 会把 status 永久留在 "loading"，订阅/历史从此不再加载。 */
 async function loadProviderStatus() {
   const aux = state.aux.providers;
   /* 契约 features.provider_status=false → 能力关闭，不发请求、整块隐藏 */
@@ -2879,17 +2901,24 @@ async function loadProviderStatus() {
   const ctl = new AbortController();
   aux.aborter = ctl;
   aux.status = "loading";
-  const gen = state.requestGeneration;
+  const rev = state.tokenRevision;
   try {
     const res = await dataApi.providerStatus(ctl.signal);
-    if (ctl.signal.aborted || gen !== state.requestGeneration) return;
-    const list = res && Array.isArray(res.providers) ? res.providers : [];
-    aux.data = res;
-    aux.status = list.length ? "ready" : "empty";
+    if (!ctl.signal.aborted && rev === state.tokenRevision) {
+      const list = res && Array.isArray(res.providers) ? res.providers : [];
+      aux.data = res;
+      aux.status = list.length ? "ready" : "empty";
+    }
   } catch (e) {
-    if (ctl.signal.aborted || gen !== state.requestGeneration) return;
-    aux.data = null;
-    aux.status = e instanceof ApiError && e.status === 404 ? "unsupported" : "error";
+    if (!ctl.signal.aborted && rev === state.tokenRevision) {
+      aux.data = null;
+      aux.status = e instanceof ApiError && e.status === 404 ? "unsupported" : "error";
+    }
+  } finally {
+    if (aux.aborter === ctl) {
+      aux.aborter = null;
+      if (aux.status === "loading") aux.status = "idle"; // 被中止/换密钥：允许重载
+    }
   }
   renderProviderStatus();
 }
@@ -2902,17 +2931,24 @@ async function ensureSubs() {
   const ctl = new AbortController();
   aux.aborter = ctl;
   aux.status = "loading";
-  const gen = state.requestGeneration;
+  const rev = state.tokenRevision;
   if (state.view === "quota") renderQuotaView();
   try {
     const res = await dataApi.subscriptions(ctl.signal);
-    if (ctl.signal.aborted || gen !== state.requestGeneration) return;
-    aux.data = res;
-    aux.status = res && Array.isArray(res.subscriptions) && res.subscriptions.length ? "ready" : "empty";
+    if (!ctl.signal.aborted && rev === state.tokenRevision) {
+      aux.data = res;
+      aux.status = res && Array.isArray(res.subscriptions) && res.subscriptions.length ? "ready" : "empty";
+    }
   } catch (e) {
-    if (ctl.signal.aborted || gen !== state.requestGeneration) return;
-    aux.data = null;
-    aux.status = e instanceof ApiError && e.status === 404 ? "unsupported" : "error";
+    if (!ctl.signal.aborted && rev === state.tokenRevision) {
+      aux.data = null;
+      aux.status = e instanceof ApiError && e.status === 404 ? "unsupported" : "error";
+    }
+  } finally {
+    if (aux.aborter === ctl) {
+      aux.aborter = null;
+      if (aux.status === "loading") aux.status = "idle"; // 被中止/换密钥：允许重载
+    }
   }
   if (state.view === "quota") renderQuotaView();
 }
@@ -2961,12 +2997,12 @@ async function loadHistoryPage() {
   aux.status = "loading";
   const ctl = new AbortController();
   aux.aborter = ctl;
-  const gen = state.requestGeneration;
+  const rev = state.tokenRevision;
   const cursor = aux.cursor;
   updateHistLoading(true);
   try {
     const res = await dataApi.historyDaily(cursor, "", ctl.signal);
-    if (ctl.signal.aborted || gen !== state.requestGeneration) return;
+    if (ctl.signal.aborted || rev !== state.tokenRevision) return;
     /* 契约：items[]（day/tokens/costUsd/perClient/perModel/deviceCount/complete/coverage）；
        res.days 仅为旧载荷回退 */
     const items = res && Array.isArray(res.items) ? res.items
@@ -3002,7 +3038,7 @@ async function loadHistoryPage() {
     aux.done = !hasMore || added === 0 || !aux.cursor;
     aux.status = aux.rows.length ? "ready" : "empty";
   } catch (e) {
-    if (ctl.signal.aborted || gen !== state.requestGeneration) return;
+    if (ctl.signal.aborted || rev !== state.tokenRevision) return;
     if (e instanceof ApiError && (e.status === 404 || e.status === 501)) {
       // 接口未部署（Token Monitor 未启用）：回退概览内嵌的 trend/activity 数据并标注
       fallbackHistoryRows();
@@ -3013,12 +3049,16 @@ async function loadHistoryPage() {
       aux.done = true;
     }
   } finally {
-    if (gen === state.requestGeneration) {
-      aux.loading = false;
+    /* §3-11：只有本请求仍是当前持有者才复位（resetHistory 已开新请求时
+       不得踩掉新请求的 loading）；无条件残留 loading=true 会让「加载更多」
+       与滚动加载从此全部空转 */
+    if (aux.aborter === ctl) {
       aux.aborter = null;
+      aux.loading = false;
+      if (aux.status === "loading") aux.status = aux.rows.length ? "ready" : "idle";
     }
     updateHistLoading(false);
-    if (state.view === "history") renderHistoryTable(false);
+    if (state.view === "history") renderHistoryTable();
   }
 }
 
@@ -3196,6 +3236,9 @@ window.addEventListener("resize", () => {
   resizeTimer = setTimeout(() => {
     if (state.data && state.view === "overview") {
       renderTrend();
+      /* 矩阵的窄/宽布局由渲染时的 matchMedia 快照内联决定：跨过 768px
+         断点不重渲染的话，窄屏布局在宽窗口下会膨胀成巨格（反之锁死溢出） */
+      renderMatrix();
       refitDonutCenters();
     }
   }, 160);
@@ -3222,10 +3265,14 @@ function currentTheme() {
   return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
 }
 
-function applyTheme(theme) {
+/* persist=true 仅限用户显式切换：启动即落盘会把「从未选过」固化成
+   「选了亮色」，系统偏好从此永远失效，还会覆写掉其他标签页存的选择 */
+function applyTheme(theme, persist) {
   const t = theme === "dark" ? "dark" : "light";
   document.documentElement.setAttribute("data-theme", t);
-  try { localStorage.setItem(THEME_KEY, t); } catch (e) { /* private mode */ }
+  if (persist) {
+    try { localStorage.setItem(THEME_KEY, t); } catch (e) { /* private mode */ }
+  }
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", THEME_COLOR[t]);
   document.querySelectorAll("[data-theme-toggle]").forEach((btn) => {
@@ -3237,7 +3284,26 @@ function applyTheme(theme) {
 }
 
 function toggleTheme() {
-  applyTheme(currentTheme() === "dark" ? "light" : "dark");
+  applyTheme(currentTheme() === "dark" ? "light" : "dark", true);
+}
+
+function storedTheme() {
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    return v === "dark" || v === "light" ? v : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/* 未显式选择过主题时跟随系统亮暗切换 */
+if (window.matchMedia) {
+  try {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    mq.addEventListener("change", (e) => {
+      if (!storedTheme()) applyTheme(e.matches ? "dark" : "light");
+    });
+  } catch (e) { /* 旧内核无 addEventListener：放弃跟随，不影响手动切换 */ }
 }
 
 /* ================= 启动 ================= */
@@ -3257,7 +3323,18 @@ function toggleTheme() {
   });
   $("#view-title").textContent = VIEWS[state.view][0];
 
-  applyTheme(currentTheme());
+  /* theme-boot.js 已在 CSS 前写好 data-theme；这里只同步按钮态。
+     若 theme-boot 加载失败（部署漏拷等），按存储值→系统偏好兜底恢复，
+     不得把缺省当亮色回写覆盖用户已存的选择 */
+  const bootAttr = document.documentElement.getAttribute("data-theme");
+  applyTheme(
+    bootAttr === "dark" || bootAttr === "light"
+      ? bootAttr
+      : storedTheme() ||
+          (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light")
+  );
   document.querySelectorAll("[data-theme-toggle]").forEach((btn) => {
     btn.addEventListener("click", toggleTheme);
   });
