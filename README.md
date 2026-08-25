@@ -110,10 +110,10 @@ tm-core 容器中，本机 widget 在设置里把 hub 指向你的服务器即�
 **服务器（推荐安装脚本）**：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iroha1145/Cloud-Monitor/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/iroha1145/Cloud-Monitor/main/install.sh | sudo bash -s -- --mode demo
 ```
 
-脚本会问选 **演示** 还是 **实机**。演示模式打开面板即可看假数据；之后再跑一次同一脚本，选实机即可关掉演示、改用 `ACCESS_TOKEN` 登录。
+管道执行时 stdin 不是终端，必须用 `--mode demo` / `--mode live` 显式指定（否则脚本会以“非交互环境”拒绝）。之后再跑一次同一脚本换 `--mode live`（或在服务器上交互运行），即可关掉演示、改用 `ACCESS_TOKEN` 登录。
 
 已克隆仓库时：
 
@@ -191,6 +191,9 @@ ARCHITECTURE——token-monitor 走上面主路径时不需要它。
 agent（OpenWebUI 链路）的环境变量见 `agent/.env.example`。
 
 ## 测试
+
+Python ≥ 3.9 即可（macOS 系统自带的 3.9 也行；Docker 镜像与 CI 用 3.12）。
+两套测试目录的 conftest 模块名相同，需分开跑、不能合并为一条 pytest 命令：
 
 ```bash
 cd hub   && PYTHONPATH=backend python -m pytest tests/ -q

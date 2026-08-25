@@ -85,28 +85,47 @@ jobs:
           API_KEY: ci-placeholder-key-0123456789abcdef
           ACCESS_TOKEN: ci-placeholder-read-0123456789abcdef
           TOKEN_MONITOR_SECRET: ci-placeholder-tm-0123456789abcdef
+        # 冒烟必须真的断言：此前 curl 全部无 -f、readiness 超时不 fail、
+        # SSE 非零退出被 head 吞——503/401/未就绪照样全绿
         run: |
+          set -euo pipefail
           cd hub
           docker compose up -d
+          ready=0
           for i in $(seq 1 40); do
-            curl -sf http://127.0.0.1:7878/api/v1/health/ready >/dev/null && break
+            if curl -sf http://127.0.0.1:7878/api/v1/health/ready >/dev/null; then
+              ready=1
+              break
+            fi
             sleep 1
           done
+          if [ "$ready" != "1" ]; then
+            echo "::error::hub 40s 内未就绪"
+            docker compose logs
+            exit 1
+          fi
           echo "== ready =="
-          curl -s http://127.0.0.1:7878/api/v1/health/ready
+          curl -sf http://127.0.0.1:7878/api/v1/health/ready
           echo ""
           echo "== ingest =="
-          curl -s -X POST http://127.0.0.1:7878/api/ingest \
+          ingest=$(curl -sf -X POST http://127.0.0.1:7878/api/ingest \
             -H "X-Token-Monitor-Secret: ci-placeholder-tm-0123456789abcdef" \
             -H "content-type: application/json" \
-            -d '{"deviceId":"ci-device","periodWindows":{"timeZone":"UTC"},"today":{"totalTokens":42,"clients":{"codex":42}}}'
-          echo ""
+            -d '{"deviceId":"ci-device","periodWindows":{"timeZone":"UTC"},"today":{"totalTokens":42,"clients":{"codex":42}}}')
+          echo "$ingest" | head -c 300; echo ""
+          echo "$ingest" | grep -q '"stats"' || { echo "::error::ingest 响应缺少 stats"; docker compose logs; exit 1; }
           echo "== stats =="
-          curl -s -H "X-Token-Monitor-Secret: ci-placeholder-tm-0123456789abcdef" http://127.0.0.1:7878/api/stats | head -c 300
-          echo ""
+          stats=$(curl -sf -H "X-Token-Monitor-Secret: ci-placeholder-tm-0123456789abcdef" http://127.0.0.1:7878/api/stats)
+          echo "$stats" | head -c 300; echo ""
+          echo "$stats" | grep -q 'ci-device' || { echo "::error::stats 未包含已 ingest 的设备"; docker compose logs; exit 1; }
           echo "== overview =="
-          curl -s -H "Authorization: Bearer ci-placeholder-read-0123456789abcdef" http://127.0.0.1:7878/api/v1/tm/overview | head -c 300
-          echo ""
+          overview=$(curl -sf -H "Authorization: Bearer ci-placeholder-read-0123456789abcdef" http://127.0.0.1:7878/api/v1/tm/overview)
+          echo "$overview" | head -c 300; echo ""
+          echo "$overview" | grep -q '"totals"' || { echo "::error::overview 缺少 totals"; docker compose logs; exit 1; }
           echo "== SSE 首帧 =="
-          curl -s -N --max-time 3 -H "X-Token-Monitor-Secret: ci-placeholder-tm-0123456789abcdef" http://127.0.0.1:7878/api/stats/stream | head -2
+          # SSE 是无限流：--max-time 到点 curl 必然非零退出，不能用 -f 判；
+          # 以「3 秒内是否收到 data: 帧」为断言
+          sse=$(curl -s -N --max-time 3 -H "X-Token-Monitor-Secret: ci-placeholder-tm-0123456789abcdef" http://127.0.0.1:7878/api/stats/stream || true)
+          printf '%s\n' "$sse" | head -2
+          printf '%s' "$sse" | grep -q 'data:' || { echo "::error::SSE 3 秒内无 data 帧"; docker compose logs; exit 1; }
           docker compose down
