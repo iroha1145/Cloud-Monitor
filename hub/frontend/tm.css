@@ -296,7 +296,7 @@ code {
 .icon-btn:hover { color: var(--brand-700); border-color: var(--brand-500); }
 .theme-ic-sun { display: none; }
 html[data-theme="dark"] .theme-ic-moon { display: none; }
-html[data-theme="dark"] .theme-ic-sun { display: block; }
+html[data-theme="dark"] .theme-ic-sun { display: inline; }
 .gate-theme {
   position: absolute;
   top: calc(16px + env(safe-area-inset-top, 0px));
