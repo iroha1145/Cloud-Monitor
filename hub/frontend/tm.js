@@ -2588,9 +2588,9 @@ function histRowHtml(row) {
       .filter(([, v]) => v > 0)
       .sort((a, b) => b[1] - a[1]);
     if (parts.length) {
-      mixHtml = `<span class="hist-mix-wrap"><span class="hist-mix" title="${esc(parts.map(([k, v]) => `${k} ${pct1(v, row.tokens)}`).join(" · "))}">` +
+      mixHtml = `<span class="hist-mix-wrap"><span class="hist-mix">` +
         parts.map(([k, v]) =>
-          `<i style="width:${((v / row.tokens) * 100).toFixed(2)}%;background:${colorMap[k] || OTHER_COLOR}"></i>`
+          `<i data-label="${esc(k)}" data-v="${v}" data-pct="${((v / row.tokens) * 100).toFixed(1)}" style="width:${((v / row.tokens) * 100).toFixed(2)}%;background:${colorMap[k] || OTHER_COLOR}"></i>`
         ).join("") + `</span></span>`;
     }
   }
@@ -2630,6 +2630,16 @@ function renderHistoryTable() {
   }
   $("#hist-sub").textContent = sub;
   body.innerHTML = rows.map(histRowHtml).join("");
+  body.querySelectorAll(".hist-mix").forEach((mix) => {
+    mix.querySelectorAll("i").forEach((seg) => {
+      bindHover(seg, mix, () =>
+        tipHtml(seg.dataset.label, [
+          ["tokens", fmtCompact(seg.dataset.v)],
+          ["占比", Number(seg.dataset.pct).toFixed(1) + "%"],
+        ])
+      );
+    });
+  });
   if (aux.status === "error" && !rows.length) {
     body.innerHTML = `<tr><td colspan="4" class="aux-note err">日归档暂不可用</td></tr>`;
   }

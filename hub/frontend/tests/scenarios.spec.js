@@ -517,6 +517,17 @@ test.describe("§7 capabilities.tokenComponents=false（demo ?cm-scenario=nocap�
     await assertSquare("#hm .hm-w:not(.hm-skip)", 26);
   });
 
+  test("日归档客户端构成悬停显示客户端名", async ({ page }) => {
+    await page.goto("/demo#history");
+    await expect(page.locator("#hist-body .hist-mix i").first()).toBeVisible();
+    await page.locator("#hist-body .hist-mix i").first().hover();
+    const tip = page.locator(".float-tip.is-shown");
+    await expect(tip).toBeVisible();
+    await expect(tip.locator(".tip-title")).toHaveText(/^(claude|codex|cursor)$/);
+    await expect(tip).toContainText("tokens");
+    await expect(tip).toContainText("占比");
+  });
+
   test("nocap 的今日 KPI 不把未知来源伪装成非缓存输入", async ({ page }) => {
     await page.goto("/demo?cm-scenario=nocap");
     await expect(page.locator("#shell")).toBeVisible();
@@ -1012,6 +1023,10 @@ test.describe("在线更新（demo mock）", () => {
     await page.goto("/demo");
     await expect(page.locator("#shell")).toBeVisible();
     await expect(page.locator("#upd-btn")).toBeVisible();
+    await expect(page.locator("#upd-btn svg.ic path")).toHaveCount(3);
+    const iconBox = await page.locator("#upd-btn svg.ic").boundingBox();
+    expect(iconBox.width).toBeGreaterThan(12);
+    expect(iconBox.height).toBeGreaterThan(12);
     await expect(page.locator("#upd-btn .upd-dot")).toBeVisible();
     await page.click("#upd-btn");
     await expect(page.locator("#upd-overlay")).toBeVisible();
