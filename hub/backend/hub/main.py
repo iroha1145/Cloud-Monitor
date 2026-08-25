@@ -129,11 +129,6 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             content={"error": "请求体校验失败", "details": jsonable_encoder(exc.errors())},
         )
 
-    @app.on_event("shutdown")
-    def close_db() -> None:
-        # lifespan 关闭路径之外的兜底（TestClient 直接使用等场景）；幂等。
-        app.state.db.close()
-
     def settings_dep() -> Settings:
         return app.state.settings
 

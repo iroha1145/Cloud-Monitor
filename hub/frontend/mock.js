@@ -33,7 +33,13 @@
   const clamp0 = (v) => Math.max(0, Math.round(v));
   const pad2 = (n) => String(n).padStart(2, "0");
 
-  const utcDay = (offset) => new Date(Date.now() - offset * DAY).toISOString().slice(0, 10);
+  /* 日期键必须与声明的 dashboard_time_zone=Asia/Shanghai 同口径（固定 +08:00
+     无夏令时，可用常量偏移）：此前用 UTC 生成，北京 0–8 点访问时「今天」
+     比数据末日提前一天——月视图今日格、近 7 天末柱、日归档「今天」全部落空。
+     utcHour 产出的是绝对时刻（receivedAt 等），保持 UTC 不变。 */
+  const TZ_OFFSET_MS = 8 * 3600000;
+  const cnDay = (offset) =>
+    new Date(Date.now() + TZ_OFFSET_MS - offset * DAY).toISOString().slice(0, 10);
   const utcHour = (offsetMs) => new Date(Date.now() - offsetMs).toISOString();
 
   /* ---------- 370 天日归档（锚定今天，含 perClient / perModel / costUsd） ---------- */
@@ -42,8 +48,8 @@
     const now = Date.now();
     for (let i = 369; i >= 1; i--) {
       const t = now - i * DAY;
-      const d = new Date(t);
-      const dow = d.getUTCDay(); // 0=周日
+      const d = new Date(t + TZ_OFFSET_MS);
+      const dow = d.getUTCDay(); // 0=周日（上海墙钟的星期）
       const weekday = dow === 0 || dow === 6 ? rand(0.34, 0.58) : rand(0.86, 1.18);
       // 随时间缓慢增长 + 偶发高峰日
       const growth = 0.55 + (1 - i / 370) * 0.75;
@@ -74,7 +80,7 @@
         cost += (perModel[m] / 1e6) * COST_PER_M[m];
       }
       out.push({
-        day: utcDay(i),
+        day: cnDay(i),
         tokens,
         costUsd: Math.round(cost * 100) / 100,
         perClient,
@@ -86,7 +92,7 @@
 
   /* ---------- 今日 24 小时分布（工作时段凸起；未来小时为 0） ---------- */
   function buildHourly(todayTokens) {
-    const nowHour = new Date().getUTCHours();
+    const nowHour = new Date(Date.now() + TZ_OFFSET_MS).getUTCHours(); // 上海当前小时
     const weights = [];
     let wSum = 0;
     for (let h = 0; h < 24; h++) {
@@ -183,7 +189,7 @@
     for (const c of CLIENTS) todayClients[c] = todayTokens * CLIENT_SHARE[c] * rand(0.9, 1.1);
 
     // 本月 = 当月历史 + 今日
-    const thisMonth = utcDay(0).slice(0, 7);
+    const thisMonth = cnDay(0).slice(0, 7);
     let monthTokens = todayTokens;
     const monthModels = { ...todayModels };
     const monthClients = { ...todayClients };
@@ -215,12 +221,12 @@
       trend.push({ day: h.day, total: h.tokens });
       trend_models.push({ day: h.day, total: h.tokens, models: h.perModel });
     }
-    trend.push({ day: utcDay(0), total: todayTokens });
-    trend_models.push({ day: utcDay(0), total: todayTokens, models: todayModels });
+    trend.push({ day: cnDay(0), total: todayTokens });
+    trend_models.push({ day: cnDay(0), total: todayTokens, models: todayModels });
 
     // 活动：90 天 daily + 今日 hourly
     const daily = history.slice(-89).map((h) => ({ day: h.day, total: h.tokens }));
-    daily.push({ day: utcDay(0), total: todayTokens });
+    daily.push({ day: cnDay(0), total: todayTokens });
     const hourly = buildHourly(todayTokens);
 
     /* 设备：按固定比例切分周期用量 */
@@ -230,8 +236,14 @@
     });
     const win = (timeZone) => ({
       timeZone,
-      today: { key: utcDay(0), endsAt: new Date(new Date(utcDay(0) + "T00:00:00Z").getTime() + DAY).toISOString() },
-      month: { key: thisMonth, endsAt: new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 1)).toISOString() },
+      today: { key: cnDay(0), endsAt: new Date(new Date(cnDay(0) + "T00:00:00+08:00").getTime() + DAY).toISOString() },
+      month: {
+        key: thisMonth,
+        // 下月上海 1 日 00:00 的绝对时刻（Date.UTC 月序 0 基：传「月号」即下月）
+        endsAt: new Date(
+          Date.UTC(Number(cnDay(0).slice(0, 4)), Number(cnDay(0).slice(5, 7)), 1) - TZ_OFFSET_MS
+        ).toISOString(),
+      },
     });
     const devicesRaw = [
       {
@@ -402,7 +414,7 @@
     });
 
     // 活动：今日 24h hourly（契约 hourly_day / hourly_today 对象形态）
-    const hourlyDay = utcDay(0);
+    const hourlyDay = cnDay(0);
     return {
       overview_schema_version: 2,
       generated_at: new Date().toISOString(),
@@ -484,7 +496,7 @@
 
   /* ---------- 订阅清单 ---------- */
   function buildSubscriptions() {
-    const d = (offset) => utcDay(offset);
+    const d = (offset) => cnDay(offset);
     return {
       subscriptions: [
         {
@@ -569,7 +581,7 @@
       const perClient = {};
       for (const c of CLIENTS) perClient[c] = clamp0(todayTokens * cs[c]);
       histCache.push({
-        day: utcDay(0),
+        day: cnDay(0),
         tokens: todayTokens,
         costUsd: Math.round((todayTokens / 1e6) * 6.4 * 100) / 100,
         perClient,

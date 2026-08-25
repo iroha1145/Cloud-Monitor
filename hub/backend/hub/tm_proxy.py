@@ -33,6 +33,7 @@ from .tm_outbox import (
     mark_failed,
     mark_rejected,
     new_request_id,
+    purge_device as purge_device_outbox,
     record_pending,
     replay_pending,
     set_snapshot_status,
@@ -295,7 +296,13 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             return _unavailable_response(exc)
         if resp.status_code == 200:
             deleted = delete_device_snapshots(db, device_id)
-            log.info("设备 %s 已删除（清理 %d 条快照）", device_id, deleted)
+            purged = purge_device_outbox(db, device_id)
+            log.info(
+                "设备 %s 已删除（清理 %d 条快照，%d 条 outbox）",
+                device_id,
+                deleted,
+                purged,
+            )
         return _proxy_response(resp)
 
     # ------------------------------------------------------------ subscriptions
@@ -403,9 +410,18 @@ class TmBackground:
             return False
         for payload in legacy_device_payloads(self.db):
             try:
-                self.core.request("POST", "/api/ingest", json_body=payload)
+                resp = self.core.request("POST", "/api/ingest", json_body=payload)
             except (UpstreamUnavailable, httpx.HTTPError) as exc:
                 log.warning("v1 设备回灌失败（将随后台周期重试）: %s", exc)
+                return False
+            if resp.status_code != 200:
+                # 4xx/5xx 同样是失败：此前只查传输层异常，密钥不一致等
+                # 会被当成功写下永久标记，旧设备数据从此静默丢失
+                log.warning(
+                    "v1 设备回灌被 tm-core 拒绝（HTTP %s，将随后台周期重试）: %s",
+                    resp.status_code,
+                    resp.text[:200],
+                )
                 return False
         # 只有全部 payload 成功提交后才写幂等标记；失败时下一轮仍能重试。
         mark_legacy_reingested(self.db)

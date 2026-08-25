@@ -117,6 +117,39 @@ def test_push_is_idempotent(client: TestClient):
     assert client.get("/api/v1/records", headers=READ).json()["total"] == 2
 
 
+def test_push_duplicate_local_id_within_batch_is_not_500(client: TestClient):
+    """同批内重复 local_id 此前逃过 DB 侧去重，executemany 撞唯一索引抛
+    未捕获 IntegrityError → 500 → agent 重试同批永远卡死。"""
+    payload = push_payload(local_ids=(7, 7))
+    resp = client.post("/api/v1/sync/push", json=payload, headers=AUTH)
+    assert resp.status_code == 200, resp.text[:300]
+    body = resp.json()
+    assert body["inserted"] == 1
+    assert body["duplicates"] == 1
+    assert body["conflicts"] == 0
+    assert client.get("/api/v1/records", headers=READ).json()["total"] == 1
+
+    # 同 local_id 但内容不同：按冲突计，且不写入第二条
+    conflicting = push_payload(local_ids=(9,))
+    conflicting["records"].append(
+        dict(conflicting["records"][0], input_tokens=999)
+    )
+    body = client.post("/api/v1/sync/push", json=conflicting, headers=AUTH).json()
+    assert body["inserted"] == 1
+    assert body["conflicts"] == 1
+
+
+def test_heartbeat_with_empty_user_fields_preserves_identity(client: TestClient):
+    """心跳式部分载荷（空 email/name）不得把已同步的用户身份抹成空串。"""
+    client.post("/api/v1/sync/push", json=push_payload(), headers=AUTH)
+    heartbeat = push_payload(local_ids=())
+    heartbeat["users"] = [{"id": "u1", "name": "", "email": "", "role": ""}]
+    assert client.post("/api/v1/sync/push", json=heartbeat, headers=AUTH).status_code == 200
+    users = client.get("/api/v1/users", headers=READ).json()["users"]
+    assert users[0]["email"] == "a@x.com"
+    assert users[0]["name"] == "Alice"
+
+
 def test_same_local_id_different_device_both_kept(client: TestClient):
     client.post("/api/v1/sync/push", json=push_payload("dev-1"), headers=AUTH)
     client.post("/api/v1/sync/push", json=push_payload("dev-2"), headers=AUTH)

@@ -22,7 +22,7 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse
@@ -34,6 +34,8 @@ STATE_SCHEMA_VERSION = 2
 PROTOCOL_VERSION = 2
 MAX_POST_ATTEMPTS = 3
 DEGRADED_INTERVAL_MULTIPLIER = 10
+# 与云端 hub/backend/hub/models.py 的 MAX_FUTURE_SKEW 保持一致
+MAX_FUTURE_SKEW = timedelta(hours=48)
 
 log = logging.getLogger("sync-agent")
 
@@ -104,6 +106,7 @@ class AgentConfig:
     token_monitor_device_id: str = ""
     token_monitor_interval_seconds: float = 300.0
     allow_legacy_fallback: bool = False
+    allow_state_conflict: bool = False
     extra: dict = field(default_factory=dict)
 
 
@@ -166,6 +169,9 @@ def load_config(env: Optional[dict[str, str]] = None) -> AgentConfig:
         token_monitor_device_id=get("TOKEN_MONITOR_DEVICE_ID"),
         token_monitor_interval_seconds=_float("TOKEN_MONITOR_INTERVAL_SECONDS", 300.0, minimum=30.0),
         allow_legacy_fallback=_env_bool(env.get("ALLOW_LEGACY_FALLBACK")),
+        # 独立开关：设备身份切换授权。此前从未被读取，错误提示教用户设它
+        # 却接的是 ALLOW_LEGACY_FALLBACK——两者语义无关，不得交叉授权
+        allow_state_conflict=_env_bool(env.get("ALLOW_STATE_CONFLICT")),
     )
 
 
@@ -301,7 +307,7 @@ def resolve_device_id(config: AgentConfig, state: AgentState) -> str:
     """
     if config.device_id:
         if state.device_id and state.device_id != config.device_id:
-            if not config.extra.get("allow_state_conflict", False):
+            if not config.allow_state_conflict:
                 raise SystemExit(
                     "DEVICE_ID 环境变量 (%s) 与状态文件中的身份 (%s) 不同。"
                     "为避免静默切换设备身份，agent 拒绝启动；如确需切换，"
@@ -417,11 +423,16 @@ class SyncAgent:
 
     # ------------------------------------------------------------ 本地读取
 
-    def local_get(self, path: str, params: dict[str, Any]) -> Any:
+    def local_get(
+        self,
+        path: str,
+        params: dict[str, Any],
+        session: Optional[requests.Session] = None,
+    ) -> Any:
         headers = {}
         if self.config.local_api_key:
             headers["Authorization"] = f"Bearer {self.config.local_api_key}"
-        resp = self.session.get(
+        resp = (session or self.session).get(
             f"{self.config.local_monitor_url}{path}",
             params=params,
             headers=headers,
@@ -464,17 +475,6 @@ class SyncAgent:
                     ) from exc
                 return None
             raise
-
-    def fallback_source_fingerprint(self) -> str:
-        """旧版 monitor 的数据源指纹：库重建（max_id/total 变小）时自动轮换。"""
-        first = self.local_get("/api/v1/records", {"page": 1, "page_size": 1})
-        total = int(first.get("total") or 0)
-        max_id = int((first.get("records") or [{}])[0].get("id") or 0)
-        raw = f"{max_id}:{total}"
-        import hashlib
-
-        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
-        return f"fallback-{digest}"
 
     # ------------------------------------------------------------ 云端推送
 
@@ -522,29 +522,83 @@ class SyncAgent:
             "created_at": r.get("created_at") or utc_now_iso(),
         }
 
+    @staticmethod
+    def _record_reject_reason(r: dict) -> Optional[str]:
+        """镜像云端 RecordIn 的确定性拒因（400 → PermanentConfigError）。
+
+        单条这样的记录会让整批被 400 拒绝且游标不推进：同一批毒数据每个
+        降级周期重推一次，其后所有记录无限期阻塞。云端规则（models.py）:
+        user_id 非空；created_at 为合法 ISO 8601 且不超前 48 小时。
+        """
+        if not (r.get("user_id") or ""):
+            return "user_id 为空"
+        created = str(r.get("created_at") or "").strip()
+        if created:
+            raw = created.replace("Z", "+00:00")
+            try:
+                dt = datetime.fromisoformat(raw)
+            except ValueError:
+                return f"created_at 不是合法的 ISO 8601 时间: {created!r}"
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            if dt > datetime.now(timezone.utc) + MAX_FUTURE_SKEW:
+                return f"created_at 超前当前时间过多: {created}"
+        return None
+
+    def _wire_valid(self, records: list[dict]) -> tuple[list[dict], int]:
+        """拆分可同步/必被云端拒绝的记录；跳过项计数并写入状态文件。"""
+        wire: list[dict] = []
+        skipped = 0
+        for r in records:
+            reason = self._record_reject_reason(r)
+            if reason is None:
+                wire.append(self._record_wire(r))
+                continue
+            skipped += 1
+            if skipped <= 5:
+                log.warning("跳过无法同步的记录 local_id=%s（%s）", r.get("id"), reason)
+        if skipped:
+            if skipped > 5:
+                log.warning("本批共跳过 %d 条无法同步的记录", skipped)
+            self.state.data["skipped_invalid"] = (
+                int(self.state.data.get("skipped_invalid") or 0) + skipped
+            )
+        return wire, skipped
+
     # ------------------------------------------------------------ 同步轮次
 
     def _resolve_source(self, meta: Optional[dict]) -> tuple[str, str, Optional[int]]:
-        """返回 (mode, source_instance_id, snapshot_max_id)。处理实例轮换。"""
-        if self.config.source_instance_id:
-            source = self.config.source_instance_id
-            snapshot = int(meta.get("max_record_id") or 0) if meta else None
-            return "cursor" if meta else "time", source, snapshot
+        """返回 (mode, source_instance_id, snapshot_max_id)。处理实例轮换。
 
+        meta 可用时以 meta 的实例 ID 为准：固定的 SOURCE_INSTANCE_ID 会掩盖
+        本地库重建（id 从 1 重新计数），游标停在旧高位、永远读 0 条且心跳
+        照常成功——静默永久丢数据。pin 值仅作 meta 缺失（legacy 回退）时的来源。
+        """
         if meta:
-            source = str(meta.get("source_instance_id") or "")
+            live = str(meta.get("source_instance_id") or "")
             snapshot = int(meta.get("max_record_id") or 0)
-            mode = "cursor"
-        else:
-            source = self.fallback_source_fingerprint()
-            snapshot = None
-            mode = "time"
-            if self.state.mode != "time":
+            pinned = self.config.source_instance_id
+            if pinned and live and live != pinned:
                 log.warning(
-                    "本地 monitor 不支持 /api/v1/sync/meta，回退时间窗口分页模式；"
-                    "全量同步时本地会重复扫描历史数据，建议升级 openwebui-monitor"
+                    "SOURCE_INSTANCE_ID=%s 与本地 monitor 实际实例 %s 不一致，"
+                    "以实际实例为准（否则库重建后游标空转、数据静默不再同步）。"
+                    "meta 接口可用时建议移除 SOURCE_INSTANCE_ID 配置",
+                    pinned,
+                    live,
                 )
-        return mode, source, snapshot
+            return "cursor", live or pinned, snapshot
+
+        if not self.config.source_instance_id:
+            # probe_sync_meta 已保证：无 meta 且未配置回退时早已 SystemExit
+            raise PermanentConfigError(
+                "本地 monitor 无 /api/v1/sync/meta 且未配置 SOURCE_INSTANCE_ID"
+            )
+        if self.state.mode != "time":
+            log.warning(
+                "本地 monitor 不支持 /api/v1/sync/meta，回退时间窗口分页模式；"
+                "全量同步时本地会重复扫描历史数据，建议升级 openwebui-monitor"
+            )
+        return "time", self.config.source_instance_id, None
 
     def _rotate_if_needed(self, mode: str, source: str) -> bool:
         """数据源实例变化（本地库重建）→ 重置游标走全量，避免 local_id 复用被吞。"""
@@ -600,9 +654,8 @@ class SyncAgent:
                 break
             fetched += len(records)
             send_users = users if first_batch else []
-            result = self.push_batch(
-                send_users, [self._record_wire(r) for r in records], source
-            )
+            wire_records, _skipped = self._wire_valid(records)
+            result = self.push_batch(send_users, wire_records, source)
             inserted += int(result.get("inserted") or 0)
             # 每批成功即推进游标并落盘：云端故障只影响未确认批次
             self.state.cursor = int(records[-1]["id"])
@@ -645,9 +698,8 @@ class SyncAgent:
         for i in range(0, fetched, self.config.batch_size):
             chunk = records[i : i + self.config.batch_size]
             send_users = users if i == 0 else []
-            result = self.push_batch(
-                send_users, [self._record_wire(r) for r in chunk], source
-            )
+            wire_records, _skipped = self._wire_valid(chunk)
+            result = self.push_batch(send_users, wire_records, source)
             inserted += int(result.get("inserted") or 0)
             # 批内按时间升序，推进水位线到本批最大时间（含 1 秒重叠，靠云端去重）
             self.state.watermark = chunk[-1].get("created_at") or snapshot_end
@@ -683,6 +735,10 @@ class SyncAgent:
                 log.error(
                     "永久配置错误，%.0fs 后再试（降级模式）: %s", interval, exc
                 )
+                if self.config.run_once:
+                    # RUN_ONCE 撞永久错误（401 等）必须非零退出：
+                    # cron/CI 的一次性调用不得把配置错误报告成成功
+                    raise SystemExit(4) from exc
             except (TransientError, requests.RequestException, ValueError) as exc:
                 self._record_error("transient", str(exc))
                 log.error("本轮同步失败，下个周期重试: %s", exc)
@@ -726,7 +782,6 @@ def main() -> int:
         log.warning("状态文件损坏，但 DEVICE_ID 已显式配置，以环境变量身份继续")
         state = AgentState(config.state_path)
 
-    config.__dict__.setdefault("extra", {})["allow_state_conflict"] = config.allow_legacy_fallback  # 临时键
     try:
         state.device_id = resolve_device_id(config, state)
     except SystemExit as exc:

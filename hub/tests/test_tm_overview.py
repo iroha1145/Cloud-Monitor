@@ -35,6 +35,30 @@ def overview(cloud):
 # ================================================================ 静态面板与兼容跳转
 
 
+def test_overview_non_json_stats_yields_structured_502(cloud):
+    """上游 200 但响应体非 JSON（网关错误页等）：与非 200 分支一致给 502，
+    而不是 resp.json() 抛 ValueError 变裸 500。"""
+
+    class TextResponse:
+        status_code = 200
+        text = "<html>gateway</html>"
+
+        def json(self):
+            raise ValueError("not json")
+
+    class FakeCore:
+        def request(self, *_args, **_kwargs):
+            return TextResponse()
+
+    original = cloud.app.state.tm_core
+    cloud.app.state.tm_core = FakeCore()
+    try:
+        resp = cloud.get("/api/v1/tm/overview", headers=READ)
+        assert resp.status_code == 502
+    finally:
+        cloud.app.state.tm_core = original
+
+
 def test_tm_redirects_to_root(cloud):
     for path in ("/tm", "/tm/"):
         resp = cloud.get(path, follow_redirects=False)

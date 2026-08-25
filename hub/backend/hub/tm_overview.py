@@ -917,7 +917,14 @@ def build_tm_overview_router(settings: Settings, db: Database) -> APIRouter:
             raise HTTPException(status_code=502, detail="tm-core 聚合不可用") from exc
         if resp.status_code != 200:
             raise HTTPException(status_code=502, detail="tm-core 聚合不可用")
-        stats = resp.json()
+        try:
+            stats = resp.json()
+        except ValueError as exc:
+            # 非 JSON 的 200（如网关错误页）：与非 200 分支一致给结构化 502，
+            # 而非裸 500（_fetch 对 history/devices 已有同款守卫）
+            raise HTTPException(status_code=502, detail="tm-core 聚合不可用") from exc
+        if not isinstance(stats, dict):
+            raise HTTPException(status_code=502, detail="tm-core 聚合不可用")
         history, history_error = _fetch(core, "/api/history")
         raw, devices_error = _fetch(core, "/api/devices")
         raw_devices = raw.get("devices") if isinstance(raw, dict) else None

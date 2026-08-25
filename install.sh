@@ -7,6 +7,7 @@ set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/iroha1145/Cloud-Monitor.git}"
 DEFAULT_DIR="/opt/cloud-monitor"
+DIR_OVERRIDE=""
 MODE=""
 ASSUME_YES=0
 
@@ -27,7 +28,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode) MODE="${2:-}"; shift 2 ;;
     --yes|-y) ASSUME_YES=1; shift ;;
-    --dir) DEFAULT_DIR="${2:-}"; shift 2 ;;
+    --dir) DIR_OVERRIDE="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "未知参数: $1" >&2; usage; exit 1 ;;
   esac
@@ -57,6 +58,12 @@ compose() {
 }
 
 resolve_install_dir() {
+  # 显式 --dir 永远最优先：此前从仓库 checkout 内运行时脚本目录会盖掉
+  # 用户指定的目录，--dir 被静默忽略
+  if [[ -n "$DIR_OVERRIDE" ]]; then
+    echo "$DIR_OVERRIDE"
+    return
+  fi
   local self=""
   if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
     self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -71,11 +78,15 @@ resolve_install_dir() {
 ensure_repo() {
   local dir="$1"
   if [[ -d "$dir/.git" && -f "$dir/hub/docker-compose.yml" ]]; then
-    git -C "$dir" fetch origin
-    if git -C "$dir" merge --ff-only origin/main; then
-      :
+    # fetch 失败（离线等）不致命：演示↔实机切换本来不需要远端
+    if git -C "$dir" fetch origin 2>/dev/null; then
+      if git -C "$dir" merge --ff-only origin/main; then
+        :
+      else
+        echo "提示：未能快进到 origin/main，继续使用当前工作区。" >&2
+      fi
     else
-      echo "提示：未能快进到 origin/main，继续使用当前工作区。" >&2
+      echo "提示：无法访问远端仓库（离线？），跳过更新，继续使用当前工作区。" >&2
     fi
     return
   fi
@@ -99,7 +110,10 @@ rand_hex() {
 env_get() {
   local file="$1" key="$2"
   [[ -f "$file" ]] || return 0
-  grep -E "^${key}=" "$file" 2>/dev/null | tail -n1 | cut -d= -f2-
+  # `|| true` 必不可少：key 不存在时 grep 退出 1，在 set -euo pipefail 下
+  # 会让 `api="$(env_get …)"` 赋值直接杀死脚本（无任何报错）——而这恰恰是
+  # ensure_env 需要补生成该 key 的场景
+  grep -E "^${key}=" "$file" 2>/dev/null | tail -n1 | cut -d= -f2- || true
 }
 
 upsert_env() {
@@ -152,19 +166,24 @@ pick_mode() {
     return
   fi
   if [[ ! -t 0 ]]; then
-    echo "非交互环境请使用 --mode demo 或 --mode live" >&2
+    echo "非交互环境请使用 --mode demo 或 --mode live（如 curl … | sudo bash -s -- --mode demo）" >&2
     exit 1
   fi
-  echo
-  if [[ -n "$current" ]]; then
-    local label="实机"
-    [[ "$current" == "demo" ]] && label="演示"
-    echo "当前部署：$label。再选一次即可切换。"
-  else
-    echo "选择安装模式："
-  fi
-  echo "  1) 演示  — 假数据预览面板，打开页面即可（无需密钥）"
-  echo "  2) 实机  — ACCESS_TOKEN 登录，接入本机 token-monitor"
+  # 本函数被 CHOSEN="$(pick_mode …)" 命令替换调用：所有展示文本必须走
+  # stderr。走 stdout 会被吞进 CHOSEN——用户看不到菜单，且多行串永远
+  # 不等于 "demo"，选「演示」也会被装成实机
+  {
+    echo
+    if [[ -n "$current" ]]; then
+      local label="实机"
+      [[ "$current" == "demo" ]] && label="演示"
+      echo "当前部署：$label。再选一次即可切换。"
+    else
+      echo "选择安装模式："
+    fi
+    echo "  1) 演示  — 假数据预览面板，打开页面即可（无需密钥）"
+    echo "  2) 实机  — ACCESS_TOKEN 登录，接入本机 token-monitor"
+  } >&2
   local choice
   read -r -p "请输入 1 或 2: " choice
   case "$choice" in

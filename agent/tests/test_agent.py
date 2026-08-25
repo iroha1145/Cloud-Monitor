@@ -152,10 +152,13 @@ def test_env_device_id_wins_over_state(tmp_path):
     import pytest
     with pytest.raises(SystemExit):
         resolve_device_id(cfg, state)
-    # 显式放行则以环境变量为准
-    cfg2 = make_config(tmp_path, device_id="explicit-id", allow_legacy_fallback=True)
-    cfg2.__dict__.setdefault("extra", {})["allow_state_conflict"] = True
+    # 显式放行则以环境变量为准（独立开关，与 ALLOW_LEGACY_FALLBACK 无关）
+    cfg2 = make_config(tmp_path, device_id="explicit-id", allow_state_conflict=True)
     assert resolve_device_id(cfg2, state) == "explicit-id"
+    # 只开 legacy 回退不得顺带授权身份切换
+    cfg3 = make_config(tmp_path, device_id="explicit-id", allow_legacy_fallback=True)
+    with pytest.raises(SystemExit):
+        resolve_device_id(cfg3, state)
 
 
 def test_corrupt_state_backed_up_and_refused(tmp_path):
@@ -387,6 +390,94 @@ def test_legacy_fallback_requires_stable_source_instance(tmp_path):
         agent.probe_sync_meta()
 
 
+def test_allow_state_conflict_env_is_wired_and_independent(tmp_path):
+    """错误提示教用户设 ALLOW_STATE_CONFLICT，load_config 必须真的读它；
+    且与 ALLOW_LEGACY_FALLBACK 互不串线。"""
+    base = {
+        "CLOUD_HUB_URL": "https://cloud.example.com",
+        "STATE_PATH": str(tmp_path / "s.json"),
+    }
+    cfg = sa.load_config({**base, "ALLOW_STATE_CONFLICT": "true"})
+    assert cfg.allow_state_conflict is True
+    assert cfg.allow_legacy_fallback is False
+    cfg2 = sa.load_config({**base, "ALLOW_LEGACY_FALLBACK": "true"})
+    assert cfg2.allow_legacy_fallback is True
+    assert cfg2.allow_state_conflict is False
+
+
+def test_pinned_source_id_does_not_mask_rotation(tmp_path, caplog):
+    """meta 可用时以 meta 实例为准：固定 SOURCE_INSTANCE_ID 掩盖本地库
+    重建会让游标停在旧高位、永远读 0 条且心跳全绿（静默丢数据）。"""
+    cfg = make_config(tmp_path, source_instance_id="pinned-old")
+    state = AgentState(cfg.state_path)
+    state.device_id = cfg.device_id
+    state.mode = "cursor"
+    state.source_instance_id = "pinned-old"
+    state.cursor = 500
+    agent = make_agent(cfg, state, FakeSession())
+    mode, source, snapshot = agent._resolve_source(
+        {"source_instance_id": "live-new", "max_record_id": 7}
+    )
+    assert (mode, source, snapshot) == ("cursor", "live-new", 7)
+    # 随后 _rotate_if_needed 观察到 source 变化 → 游标归零全量重同步
+    agent._rotate_if_needed(mode, source)
+    assert state.cursor == 0
+    # meta 缺失（legacy 回退）时仍用显式 pin 值
+    assert agent._resolve_source(None) == ("time", "pinned-old", None)
+
+
+def test_invalid_records_are_skipped_and_cursor_advances(tmp_path):
+    """空 user_id / 非法 created_at 的记录云端必拒（400 → 整批永久卡死）；
+    agent 侧跳过毒记录、游标越过、其余记录照常同步。"""
+    cfg = make_config(tmp_path, batch_size=10)
+    state = AgentState(cfg.state_path)
+    state.device_id = cfg.device_id
+    session = FakeSession()
+    session.route("GET", "/api/v1/sync/meta", FakeResponse(200, {
+        "source_instance_id": "src-1", "max_record_id": 3, "protocol_version": 2
+    }))
+    session.route("GET", "/api/v1/users", FakeResponse(200, {"users": []}))
+    poisoned = [
+        rec(1),
+        rec(2, user=""),                       # 空 user_id：hub min_length=1 必拒
+        rec(3, created="not-a-timestamp"),     # 非法 ISO：hub 校验必拒
+    ]
+    session.route(
+        "GET", "/api/v1/sync/records",
+        lambda url, kw: FakeResponse(200, {
+            "records": poisoned if kw["params"]["after_id"] == 0 else []
+        }),
+    )
+    pushed_batches: list[list[dict]] = []
+    def push(url, kw):
+        pushed_batches.append(kw["json"]["records"])
+        return ok_push(
+            len(kw["json"]["records"]),
+            device_id=kw["json"]["device"]["id"],
+            source=kw["json"]["source_instance_id"],
+        )
+    session.route("POST", "/api/v1/sync/push", push)
+
+    agent = make_agent(cfg, state, session)
+    summary = agent.run_once()
+    assert summary["mode"] == "cursor"
+    assert [r["local_id"] for r in pushed_batches[0]] == [1]
+    assert state.cursor == 3  # 游标越过毒记录，管道不再卡死
+    assert state.data["skipped_invalid"] == 2
+
+
+def test_bridge_device_id_falls_back_to_state_uuid(tmp_path):
+    """DEVICE_ID 留空（.env.example 默认玩法）时桥接必须用状态文件持久
+    UUID，否则所有留空设备都以同一身份 "openwebui:" 互相覆盖。"""
+    cfg = make_config(tmp_path, device_id="", token_monitor_device_id="")
+    assert tm.resolve_tm_device_id(cfg, "agent-uuid-1") == "openwebui:agent-uuid-1"
+    # 完全无身份来源：拒绝而不是生成常量 "openwebui:"
+    assert tm.resolve_tm_device_id(cfg, "") is None
+    # 显式 TOKEN_MONITOR_DEVICE_ID 仍最优先
+    cfg2 = make_config(tmp_path, device_id="", token_monitor_device_id="tm-explicit")
+    assert tm.resolve_tm_device_id(cfg2, "agent-uuid-1") == "tm-explicit"
+
+
 def test_source_instance_rotation_resets_cursor(tmp_path):
     cfg = make_config(tmp_path)
     state = AgentState(cfg.state_path)
@@ -472,17 +563,20 @@ def test_post_with_retry_transient_backs_off(monkeypatch):
     assert body == {"ok": True} and calls["n"] == 3
 
 
-def test_permanent_error_marks_degraded(tmp_path):
+def test_permanent_error_marks_degraded_and_run_once_exits_nonzero(tmp_path):
+    """RUN_ONCE 撞永久错误（401 等）必须非零退出：cron/CI 的一次性调用
+    此前会返回 0，把配置错误报告成成功。"""
     cfg = make_config(tmp_path, run_once=True)
     state = AgentState(cfg.state_path)
     state.device_id = cfg.device_id
     state.save()
     agent = make_agent(cfg, state, FakeSession())
-    monkeypatch_target = agent.run_once
     def permanent_round():
         raise PermanentConfigError("HTTP 401: Unauthorized")
     agent.run_once = permanent_round
-    agent.run_forever()
+    with pytest.raises(SystemExit) as excinfo:
+        agent.run_forever()
+    assert excinfo.value.code == 4
     assert state.data["last_permanent_error"] == "HTTP 401: Unauthorized"
     assert state.data["last_error_type"] == "permanent"
 
@@ -522,8 +616,10 @@ class StubAgent:
         self.config = config
         self.usage = usage
         self.session = FakeSession()
+        self.state = AgentState(config.state_path)
+        self.state.device_id = config.device_id or "agent-stub-uuid"
 
-    def local_get(self, path, params):
+    def local_get(self, path, params, session=None):
         if path == "/api/v1/usage":
             return self.usage
         raise AssertionError(f"未预期的 local 查询: {path} {params}")

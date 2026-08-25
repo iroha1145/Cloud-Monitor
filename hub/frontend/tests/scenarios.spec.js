@@ -796,3 +796,104 @@ test.describe("移动端无页面级横向溢出（demo，§13 四档尺寸）",
     });
   }
 });
+
+test.describe("审计回归批 2026-08-25（demo）", () => {
+  test("§3-11 辅助接口在途跨过一次主刷新（gen 递增）后仍能就绪，不卡 loading", async ({ page }) => {
+    await page.goto("/demo#quota");
+    await expect(page.locator("#shell")).toBeVisible();
+    // 订阅：打回 idle 重新加载，在途期间递增 requestGeneration（模拟轮询/
+    // 手动刷新/页面切回）。旧实现丢弃响应且不复位 → 永久「正在加载订阅清单…」
+    await page.evaluate(async () => {
+      state.aux.subs.status = "idle";
+      state.aux.subs.data = null;
+      ensureSubs();
+      state.requestGeneration++;
+      await new Promise((r) => setTimeout(r, 500));
+    });
+    expect(await page.evaluate(() => state.aux.subs.status)).toBe("ready");
+    await expect(page.locator("#sub-grid .sub-card").first()).toBeVisible();
+
+    // 历史分页同路径：旧实现 finally 只在 gen 匹配时清 loading → 永久空转
+    await page.evaluate(async () => {
+      resetHistory();
+      state.requestGeneration++;
+      await new Promise((r) => setTimeout(r, 500));
+    });
+    const hist = await page.evaluate(() => ({
+      status: state.aux.history.status,
+      rows: state.aux.history.rows.length,
+      loading: state.aux.history.loading,
+    }));
+    expect(hist.status).toBe("ready");
+    expect(hist.rows).toBeGreaterThan(0);
+    expect(hist.loading).toBe(false);
+  });
+
+  test("夜间模式下矩阵色阶图例与格子同源：CSS 类驱动，无内联色", async ({ page }) => {
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    await page.locator("#theme-toggle").click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    const legendSwatches = page.locator(".mx-scale .mx-cell");
+    await expect(legendSwatches).toHaveCount(6); // is-zero + lv0..4
+    const pair = await page.evaluate(() => {
+      const bg = (el) => (el ? getComputedStyle(el).backgroundColor : null);
+      const lg = document.querySelector(".mx-scale .mx-cell.mx-lv4");
+      const cell = document.querySelector(".mx-grid .mx-cell.mx-lv4");
+      return {
+        legendLv4: bg(lg),
+        cellLv4: bg(cell),
+        anyInline: [...document.querySelectorAll(".mx-scale .mx-cell")]
+          .some((el) => (el.getAttribute("style") || "").includes("background")),
+      };
+    });
+    expect(pair.anyInline, "图例不得再用内联色").toBe(false);
+    expect(pair.cellLv4, "网格最大值格恒为 lv4").toBeTruthy();
+    expect(pair.legendLv4).toBe(pair.cellLv4);
+  });
+
+  test("月摘要紧凑数字的中文单位与数字同行（不被 display:block 挤下去）", async ({ page }) => {
+    await page.goto("/demo#history");
+    await expect(page.locator("#shell")).toBeVisible();
+    await expect(page.locator(".hm-sum b .num-unit").first()).toBeVisible();
+    const m = await page.evaluate(() => {
+      const unit = document.querySelector(".hm-sum b .num-unit");
+      const int = unit.closest(".num-compact").querySelector(".num-int");
+      const u = unit.getBoundingClientRect();
+      const i = int.getBoundingClientRect();
+      return { unitTop: u.top, intBottom: i.bottom, unitDisplay: getComputedStyle(unit).display };
+    });
+    expect(m.unitDisplay).not.toBe("block");
+    expect(m.unitTop, "单位与数字垂直区间必须重叠（同一行）").toBeLessThan(m.intBottom);
+  });
+
+  test("矩阵跨 768px 断点 resize 后重渲染布局", async ({ browser }) => {
+    const ctx = await browser.newContext({ baseURL: ORIGIN, viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    const gridStyle = () => page.evaluate(() => document.querySelector(".mx-grid").getAttribute("style") || "");
+    expect(await gridStyle()).toContain("minmax(48px");
+    await page.setViewportSize({ width: 500, height: 800 });
+    await page.waitForTimeout(400); // resize 防抖 160ms + 渲染余量
+    expect(await gridStyle(), "缩窄后应切换为窄屏列模板").toContain("minmax(0");
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.waitForTimeout(400);
+    expect(await gridStyle(), "拉宽后应切回桌面列模板").toContain("minmax(48px");
+    await ctx.close();
+  });
+});
+
+test.describe("系统偏好夜间（demo）", () => {
+  test.use({ colorScheme: "dark" });
+  test("无存储选择时首屏即夜间模式，且不把缺省回写 localStorage", async ({ page }) => {
+    await page.goto("/demo");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect(page.locator("#shell")).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem("cm_theme"))).toBeNull();
+    // 显式切到日间 → 落盘 light，系统偏好不再覆盖
+    await page.locator("#theme-toggle").click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    expect(await page.evaluate(() => localStorage.getItem("cm_theme"))).toBe("light");
+  });
+});
