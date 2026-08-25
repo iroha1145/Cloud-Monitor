@@ -127,6 +127,9 @@ class Database:
         try:
             self._conn.execute("PRAGMA journal_mode = WAL")
             self._conn.execute("PRAGMA synchronous = NORMAL")
+            self._conn.execute("PRAGMA mmap_size = 268435456")
+            self._conn.execute("PRAGMA cache_size = -32000")
+            self._conn.execute("PRAGMA temp_store = MEMORY")
         except sqlite3.Error:
             pass
         self._apply_schema()

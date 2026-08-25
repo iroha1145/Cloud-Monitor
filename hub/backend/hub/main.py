@@ -46,10 +46,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         from .tm_proxy import TmBackground
 
         _app.state.http_sync = httpx.Client(
-            timeout=httpx.Timeout(5.0, read=15.0), limits=httpx.Limits(max_connections=20)
+            timeout=httpx.Timeout(5.0, read=15.0), limits=httpx.Limits(max_connections=5)
         )
         _app.state.http_async = httpx.AsyncClient(
-            timeout=httpx.Timeout(5.0, read=None), limits=httpx.Limits(max_connections=20)
+            timeout=httpx.Timeout(5.0, read=None), limits=httpx.Limits(max_connections=5)
         )
         if _app.state.tm_core is not None:
             _app.state.tm_core.bind_client(_app.state.http_sync)
@@ -87,7 +87,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     )
     app.include_router(build_tm_router(settings, app.state.db))
     # 云端用量面板数据（/api/v1/tm/overview + /api/v1/tm/subscriptions）
-    app.include_router(build_tm_overview_router(settings, app.state.db))
+    overview_router, overview_cache = build_tm_overview_router(settings, app.state.db)
+    app.state.overview_cache = overview_cache
+    app.include_router(overview_router)
 
     # ASGI receive 层实测限流：TM 写入端点 1MiB（官方上限），
     # /api/v1/sync/push 为可配置实际字节上限（P1-6，统一覆盖所有写接口）

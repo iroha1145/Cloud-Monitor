@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-25T02:34:48.729Z",
+  "generated_at": "2026-08-25T03:04:55.869Z",
   "providers": [
     {
       "provider": "anthropic",
@@ -10,7 +10,7 @@
       "name": "Anthropic",
       "status": "operational",
       "description": "ok",
-      "checked_at": "2026-08-25T02:34:48.728Z",
+      "checked_at": "2026-08-25T03:04:55.868Z",
       "source_updated_at": "2026-08-23T00:00:00Z",
       "stale": false,
       "error_code": null,
@@ -24,7 +24,7 @@
       "name": "OpenAI",
       "status": "operational",
       "description": "ok",
-      "checked_at": "2026-08-25T02:34:48.728Z",
+      "checked_at": "2026-08-25T03:04:55.868Z",
       "source_updated_at": "2026-08-23T00:00:00Z",
       "stale": false,
       "error_code": null,

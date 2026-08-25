@@ -37,6 +37,8 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    mem_limit: 512m
+    cpus: 1.0
     restart: unless-stopped
 
   # vendored 官方 token-monitor hub（协议权威：规范化/合并/聚合/过期/SSE/订阅）
@@ -47,6 +49,7 @@ services:
       TOKEN_MONITOR_PORT: "17321"
       TOKEN_MONITOR_HOST: 0.0.0.0
       TOKEN_MONITOR_DATA_FILE: /data/devices.json
+      NODE_OPTIONS: "--max-old-space-size=128"
     volumes:
       - tm-core-data:/data
     security_opt:
@@ -56,6 +59,8 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    mem_limit: 256m
+    cpus: 0.5
     restart: unless-stopped
 
 volumes:

@@ -580,7 +580,7 @@ html[data-theme="dark"] .theme-ic-sun { display: inline; }
 .kpi-conn-card.is-online .conn-track { background: linear-gradient(90deg, #0ea57a, #34d399); }
 .conn-track i {
   position: absolute; top: 50%; left: 0; width: 4px; height: 4px; margin-top: -2px;
-  border-radius: 50%; background: #0a7c58; opacity: 0;
+  border-radius: 50%; background: #0a7c58; opacity: 0; contain: layout style;
 }
 .kpi-conn-card.is-online .conn-track i { animation: conn-flow 2s linear infinite; }
 .kpi-conn-card.is-online .conn-track i:nth-child(2) { animation-delay: 0.66s; }

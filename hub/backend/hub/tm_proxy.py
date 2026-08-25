@@ -140,6 +140,11 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
     def core_of(request: Request) -> TmCore:
         return request.app.state.tm_core
 
+    def _invalidate_overview(request: Request) -> None:
+        cache = getattr(request.app.state, "overview_cache", None)
+        if cache is not None:
+            cache.invalidate()
+
     def tm_auth(request: Request) -> None:
         if not settings.tm_ingest_secret:
             raise HTTPException(
@@ -262,6 +267,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             mark_failed(db, request_id, str(exc))
             set_snapshot_status(db, success=False, error=str(exc))
             log.warning("快照写入失败（outbox 留待重放）: %s", exc)
+        _invalidate_overview(request)
         return JSONResponse(status_code=200, content=body)
 
     # ------------------------------------------------------------ 只读透传（统一 503）
@@ -303,6 +309,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
                 deleted,
                 purged,
             )
+            _invalidate_overview(request)
         return _proxy_response(resp)
 
     # ------------------------------------------------------------ subscriptions
@@ -394,7 +401,7 @@ class TmBackground:
 
     def _loop(self) -> None:
         bootstrapped = self._bootstrap()
-        while not self._stop.wait(60.0):
+        while not self._stop.wait(self.settings.tm_background_interval):
             try:
                 replay_pending(self.db, self.core)
             except Exception as exc:  # noqa: BLE001 — 后台任务不得崩溃进程

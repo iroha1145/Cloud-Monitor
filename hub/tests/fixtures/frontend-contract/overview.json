@@ -1,8 +1,8 @@
 {
   "overview_schema_version": 2,
-  "generated_at": "2026-08-25T02:34:48.720Z",
+  "generated_at": "2026-08-25T03:04:55.862Z",
   "pending_outbox": 0,
-  "last_snapshot_success_at": "2026-08-25T02:34:48+00:00",
+  "last_snapshot_success_at": "2026-08-25T03:04:55+00:00",
   "last_snapshot_error": null,
   "snapshot_degraded": false,
   "staleAfterMs": 600000,
@@ -183,8 +183,8 @@
       "osVersion": "15.5",
       "agentVersion": "1.8.2",
       "agentRuntime": "widget",
-      "receivedAt": "2026-08-25T02:34:48.704Z",
-      "updatedAt": "2026-08-25T02:34:48.701Z",
+      "receivedAt": "2026-08-25T03:04:55.846Z",
+      "updatedAt": "2026-08-25T03:04:55.843Z",
       "stale": false,
       "syncUploadIntervalMs": 0,
       "trackedClients": [
@@ -421,11 +421,11 @@
       },
       {
         "hour": 11,
-        "total": 1846320
+        "total": 0
       },
       {
         "hour": 12,
-        "total": 0
+        "total": 1846320
       },
       {
         "hour": 13,
@@ -526,11 +526,11 @@
         },
         {
           "hour": 11,
-          "total": 1846320
+          "total": 0
         },
         {
           "hour": 12,
-          "total": 0
+          "total": 1846320
         },
         {
           "hour": 13,
@@ -585,8 +585,8 @@
       }
     ],
     "coverage": {
-      "first_sample_at": "2026-08-25T02:30:00.000Z",
-      "last_sample_at": "2026-08-25T02:30:00.000Z",
+      "first_sample_at": "2026-08-25T03:00:00.000Z",
+      "last_sample_at": "2026-08-25T03:00:00.000Z",
       "expected_buckets": 1,
       "observed_buckets": 1,
       "coverage_percent": 100.0,
@@ -594,8 +594,8 @@
       "devices": [
         {
           "device_id": "dev-fixture",
-          "first_sample_at": "2026-08-25T02:30:00.000Z",
-          "last_sample_at": "2026-08-25T02:30:00.000Z",
+          "first_sample_at": "2026-08-25T03:00:00.000Z",
+          "last_sample_at": "2026-08-25T03:00:00.000Z",
           "expected_buckets": 1,
           "observed_buckets": 1,
           "gap_count": 0,

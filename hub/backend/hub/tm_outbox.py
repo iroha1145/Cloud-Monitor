@@ -32,7 +32,7 @@ from .tm_snapshots import norm_ts, utc_z
 log = logging.getLogger("tm-outbox")
 
 MAX_PENDING_DEFAULT = 1000
-DONE_RETENTION_HOURS = 24
+DONE_RETENTION_HOURS = 2
 REPLAY_BATCH = 100
 
 SCHEMA = """
