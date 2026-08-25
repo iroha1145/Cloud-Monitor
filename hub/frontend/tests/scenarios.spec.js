@@ -444,6 +444,19 @@ test.describe("§7 capabilities.tokenComponents=false（demo ?cm-scenario=nocap�
     expect(mask).toMatch(/client-logos\/[a-z0-9-]+\.svg/);
   });
 
+  test("客户端分布进度条轨道等宽", async ({ page }) => {
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    const tracks = page.locator("#client-dist .dist-track");
+    await expect(tracks.first()).toBeVisible();
+    const n = await tracks.count();
+    expect(n).toBeGreaterThan(1);
+    const widths = await tracks.evaluateAll((els) =>
+      els.map((el) => +el.getBoundingClientRect().width.toFixed(2))
+    );
+    expect(Math.max(...widths) - Math.min(...widths)).toBeLessThan(1);
+  });
+
   test("设备 / 配额 / 矩阵用 logo；模型图例与会话明细用色点", async ({ page }) => {
     await page.goto("/demo");
     await expect(page.locator("#shell")).toBeVisible();
@@ -753,8 +766,10 @@ test.describe("模型分布缓存率（demo）", () => {
     await expect(tip).toBeVisible();
     await expect(tip).toContainText("tokens");
     await expect(tip).toContainText("占比");
+    await expect(tip).toContainText("模型使用费用");
+    await expect(tip).toContainText("$");
     await expect(tip).toContainText("缓存率");
-    await expect(tip.locator(".tip-row")).toHaveCount(3);
+    await expect(tip.locator(".tip-row")).toHaveCount(4);
   });
 });
 

@@ -1452,6 +1452,7 @@ function renderModelDonut(per, animate) {
     const rate = cacheHitRate(componentBreakdown(per, "model", name));
     if (rate != null) cacheMeta.set(name, rate);
   });
+  const costs = per.modelCosts || {};
 
   const sliceTotal = entries.reduce((a, [, v]) => a + v, 0);
   const centerHtml = fmtCompactHtml(sliceTotal, true);
@@ -1461,9 +1462,11 @@ function renderModelDonut(per, animate) {
   const desc = `${entries.length} 个模型，合计 ${fmtInt(sliceTotal)} tokens`;
   const tipOf = (name) => () => {
     const e = entries.find(([n]) => n === name);
+    const cost = costs[name];
     const rows = [
       ["tokens", fmtInt(e ? e[1] : 0)],
       ["占比", pct1(e ? e[1] : 0, sliceTotal)],
+      ["模型使用费用", cost != null ? fmtUsd(cost) : "—"],
     ];
     if (cacheMeta.has(name)) rows.push(["缓存率", fmtPct(cacheMeta.get(name))]);
     return tipHtml(name, rows);

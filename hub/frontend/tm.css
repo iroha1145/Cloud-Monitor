@@ -884,7 +884,8 @@ html[data-theme="dark"] .theme-ic-sun { display: inline; }
 /* ---------- 分布条（模型 / 客户端 / 项目） ---------- */
 .dist { display: grid; gap: 4px; }
 .dist-row {
-  display: grid; grid-template-columns: minmax(120px, 190px) 1fr minmax(96px, auto);
+  /* 名称 / 数值列定宽，避免短用量行的空轨道比高用量行更长 */
+  display: grid; grid-template-columns: 148px minmax(0, 1fr) 11rem;
   align-items: center; gap: 12px;
   padding: 8px 6px; border-radius: var(--r-md);
   transition: background var(--dur);
@@ -1490,7 +1491,7 @@ html[data-theme="dark"] .pv-card.lv-crit .pv-status { color: #ff9a94; }
   .dev-stats { grid-template-columns: repeat(2, 1fr); gap: 12px 8px; }
 
   .chart-wrap { height: 240px; }
-  .dist-row { grid-template-columns: minmax(96px, 128px) 1fr; }
+  .dist-row { grid-template-columns: 108px 1fr; }
   .dist-val { grid-column: 2; justify-content: flex-start; }
 
   .toast-root { right: 12px; left: 12px; bottom: calc(82px + env(safe-area-inset-bottom, 0px)); }
