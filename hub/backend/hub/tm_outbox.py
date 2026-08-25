@@ -63,6 +63,20 @@ def new_request_id() -> str:
     return uuid.uuid4().hex
 
 
+def _slim_payload(payload: dict) -> dict:
+    """Strip month.sessions before outbox storage (~93% of payload volume).
+
+    month.sessions is a point-in-time snapshot of all billing-month sessions
+    that goes stale in seconds.  Replaying an old snapshot has no value; the
+    next successful ingest brings current data.  Keeping it inflates the
+    database by ~1 MB per record (×6/min in real-time mode → ~360 MB/hour).
+    """
+    month = payload.get("month")
+    if isinstance(month, dict) and "sessions" in month:
+        return {**payload, "month": {k: v for k, v in month.items() if k != "sessions"}}
+    return payload
+
+
 def record_pending(
     db: Database,
     *,
@@ -89,7 +103,7 @@ def record_pending(
             (
                 request_id,
                 device_id,
-                json.dumps(payload, ensure_ascii=False),
+                json.dumps(_slim_payload(payload), ensure_ascii=False),
                 norm_ts(utc_now()),
             ),
         )
@@ -280,5 +294,14 @@ def replay_pending(db: Database, core, *, max_items: int = REPLAY_BATCH) -> dict
             stats["failed"] += 1
     # 无条件清理：健康路径下 pending 恒空（ingest 即插即 done），若只在
     # 处理过 pending 后才清，done/rejected 的保留策略就是死代码，库无限增长
-    prune_done(db)
+    pruned = prune_done(db)
+    if pruned:
+        try:
+            db.execute("PRAGMA incremental_vacuum(500)")
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    except Exception:  # noqa: BLE001
+        pass
     return stats
