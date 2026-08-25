@@ -125,6 +125,15 @@ def mark_rejected(db: Database, request_id: str, error: str) -> None:
     )
 
 
+def purge_device(db: Database, device_id: str) -> int:
+    """设备删除时清空其全部 outbox 行：残留 pending 会在下轮重放时
+    把刚删除的设备重新灌回 tm-core（复活）。"""
+    cur = db.execute(
+        "DELETE FROM tm_ingest_outbox WHERE device_id = ?", (device_id,)
+    )
+    return cur.rowcount or 0
+
+
 def pending_count(db: Database) -> int:
     return int(
         db.fetchone("SELECT COUNT(*) AS n FROM tm_ingest_outbox WHERE state='pending'")["n"]
@@ -269,6 +278,7 @@ def replay_pending(db: Database, core, *, max_items: int = REPLAY_BATCH) -> dict
             mark_failed(db, row["request_id"], str(exc))
             set_snapshot_status(db, success=False, error=str(exc))
             stats["failed"] += 1
-    if rows:
-        prune_done(db)
+    # 无条件清理：健康路径下 pending 恒空（ingest 即插即 done），若只在
+    # 处理过 pending 后才清，done/rejected 的保留策略就是死代码，库无限增长
+    prune_done(db)
     return stats

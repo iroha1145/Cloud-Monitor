@@ -62,7 +62,9 @@ def _upsert_device(db: Database, device: DeviceInfo, *, now: str) -> None:
 
 
 def _upsert_user(db: Database, user: UserIn, *, now: str) -> None:
-    """首次插入保留本地 created_at；更新不覆盖原始 created_at。"""
+    """首次插入保留本地 created_at；更新不覆盖原始 created_at。
+    空字段不覆盖已存值（与 _upsert_device 同一保留语义）：心跳等部分
+    载荷带空 email/name 时不得把已同步的身份信息抹成空串。"""
     stamp = now
     created = user.created_at or stamp
     updated = user.updated_at or stamp
@@ -71,9 +73,9 @@ def _upsert_user(db: Database, user: UserIn, *, now: str) -> None:
         INSERT INTO users (id, email, name, role, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
-            email = excluded.email,
-            name = excluded.name,
-            role = excluded.role,
+            email = CASE WHEN excluded.email != '' THEN excluded.email ELSE users.email END,
+            name = CASE WHEN excluded.name != '' THEN excluded.name ELSE users.name END,
+            role = CASE WHEN excluded.role != '' THEN excluded.role ELSE users.role END,
             updated_at = excluded.updated_at
         """,
         (user.id, user.email, user.name, user.role, created, updated),
@@ -118,6 +120,7 @@ def apply_sync_push(
                 )
             }
             to_insert: list[tuple[Any, ...]] = []
+            seen_batch: dict[int, str] = {}
             for record in records:
                 fingerprint = record_fingerprint(
                     user_id=record.user_id,
@@ -133,6 +136,16 @@ def apply_sync_push(
                     else:
                         conflicts += 1
                     continue
+                # 同批内重复 local_id：不入列（否则 executemany 撞唯一索引
+                # 抛未捕获 IntegrityError → 整批 500 → agent 重试同批死循环），
+                # 分类语义与数据库侧去重一致
+                if record.local_id in seen_batch:
+                    if seen_batch[record.local_id] == fingerprint:
+                        duplicates += 1
+                    else:
+                        conflicts += 1
+                    continue
+                seen_batch[record.local_id] = fingerprint
                 to_insert.append(
                     (
                         payload.device.id,

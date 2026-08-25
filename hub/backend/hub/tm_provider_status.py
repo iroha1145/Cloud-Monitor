@@ -406,19 +406,21 @@ async def fetch_provider_statuses(
     async def _one(canon: str) -> tuple[str, dict[str, Any], Optional[str]]:
         page = STATUS_PAGES[canon]
         try:
-            async with asyncio.timeout(timeout):
-                parsed, error = await fetch_one_provider(client, page, timeout=timeout)
+            # asyncio.wait_for 而非 asyncio.timeout：后者是 3.11+ API，系统
+            # Python 3.9 起服时会 AttributeError 导致所有 provider 恒 unknown
+            parsed, error = await asyncio.wait_for(
+                fetch_one_provider(client, page, timeout=timeout), timeout
+            )
             return canon, parsed, error
-        except TimeoutError:
+        except asyncio.TimeoutError:
             return canon, {}, "timeout"
 
     try:
-        async with asyncio.timeout(budget_seconds):
-            rows = await asyncio.gather(
-                *[_one(c) for c in canonicals],
-                return_exceptions=True,
-            )
-    except TimeoutError:
+        rows = await asyncio.wait_for(
+            asyncio.gather(*[_one(c) for c in canonicals], return_exceptions=True),
+            budget_seconds,
+        )
+    except asyncio.TimeoutError:
         rows = [(c, {}, "timeout") for c in canonicals]
 
     providers: list[dict[str, Any]] = []
@@ -512,7 +514,9 @@ class ProviderStatusService:
         self.timeout_seconds = float(timeout_seconds)
         self.budget_seconds = float(budget_seconds)
         self._monotonic = monotonic
-        self._lock = asyncio.Lock()
+        # Lock 延迟到事件循环内首次使用时创建：3.9 的 Lock() 在构造期绑定
+        # 当前事件循环，而本服务在 create_app（无运行循环）里构造
+        self._lock: Optional[asyncio.Lock] = None
         self._inflight: Optional[asyncio.Task] = None
         self._inflight_key: Optional[tuple[tuple[str, tuple[str, ...]], ...]] = None
         self._cache: Optional[_CacheEntry] = None
@@ -575,6 +579,8 @@ class ProviderStatusService:
         observed: dict[str, list[str]],
         key: tuple[tuple[str, tuple[str, ...]], ...],
     ) -> dict[str, Any]:
+        if self._lock is None:
+            self._lock = asyncio.Lock()
         async with self._lock:
             cache = self._cache
             now = self._monotonic()

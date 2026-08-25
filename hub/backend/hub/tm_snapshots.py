@@ -97,10 +97,10 @@ def _migrate_timestamp_format(db: Database) -> None:
     )
     if _meta_get(db, "ts_format_ms_z") == "2" and leftover is None:
         return
-    rows = db._conn.execute(
+    rows = db.fetchall(
         "SELECT id, bucket_start, server_received_at, producer_updated_at"
         " FROM tm_snapshot_buckets"
-    ).fetchall()
+    )
     updates = []
     for row in rows:
         norm_bucket = norm_ts(row["bucket_start"]) if row["bucket_start"] else ""

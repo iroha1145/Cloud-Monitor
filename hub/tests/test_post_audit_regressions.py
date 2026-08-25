@@ -126,6 +126,90 @@ def test_legacy_marker_is_written_only_after_success(tmp_path):
     db.close()
 
 
+def test_healthy_path_prunes_expired_done_and_rejected_rows(tmp_path):
+    """健康部署下 pending 恒空；prune 必须无条件执行，否则 done/rejected
+    永久沉积（每设备每天 ~288 行完整 payload，库无限增长）。"""
+    db = db_for(tmp_path, "prune.sqlite3")
+    old = "2020-01-01T00:00:00.000Z"
+    for rid, state in (("old-done", "done"), ("old-rej", "rejected")):
+        db.execute(
+            "INSERT INTO tm_ingest_outbox (request_id, device_id, payload_json,"
+            " received_at, state) VALUES (?, 'dev', '{}', ?, ?)",
+            (rid, old, state),
+        )
+    result = replay_pending(db, Core(Response(200, {"stats": {"devices": []}})))
+    assert result["checked"] == 0  # 无 pending，走的正是健康路径
+    remaining = db.fetchone("SELECT COUNT(*) AS n FROM tm_ingest_outbox")["n"]
+    assert remaining == 0
+    db.close()
+
+
+def test_purge_device_outbox_prevents_resurrection(tmp_path):
+    """设备删除后残留的 pending 行会在下轮重放时把设备灌回 tm-core。"""
+    from hub.tm_outbox import purge_device
+
+    db = db_for(tmp_path, "purge.sqlite3")
+    record_pending(
+        db,
+        request_id="r-keep",
+        device_id="other",
+        payload={"deviceId": "other", "today": {"totalTokens": 1}},
+    )
+    record_pending(
+        db,
+        request_id="r-gone",
+        device_id="deleted-dev",
+        payload={"deviceId": "deleted-dev", "today": {"totalTokens": 1}},
+    )
+    assert purge_device(db, "deleted-dev") == 1
+    rows = db.fetchall("SELECT device_id FROM tm_ingest_outbox")
+    assert [r["device_id"] for r in rows] == ["other"]
+    db.close()
+
+
+def test_bootstrap_does_not_mark_legacy_on_upstream_4xx(tmp_path):
+    """回填只捕传输异常不查状态码时，tm-core 返回 401/400 也会写永久幂等
+    标记——旧设备数据从此静默不再回灌。"""
+    from types import SimpleNamespace
+
+    from hub.tm_proxy import TmBackground
+
+    class StatusResponse:
+        def __init__(self, status_code):
+            self.status_code = status_code
+            self.text = "denied"
+
+        def json(self):
+            return {"stats": {"devices": []}}
+
+    class StatusCore:
+        def __init__(self, status_code):
+            self.status_code = status_code
+
+        def health(self):
+            return {"ok": True}
+
+        def request(self, *_args, **_kwargs):
+            return StatusResponse(self.status_code)
+
+    db = db_for(tmp_path, "bootstrap.sqlite3")
+    db.execute("CREATE TABLE tm_devices (device_id TEXT, payload TEXT, last_seen_at TEXT)")
+    db.execute(
+        "INSERT INTO tm_devices VALUES (?, ?, ?)",
+        ("legacy", '{"deviceId":"legacy","today":{"totalTokens":1}}', ""),
+    )
+    settings = SimpleNamespace(tm_ingest_secret="secret")
+
+    denied = TmBackground(settings, db, StatusCore(401))
+    assert denied._bootstrap() is False
+    assert len(legacy_device_payloads(db)) == 1  # 标记未写，下一轮还能重试
+
+    accepted = TmBackground(settings, db, StatusCore(200))
+    assert accepted._bootstrap() is True
+    assert legacy_device_payloads(db) == []
+    db.close()
+
+
 def test_tmcore_wraps_read_timeout_as_upstream_unavailable():
     class TimeoutClient:
         def request(self, *_args, **_kwargs):
