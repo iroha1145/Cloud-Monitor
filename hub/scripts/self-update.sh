@@ -82,24 +82,37 @@ write_status "$ID" running "$REF" "正在拉取 $REF"
 cleanup_req() { rm -f "$REQ"; }
 trap cleanup_req EXIT
 
-if [[ -n "$(git -C "$INSTALL_DIR" status --porcelain)" ]]; then
-  write_status "$ID" error "$REF" "安装目录有未提交改动，拒绝覆盖"
+git_in() {
+  git -c "safe.directory=$INSTALL_DIR" -C "$INSTALL_DIR" "$@"
+}
+
+fail() {
+  write_status "$ID" error "$REF" "$1"
   exit 1
+}
+
+if ! dirty="$(git_in status --porcelain --untracked-files=no)"; then
+  fail "git status 失败（检查仓库目录所有权）"
+fi
+if [[ -n "$dirty" ]]; then
+  fail "已跟踪文件有未提交改动，拒绝覆盖"
 fi
 
-git -C "$INSTALL_DIR" fetch origin --tags --force
+if ! git_in fetch origin --tags --force; then
+  fail "git fetch 失败"
+fi
 if [[ "$REF" == "main" || "$REF" == "master" ]]; then
-  git -C "$INSTALL_DIR" checkout -q "$REF"
-  git -C "$INSTALL_DIR" merge --ff-only "origin/$REF"
+  git_in checkout -q "$REF" || fail "无法 checkout $REF"
+  git_in merge --ff-only "origin/$REF" || fail "无法快进到 origin/$REF"
 else
-  git -C "$INSTALL_DIR" checkout -q --detach "$REF"
+  git_in checkout -q --detach "$REF" || fail "无法检出 $REF"
 fi
 
 VER="dev"
 if [[ -f "$INSTALL_DIR/VERSION" ]]; then
   VER="$(tr -d '[:space:]' <"$INSTALL_DIR/VERSION")"
 fi
-SHA="$(git -C "$INSTALL_DIR" rev-parse --short HEAD)"
+SHA="$(git_in rev-parse --short HEAD)"
 
 if [[ -f "$ENVF" ]]; then
   grep -v -E '^(CM_VERSION|CM_GIT_SHA)=' "$ENVF" >"$ENVF.tmp" || true

@@ -10,8 +10,8 @@ agent-state.json
 .deploy-mode
 .DS_Store
 data/
-update-control/*.json
-update-control/*.log
-update-control/*.pid
-update-control/*.lock
+hub/update-control/*.json
+hub/update-control/*.log
+hub/update-control/*.pid
+hub/update-control/*.lock
 !hub/update-control/.gitkeep

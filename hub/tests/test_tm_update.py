@@ -187,4 +187,9 @@ def test_host_updater_scripts_exist():
     compose = (hub / "docker-compose.yml").read_text(encoding="utf-8")
     assert "./update-control:/update" in compose
     assert "CM_UPDATE_DIR: /update" in compose
+    gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+    assert "hub/update-control/*.json" in gitignore
+    script = (hub / "scripts/self-update.sh").read_text(encoding="utf-8")
+    assert "safe.directory" in script
+    assert "--untracked-files=no" in script
 

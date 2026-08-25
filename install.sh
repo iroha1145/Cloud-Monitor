@@ -79,8 +79,8 @@ ensure_repo() {
   local dir="$1"
   if [[ -d "$dir/.git" && -f "$dir/hub/docker-compose.yml" ]]; then
     # fetch 失败（离线等）不致命：演示↔实机切换本来不需要远端
-    if git -C "$dir" fetch origin 2>/dev/null; then
-      if git -C "$dir" merge --ff-only origin/main; then
+    if git -c "safe.directory=$dir" -C "$dir" fetch origin 2>/dev/null; then
+      if git -c "safe.directory=$dir" -C "$dir" merge --ff-only origin/main; then
         :
       else
         echo "提示：未能快进到 origin/main，继续使用当前工作区。" >&2
@@ -217,7 +217,7 @@ ENVF="$HUB/.env"
 ensure_env "$ENVF" "$HUB/.env.example"
 
 upsert_env "$ENVF" CM_VERSION "$(tr -d '[:space:]' <"$INSTALL_DIR/VERSION" 2>/dev/null || echo dev)"
-upsert_env "$ENVF" CM_GIT_SHA "$(git -C "$INSTALL_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+upsert_env "$ENVF" CM_GIT_SHA "$(git -c "safe.directory=$INSTALL_DIR" -C "$INSTALL_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 
 ensure_updater() {
   mkdir -p "$HUB/update-control"
