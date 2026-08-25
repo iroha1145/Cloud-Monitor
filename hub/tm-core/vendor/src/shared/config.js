@@ -62,7 +62,7 @@ function readJson(filePath, fallback = null) {
 function writeJsonAtomic(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.tmp`;
-  fs.writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  fs.writeFileSync(tempPath, JSON.stringify(value) + '\n', 'utf8');
   fs.renameSync(tempPath, filePath);
 }
 

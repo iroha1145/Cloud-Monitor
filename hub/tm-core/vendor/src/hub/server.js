@@ -51,20 +51,24 @@ function createHub({
     writeJsonAtomic(dataFile, store);
   }
 
+  let _statsCache = null;
+  let _statsCacheAt = 0;
+  const STATS_CACHE_MS = 2000;
   function getStats() {
+    const now = Date.now();
+    if (_statsCache && now - _statsCacheAt < STATS_CACHE_MS) return _statsCache;
     const stats = aggregateDevices(Object.values(store.devices), staleAfterMs);
     stats.staleAfterMs = staleAfterMs;
     const history = aggregateHistory(Object.values(store.devices));
     stats.historyPreview = historyPreview(history);
     stats.historyRevision = historyRevision(history);
     stats.deviceHistoryRevision = deviceHistoryRevision(Object.values(store.devices));
-    // The version of the shared subscription list, never the list itself. A
-    // device compares it against the copy it holds and re-reads only when it has
-    // been overtaken, so learning about another device's edit costs nothing in
-    // the steady state and does not put what the user pays into every frame.
     stats.subscriptionsUpdatedAt = store.subscriptions?.updatedAt || '';
+    _statsCache = stats;
+    _statsCacheAt = now;
     return stats;
   }
+  function invalidateStatsCache() { _statsCache = null; _statsCacheAt = 0; }
 
   function getHistory() {
     return aggregateHistory(Object.values(store.devices));
@@ -104,6 +108,7 @@ function createHub({
     }
     const record = mergeDeviceRecord(store.devices[String(payload.deviceId || payload.id)], { ...payload, receivedAt: new Date().toISOString() });
     store.devices[record.deviceId] = record;
+    invalidateStatsCache();
     persist();
     broadcastStats('ingest');
     return record;
@@ -111,6 +116,7 @@ function createHub({
 
   function deleteDevice(deviceId) {
     delete store.devices[deviceId];
+    invalidateStatsCache();
     persist();
     broadcastStats('delete');
   }
