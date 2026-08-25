@@ -636,6 +636,34 @@ test.describe("模型分布环形图选中态（颜色不串 / 100% 整环外凸
   });
 });
 
+test.describe("夜间模式与趋势文案（demo）", () => {
+  test("右上角按钮切换夜间模式并持久化", async ({ page }) => {
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    const btn = page.locator("#theme-toggle");
+    await expect(btn).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await btn.click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#0b1220");
+    expect(await page.evaluate(() => localStorage.getItem("cm_theme"))).toBe("dark");
+    await page.reload();
+    await expect(page.locator("#shell")).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect(page.locator("#theme-toggle")).toBeVisible();
+    await expect(page.locator("#refresh")).toBeVisible();
+  });
+
+  test("近 30 天趋势副标题不再写堆叠着色说明", async ({ page }) => {
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    const sub = page.locator(".chart-panel .panel-sub");
+    await expect(sub).toHaveText("每日 token 合计");
+    await expect(sub).not.toContainText("按模型堆叠着色");
+    await expect(sub).not.toContainText("悬停查看明细");
+  });
+});
+
 test.describe("模型分布缓存率（demo）", () => {
   test("无缓存率切换，悬停图例行显示该模型缓存率", async ({ page }) => {
     await page.goto("/demo");

@@ -3214,6 +3214,32 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("pagehide", abortAllRequests);
 window.addEventListener("beforeunload", abortAllRequests);
 
+/* ================= 主题 ================= */
+const THEME_KEY = "cm_theme";
+const THEME_COLOR = { light: "#f8fafd", dark: "#0b1220" };
+
+function currentTheme() {
+  return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+}
+
+function applyTheme(theme) {
+  const t = theme === "dark" ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", t);
+  try { localStorage.setItem(THEME_KEY, t); } catch (e) { /* private mode */ }
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", THEME_COLOR[t]);
+  document.querySelectorAll("[data-theme-toggle]").forEach((btn) => {
+    btn.setAttribute("aria-pressed", t === "dark" ? "true" : "false");
+    btn.setAttribute("aria-label", t === "dark" ? "切换日间模式" : "切换夜间模式");
+  });
+  const tip = $("#tt-theme");
+  if (tip) tip.textContent = t === "dark" ? "日间模式" : "夜间模式";
+}
+
+function toggleTheme() {
+  applyTheme(currentTheme() === "dark" ? "light" : "dark");
+}
+
 /* ================= 启动 ================= */
 (function boot() {
   const demoMeta = document.querySelector('meta[name="cm-demo"]');
@@ -3230,6 +3256,11 @@ window.addEventListener("beforeunload", abortAllRequests);
     b.classList.toggle("is-active", b.dataset.view === state.view);
   });
   $("#view-title").textContent = VIEWS[state.view][0];
+
+  applyTheme(currentTheme());
+  document.querySelectorAll("[data-theme-toggle]").forEach((btn) => {
+    btn.addEventListener("click", toggleTheme);
+  });
 
   if (isDemoPage) enterDemo();
   else if (store.token) load(false);

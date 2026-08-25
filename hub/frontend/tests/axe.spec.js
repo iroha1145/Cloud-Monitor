@@ -38,6 +38,15 @@ test.describe("axe-core 可访问性（gate + demo 四视图）", () => {
     await scan(page, "gate");
   });
 
+  test("demo 夜间模式 overview", async ({ page }) => {
+    await page.addInitScript(() => { try { localStorage.setItem("cm_theme", "dark"); } catch (e) {} });
+    await page.goto("/demo#overview");
+    await expect(page.locator("#shell")).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await page.waitForTimeout(500);
+    await scan(page, "overview-dark");
+  });
+
   for (const view of ["overview", "devices", "quota", "history"]) {
     test(`demo 视图 ${view}`, async ({ page }) => {
       await page.goto(`/demo#${view}`);

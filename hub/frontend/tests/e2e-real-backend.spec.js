@@ -9,7 +9,7 @@ const TOKEN = process.env.CM_E2E_TOKEN || "test-token";
 
 test.describe("真实 FastAPI 后端（零拦截）", () => {
   test("GET / 与 /static 核心资源全部 200", async ({ request }) => {
-    for (const path of ["/", "/static/tm.css", "/static/tm.js", "/static/icons.svg"]) {
+    for (const path of ["/", "/static/tm.css", "/static/tm.js", "/static/icons.svg", "/static/theme-boot.js"]) {
       const res = await request.get(path);
       expect(res.status(), `GET ${path}`).toBe(200);
     }
