@@ -10,18 +10,20 @@ OUT="$BACKUP_DIR/cloud-monitor-backup-$TS"
 mkdir -p "$OUT"
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-COMPOSE="docker compose -f $SCRIPT_DIR/../docker-compose.yml"
+HUB_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+# 用项目目录加载 compose.yml + override.yml，避免 -f 单文件漏掉端口覆盖
+COMPOSE="docker compose --project-directory $HUB_DIR"
 
 echo "[1/3] 备份 tm-core devices.json（官方状态 + 订阅）..."
 $COMPOSE exec -T tm-core sh -c 'cat /data/devices.json' > "$OUT/devices.json"
 
 echo "[2/3] 备份 SQLite（.backup 一致性快照，含 WAL）..."
 CID=$($COMPOSE ps -q cloud-hub)
-docker exec "$CID" sh -c \
-  'sqlite3 /data/cloud-monitor.sqlite3 ".backup /tmp/cloud-monitor.sqlite3"' 2>/dev/null || \
-  docker run --rm --volumes-from "$CID" -v "$OUT:/backup" alpine:3.21 sh -c \
-  'apk add --no-cache sqlite >/dev/null && sqlite3 /data/cloud-monitor.sqlite3 ".backup /backup/cloud-monitor.sqlite3"'
-docker exec "$CID" sh -c 'cat /tmp/cloud-monitor.sqlite3' > "$OUT/cloud-monitor.sqlite3" 2>/dev/null || true
+[ -n "$CID" ] || { echo "cloud-hub 未运行，无法备份 SQLite" >&2; exit 1; }
+# hub 镜像不含 sqlite3；不要先 exec 再 cat 覆盖——失败的重定向会把已写好的备份截成空文件
+docker run --rm --volumes-from "$CID" -v "$OUT:/backup" alpine:3.21 \
+  sh -c 'apk add --no-cache sqlite >/dev/null && sqlite3 /data/cloud-monitor.sqlite3 ".backup /backup/cloud-monitor.sqlite3"'
+[ -s "$OUT/cloud-monitor.sqlite3" ] || { echo "SQLite 备份是空文件" >&2; exit 1; }
 
 echo "[3/3] 备份 manifest（两卷时间点）..."
 {

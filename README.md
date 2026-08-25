@@ -1,121 +1,51 @@
-# Cloud Monitor — token-monitor 的云端用量面板
+# Cloud Monitor
 
-**在线演示（假数据，无需安装）：** https://iroha1145.github.io/Cloud-Monitor/
+把本机 [token-monitor](https://github.com/Javis603/token-monitor) 的用量接到自己的服务器。widget 在设置里把 hub 指过来，浏览器打开面板就能看今日、本月、累计。
 
-把**本机 [token-monitor](https://github.com/Javis603/token-monitor) 的数据搬到云端**：
-官方 hub 实现被原样 vendored（固定提交 b925865，逐字节未改）作为**协议权威**运行在
-tm-core 容器中，本机 widget 在设置里把 hub 指向你的服务器即可原生直连；Python
-网关在其前侧做鉴权隔离、严格载荷校验、1MiB 实测限流，并把数据沉淀为 SQLite
-长期时间序列，配合 `/` 网页面板随处查看（今日/本月/累计、按模型/客户端、
-缓存拆分、多设备、近 30 天按模型堆叠趋势、日/周/月活动热力图，以及
-工具×模型矩阵、项目、配额、订阅、会话明细面板；旧 `/tm/` 301 跳转）。
+**假数据演示（不用装）：** https://iroha1145.github.io/Cloud-Monitor/
 
-同时保留另一条链路：本机 [OpenWebUI-Monitor](https://github.com/iroha1145/OpenWebUI-Monitor)
-的详细调用记录同步（纯 API 链路，无独立页面）。两条链路密钥完全隔离。
+官方 hub 按固定提交 `b925865` 原样放进 tm-core 容器，协议行为跟官方一致。前面是 Python 网关：鉴权、校验、1MiB 实测限流，并把快照写入 SQLite。官方 `devices.json` 只留每台设备最新状态，没有历史点；长期趋势和日归档是我们自己补的。
+
+另有一条 [OpenWebUI-Monitor](https://github.com/iroha1145/OpenWebUI-Monitor) 记录同步（纯 API，没有独立页面）。两条链路密钥分开，互碰不到。
 
 ```
-┌───────────── 本机 ─────────────┐      ┌────────── 云端服务器（docker compose）──────────┐
-│ token-monitor widget           │ 原生  │ ┌────────────────────────────────────────┐   │
-│  设置 hub=服务器 密钥=SECRET    │──────►│ │ tm-core（vendored 官方 hub, 未修改）     │   │
-│  widget 同步间隔 实时/10/20/30分 │ 协议  │ │  规范化/合并/聚合/过期/SSE/订阅          │   │
-│  headless agent 默认 5 分钟     │      │ │  devices.json 持久化（官方原生行为）     │   │
-└────────────────────────────────┘      │ └──────────────△─────────────────────────┘   │
-                                        │ Python 网关: 鉴权隔离+严格校验+1MiB 限流      │
-                                        │ SQLite 5 分钟桶历史(设备本地日) / 用量面板    │
-                                        │ OpenWebUI 记录链路(另一套密钥, 纯 API)        │
-                                        └──────────────────────────────────────────────┘
+┌───────────── 本机 ─────────────┐      ┌────────── 云端（docker compose）──────────┐
+│ token-monitor widget           │ 原生  │ ┌────────────────────────────────────┐   │
+│  hub = 服务器                  │──────►│ │ tm-core（官方 hub @b925865，未改）  │   │
+│  密钥 = TOKEN_MONITOR_SECRET   │ 协议  │ │ 规范化 / 合并 / 聚合 / 过期 / SSE  │   │
+│  widget：实时 / 10 / 20 / 30 分 │      │ │ devices.json（官方原生持久化）     │   │
+│  headless agent 默认 5 分钟     │      │ └──────────────△─────────────────────┘   │
+└────────────────────────────────┘      │ Python 网关：鉴权 + 校验 + 1MiB 限流      │
+                                        │ SQLite 5 分钟桶 + 用量面板                │
+                                        │ OpenWebUI 记录链路（另一套密钥）          │
+                                        └──────────────────────────────────────────┘
 ```
 
-## 协议支持矩阵
+## 面板里有什么
 
-| 官方端点 | 状态 | 处理方 |
-|---|---|---|
-| `GET /api/health` | ✅ 官方形状原样（含 hubBuild） | 透传 tm-core；上游不可达时 503 明确失败 |
-| `POST /api/ingest` | ✅ 官方形状（ok/deviceId/stats） | 前置严格校验 → 透传 → 快照联动 |
-| `GET /api/stats` | ✅ | 透传（聚合/过期/stale 全部官方语义） |
-| `GET /api/stats/stream` | ✅ SSE（snapshot 首帧/ingest·delete·subscriptions 广播/30s 心跳 `: hb`） | 字节级透传 |
-| `GET /api/devices` | ✅ `{devices:[...]}` | 透传 |
-| `DELETE /api/devices/:id` | ✅ `{ok,deviceId}` | 透传 + 清理 SQLite 快照 |
-| `GET /api/history` | ✅ | 透传 |
-| `GET /api/v1/tm/overview` | ✅ Cloud 扩展 | ACCESS_TOKEN；官方 stats + SQLite 时间序列 |
-| `GET /api/v1/tm/subscriptions` | ✅ Cloud 扩展 | ACCESS_TOKEN |
-| `GET /api/v1/tm/provider-status` | ✅ Cloud 扩展 | ACCESS_TOKEN；allowlist 并发状态页 |
-| `GET /api/v1/tm/history/daily` | ✅ Cloud 扩展 | ACCESS_TOKEN；370 天本地日 SQL 分页 |
-| `GET/PUT /api/subscriptions` | ✅（含 stale_write 409 / 非法币种 400） | 透传 |
-| `OPTIONS`（官方 204） | ⚠️ 未特殊处理 | 如有需要可加 |
-| Worker 专属 `/api/public/*` | ❌ 不适用 | 官方 Node hub 亦无此端点 |
+- 概览：今日 tokens、费用、连接状态、近 30 天趋势
+- 模型分布：环形图；悬停看 tokens、占比、该模型费用、缓存率
+- 客户端分布：用 token-monitor 的 logo；条内是上报的真实构成；各行轨道等宽
+- 工具 × 模型矩阵、最近会话
+- 设备、配额与订阅
+- 活动热力图（日、周、月，格子保持正方形）
+- 提供商状态：只出今日有上报的提供商，数据来自各官方状态页（Anthropic、OpenAI、Cursor、DeepSeek、Kimi）。GLM 没有官方 Statuspage，不出卡
+- 日归档：最多 370 天
+- 夜间模式
 
-## 与官方 hub 的差异（如实列出）
+旧路径 `/tm/` 会 301 到 `/`。
 
-- **协议行为本身无差异**：tm-core 是官方代码逐字节副本（规范化、设备合并含
-  limitsOnly 语义、聚合、periodWindows 过期、按 syncUploadIntervalMs 的
-  stale 判定、SSE、订阅、devices.json 持久化）。差分测试对同一载荷序列
-  断言两者输出等价。
-- **网关增加的防护**：`TOKEN_MONITOR_SECRET` 与 OpenWebUI 链路密钥完全隔离
-  （TM 密钥碰不到记录写入/读取，反之亦然）；转发前严格校验（负数/bool/
-  NaN/Infinity/超 64 位/非法 IANA 时区/原型污染键/数量超限/过度未来时间
-  一律 400，官方仅限 1MiB 体积）；ASGI receive 层 1MiB 实测限流（分块、
-  无/伪造 Content-Length 均按实际字节判定）。
-- **网关增加的能力**：SQLite 5 分钟桶长期时间序列（官方 devices.json 只保留
-  每设备最新状态，不含历史点）；`/api/v1/tm/overview` 面板接口、
-  `/api/v1/tm/subscriptions` 只读订阅、`/api/v1/tm/provider-status`
-  （官方状态页 allowlist）、`/api/v1/tm/history/daily`（370 天设备本地日
-  分页）（ACCESS_TOKEN）；v1 旧表自动迁移。
-- **部署形态**：官方 hub 单进程；本方案为 compose 内 python + node 两容器。
+## 快速开始
 
-## 本轮加固（v4：可靠性/口径/供应链）
-
-- **快照可靠性（事务发件箱）**：ingest 先记 pending outbox → 转发 → 从本次
-  响应的 stats.devices 取规范化记录写快照并标记 done（同请求闭环，不再
-  额外 GET /api/devices）。快照失败不静默丢失：outbox 留待后台/启动重放
-  （幂等，不重复建桶），`/api/v1/health`、ready、overview 暴露
-  pending_outbox / snapshot_degraded / last_snapshot_error；pending 超上限
-  （默认 1000）返回 503 背压。
-- **健康检查**：`/api/v1/health/live`（存活）、`/api/v1/health/ready`
-  （SQLite 读写 + tm-core + 快照状态；任一组件失败 503）。Docker
-  HEALTHCHECK 改用 ready；compose 为 `depends_on: service_healthy`。
-  tm-core 不可达时代理接口统一 503（不散落 500），延迟启动由后台线程
-  自动重试初始化与旧数据回填。
-- **活动时间口径**：`DASHBOARD_TIME_ZONE`（默认 Asia/Tokyo）。hourly 只收
-  换算后日期等于仪表盘今日的桶；coverage 按设备求和后钳制 0–100%；
-  `attribution_mode` 为 none/delta/delta-low-coverage/delta-with-reset
-  （本地日开始处的自然首桶不是自动 low-coverage）。activity.daily 近 7 天
-  用 5 分钟桶、更早用日锚点，与 `/api/v1/tm/history/daily` 共用查询核心
-  （写入 docs/TM_OVERVIEW_CONTRACT.md）。快照压缩按时间 `ROW_NUMBER`，
-  截止时间为毫秒 UTC `Z`。
-- **会话主键**：`deviceId:client:sessionId`，跨设备同 client:sessionId
-  不再互相删除；返回 sessions_meta（total/returned/omitted_count/
-  session_details_incomplete）。
-- **供应链**：`hub/scripts/backup.sh` / `restore.sh`（两卷一致性备份恢复，
-  含时间点校验）；vendor SHA-256 manifest（CI 逐文件校验）；
-  `requirements-lock.txt` 哈希锁定；基础镜像固定补丁版本；统一安全
-  响应头（CSP/nosniff/no-referrer/frame-ancestors）。
-
-## 数据保留 / 时区语义 / 隐私 / 备份
-
-- **保留**：SQLite 快照近 7 天 5 分钟级（按设备本地日 5 分钟桶 UPSERT，
-  同桶保留最后值），之后每日每设备保留一个锚点，370 天硬删除；清理按
-  阈值触发（≥10 分钟一次），不逐 ingest 全表扫描。limits-only 更新不产生
-  token 历史点。devices.json 由官方代码原子写，保留每设备最新完整状态。
-- **时区**：快照日归属按设备 `periodWindows`（today.key → timeZone+updatedAt
-  → endsAt 反推 → UTC 回退并留空标注）；非法时区在网关 400 拒绝。
-- **隐私**：devices.json 可能含 limits 的账户邮箱/计划名与订阅金额（官方
-  字段，位于 TM 密钥保护之后）；SQLite 快照只存 token/成本聚合与客户端/
-  模型名，不含账户身份。面板经 ACCESS_TOKEN 访问。
-- **备份**：备份 `tm-core-data` 卷（devices.json）与 `cloud-hub-data` 卷
-  （cloud-monitor.sqlite3）即可完整恢复。
-
-## 快速开始（token-monitor 上云）
-
-**服务器（推荐安装脚本）**：
+服务器上推荐用安装脚本。管道执行时 stdin 不是终端，必须带 `--mode`，否则脚本会拒绝往下走：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/iroha1145/Cloud-Monitor/main/install.sh | sudo bash -s -- --mode demo
 ```
 
-管道执行时 stdin 不是终端，必须用 `--mode demo` / `--mode live` 显式指定（否则脚本会以“非交互环境”拒绝）。之后再跑一次同一脚本换 `--mode live`（或在服务器上交互运行），即可关掉演示、改用 `ACCESS_TOKEN` 登录。
+再跑一次同一脚本，改 `--mode live`（或在服务器上交互选「实机」），就会关掉演示，改用 `ACCESS_TOKEN` 登录。
 
-已克隆仓库时：
+已经克隆过仓库：
 
 ```bash
 sudo ./install.sh            # 交互选择
@@ -123,20 +53,23 @@ sudo ./install.sh --mode demo
 sudo ./install.sh --mode live
 ```
 
-也可手动：
+也可以手动：
 
 ```bash
 git clone https://github.com/iroha1145/Cloud-Monitor.git
 cd Cloud-Monitor/hub
 cp .env.example .env
-# 必填三个互不相同、各≥32 随机字符的密钥：
-#   API_KEY / ACCESS_TOKEN（OpenWebUI 链路） + TOKEN_MONITOR_SECRET（TM 链路）
-# 演示预览把 CM_DEMO=true，实机保持 false
+# 三个互不相同、各不少于 32 个随机字符的密钥：
+#   API_KEY / ACCESS_TOKEN（OpenWebUI 链路）
+#   TOKEN_MONITOR_SECRET（token-monitor 链路）
+# 演示预览设 CM_DEMO=true，实机保持 false
 docker compose up -d --build
-curl http://127.0.0.1:7878/api/health   # {"ok":true,"role":"hub",...}
+curl http://127.0.0.1:7878/api/health
 ```
 
-公网访问在前面挂 HTTPS 反代；**SSE 路径必须关闭代理缓冲**（nginx 示例）：
+容器存活检查走 `/api/v1/health/live`。部署是否就绪走 `/api/v1/health/ready`（SQLite、tm-core、快照）。
+
+公网访问请在前面挂 HTTPS 反代。**SSE 必须关掉代理缓冲**（nginx 示例）：
 
 ```nginx
 location /api/stats/stream {
@@ -147,59 +80,97 @@ location /api/stats/stream {
     proxy_cache off;
     proxy_read_timeout 24h;
 }
-# 其余路径常规反代；如需纵深防御可另加 client_max_body_size 1m;
 ```
 
-**本机 token-monitor**：设置 → 多设备同步 → hub 填 `https://<服务器>`，
-密钥填 `TOKEN_MONITOR_SECRET`。widget 按其同步间隔（实时/10/20/30 分钟，
-headless agent 默认 5 分钟）推送，无需本机任何额外组件。
+其余路径按普通反代即可。如果还想限制上传体积，可另加 `client_max_body_size 1m;`。
 
-**随处查看**：`https://<服务器>/`，输入 `ACCESS_TOKEN`（旧 `/tm/` 已 301 跳转）。
+## 接本机 token-monitor
 
-## OpenWebUI-Monitor 记录同步（第二条链路）
+设置 → 多设备同步：
 
+- hub 填 `https://<服务器>`
+- 密钥填 `TOKEN_MONITOR_SECRET`
+
+widget 按自己的同步间隔推送，本机不用再装别的。然后打开 `https://<服务器>/`，用 `ACCESS_TOKEN` 进面板。
+
+## 协议支持
+
+| 官方端点 | 状态 | 谁处理 |
+|---|---|---|
+| `GET /api/health` | 官方形状（含 hubBuild） | 透传 tm-core；上游不可达时 503 |
+| `POST /api/ingest` | 官方形状（ok / deviceId / stats） | 先校验，再透传，再写快照 |
+| `GET /api/stats` | 支持 | 透传（聚合 / 过期 / stale 跟官方一致） |
+| `GET /api/stats/stream` | SSE（首帧 snapshot、ingest / delete / subscriptions 广播、30s `: hb`） | 按字节透传 |
+| `GET /api/devices` | `{devices:[...]}` | 透传 |
+| `DELETE /api/devices/:id` | `{ok,deviceId}` | 透传，并清 SQLite 快照 |
+| `GET /api/history` | 支持 | 透传 |
+| `GET/PUT /api/subscriptions` | 含 stale_write 409、非法币种 400 | 透传 |
+| `GET /api/v1/tm/overview` | Cloud 扩展 | `ACCESS_TOKEN`；官方 stats + SQLite 时间序列 |
+| `GET /api/v1/tm/subscriptions` | Cloud 扩展 | `ACCESS_TOKEN` |
+| `GET /api/v1/tm/provider-status` | Cloud 扩展 | `ACCESS_TOKEN`；allowlist 并发拉状态页 |
+| `GET /api/v1/tm/history/daily` | Cloud 扩展 | `ACCESS_TOKEN`；370 天本地日分页 |
+| `OPTIONS`（官方 204） | 未单独处理 | 要用再加 |
+| Worker 专属 `/api/public/*` | 不适用 | 官方 Node hub 也没有 |
+
+## 和官方 hub 差在哪
+
+协议本身不另搞一套。tm-core 是官方代码的逐字节副本：规范化、设备合并（含 limitsOnly）、聚合、`periodWindows` 过期、按 `syncUploadIntervalMs` 判 stale、SSE、订阅、`devices.json` 原子写。差分测试对同一载荷序列断言两边输出等价。
+
+网关多出来的是防护和面板用的数据：
+
+- `TOKEN_MONITOR_SECRET` 与 OpenWebUI 链路密钥隔离（TM 密钥写不了记录，反过来也不行）
+- 转发前校验：负数、bool、NaN、Infinity、超 64 位、非法 IANA 时区、原型污染键、数量超限、过度未来时间一律 400。官方只卡 1MiB 体积
+- ASGI receive 层按实际字节限 1MiB（分块、没有或伪造 Content-Length 也算）
+- SQLite 5 分钟桶时间序列，以及上面的 `/api/v1/tm/*` 接口
+- ingest 先写 pending outbox，再转发，再按本次响应里的 `stats.devices` 落快照。快照失败不会悄悄丢掉：outbox 留给后台或启动重放（幂等）。pending 超过默认 1000 条会 503 背压
+- 官方是单进程；这里是 compose 里 python + node 两个容器
+
+## 数据怎么留、时区、隐私、备份
+
+- **保留：** 近 7 天按设备本地日、5 分钟桶 UPSERT（同桶留最后一次）；更早每天每设备一个锚点；370 天硬删。清理按阈值触发（至少间隔 10 分钟），不在每次 ingest 扫全表。只更新 limits 的请求不写 token 历史点
+- **时区：** 快照日归属看设备 `periodWindows`（today.key → timeZone+updatedAt → endsAt 反推 → UTC 回退并留空标注）。非法时区网关直接 400。面板活动统计默认 `DASHBOARD_TIME_ZONE=Asia/Tokyo`
+- **隐私：** `devices.json` 可能带 limits 里的账户邮箱、计划名、订阅金额（官方字段，在 TM 密钥后面）。SQLite 快照只存 token / 成本聚合和客户端、模型名，不含账户身份。面板用 `ACCESS_TOKEN`
+- **备份：** `hub/scripts/backup.sh <目录>` 备份 `tm-core-data`（devices.json）和 `cloud-hub-data`（SQLite）。恢复用 `hub/scripts/restore.sh <备份目录>`。脚本会带上同目录的 compose override，并按实际卷名写入，避免把备份截空或写到另一套卷上
+
+## OpenWebUI-Monitor 记录同步
+
+这是第二条链路，跟上面的 token-monitor 主路径无关。
 
 ```bash
-cd Cloud-monitor/agent && cp .env.example .env
-#   LOCAL_MONITOR_URL / LOCAL_API_KEY   本地 monitor 地址与只读密钥
-#   CLOUD_HUB_URL / CLOUD_API_KEY       云端地址（公网必须 HTTPS）与写入密钥
+cd Cloud-Monitor/agent
+cp .env.example .env
+# LOCAL_MONITOR_URL / LOCAL_API_KEY   本地 monitor 与只读密钥
+# CLOUD_HUB_URL / CLOUD_API_KEY       云端地址（公网必须 HTTPS）与写入密钥
 docker compose up -d --build
 ```
 
-本地 monitor 需要 `/api/v1/sync/meta|records` 游标接口（本地仓库已含提交
-19134c7，或应用 `docs/patches/openwebui-monitor-sync-api.patch`）；旧版自动
-回退时间窗口模式。agent 端还有一个**可选**的反向桥接（把 OpenWebUI 用量
-摘要以 `openwebui:<device>` 身份推给任意 token-monitor hub），详见
-ARCHITECTURE——token-monitor 走上面主路径时不需要它。
+本地 monitor 需要 `/api/v1/sync/meta` 和 `/api/v1/sync/records` 游标接口（本地仓库已含提交 `19134c7`，或打 `docs/patches/openwebui-monitor-sync-api.patch`）。旧版会退回时间窗口模式。agent 还有一个可选的反向桥接，把 OpenWebUI 用量摘要以 `openwebui:<device>` 身份推给任意 token-monitor hub，细节见 `docs/ARCHITECTURE.md`。走上面主路径时不需要它。
 
-## 环境变量速查（hub）
+## 环境变量（hub）
 
 | 变量 | 说明 | 默认 |
 |---|---|---|
 | `API_KEY` | 记录写入密钥（弱值拒绝启动） | — |
-| `ACCESS_TOKEN` | 只读密钥（面板/查询用，须与 API_KEY 不同） | — |
-| `TOKEN_MONITOR_SECRET` | token-monitor 接入密钥（空=停用该接入） | 空 |
-| `CM_DEMO` | `true` 时 `/` 直接进演示面板（假数据） | `false` |
+| `ACCESS_TOKEN` | 只读密钥（面板 / 查询），须与 API_KEY 不同 | — |
+| `TOKEN_MONITOR_SECRET` | token-monitor 接入密钥（空 = 停用） | 空 |
+| `CM_DEMO` | `true` 时 `/` 直接进演示面板 | `false` |
 | `DEVICE_KEYS_JSON` | 每设备写密钥（记录链路） | 空 |
-| `CORS_ORIGINS` / `DOCS_ENABLED` | 默认均关闭 | 关 |
+| `CORS_ORIGINS` / `DOCS_ENABLED` | 默认都关 | 关 |
 | `MAX_RECORDS_PER_PUSH` | 记录单批上限 | `500` |
 | `DASHBOARD_TIME_ZONE` | 面板活动统计时区 | `Asia/Tokyo` |
-| `PROVIDER_STATUS_ENABLED` | Cloud 扩展：官方状态页 | `true` |
+| `PROVIDER_STATUS_ENABLED` | 官方状态页 | `true` |
 | `PROVIDER_STATUS_CACHE_SECONDS` | 状态页缓存 TTL（SWR） | `300` |
 | `PROVIDER_STATUS_TIMEOUT_SECONDS` | 单页超时（总预算 3s） | `2.5` |
 
-agent（OpenWebUI 链路）的环境变量见 `agent/.env.example`。
+agent 变量见 `agent/.env.example`。
 
 ## 测试
 
-Python ≥ 3.9 即可（macOS 系统自带的 3.9 也行；Docker 镜像与 CI 用 3.12）。
-两套测试目录的 conftest 模块名相同，需分开跑、不能合并为一条 pytest 命令：
+Python ≥ 3.9 即可（macOS 自带的 3.9 也行；镜像和 CI 用 3.12）。两套测试目录的 conftest 模块名相同，要分开跑，不要合成一条 pytest：
 
 ```bash
 cd hub   && PYTHONPATH=backend python -m pytest tests/ -q
 cd agent && python -m pytest tests/ -q
 ```
 
-hub 测试覆盖 provider-status（Mock 网络）、history/daily SQL 分页、
-100×370 查询计划、activity 覆盖率、乱序快照压缩与前端契约 fixture 导出。
-
+hub 测试覆盖 provider-status（Mock 网络）、history/daily SQL 分页、100×370 查询计划、activity 覆盖率、乱序快照压缩，以及前端契约 fixture 导出。
