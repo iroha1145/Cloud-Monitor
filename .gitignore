@@ -8,3 +8,5 @@ agent-state.json
 *.sqlite3-shm
 *.sqlite3-wal
 .deploy-mode
+.DS_Store
+data/

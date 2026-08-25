@@ -518,7 +518,7 @@
           provider: "anthropic",
           kind: "subscription",
           planName: "Claude Pro",
-          binding: { profileName: "主账户", accountEmail: "dev@acme.com", accountKey: "sk-ant-oat01-9f2ac1d4e7b8" },
+          binding: { profileName: "主账户", accountEmail: "dev@acme.com", accountKey: "demo-account-key-anthropic" },
           amountMinor: 2000, currency: "USD",
           interval: "month", intervalCount: 1,
           startDate: d(214),
