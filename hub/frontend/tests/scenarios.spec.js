@@ -957,6 +957,25 @@ test.describe("审计回归批 2026-08-25（demo）", () => {
     expect(m.unitTop, "单位与数字垂直区间必须重叠（同一行）").toBeLessThan(m.intBottom);
   });
 
+  test("手机端矩阵列表头只显示图标，行名仍带文字", async ({ browser }) => {
+    const ctx = await browser.newContext({ baseURL: ORIGIN, viewport: { width: 390, height: 844 } });
+    const page = await ctx.newPage();
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    await expect(page.locator("#mx .mx-col .client-logo").first()).toBeVisible();
+    await expect(page.locator("#mx .mx-row .mx-label").first()).toBeVisible();
+    const vis = await page.evaluate(() => {
+      const colLabel = document.querySelector("#mx .mx-col .mx-label");
+      const rowLabel = document.querySelector("#mx .mx-row .mx-label");
+      const cs = (el) => (el ? getComputedStyle(el).display : null);
+      return { col: cs(colLabel), row: cs(rowLabel), colCount: document.querySelectorAll("#mx .mx-col").length };
+    });
+    expect(vis.colCount).toBeGreaterThan(0);
+    expect(vis.col, "窄屏不得显示截断的模型名").toBe("none");
+    expect(vis.row, "行客户端名仍显示").not.toBe("none");
+    await ctx.close();
+  });
+
   test("矩阵跨 768px 断点 resize 后重渲染布局", async ({ browser }) => {
     const ctx = await browser.newContext({ baseURL: ORIGIN, viewport: { width: 1280, height: 800 } });
     const page = await ctx.newPage();

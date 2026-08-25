@@ -1755,7 +1755,7 @@ function renderMatrix() {
 
   const head = [`<span class="mx-corner"></span>`]
     .concat(models.map((m) =>
-      `<span class="mx-col" title="${esc(m)}">${clientLogoHtml(m)}<span>${esc(m)}</span></span>`
+      `<span class="mx-col" title="${esc(m)}">${clientLogoHtml(m)}<span class="mx-label">${esc(m)}</span></span>`
     )).join("");
   const rowsHtml = clients.map((c) => {
     const cells = models.map((m) => {
@@ -1768,7 +1768,7 @@ function renderMatrix() {
       return `<span class="mx-cell mx-lv${lv}" role="img" data-c="${esc(c)}" data-m="${esc(m)}" data-v="${v}" ` +
         `data-lv="${lv}" aria-label="${esc(label)}"></span>`;
     }).join("");
-    return `<span class="mx-row" title="${esc(c)}">${clientLogoHtml(c)}<span>${esc(c)}</span></span>${cells}`;
+    return `<span class="mx-row" title="${esc(c)}">${clientLogoHtml(c)}<span class="mx-label">${esc(c)}</span></span>${cells}`;
   }).join("");
   const scaleLegend =
     `<div class="mx-scale" aria-hidden="true"><span>低</span>` +

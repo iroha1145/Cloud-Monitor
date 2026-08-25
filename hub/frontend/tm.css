@@ -939,7 +939,7 @@ html[data-theme="dark"] .theme-ic-sun { display: inline; }
   font-size: 11.5px; color: var(--ink-2); min-height: 34px;
   overflow: hidden;
 }
-.mx-col span, .mx-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-col .mx-label, .mx-row .mx-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mx-col .client-logo, .mx-row .client-logo { width: 14px; height: 14px; }
 .mx-cell {
   display: block;
@@ -1463,7 +1463,10 @@ html[data-theme="dark"] .pv-card.lv-crit .pv-status { color: #ff9a94; }
   .mx-grid { min-width: 0; gap: 3px; }
   .mx-corner { min-height: 26px; }
   .mx-col, .mx-row { min-height: 26px; font-size: 10px; gap: 4px; }
-  .mx-col .client-logo, .mx-row .client-logo { width: 12px; height: 12px; }
+  .mx-col { justify-content: center; }
+  .mx-col .mx-label { display: none; }
+  .mx-col .client-logo { width: 16px; height: 16px; }
+  .mx-row .client-logo { width: 12px; height: 12px; }
   .mx-cell { border-radius: 6px; }
   .mx-scale { margin-top: 9px; }
 
