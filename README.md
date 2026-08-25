@@ -174,3 +174,7 @@ cd agent && python -m pytest tests/ -q
 ```
 
 hub 测试覆盖 provider-status（Mock 网络）、history/daily SQL 分页、100×370 查询计划、activity 覆盖率、乱序快照压缩，以及前端契约 fixture 导出。
+
+## 友情链接
+
+- [LINUX DO](https://linux.do/)
