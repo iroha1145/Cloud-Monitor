@@ -343,10 +343,10 @@ def test_fetch_grok_api_and_web_when_observed_today():
     assert not errors
     by = {p["provider"]: p for p in providers}
     assert by["grok"]["status"] == "operational"
-    assert by["grok"]["name"] == "Grok API"
+    assert by["grok"]["name"] == "SpaceXAI API"
     assert by["grok"]["url"] == "https://status.x.ai"
     assert by["grok-web"]["status"] == "operational"
-    assert by["grok-web"]["name"] == "Grok (Web)"
+    assert by["grok-web"]["name"] == "SpaceXAI (Web)"
     assert by["grok-web"]["url"] == "https://status.x.ai/grok-com"
     hosts = {httpx.URL(u).host for u in transport.urls}
     assert hosts <= {"status.x.ai"}

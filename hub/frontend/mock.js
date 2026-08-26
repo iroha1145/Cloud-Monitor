@@ -217,7 +217,7 @@
       month: periodFrom(monthTokens, monthModels, monthClients),
       allTime: periodFrom(allTokens, allModels, allClients),
     };
-    /* 今日额外上报 DeepSeek / Kimi / Grok，用来演示「有上报才出状态卡」。
+    /* 今日额外上报 DeepSeek / Kimi / SpaceXAI，用来演示「有上报才出状态卡」。
        GLM 无官方 Statuspage，故意不注入。 */
     totals.today.clients.deepseek = clamp0(todayTokens * 0.07);
     totals.today.clients.kimi = clamp0(todayTokens * 0.05);
@@ -566,8 +566,8 @@
       { provider: "cursor", match: /^cursor/i, name: "Cursor", url: "https://status.cursor.com" },
       { provider: "deepseek", match: /deepseek/i, name: "DeepSeek", url: "https://status.deepseek.com" },
       { provider: "kimi", match: /kimi|moonshot/i, name: "Kimi", url: "https://status.moonshot.cn" },
-      { provider: "grok", match: /grok|xai/i, name: "Grok API", url: "https://status.x.ai" },
-      { provider: "grok-web", match: /grok|xai/i, name: "Grok (Web)", url: "https://status.x.ai/grok-com" },
+      { provider: "grok", match: /grok|xai/i, name: "SpaceXAI API", url: "https://status.x.ai" },
+      { provider: "grok-web", match: /grok|xai/i, name: "SpaceXAI (Web)", url: "https://status.x.ai/grok-com" },
     ];
     const entry = (provider, observedAs, name, url) => ({
       provider,

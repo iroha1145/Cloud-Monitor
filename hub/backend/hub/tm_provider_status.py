@@ -148,7 +148,7 @@ STATUS_PAGES: dict[str, StatusPage] = {
     # 官方文档给出 RSS https://status.x.ai/feed.xml，一条 feed 含 API 与 Grok (Web)。
     "grok": StatusPage(
         canonical="grok",
-        name="Grok API",
+        name="SpaceXAI API",
         public_url="https://status.x.ai",
         summary_url="https://status.x.ai/feed.xml",
         status_url="https://status.x.ai/feed.xml",
@@ -158,7 +158,7 @@ STATUS_PAGES: dict[str, StatusPage] = {
     ),
     "grok-web": StatusPage(
         canonical="grok-web",
-        name="Grok (Web)",
+        name="SpaceXAI (Web)",
         public_url="https://status.x.ai/grok-com",
         summary_url="https://status.x.ai/feed.xml",
         status_url="https://status.x.ai/feed.xml",
