@@ -1,10 +1,10 @@
 """Cloud 扩展：GET /api/v1/tm/provider-status。
 
-官方 tm-core 协议不含此端点。本模块只向固定 allowlist 的 Atlassian
-Statuspage 拉取 summary.json（失败再回退 status.json），用已有
-httpx.AsyncClient 并发请求，带 in-memory stale-while-revalidate 与
-singleflight。客户端不能传 URL（防 SSRF）。外部状态页失败不得影响
-Overview / Token ingest。
+官方 tm-core 协议不含此端点。本模块只向固定 allowlist 拉取状态：
+Atlassian Statuspage 的 summary.json（失败再回退 status.json），以及
+xAI 官方 RSS（status.x.ai/feed.xml）。用已有 httpx.AsyncClient 并发请求，
+带 in-memory stale-while-revalidate 与 singleflight。客户端不能传 URL
+（防 SSRF）。外部状态页失败不得影响 Overview / Token ingest。
 
 不记录账户、密钥或完整请求 Header。
 """
@@ -16,8 +16,10 @@ import copy
 import logging
 import re
 import time
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Iterable, Optional
 
 import httpx
@@ -42,6 +44,9 @@ PROVIDER_ALIASES: dict[str, str] = {
     "zhipu": "glm",
     "zai": "glm",
     "chatglm": "glm",
+    "grok": "grok",
+    "xai": "grok",
+    "x-ai": "grok",
 }
 
 _STATUS_RANK = {
@@ -78,6 +83,7 @@ class StatusPage:
     status_url: str
     prefer: tuple[re.Pattern[str], ...]
     exclude: tuple[re.Pattern[str], ...]
+    parser: str = "statuspage"  # statuspage | rss
 
 
 def _rx(*patterns: str) -> tuple[re.Pattern[str], ...]:
@@ -138,6 +144,28 @@ STATUS_PAGES: dict[str, StatusPage] = {
         prefer=_rx(r"open\s*api", r"api\s*service", r"^api$", r"\bmodel\b"),
         exclude=_rx(r"^kimi$", r"^website$", r"sign\s*in", r"saas", r"portal"),
     ),
+    # status.x.ai 是 incident.io：HTML / grok-com 子页对非浏览器常 403；
+    # 官方文档给出 RSS https://status.x.ai/feed.xml，一条 feed 含 API 与 Grok (Web)。
+    "grok": StatusPage(
+        canonical="grok",
+        name="Grok API",
+        public_url="https://status.x.ai",
+        summary_url="https://status.x.ai/feed.xml",
+        status_url="https://status.x.ai/feed.xml",
+        prefer=_rx(r"^API \("),
+        exclude=_rx(r"^Grok \(", r"^Grok in X", r"Console", r"Single Sign-On"),
+        parser="rss",
+    ),
+    "grok-web": StatusPage(
+        canonical="grok-web",
+        name="Grok (Web)",
+        public_url="https://status.x.ai/grok-com",
+        summary_url="https://status.x.ai/feed.xml",
+        status_url="https://status.x.ai/feed.xml",
+        prefer=_rx(r"^Grok \(Web\)"),
+        exclude=_rx(r"^API ", r"^Grok \(Android\)", r"^Grok \(iOS\)", r"^Grok in X"),
+        parser="rss",
+    ),
 }
 
 ALLOWED_FETCH_URLS: frozenset[str] = frozenset(
@@ -170,6 +198,8 @@ def _canonical_from_usage_name(key: str) -> Optional[str]:
         return "deepseek"
     if "kimi" in key or "moonshot" in key:
         return "kimi"
+    if "grok" in key or "xai" in key or "x.ai" in key:
+        return "grok"
     if key == "cursor" or key.startswith("cursor-"):
         return "cursor"
     return None
@@ -223,9 +253,18 @@ def discover_providers(
         canon = canonical_provider(name)
         if canon is None or canon not in observed:
             return
-        bucket = observed[canon]
-        if name not in bucket:
-            bucket.append(name)
+
+        def _push(target: str) -> None:
+            if target not in observed:
+                return
+            bucket = observed[target]
+            if name not in bucket:
+                bucket.append(name)
+
+        _push(canon)
+        # 今日出现 grok / xAI 用量时，同时出 API 卡与 grok.com 卡
+        if canon == "grok":
+            _push("grok-web")
 
     periods = (stats or {}).get("periods") if isinstance(stats, dict) else None
     today = periods.get("today") if isinstance(periods, dict) else None
@@ -297,6 +336,125 @@ def _status_from_indicator(indicator: Any) -> str:
 
 def _worse(a: str, b: str) -> str:
     return a if _STATUS_RANK.get(a, 1) >= _STATUS_RANK.get(b, 1) else b
+
+
+_RSS_RESOLVED = frozenset({"resolved", "completed", "complete", "postmortem", "post-mortem"})
+_RSS_MAINTENANCE = frozenset({"maintenance", "scheduled", "under_maintenance", "under maintenance"})
+_RSS_OUTAGE_SEV = frozenset({"outage", "major", "critical", "unavailable", "major_outage"})
+_RSS_DEGRADED_SEV = frozenset({
+    "disruption", "degraded", "partial", "minor", "latency", "info",
+    "degraded_performance", "partial_outage",
+})
+STATUS_FETCH_HEADERS = {
+    "User-Agent": "Cloud-Monitor/provider-status",
+    "Accept": "application/json, application/rss+xml, application/xml;q=0.9, */*;q=0.8",
+}
+
+
+def _rss_date(raw: Optional[str]) -> Optional[str]:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        dt = parsedate_to_datetime(text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except (TypeError, ValueError, OverflowError, IndexError):
+        return text
+
+
+def _rss_service_name(title: str) -> str:
+    match = re.match(r"\[([^\]]+)\]", title.strip())
+    return match.group(1).strip() if match else title.strip()
+
+
+def _rss_field(description: str, label: str) -> str:
+    match = re.search(rf"{re.escape(label)}:\s*([^<\n]+)", description or "", re.IGNORECASE)
+    return match.group(1).strip() if match else ""
+
+
+def _rss_component_status(item_status: str, severity: str) -> str:
+    st = item_status.strip().lower().replace("-", "_")
+    sev = severity.strip().lower().replace("-", "_")
+    if st in _RSS_MAINTENANCE:
+        return "under_maintenance"
+    if sev in _RSS_OUTAGE_SEV or "outage" in sev or "unavailable" in sev:
+        return "major_outage"
+    if sev in _RSS_DEGRADED_SEV or "degraded" in sev or "disruption" in sev:
+        return "degraded_performance"
+    if st in {"investigating", "identified", "monitoring", "update"}:
+        return "degraded_performance"
+    return "degraded_performance"
+
+
+def parse_rss_payload(page: StatusPage, xml_text: Any) -> dict[str, Any]:
+    """解析 status.x.ai RSS → 面板 status 字段。已恢复的条目不算当前故障。"""
+    if not isinstance(xml_text, str) or not xml_text.strip():
+        return {
+            "status": "unknown",
+            "description": "invalid status payload",
+            "source_updated_at": None,
+            "error_code": "invalid_json",
+        }
+    cleaned = re.sub(r"^<\?xml[^?]*\?>", "", xml_text, count=1, flags=re.IGNORECASE).strip()
+    try:
+        root = ET.fromstring(cleaned)
+    except ET.ParseError:
+        log.warning("provider-status invalid rss canonical=%s", page.canonical)
+        return {
+            "status": "unknown",
+            "description": "invalid status payload",
+            "source_updated_at": None,
+            "error_code": "invalid_json",
+        }
+    channel = root.find("channel")
+    if channel is None:
+        channel = root
+    source_updated = _rss_date(channel.findtext("lastBuildDate") if channel is not None else None)
+    open_components: list[dict[str, Any]] = []
+    for item in channel.findall("item") if channel is not None else []:
+        title = (item.findtext("title") or "").strip()
+        desc = item.findtext("description") or ""
+        item_status = _rss_field(desc, "Status")
+        if item_status.strip().lower().replace("-", "_") in _RSS_RESOLVED:
+            continue
+        if not title:
+            continue
+        severity = _rss_field(desc, "Severity")
+        pub = _rss_date(item.findtext("pubDate"))
+        open_components.append({
+            "name": _rss_service_name(title),
+            "status": _rss_component_status(item_status, severity),
+            "updated_at": pub,
+            "title": title,
+        })
+        if pub:
+            source_updated = pub
+
+    chosen, pick_kind = _pick_components(page, open_components)
+    if pick_kind == "excluded_only":
+        status = "operational"
+        description = "All Systems Operational"
+    elif chosen:
+        status = "operational"
+        for component in chosen:
+            status = _worse(status, _status_from_component(component))
+            updated = component.get("updated_at")
+            if updated:
+                source_updated = updated
+        titles = [str(c.get("title") or c.get("name") or "") for c in chosen[:2]]
+        description = " · ".join(t for t in titles if t) or status
+    else:
+        status = "operational"
+        description = "All Systems Operational"
+
+    return {
+        "status": status,
+        "description": description,
+        "source_updated_at": source_updated if isinstance(source_updated, str) else None,
+        "error_code": None,
+    }
 
 
 def parse_status_payload(page: StatusPage, payload: Any) -> dict[str, Any]:
@@ -399,14 +557,14 @@ def _safe_url(url: str) -> str:
     return url
 
 
-async def _get_json(
+async def _get_response(
     client: httpx.AsyncClient,
     url: str,
     timeout: float,
-) -> tuple[Optional[dict], Optional[str]]:
+) -> tuple[Optional[httpx.Response], Optional[str]]:
     _safe_url(url)
     try:
-        response = await client.get(url, timeout=timeout)
+        response = await client.get(url, timeout=timeout, headers=STATUS_FETCH_HEADERS)
     except httpx.TimeoutException:
         log.warning("provider-status timeout url_host=%s", httpx.URL(url).host)
         return None, "timeout"
@@ -420,6 +578,17 @@ async def _get_json(
             response.status_code,
         )
         return None, "http_status"
+    return response, None
+
+
+async def _get_json(
+    client: httpx.AsyncClient,
+    url: str,
+    timeout: float,
+) -> tuple[Optional[dict], Optional[str]]:
+    response, error = await _get_response(client, url, timeout)
+    if response is None:
+        return None, error
     try:
         data = response.json()
     except ValueError:
@@ -430,13 +599,38 @@ async def _get_json(
     return data, None
 
 
+async def _get_text(
+    client: httpx.AsyncClient,
+    url: str,
+    timeout: float,
+) -> tuple[Optional[str], Optional[str]]:
+    response, error = await _get_response(client, url, timeout)
+    if response is None:
+        return None, error
+    text = response.text
+    if not isinstance(text, str) or not text.strip():
+        return None, "invalid_json"
+    return text, None
+
+
 async def fetch_one_provider(
     client: httpx.AsyncClient,
     page: StatusPage,
     *,
     timeout: float,
 ) -> tuple[dict[str, Any], Optional[str]]:
-    """summary.json 优先；仅在快速失败（非 timeout）时回退 status.json。"""
+    """Statuspage：summary.json 优先，快速失败再回退 status.json。
+    xAI RSS：拉 feed.xml，不再走 JSON。"""
+    if page.parser == "rss":
+        text, error = await _get_text(client, page.summary_url, timeout)
+        if text is not None:
+            return parse_rss_payload(page, text), None
+        if error == "timeout" or page.status_url == page.summary_url:
+            return {}, error or "network"
+        text, error2 = await _get_text(client, page.status_url, timeout)
+        if text is not None:
+            return parse_rss_payload(page, text), None
+        return {}, error2 or error or "network"
     payload, error = await _get_json(client, page.summary_url, timeout)
     if payload is not None:
         return parse_status_payload(page, payload), None

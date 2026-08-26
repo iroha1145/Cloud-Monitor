@@ -30,6 +30,7 @@ from hub.tm_provider_status import (
     canonical_provider,
     discover_providers,
     fetch_provider_statuses,
+    parse_rss_payload,
     parse_status_payload,
 )
 
@@ -106,6 +107,35 @@ def _kimi_ok():
     return _summary(components=[{"name": "Open API", "status": "operational"}, {"name": "Kimi", "status": "major_outage"}])
 
 
+def _rss(items, last="Tue, 18 Aug 2026 00:57:02 GMT"):
+    rows = []
+    for title, status, severity in items:
+        rows.append(
+            "<item>"
+            f"<title>{title}</title>"
+            f"<pubDate>{last}</pubDate>"
+            "<description><![CDATA["
+            f"<h3>Status: {status}</h3><p>Severity: {severity}</p>"
+            "]]></description>"
+            "</item>"
+        )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<rss version="2.0"><channel>'
+        "<title>SpaceXAI System Status</title>"
+        f"<lastBuildDate>{last}</lastBuildDate>"
+        + "".join(rows)
+        + "</channel></rss>"
+    )
+
+
+def _grok_rss_ok():
+    return _rss([
+        ("[API (us-east-1.api.x.ai)] grok-4.6 high error rate", "RESOLVED", "available"),
+        ("[Grok (Web)] Grok is Temporarily Unavailable", "RESOLVED", "available"),
+    ])
+
+
 def _ok_map():
     return {
         STATUS_PAGES["anthropic"].summary_url: (200, _claude_ok()),
@@ -113,6 +143,7 @@ def _ok_map():
         STATUS_PAGES["cursor"].summary_url: (200, _cursor_ok()),
         STATUS_PAGES["deepseek"].summary_url: (200, _deepseek_ok()),
         STATUS_PAGES["kimi"].summary_url: (200, _kimi_ok()),
+        STATUS_PAGES["grok"].summary_url: (200, _grok_rss_ok()),
     }
 
 
@@ -133,6 +164,10 @@ def test_aliases_map_claude_codex_cursor():
     assert canonical_provider("kimi") == "kimi"
     assert canonical_provider("moonshot") == "kimi"
     assert canonical_provider("kimi-k2") == "kimi"
+    assert canonical_provider("grok") == "grok"
+    assert canonical_provider("xai") == "grok"
+    assert canonical_provider("grok-4.6") == "grok"
+    assert canonical_provider("cursor-grok-4.6-xhigh-fast") == "grok"
     assert canonical_provider("glm") is None  # 无官方 Statuspage，不出卡
     assert canonical_provider("glm-4.6") is None
 
@@ -171,6 +206,21 @@ def test_discover_from_today_models_and_skip_zero():
     assert "glm" not in found
 
 
+def test_discover_grok_model_also_opens_web_card():
+    stats = {
+        "periods": {
+            "today": {
+                "clients": {"cursor": 4},
+                "models": {"grok-4.6": 3, "cursor-grok-4.6-xhigh-fast": 9},
+            }
+        }
+    }
+    found = discover_providers(stats)
+    assert found["cursor"] == ["cursor"]
+    assert found["grok"] == ["grok-4.6", "cursor-grok-4.6-xhigh-fast"]
+    assert found["grok-web"] == found["grok"]
+
+
 def test_chatgpt_web_outage_does_not_mark_openai_api_down():
     page = STATUS_PAGES["openai"]
     parsed = parse_status_payload(page, _openai_ok())
@@ -183,13 +233,46 @@ def test_kimi_consumer_outage_does_not_mark_api_down():
     assert parsed["status"] == "operational"
 
 
+def test_grok_web_outage_does_not_mark_api_down():
+    rss = _rss([
+        ("[Grok (Web)] Grok is Temporarily Unavailable", "INVESTIGATING", "outage"),
+        ("[Grok (iOS)] Grok is Temporarily Unavailable", "IDENTIFIED", "outage"),
+    ])
+    api = parse_rss_payload(STATUS_PAGES["grok"], rss)
+    web = parse_rss_payload(STATUS_PAGES["grok-web"], rss)
+    assert api["status"] == "operational"
+    assert web["status"] == "outage"
+    assert "Grok (Web)" in (web["description"] or "")
+
+
+def test_grok_api_outage_does_not_mark_web_down():
+    rss = _rss([
+        ("[API (us-east-1.api.x.ai)] grok-4.6 high error rate", "INVESTIGATING", "outage"),
+        ("[Grok (Web)] 4.3 losing conversation context", "RESOLVED", "available"),
+    ])
+    api = parse_rss_payload(STATUS_PAGES["grok"], rss)
+    web = parse_rss_payload(STATUS_PAGES["grok-web"], rss)
+    assert api["status"] == "outage"
+    assert web["status"] == "operational"
+
+
+def test_grok_rss_all_resolved_is_operational():
+    parsed = parse_rss_payload(STATUS_PAGES["grok"], _grok_rss_ok())
+    assert parsed["status"] == "operational"
+    assert parsed["error_code"] is None
+
+
 def test_allowlist_is_fixed_and_has_no_client_url():
     assert STATUS_PAGES["anthropic"].summary_url.endswith("/api/v2/summary.json")
     assert STATUS_PAGES["openai"].status_url.endswith("/api/v2/status.json")
+    assert STATUS_PAGES["grok"].summary_url.endswith("/feed.xml")
+    assert STATUS_PAGES["grok"].public_url == "https://status.x.ai"
+    assert STATUS_PAGES["grok-web"].public_url == "https://status.x.ai/grok-com"
+    assert STATUS_PAGES["grok"].parser == "rss"
     for url in ALLOWED_FETCH_URLS:
         host = httpx.URL(url).host
         assert url.startswith("https://")
-        assert "/api/v2/" in url
+        assert "/api/v2/" in url or url.endswith("/feed.xml")
         assert host.startswith("status.") or host.endswith(".statuspage.io")
 
 
@@ -240,6 +323,33 @@ def test_fetch_deepseek_and_kimi_when_observed_today():
     assert by["kimi"]["status"] == "operational"
     hosts = {httpx.URL(u).host for u in transport.urls}
     assert hosts <= {"deepseek.statuspage.io", "status.moonshot.cn"}
+
+
+def test_fetch_grok_api_and_web_when_observed_today():
+    async def run():
+        client, transport = await _client(_ok_map())
+        try:
+            providers, errors = await fetch_provider_statuses(
+                client,
+                {"grok": ["grok-4.6"], "grok-web": ["grok-4.6"]},
+                timeout_seconds=2.5,
+                budget_seconds=3.0,
+            )
+        finally:
+            await client.aclose()
+        return providers, errors, transport
+
+    providers, errors, transport = asyncio.run(run())
+    assert not errors
+    by = {p["provider"]: p for p in providers}
+    assert by["grok"]["status"] == "operational"
+    assert by["grok"]["name"] == "Grok API"
+    assert by["grok"]["url"] == "https://status.x.ai"
+    assert by["grok-web"]["status"] == "operational"
+    assert by["grok-web"]["name"] == "Grok (Web)"
+    assert by["grok-web"]["url"] == "https://status.x.ai/grok-com"
+    hosts = {httpx.URL(u).host for u in transport.urls}
+    assert hosts <= {"status.x.ai"}
 
 
 def test_single_timeout_within_budget():

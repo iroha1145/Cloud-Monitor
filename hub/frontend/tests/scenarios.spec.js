@@ -482,11 +482,15 @@ test.describe("§7 capabilities.tokenComponents=false（demo ?cm-scenario=nocap�
     await expect(page.locator("#sub-grid .sub-provider i[style*='background']")).toHaveCount(0);
   });
 
-  test("提供商状态含今日 DeepSeek / Kimi，不含未上报的 GLM", async ({ page }) => {
+  test("提供商状态含今日 DeepSeek / Kimi / Grok，不含未上报的 GLM", async ({ page }) => {
     await page.goto("/demo");
     await expect(page.locator("#provider-panel")).toBeVisible();
     await expect(page.locator("#provider-grid")).toContainText("DeepSeek");
     await expect(page.locator("#provider-grid")).toContainText("Kimi");
+    await expect(page.locator("#provider-grid")).toContainText("Grok API");
+    await expect(page.locator("#provider-grid")).toContainText("Grok (Web)");
+    await expect(page.locator('#provider-grid a.pv-card[href="https://status.x.ai"]')).toBeVisible();
+    await expect(page.locator('#provider-grid a.pv-card[href="https://status.x.ai/grok-com"]')).toBeVisible();
     await expect(page.locator("#provider-grid")).toContainText("Anthropic");
     await expect(page.locator("#provider-grid")).not.toContainText("GLM");
     await expect(page.locator("#provider-grid")).not.toContainText("智谱");

@@ -664,6 +664,8 @@ html[data-theme="dark"] .upd-overlay { background: rgba(0, 0, 0, 0.5); }
   padding: 13px 14px;
   transition: transform var(--duration-medium) var(--ease-smooth-out), box-shadow var(--duration-medium) var(--ease-smooth-out);
 }
+a.pv-card { text-decoration: none; color: inherit; }
+a.pv-card:focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2px; }
 .pv-dot { position: relative; width: 9px; height: 9px; border-radius: 50%; margin-top: 4px; flex: none; }
 .pv-dot.lv-ok { background: var(--ok); }
 .pv-dot.lv-ok::after {

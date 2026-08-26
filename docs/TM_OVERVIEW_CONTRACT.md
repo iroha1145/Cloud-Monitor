@@ -247,6 +247,8 @@ anthropic/openai 而丢掉真实的 claude/codex。
 | anthropic | https://status.claude.com/api/v2/summary.json | …/status.json |
 | openai | https://status.openai.com/api/v2/summary.json | …/status.json |
 | cursor | https://status.cursor.com/api/v2/summary.json | …/status.json |
+| grok | https://status.x.ai/feed.xml（RSS，API 组件） | 同 URL |
+| grok-web | https://status.x.ai/feed.xml（RSS，Grok Web） | 同 URL；页面 https://status.x.ai/grok-com |
 
 优先 API / Claude Code / Cursor 组件。ChatGPT 网页故障不得必然把
 OpenAI API 标成中断。

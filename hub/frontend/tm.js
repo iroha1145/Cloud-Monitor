@@ -169,6 +169,7 @@ const PROVIDER_NAMES = {
   anthropic: "Anthropic", openai: "OpenAI", cursor: "Cursor",
   google: "Google", gemini: "Gemini", github: "GitHub", copilot: "Copilot",
   zhipu: "智谱", moonshot: "Moonshot", kimi: "Kimi", deepseek: "DeepSeek",
+  grok: "Grok API", xai: "Grok API", "grok-web": "Grok (Web)",
 };
 function fmtProvider(v) {
   const s = String(v ?? "");
@@ -1949,14 +1950,16 @@ function renderProviderStatus() {
     if (p.stale === true) desc += " · 缓存数据";
     const checked = p.checked_at ? `检测于 ${esc(relTime(p.checked_at))}` : "";
     const url = String(p.url || "");
-    return `<article class="pv-card lv-${lv}${riseCls()}"${riseStyle(i)}${url ? ` title="${esc(url)}"` : ""}>
+    const tag = url ? "a" : "article";
+    const href = url ? ` href="${esc(url)}" target="_blank" rel="noopener noreferrer"` : "";
+    return `<${tag} class="pv-card lv-${lv}${riseCls()}"${riseStyle(i)}${href}${url ? ` title="${esc(url)}"` : ""}>
       <span class="pv-dot lv-${lv}" aria-hidden="true"></span>
       <div class="pv-info">
         <div class="pv-name"><strong>${esc(name)}</strong><em class="pv-status">${esc(text)}</em></div>
         <p class="pv-desc" title="${esc(desc)}">${esc(desc)}</p>
       </div>
       ${checked ? `<span class="pv-time mono">${checked}</span>` : ""}
-    </article>`;
+    </${tag}>`;
   }).join("");
 }
 
