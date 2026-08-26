@@ -196,7 +196,8 @@ def _canonical_from_usage_name(key: str) -> Optional[str]:
         return "openai"
     if "deepseek" in key:
         return "deepseek"
-    if "kimi" in key or "moonshot" in key:
+    # k3 / k3-256k 即 Moonshot Kimi K3；显示名保持原样
+    if "kimi" in key or "moonshot" in key or re.search(r"(?:^|[^a-z0-9])k3(?:[-._]|$)", key):
         return "kimi"
     if "grok" in key or "xai" in key or "x.ai" in key:
         return "grok"

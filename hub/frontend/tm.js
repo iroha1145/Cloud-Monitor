@@ -400,7 +400,8 @@ function modelVendorId(name) {
   if (s.includes("deepseek")) return "deepseek";
   if (s.includes("qwen") || s.includes("qwq")) return "qwen";
   if (s.includes("glm") || s.includes("zhipu") || /\bzai\b/.test(s)) return "zai";
-  if (s.includes("kimi") || s.includes("moonshot")) return "kimi";
+  /* k3 / k3-256k 即 Moonshot Kimi K3；文案仍显示原名，只换厂商图标 */
+  if (s.includes("kimi") || s.includes("moonshot") || /(?:^|[^a-z0-9])k3(?:[-._]|$)/.test(s)) return "kimi";
   if (s.includes("mistral") || s.includes("mixtral") || s.includes("codestral")) return "mistral";
   if (s.includes("llama") || s.includes("meta")) return "meta";
   if (s.includes("minimax")) return "minimax";
