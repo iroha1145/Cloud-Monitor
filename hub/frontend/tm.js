@@ -1051,9 +1051,12 @@ function renderView(view) {
   if (fx) clearEntryFxSoon();
 }
 
-/* 动画总时长上限 ≈ 280ms(stagger 封顶) + 500ms(pop) / 700ms(draw)，900ms 兜底 */
+/* 动画总时长上限 ≈ 280ms(stagger 封顶) + 500ms(pop) / 700ms(draw)，900ms 兜底。
+   连点周期切换会重入，重置计时以免清掉正在播的 grow。 */
+let clearFxTimer = 0;
 function clearEntryFxSoon() {
-  setTimeout(() => {
+  clearTimeout(clearFxTimer);
+  clearFxTimer = setTimeout(() => {
     document.querySelectorAll(".t-rise, .t-pop, .grow, .is-drawing, .t-swap-enter").forEach((el) => {
       el.classList.remove("t-rise", "t-pop", "grow", "is-drawing", "t-swap-enter");
       el.style.animationDelay = "";
@@ -1795,11 +1798,13 @@ function refitDonutCenters() {
 }
 
 /* ---------- 分布（客户端条形） ---------- */
-function renderDist(listSel, emptySel, subSel, per, kind) {
+function renderDist(listSel, emptySel, subSel, per, kind, animate) {
   const box = $(listSel);
   const isModel = kind === "model";
   const base = isModel ? "model" : "client";
   per = per || {};
+  if (animate === undefined) animate = state.entryFx;
+  const grow = !!animate && !reducedMotion();
   const tokensMap = per[isModel ? "models" : "clients"] || {};
   const costs = per[base + "Costs"] || {};
   const colorMap = isModel ? state.modelColors : state.clientColors;
@@ -1832,12 +1837,14 @@ function renderDist(listSel, emptySel, subSel, per, kind) {
   const max = entries[0][1];
 
   const tips = [];
-  box.innerHTML = entries.map(([name, v]) => {
+  box.innerHTML = entries.map(([name, v], i) => {
     const color = colorMap[name] || OTHER_COLOR;
     const w = ((v / max) * 100).toFixed(2);
     const bd = breakdowns.get(name);
     let barInner, tip, costHtml = "";
-    const solid = isModel ? color : "var(--brand-500)";
+    /* 未知构成：单色总量条，不做比例估算。客户端用今日/本月主段色
+       （缓存读 --seg-cacher），避免累计实心 --brand-500 与有构成周期观感分裂。 */
+    const solid = isModel ? color : "var(--seg-cacher)";
     const mark = clientLogoHtml(name);
     if (bd.known) {
       const denom = Math.max(v, bd.segs.reduce((a, s) => a + s.value, 0));
@@ -1867,9 +1874,11 @@ function renderDist(listSel, emptySel, subSel, per, kind) {
     }
     tips.push(tip);
     const warnHtml = bd.known && !bd.complete ? `<span class="comp-warn">构成不完整</span>` : "";
+    const growCls = grow ? " grow" : "";
+    const growDelay = grow ? `animation-delay:${Math.min(i, STAGGER_CAP) * 40}ms;` : "";
     return `<div class="dist-row">
       <span class="dist-name" title="${esc(name)}">${mark}${esc(name)}</span>
-      <div class="dist-track"><div class="dist-bar" style="width:${w}%">${barInner}</div></div>
+      <div class="dist-track"><div class="dist-bar${growCls}" style="width:${w}%;${growDelay}">${barInner}</div></div>
       <span class="dist-val" title="${fmtInt(v)} tokens"><b>${fmtCompactHtml(v)}</b>${pct1(v, sumAll)}${costHtml}${warnHtml}</span>
     </div>`;
   }).join("");
@@ -3649,8 +3658,7 @@ initSeg("#model-seg", (p) => {
 initSeg("#client-seg", (p) => {
   state.clientPeriod = p;
   if (state.data) {
-    renderDist("#client-dist", "#client-empty", "#client-dist-sub", (state.data.totals || {})[p], "client");
-    replayEnter($("#client-dist"));
+    renderDist("#client-dist", "#client-empty", "#client-dist-sub", (state.data.totals || {})[p], "client", true);
     clearEntryFxSoon();
   }
 });

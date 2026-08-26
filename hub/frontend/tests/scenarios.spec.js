@@ -421,6 +421,11 @@ test.describe("§7 capabilities.tokenComponents=false（demo ?cm-scenario=nocap�
     expect(rows).toBeGreaterThan(0);
     await expect(page.locator("#client-dist .dist-part")).toHaveCount(rows);
     await expect(page.locator('#client-dist .dist-part[class*="seg-"]')).toHaveCount(0);
+    // 未知构成仍走单色条，填色与今日/本月主段（缓存读）一致
+    const solid = await page.locator("#client-dist .dist-part").first().evaluate((el) =>
+      getComputedStyle(el).backgroundColor
+    );
+    expect(solid.replace(/\s/g, "")).toMatch(/rgb\(\s*127,\s*125,\s*252\s*\)/);
   });
 
   test("默认场景（tokenComponents=true）→ 标注真实构成分段", async ({ page }) => {
@@ -455,6 +460,21 @@ test.describe("§7 capabilities.tokenComponents=false（demo ?cm-scenario=nocap�
       els.map((el) => +el.getBoundingClientRect().width.toFixed(2))
     );
     expect(Math.max(...widths) - Math.min(...widths)).toBeLessThan(1);
+  });
+
+  test("切换今日/本月/累计时横条播放生长动画", async ({ page }) => {
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    await page.click('#client-seg button[data-p="month"]');
+    await expect(page.locator("#client-dist .dist-bar.grow").first()).toBeVisible();
+    const delays = await page.locator("#client-dist .dist-bar").evaluateAll((els) =>
+      els.map((el) => getComputedStyle(el).animationDelay)
+    );
+    expect(delays.length).toBeGreaterThan(1);
+    expect(delays[0]).toMatch(/^0s$|^0ms$/);
+    expect(parseFloat(delays[1])).toBeGreaterThan(0);
+    await page.click('#client-seg button[data-p="allTime"]');
+    await expect(page.locator("#client-dist .dist-bar.grow").first()).toBeVisible();
   });
 
   test("设备 / 配额 / 矩阵用 logo；模型图例与会话明细用色点", async ({ page }) => {

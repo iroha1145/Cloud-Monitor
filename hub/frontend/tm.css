@@ -1081,7 +1081,7 @@ a.pv-card:focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2
 .dist-name .client-logo { width: 18px; height: 18px; }
 .dist-track { height: 16px; background: var(--bg); border-radius: var(--r-sm); overflow: hidden; }
 .dist-bar { display: flex; height: 100%; border-radius: var(--r-sm); overflow: hidden; transition: opacity var(--dur); }
-.dist-part { display: block; height: 100%; }
+.dist-part { display: block; height: 100%; min-width: 0; }
 .dist.has-hot .dist-bar { opacity: 0.3; }
 .dist.has-hot .dist-row .dist-track.is-hot .dist-bar,
 .dist.has-hot .dist-track.is-hot .dist-bar { opacity: 1; }
@@ -1898,8 +1898,16 @@ html[data-theme="dark"] .pv-card.lv-crit .pv-status { color: #ff9a94; }
   transform-origin: bottom;
   animation: bar-grow var(--duration-slow) var(--ease-smooth-out) both;
 }
+/* 客户端分布横条：同一套时长/缓动/stagger，方向改为从左 scaleX */
+@keyframes bar-grow-x {
+  from { transform: scaleX(0); }
+}
+.dist-bar.grow {
+  transform-origin: left center;
+  animation: bar-grow-x var(--duration-slow) var(--ease-smooth-out) both;
+}
 @media (prefers-reduced-motion: reduce) {
-  .trend-bar.grow, .tseg.grow { animation: none !important; }
+  .trend-bar.grow, .tseg.grow, .dist-bar.grow { animation: none !important; }
 }
 
 /* 环形扇区入场：path 无 dash，用淡入。 */
