@@ -2002,7 +2002,7 @@ function renderSessions() {
     const sid = String(s.sessionId || "");
     const models = modelNamesOf(s.models);
     const modelsHtml = models.length
-      ? models.slice(0, 2).map((m) => `<span class="sess-model">${clientLogoHtml(m)}${esc(m)}</span>`).join("")
+      ? models.slice(0, 2).map((m) => `<span class="sess-model">${clientLogoHtml(m)}<span class="sess-model-name">${esc(m)}</span></span>`).join("")
         + (models.length > 2 ? `<span class="sess-more">+${models.length - 2}</span>` : "")
       : "—";
     const tokens = Number(s.tokens) || 0;
