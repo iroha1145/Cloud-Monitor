@@ -169,6 +169,7 @@ const PROVIDER_NAMES = {
   anthropic: "Anthropic", openai: "OpenAI", cursor: "Cursor",
   google: "Google", gemini: "Gemini", github: "GitHub", copilot: "Copilot",
   zhipu: "智谱", moonshot: "Moonshot", kimi: "Kimi", deepseek: "DeepSeek",
+  grok: "SpaceXAI", xai: "SpaceXAI",
 };
 function fmtProvider(v) {
   const s = String(v ?? "");
@@ -2260,10 +2261,10 @@ function renderLimits(limits) {
       let meta;
       if (hasPct && showMeter) {
         // percentage 窗口：圆环仪表。语义=剩余配额：未使用=整圈绿，
-        // 随使用逐渐减少；颜色按已用量分档（用量越高越红）
+        // 随使用逐渐减少；颜色按已用量分档（用量越高越红，剩 ≤20% 即红）
         const used = Math.max(0, Math.min(100, Number(w.usedPercent)));
         const remain = 100 - used;
-        const lv = used < 60 ? "ok" : used < 85 ? "warn" : "crit";
+        const lv = used < 60 ? "ok" : used < 80 ? "warn" : "crit";
         meter = ringSvg(remain, lv, state.entryFx);
         meta = reset || "已用 " + used.toFixed(0) + "%";
       } else if (metric === "credits" && w.remaining != null && Number.isFinite(Number(w.remaining))) {
