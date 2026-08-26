@@ -684,8 +684,23 @@ function toastMs(name, fb) {
   return Number.isFinite(v) ? v : fb;
 }
 
+/* 无悬停 / 粗指针设备：堆叠没有展开入口，退化为普通纵向列表（审计第二轮 #1）。
+   每次 toast 事件重评（仿真/混合设备可能切换），由 toastRestack 归一化 data-depth */
+function toastFlat() {
+  return Boolean(window.matchMedia && window.matchMedia("(hover: none), (pointer: coarse)").matches);
+}
+
 function toastRestack() {
-  toastStack.items.forEach((t, i) => t.setAttribute("data-depth", String(i)));
+  const flat = toastFlat();
+  toastStack.items.forEach((t, i) => {
+    if (flat) t.removeAttribute("data-depth");
+    else t.setAttribute("data-depth", String(i));
+  });
+  /* 折叠态背面卡锁高到最新条：只露出受控的 12/24px 表面壳（审计第二轮 #2） */
+  const root = $("#toast-root");
+  if (root && !flat && toastStack.items.length) {
+    root.style.setProperty("--stack-front-h", toastStack.items[0].offsetHeight + "px");
+  }
 }
 
 /* 展开态位移：累计前序条目真实高度（offsetHeight）+ 间距 —— 各条高度不同也
@@ -715,14 +730,27 @@ function toastSpreadReset() {
 function toastBindSpread() {
   const root = $("#toast-root");
   if (!root) return;
-  if (toastStack.items.length > 1 && !toastStack.spreadBound) {
+  const canHover = !toastFlat();
+  if (canHover && toastStack.items.length > 1 && !toastStack.spreadBound) {
     toastStack.spreadBound = true;
     document.addEventListener("pointermove", toastSpreadTrack, { passive: true });
-  } else if (toastStack.items.length <= 1 && toastStack.spreadBound) {
+    root.addEventListener("pointerdown", toastSpreadOpen);
+  } else if ((!canHover || toastStack.items.length <= 1) && toastStack.spreadBound) {
     toastStack.spreadBound = false;
     root.classList.remove("is-spread");
     toastSpreadReset();
     document.removeEventListener("pointermove", toastSpreadTrack);
+    root.removeEventListener("pointerdown", toastSpreadOpen);
+  }
+}
+
+/* 点击 / 轻触入口（触屏笔记本等混合设备）：pointermove 悬停之外的第二入口 */
+function toastSpreadOpen() {
+  const root = $("#toast-root");
+  if (toastFlat()) return;
+  if (root && toastStack.items.length > 1 && !root.classList.contains("is-spread")) {
+    root.classList.add("is-spread");
+    toastSpreadLayout();
   }
 }
 
@@ -741,12 +769,21 @@ function toastSpreadTrack(e) {
       root.classList.remove("is-spread");
       toastSpreadReset();
     }
-  } else if (
-    e.clientX >= r.left && e.clientX <= r.right &&
-    e.clientY <= r.bottom && e.clientY >= r.top
-  ) {
-    root.classList.add("is-spread");
-    toastSpreadLayout();
+  } else {
+    /* 命中上界 = 折叠堆栈的实际可见上缘：露出的 peek 表面也必须能触发展开
+       （审计第二轮 #2 —— 视觉范围与交互命中范围不得脱节） */
+    let vTop = r.top;
+    toastStack.items.forEach((el) => {
+      const b = el.getBoundingClientRect();
+      if (b.top < vTop) vTop = b.top;
+    });
+    if (
+      e.clientX >= r.left && e.clientX <= r.right &&
+      e.clientY <= r.bottom && e.clientY >= vTop - 2
+    ) {
+      root.classList.add("is-spread");
+      toastSpreadLayout();
+    }
   }
 }
 
@@ -767,9 +804,11 @@ function toastRetire(el) {
 
 function toast(msg, isErr) {
   const root = $("#toast-root");
+  const flat = toastFlat();
+  root.classList.toggle("t-stack-flat", flat);
   const el = document.createElement("div");
   el.className = "toast t-toast is-enter" + (isErr ? " err" : "");
-  el.setAttribute("data-depth", "0");
+  if (!flat) el.setAttribute("data-depth", "0");
   el.innerHTML =
     `<svg class="ic" aria-hidden="true"><use href="${iconHref(isErr ? "i-alert" : "i-check")}"/></svg>` +
     `<span>${esc(msg)}</span>`;

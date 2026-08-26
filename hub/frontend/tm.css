@@ -1540,6 +1540,19 @@ html[data-theme="dark"] .pv-card.lv-crit .pv-status { color: #ff9a94; }
   transform: translateY(var(--stack-peek-2)) scale(var(--stack-scale-2));
   opacity: var(--stack-opacity-2);
 }
+/* 折叠态背面卡 = 锁高表面壳：高度锁到最新条（--stack-front-h 由 JS 写入），
+   正文 visibility:hidden —— 只露出受控的 12/24px 表面，长文案不得完整伸出
+   （审计第二轮 #2：absolute 全高旧卡会从堆叠上方漏出正文，「文字叠罗汉」） */
+.t-toast[data-depth="1"], .t-toast[data-depth="2"] {
+  height: var(--stack-front-h, auto);
+  overflow: hidden;
+}
+.t-toast[data-depth="1"] > *, .t-toast[data-depth="2"] > * { visibility: hidden; }
+/* 展开后恢复自然高度与正文（is-spread 位移由 JS 按累计真实高度内联写入） */
+.toast-root.is-spread .t-toast[data-depth="1"],
+.toast-root.is-spread .t-toast[data-depth="2"] { height: auto; overflow: visible; }
+.toast-root.is-spread .t-toast[data-depth="1"] > *,
+.toast-root.is-spread .t-toast[data-depth="2"] > * { visibility: visible; }
 /* 悬停展开：各条位移 = 前序条目真实高度（offsetHeight）的累计 + 间距，由 JS 内联
    写入 —— 100% 只是该条自己的高度，乘 depth 无法表达累计值，不同高度的通知会
    重叠或留出大空隙（审计阻断项 2）；命中判定同样用实际展开高度 */
@@ -1562,15 +1575,31 @@ html[data-theme="dark"] .pv-card.lv-crit .pv-status { color: #ff9a94; }
 }
 @media (prefers-reduced-motion: reduce) {
   /* 降级 = 普通纵向列表：只关动效，绝不清分层位移 —— transform:none 会让
-     absolute depth 层全部落在同一坐标互相覆盖（审计阻断项 1） */
+     absolute depth 层全部落在同一坐标互相覆盖（审计阻断项 1）。
+     高度/裁剪/正文可见性也要还原，否则表面壳规则会把列表卡裁成空壳 */
   .toast-root { display: flex; flex-direction: column; gap: 10px; }
   .t-toast {
     position: relative !important;
+    height: auto !important;
+    overflow: visible !important;
     transition: none !important;
     transform: none !important;
     opacity: 1 !important;
     filter: none !important;
   }
+  .t-toast > * { visibility: visible !important; }
+}
+
+/* 无悬停 / 粗指针设备（hover:none 或 pointer:coarse）：没有展开入口，
+   退化为普通纵向列表 —— 最稳，也最接近堆叠改造前的手机行为（审计第二轮 #1）。
+   flat 模式下 JS 不写 data-depth，表面壳规则天然不触发 */
+.toast-root.t-stack-flat { display: flex; flex-direction: column; gap: 10px; }
+.toast-root.t-stack-flat .t-toast {
+  position: relative !important;
+  transition: none !important;
+  transform: none !important;
+  opacity: 1 !important;
+  filter: none !important;
 }
 
 /* ---------- 骨架屏 ---------- */

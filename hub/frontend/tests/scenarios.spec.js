@@ -1115,11 +1115,11 @@ test.describe("toast 堆叠（32-banner-stacking 审计回归）", () => {
     const page = await ctx.newPage();
     await page.goto("/demo");
     await expect(page.locator("#shell")).toBeVisible();
-    await page.evaluate(() => {
+    await page.evaluate((t) => {
       toast("第一条");
-      toast("第二条");
+      toast(t, true);
       toast("第三条", true);
-    });
+    }, LONG_ERR);
     await page.waitForTimeout(300);
     const sorted = expectNoOverlap(await toastRects(page));
     expect(sorted).toHaveLength(3);
@@ -1130,14 +1130,92 @@ test.describe("toast 堆叠（32-banner-stacking 审计回归）", () => {
     const styles = await page.evaluate(() =>
       [...document.querySelectorAll("#toast-root .t-toast")].map((el) => {
         const cs = getComputedStyle(el);
-        return { position: cs.position, opacity: cs.opacity };
+        return {
+          position: cs.position, opacity: cs.opacity,
+          h: el.getBoundingClientRect().height,
+          vis: [...new Set([...el.children].map((c) => getComputedStyle(c).visibility))],
+        };
       })
     );
     for (const s of styles) {
       expect(s.position).toBe("relative");
       expect(s.opacity).toBe("1");
+      /* 降级列表不得被表面壳规则裁成空壳：正文可见、长文案保持自然高度 */
+      expect(s.vis).toEqual(["visible"]);
     }
+    expect(Math.max(...styles.map((s) => s.h))).toBeGreaterThan(60);
     await ctx.close();
+  });
+
+  test("真实触摸上下文：hover:none/pointer:coarse 退化为纵向列表，轻触不进展开态", async ({ browser, baseURL }) => {
+    /* hasTouch+isMobile 才是真手机语义 —— 只缩窄视口仍是桌面鼠标语义（审计第二轮 #1） */
+    const ctx = await browser.newContext({
+      baseURL, viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true,
+    });
+    const page = await ctx.newPage();
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    const mq = await page.evaluate(() => ({
+      hoverNone: matchMedia("(hover: none)").matches,
+      coarse: matchMedia("(pointer: coarse)").matches,
+    }));
+    expect(mq.hoverNone).toBe(true);
+    expect(mq.coarse).toBe(true);
+    await fireThree(page, LONG_ERR);
+    const root = page.locator("#toast-root");
+    await expect(root).toHaveClass(/t-stack-flat/);
+    /* 平面列表：矩形互不重叠，三条都完整可读 */
+    const sorted = expectNoOverlap(await toastRects(page));
+    expect(sorted).toHaveLength(3);
+    /* 轻触通知区域也不进入展开态（平面模式无堆叠交互） */
+    const box = await root.boundingBox();
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    await page.waitForTimeout(300);
+    await expect(root).not.toHaveClass(/is-spread/);
+    await ctx.close();
+  });
+
+  test("折叠态只露受控表面：背面卡锁高裁壳、peek 区可触发展开（桌面）", async ({ page }) => {
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    await fireThree(page, LONG_ERR);
+    const root = page.locator("#toast-root");
+    const probe = await page.evaluate(() => {
+      const r = document.querySelector("#toast-root").getBoundingClientRect();
+      return [...document.querySelectorAll("#toast-root .t-toast")].map((el) => {
+        const b = el.getBoundingClientRect();
+        return {
+          depth: el.getAttribute("data-depth"),
+          top: b.top, height: el.offsetHeight, rootTop: r.top,
+          vis: [...new Set([...el.children].map((c) => getComputedStyle(c).visibility))],
+        };
+      });
+    });
+    expect(probe).toHaveLength(3);
+    const front = probe.find((p) => p.depth === "0");
+    for (const p of probe) {
+      if (p.depth === "0") continue;
+      /* 背面卡锁高到最新条：长文案不得全高伸出（审计第二轮 #2） */
+      expect(Math.abs(p.height - front.height), `depth${p.depth} 高度应锁到最新条`).toBeLessThanOrEqual(1);
+      /* 露头不超过受控条带（24px 位移 + 缩放回缩 + 容差） */
+      expect(front.top - p.top, `depth${p.depth} 露头过高`).toBeLessThanOrEqual(30);
+      /* 背面卡正文被裁成表面壳 */
+      expect(p.vis).toEqual(["hidden"]);
+    }
+    /* 鼠标放到露出的 peek 表面（根节点上方的旧卡区域）也必须触发展开 */
+    const peekTop = Math.min(...probe.map((p) => p.top));
+    await page.mouse.move(1200, (peekTop + front.rootTop) / 2);
+    await expect(root, "peek 可见区必须属于展开命中区").toHaveClass(/is-spread/);
+    /* 展开后背面卡恢复自然高度与正文 */
+    await page.waitForTimeout(400);
+    const grown = await page.evaluate(() =>
+      [...document.querySelectorAll("#toast-root .t-toast")].map((el) => ({
+        h: el.getBoundingClientRect().height,
+        vis: [...new Set([...el.children].map((c) => getComputedStyle(c).visibility))],
+      }))
+    );
+    for (const g of grown) expect(g.vis).toEqual(["visible"]);
+    expect(Math.max(...grown.map((g) => g.h))).toBeGreaterThan(60);
   });
 });
 
