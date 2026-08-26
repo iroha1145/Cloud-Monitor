@@ -169,7 +169,7 @@ const PROVIDER_NAMES = {
   anthropic: "Anthropic", openai: "OpenAI", cursor: "Cursor",
   google: "Google", gemini: "Gemini", github: "GitHub", copilot: "Copilot",
   zhipu: "智谱", moonshot: "Moonshot", kimi: "Kimi", deepseek: "DeepSeek",
-  grok: "Grok API", xai: "Grok API", "grok-web": "Grok (Web)",
+  grok: "SpaceXAI", xai: "SpaceXAI", "grok-web": "SpaceXAI (Web)",
 };
 function fmtProvider(v) {
   const s = String(v ?? "");
@@ -2036,6 +2036,10 @@ const PV_ERROR_TEXT = {
   subscriptions_unavailable: "订阅来源暂不可用",
 };
 
+/* 状态卡名 remap：后端 name 字段优先于 PROVIDER_NAMES，Grok 系在此统一
+   改为 SpaceXAI 文案（保留 API / (Web) 区分） */
+const PV_NAME_OVERRIDE = { grok: "SpaceXAI API", xai: "SpaceXAI API", "grok-web": "SpaceXAI (Web)" };
+
 function renderProviderStatus() {
   const panel = $("#provider-panel");
   const grid = $("#provider-grid");
@@ -2077,7 +2081,7 @@ function renderProviderStatus() {
     const [text, lv] = unavailable
       ? ["状态页暂不可用", "warn"]
       : PV_STATUS[status] || PV_STATUS.unknown;
-    const name = String(p.name || fmtProvider(p.provider) || p.provider || "—");
+    const name = String(PV_NAME_OVERRIDE[String(p.provider || "").toLowerCase()] || p.name || fmtProvider(p.provider) || p.provider || "—");
     let desc = unavailable
       ? (PV_ERROR_TEXT[errorCode] || errorCode)
       : String(p.description || text);
@@ -2263,10 +2267,10 @@ function renderLimits(limits) {
       let meta;
       if (hasPct && showMeter) {
         // percentage 窗口：圆环仪表。语义=剩余配额：未使用=整圈绿，
-        // 随使用逐渐减少；颜色按已用量分档（用量越高越红）
+        // 随使用逐渐减少；颜色按已用量分档（用量越高越红，剩 ≤20% 即红）
         const used = Math.max(0, Math.min(100, Number(w.usedPercent)));
         const remain = 100 - used;
-        const lv = used < 60 ? "ok" : used < 85 ? "warn" : "crit";
+        const lv = used < 60 ? "ok" : used < 80 ? "warn" : "crit";
         meter = ringSvg(remain, lv, state.entryFx);
         meta = reset || "已用 " + used.toFixed(0) + "%";
       } else if (metric === "credits" && w.remaining != null && Number.isFinite(Number(w.remaining))) {
