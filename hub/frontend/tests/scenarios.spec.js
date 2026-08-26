@@ -1046,3 +1046,224 @@ test.describe("在线更新（demo mock）", () => {
     await expect(page.locator("#upd-overlay")).toBeHidden();
   });
 });
+
+/* ===== PR#12 审计回归：toast 堆叠几何 / reduce 降级 / shimmer 无障碍 ===== */
+test.describe("toast 堆叠（32-banner-stacking 审计回归）", () => {
+  const LONG_ERR =
+    "刷新失败：后端返回 500 Internal Server Error，已保留上一份数据。" +
+    "这是一条刻意写得很长的错误提示，在窄通知里必然换行，用来构造高度不同的三条通知。";
+
+  async function toastRects(page) {
+    return page.evaluate(() =>
+      [...document.querySelectorAll("#toast-root .t-toast")].map((el) => {
+        const r = el.getBoundingClientRect();
+        return { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
+      })
+    );
+  }
+  const overlap = (a, b) =>
+    !(a.bottom <= b.top || b.bottom <= a.top || a.right <= b.left || b.right <= a.left);
+  function expectNoOverlap(rects) {
+    const s = [...rects].sort((a, b) => a.top - b.top);
+    for (let i = 0; i < s.length; i++) {
+      for (let j = i + 1; j < s.length; j++) {
+        expect(overlap(s[i], s[j]), `第 ${i + 1} 条与第 ${j + 1} 条通知不得重叠`).toBe(false);
+      }
+    }
+    return s;
+  }
+  async function fireThree(page, longText) {
+    await page.evaluate((t) => {
+      toast("已刷新");
+      toast(t, true);
+      toast("更新完成，即将刷新");
+    }, longText);
+    await page.waitForTimeout(500);
+  }
+
+  for (const vp of [
+    { name: "桌面", width: 1440, height: 900 },
+    { name: "移动端", width: 390, height: 844 },
+  ]) {
+    test(`短/多行长文案/短三条通知：展开后互不相交、间距一致、指针在上层不收拢（${vp.name}）`, async ({ page }) => {
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.goto("/demo");
+      await expect(page.locator("#shell")).toBeVisible();
+      await fireThree(page, LONG_ERR);
+      const root = page.locator("#toast-root");
+      const box = await root.boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await expect(root).toHaveClass(/is-spread/);
+      await page.waitForTimeout(400);
+      const sorted = expectNoOverlap(await toastRects(page));
+      expect(sorted).toHaveLength(3);
+      /* 间距一致 = --stack-spread-gap（8px，允许 ±2px 抖动） */
+      for (const g of [sorted[1].top - sorted[0].bottom, sorted[2].top - sorted[1].bottom]) {
+        expect(Math.abs(g - 8), "相邻通知间距应为 8px").toBeLessThanOrEqual(2);
+      }
+      /* 指针停在最上层（最旧）通知上：命中范围必须覆盖实际展开边界，不得提前收拢 */
+      await page.mouse.move(
+        (sorted[0].left + sorted[0].right) / 2,
+        (sorted[0].top + sorted[0].bottom) / 2
+      );
+      await page.waitForTimeout(300);
+      await expect(root, "指针在展开的上层通知上时堆叠不得收拢").toHaveClass(/is-spread/);
+      await page.mouse.move(40, 40);
+      await expect(root, "指针离开后堆叠应收拢").not.toHaveClass(/is-spread/);
+    });
+  }
+
+  test("reduce 下三条通知退化为纵向列表、互不重叠且完整可读", async ({ browser, baseURL }) => {
+    /* 显式建 reduce 上下文（test.use 的 reducedMotion 在本文件嵌套 describe 下不生效，MQ 实测为 false） */
+    const ctx = await browser.newContext({ baseURL, reducedMotion: "reduce" });
+    const page = await ctx.newPage();
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    await page.evaluate((t) => {
+      toast("第一条");
+      toast(t, true);
+      toast("第三条", true);
+    }, LONG_ERR);
+    await page.waitForTimeout(300);
+    const sorted = expectNoOverlap(await toastRects(page));
+    expect(sorted).toHaveLength(3);
+    /* 纵向列表：每条底缘不超过下一条顶缘；全部 relative、不透明（最新条完整可读） */
+    for (let i = 0; i < sorted.length - 1; i++) {
+      expect(sorted[i].bottom).toBeLessThanOrEqual(sorted[i + 1].top + 0.5);
+    }
+    const styles = await page.evaluate(() =>
+      [...document.querySelectorAll("#toast-root .t-toast")].map((el) => {
+        const cs = getComputedStyle(el);
+        return {
+          position: cs.position, opacity: cs.opacity,
+          h: el.getBoundingClientRect().height,
+          vis: [...new Set([...el.children].map((c) => getComputedStyle(c).visibility))],
+        };
+      })
+    );
+    for (const s of styles) {
+      expect(s.position).toBe("relative");
+      expect(s.opacity).toBe("1");
+      /* 降级列表不得被表面壳规则裁成空壳：正文可见、长文案保持自然高度 */
+      expect(s.vis).toEqual(["visible"]);
+    }
+    expect(Math.max(...styles.map((s) => s.h))).toBeGreaterThan(60);
+    await ctx.close();
+  });
+
+  test("真实触摸上下文：hover:none/pointer:coarse 退化为纵向列表，轻触不进展开态", async ({ browser, baseURL }) => {
+    /* hasTouch+isMobile 才是真手机语义 —— 只缩窄视口仍是桌面鼠标语义（审计第二轮 #1） */
+    const ctx = await browser.newContext({
+      baseURL, viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true,
+    });
+    const page = await ctx.newPage();
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    const mq = await page.evaluate(() => ({
+      hoverNone: matchMedia("(hover: none)").matches,
+      coarse: matchMedia("(pointer: coarse)").matches,
+    }));
+    expect(mq.hoverNone).toBe(true);
+    expect(mq.coarse).toBe(true);
+    await fireThree(page, LONG_ERR);
+    const root = page.locator("#toast-root");
+    await expect(root).toHaveClass(/t-stack-flat/);
+    /* 平面列表：矩形互不重叠，三条都完整可读 */
+    const sorted = expectNoOverlap(await toastRects(page));
+    expect(sorted).toHaveLength(3);
+    /* 轻触通知区域也不进入展开态（平面模式无堆叠交互） */
+    const box = await root.boundingBox();
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+    await page.waitForTimeout(300);
+    await expect(root).not.toHaveClass(/is-spread/);
+    await ctx.close();
+  });
+
+  test("折叠态只露受控表面：背面卡锁高裁壳、peek 区可触发展开（桌面）", async ({ page }) => {
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    await fireThree(page, LONG_ERR);
+    const root = page.locator("#toast-root");
+    const probe = await page.evaluate(() => {
+      const r = document.querySelector("#toast-root").getBoundingClientRect();
+      return [...document.querySelectorAll("#toast-root .t-toast")].map((el) => {
+        const b = el.getBoundingClientRect();
+        return {
+          depth: el.getAttribute("data-depth"),
+          top: b.top, height: el.offsetHeight, rootTop: r.top,
+          vis: [...new Set([...el.children].map((c) => getComputedStyle(c).visibility))],
+        };
+      });
+    });
+    expect(probe).toHaveLength(3);
+    const front = probe.find((p) => p.depth === "0");
+    for (const p of probe) {
+      if (p.depth === "0") continue;
+      /* 背面卡锁高到最新条：长文案不得全高伸出（审计第二轮 #2） */
+      expect(Math.abs(p.height - front.height), `depth${p.depth} 高度应锁到最新条`).toBeLessThanOrEqual(1);
+      /* 露头不超过受控条带（24px 位移 + 缩放回缩 + 容差） */
+      expect(front.top - p.top, `depth${p.depth} 露头过高`).toBeLessThanOrEqual(30);
+      /* 背面卡正文被裁成表面壳 */
+      expect(p.vis).toEqual(["hidden"]);
+    }
+    /* 鼠标放到露出的 peek 表面（根节点上方的旧卡区域）也必须触发展开 */
+    const peekTop = Math.min(...probe.map((p) => p.top));
+    await page.mouse.move(1200, (peekTop + front.rootTop) / 2);
+    await expect(root, "peek 可见区必须属于展开命中区").toHaveClass(/is-spread/);
+    /* 展开后背面卡恢复自然高度与正文 */
+    await page.waitForTimeout(400);
+    const grown = await page.evaluate(() =>
+      [...document.querySelectorAll("#toast-root .t-toast")].map((el) => ({
+        h: el.getBoundingClientRect().height,
+        vis: [...new Set([...el.children].map((c) => getComputedStyle(c).visibility))],
+      }))
+    );
+    for (const g of grown) expect(g.vis).toEqual(["visible"]);
+    expect(Math.max(...grown.map((g) => g.h))).toBeGreaterThan(60);
+  });
+});
+
+test.describe("shimmer 扫光（15-shimmer-text 审计回归）", () => {
+  test("发布的 shimmer 标记均为单份真实文本（无 data-text / 无 ::before 复制）", async ({ page }) => {
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    /* 发布标记：index.html 的 #upd-body 初始文案 + #hist-loading（DOM 中即存在） */
+    const probes = await page.evaluate(() =>
+      [...document.querySelectorAll("#upd-body .t-shimmer, #hist-loading.t-shimmer")].map((el) => ({
+        text: el.textContent.trim(),
+        textNodes: [...el.childNodes].filter((n) => n.nodeType === 3 && n.textContent.trim()).length,
+        childElementCount: el.childElementCount,
+        dataText: el.getAttribute("data-text"),
+        beforeContent: getComputedStyle(el, "::before").content,
+      }))
+    );
+    expect(probes.length).toBeGreaterThanOrEqual(2);
+    for (const p of probes) {
+      expect(p.textNodes, `「${p.text}」只保留一份真实文本节点`).toBe(1);
+      expect(p.childElementCount).toBe(0);
+      expect(p.dataText, "不再需要 data-text 复制文案").toBeNull();
+      expect(["none", "normal", '""', ""], "::before 不得再生成文本").toContain(p.beforeContent);
+    }
+  });
+
+  test("shimmer 文案在 Chromium 无障碍树中只出现一次", async ({ page }) => {
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    /* 在可见区域挂一条真实的 .t-shimmer（隐藏子树本无 AX 节点，挂到 body 上模拟使用中状态） */
+    await page.evaluate(() => {
+      const host = document.createElement("div");
+      host.style.cssText = "position:fixed;top:120px;left:300px;z-index:999;";
+      host.innerHTML = `<span class="t-shimmer">正在检索…</span>`;
+      document.body.appendChild(host);
+    });
+    await page.waitForTimeout(150);
+    const cdp = await page.context().newCDPSession(page);
+    const { nodes } = await cdp.send("Accessibility.getFullAXTree");
+    await cdp.detach();
+    const hits = nodes.filter(
+      (n) => n.role && n.role.value === "StaticText" &&
+        ((n.name && n.name.value === "正在检索…") || (n.value && n.value.value === "正在检索…"))
+    );
+    expect(hits.length, "AX 树中 StaticText「正在检索…」只能有一个（双层结构会得到两个）").toBe(1);
+  });
+});
