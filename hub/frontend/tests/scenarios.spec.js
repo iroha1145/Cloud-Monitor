@@ -487,8 +487,8 @@ test.describe("§7 capabilities.tokenComponents=false（demo ?cm-scenario=nocap�
     await expect(page.locator("#provider-panel")).toBeVisible();
     await expect(page.locator("#provider-grid")).toContainText("DeepSeek");
     await expect(page.locator("#provider-grid")).toContainText("Kimi");
-    await expect(page.locator("#provider-grid")).toContainText("Grok API");
-    await expect(page.locator("#provider-grid")).toContainText("Grok (Web)");
+    await expect(page.locator("#provider-grid")).toContainText("SpaceXAI API");
+    await expect(page.locator("#provider-grid")).toContainText("SpaceXAI (Web)");
     await expect(page.locator('#provider-grid a.pv-card[href="https://status.x.ai"]')).toBeVisible();
     await expect(page.locator('#provider-grid a.pv-card[href="https://status.x.ai/grok-com"]')).toBeVisible();
     await expect(page.locator("#provider-grid")).toContainText("Anthropic");
