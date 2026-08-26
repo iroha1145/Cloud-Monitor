@@ -131,13 +131,6 @@
   --tt-out-ease: ease-out;
   --tt-bg: #ffffff;
   --tt-fg: #061b31;
-  /* Toast open / close */
-  --toast-open: 280ms;
-  --toast-close: 200ms;
-  --toast-distance: 12px;
-  --toast-blur: 0px;
-  --toast-scale: 0.98;
-  --toast-ease: cubic-bezier(0.22, 1, 0.36, 1);
   /* Modal open / close（密钥门入场） */
   --modal-open-dur: 200ms;
   --modal-ease: cubic-bezier(0.22, 1, 0.36, 1);
@@ -145,6 +138,36 @@
   --reveal-dur: 320ms;
   --reveal-blur: 2px;
   --reveal-ease: ease-out;
+  /* 03-notification-badge（检索更新圆点：对角滑入 + 过冲 pop 合并单元素版，
+     hidden→shown 重进渲染树自动重放；弹跳 ease 仅保留给这一处 pop 语义） */
+  --badge-pop-dur: 500ms;
+  --badge-blur: 2px;
+  --badge-offset-x: -8.2px;
+  --badge-offset-y: 12.4px;
+  --badge-slide-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --badge-pop-ease: cubic-bezier(0.34, 1.36, 0.64, 1);
+  /* 09-icon-swap（主题图标 cross-fade；ease-in-out 为 catalog 指定用法） */
+  --icon-swap-dur: 250ms;
+  --icon-swap-blur: 2px;
+  --icon-swap-start-scale: 0.25;
+  --icon-swap-ease: ease-in-out;
+  /* 15-shimmer-text（「正在检索 / 加载中」文案扫光；颜色引用主题变量，暗色免覆写） */
+  --shimmer-dur: 2000ms;
+  --shimmer-base: var(--mute);
+  --shimmer-highlight: var(--brand-600);
+  --shimmer-band: 400%;
+  --shimmer-ease: linear;
+  /* 32-banner-stacking（toast 堆叠：新的顶入、旧的后退压缩；开关节拍沿用既有 --toast-open/--toast-close） */
+  --stack-open: 280ms;
+  --stack-close: 200ms;
+  --stack-rise: 80px;
+  --stack-blur: 2px;
+  --stack-scale: 0.97;
+  --stack-peek: 12px;
+  --stack-spread-gap: 8px;
+  --stack-depth-scale: 0.06;
+  --stack-depth-fade: 0.4;
+  --stack-ease: cubic-bezier(0.22, 1, 0.36, 1);
 
   /* 既有别名保留（不改调用点）：250ms 即 --duration-fast 的「页面/表面位移」档；
      cubic-bezier(0.4,0,0.2,1) 统一收敛到表面动效默认 --ease-smooth-out */
@@ -231,6 +254,44 @@ code {
   border-radius: var(--r-sm);
   padding: 1px 5px;
 }
+
+/* ---------- shadcn 式基础细节（ui.shadcn.com 设计语言移植） ---------- */
+/* 文本选中：品牌紫淡底；--brand-100/--brand-800 随主题翻转，亮暗共用一条 */
+::selection { background: var(--brand-100); color: var(--brand-800); }
+
+/* 统一焦点环：键盘导航可见（shadcn ring-2 + offset 2 的等价物）。
+   outline 自动贴合各控件 border-radius；鼠标点击不触发 focus-visible，无噪环 */
+:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+}
+/* 选中高亮 pill 之下的侧栏项：白字压在品牌紫上，环改白色保持可辨 */
+.nav-item.is-active:focus-visible { outline-color: #fff; }
+
+/* 细滚动条：只给真实滚动容器，轨道透明、拇指圆头（shadcn ScrollArea 观感） */
+.tbl-scroll, .mx-scroll, .hm-scroll, .upd-notes, .gate {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.tbl-scroll::-webkit-scrollbar, .mx-scroll::-webkit-scrollbar,
+.hm-scroll::-webkit-scrollbar, .upd-notes::-webkit-scrollbar,
+.gate::-webkit-scrollbar { width: 8px; height: 8px; }
+.tbl-scroll::-webkit-scrollbar-thumb, .mx-scroll::-webkit-scrollbar-thumb,
+.hm-scroll::-webkit-scrollbar-thumb, .upd-notes::-webkit-scrollbar-thumb,
+.gate::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--r-pill);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.tbl-scroll::-webkit-scrollbar-thumb:hover, .mx-scroll::-webkit-scrollbar-thumb:hover,
+.hm-scroll::-webkit-scrollbar-thumb:hover, .upd-notes::-webkit-scrollbar-thumb:hover,
+.gate::-webkit-scrollbar-thumb:hover { background: var(--mute); background-clip: padding-box; border: 2px solid transparent; }
+.tbl-scroll::-webkit-scrollbar-track, .mx-scroll::-webkit-scrollbar-track,
+.hm-scroll::-webkit-scrollbar-track, .upd-notes::-webkit-scrollbar-track,
+.gate::-webkit-scrollbar-track { background: transparent; }
+.tbl-scroll::-webkit-scrollbar-corner, .mx-scroll::-webkit-scrollbar-corner,
+.hm-scroll::-webkit-scrollbar-corner { background: transparent; }
 .mono, .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 /* 中文单位走 UI 字体，避免与等宽数字基线错位 */
 .num-unit {
@@ -294,9 +355,31 @@ code {
   transition: color var(--dur), border-color var(--dur), transform var(--dur);
 }
 .icon-btn:hover { color: var(--brand-700); border-color: var(--brand-500); }
-.theme-ic-sun { display: none; }
-html[data-theme="dark"] .theme-ic-moon { display: none; }
-html[data-theme="dark"] .theme-ic-sun { display: inline; }
+/* 09-icon-swap（主题图标）：两枚图标同格堆叠，亮暗切换 cross-fade + blur + scale。
+   状态由 html[data-theme] 驱动（等价 catalog 的 data-state，纯 CSS 免 JS）；
+   theme-boot 在 CSS 前写好 data-theme，首帧即落正确图标，无闪烁 */
+[data-theme-toggle] { display: inline-grid; place-items: center; }
+[data-theme-toggle] .theme-ic-moon,
+[data-theme-toggle] .theme-ic-sun {
+  grid-area: 1 / 1;
+  transition: opacity var(--icon-swap-dur) var(--icon-swap-ease),
+    filter var(--icon-swap-dur) var(--icon-swap-ease),
+    transform var(--icon-swap-dur) var(--icon-swap-ease);
+  will-change: opacity, filter, transform;
+}
+.theme-ic-sun {
+  opacity: 0; filter: blur(var(--icon-swap-blur));
+  transform: scale(var(--icon-swap-start-scale));
+}
+html[data-theme="dark"] .theme-ic-moon {
+  opacity: 0; filter: blur(var(--icon-swap-blur));
+  transform: scale(var(--icon-swap-start-scale));
+}
+html[data-theme="dark"] .theme-ic-sun { opacity: 1; filter: blur(0); transform: scale(1); }
+@media (prefers-reduced-motion: reduce) {
+  [data-theme-toggle] .theme-ic-moon,
+  [data-theme-toggle] .theme-ic-sun { transition: none !important; }
+}
 .gate-theme {
   position: absolute;
   top: calc(16px + env(safe-area-inset-top, 0px));
@@ -448,6 +531,25 @@ html[data-theme="dark"] .theme-ic-sun { display: inline; }
   position: absolute; top: 7px; right: 7px;
   width: 7px; height: 7px; border-radius: 50%;
   background: var(--brand-500); box-shadow: 0 0 0 2px var(--card);
+}
+/* 03-notification-badge 单元素合并版：对角滑入（52% 到位）+ 过冲 pop（rareui 式
+   弹簧感）+ cross-blur。hidden→shown 重进渲染树自动重放，JS 仍只切 hidden */
+.upd-dot:not([hidden]) { animation: upd-badge-in var(--badge-pop-dur); }
+@keyframes upd-badge-in {
+  0% {
+    transform: translate(var(--badge-offset-x), var(--badge-offset-y)) scale(0);
+    opacity: 0; filter: blur(var(--badge-blur));
+    animation-timing-function: var(--badge-slide-ease);
+  }
+  52% {
+    transform: translate(0, 0) scale(1.15);
+    opacity: 1; filter: blur(0);
+    animation-timing-function: var(--badge-pop-ease);
+  }
+  100% { transform: translate(0, 0) scale(1); opacity: 1; filter: blur(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .upd-dot:not([hidden]) { animation: none !important; }
 }
 .upd-overlay {
   position: fixed; inset: 0; z-index: 40;
@@ -1385,8 +1487,12 @@ html[data-theme="dark"] .pv-card.lv-crit .pv-status { color: #ff9a94; }
   color: var(--ink-2); font-size: 13.5px; line-height: 26px;
 }
 
-/* ---------- Toast ---------- */
-.toast-root { position: fixed; right: 18px; bottom: 18px; z-index: 50; display: flex; flex-direction: column; gap: 10px; }
+/* ---------- Toast（32-banner-stacking：sonner 式堆叠） ---------- */
+/* 锚点容器：最新一条在流内撑出高度（= 悬停几何的碰撞盒），旧条绝对定位后退 */
+.toast-root {
+  position: fixed; right: 18px; bottom: 18px; z-index: 50;
+  width: min(360px, calc(100vw - 36px));
+}
 .toast {
   display: flex; align-items: center; gap: 9px;
   padding: 11px 16px; border-radius: var(--r-md);
@@ -1397,31 +1503,64 @@ html[data-theme="dark"] .pv-card.lv-crit .pv-status { color: #ff9a94; }
   border: 1px solid var(--tip-line);
   box-shadow: var(--sh-glass);
 }
-/* —— 22-toast.md（catalog 片段 verbatim；.toast 负责皮肤，.t-toast 负责运动） —— */
 .toast .ic { color: var(--brand-500); }
 .toast.err .ic { color: var(--crit); }
+/* —— 32-banner-stacking（catalog 片段适配：depth0 改流内定位，堆叠高度即锚点高） —— */
 .t-toast {
-  opacity: 0;
-  transform: translateY(var(--toast-distance)) scale(var(--toast-scale));
-  filter: blur(var(--toast-blur));
+  position: absolute; left: 0; bottom: 0; width: 100%;
+  transform-origin: 50% 50%;
+  filter: blur(0);
   will-change: transform, opacity, filter;
   transition:
-    opacity var(--toast-close) var(--toast-ease),
-    transform var(--toast-close) var(--toast-ease),
-    filter var(--toast-close) var(--toast-ease);
+    transform var(--stack-open) var(--stack-ease),
+    opacity var(--stack-open) var(--stack-ease),
+    filter var(--stack-open) var(--stack-ease);
 }
-.t-toast.is-open {
-  opacity: 1;
+.t-toast[data-depth="0"] {
+  position: relative; z-index: 3;
   transform: translateY(0) scale(1);
-  filter: blur(0);
-  transition:
-    opacity var(--toast-open) var(--toast-ease),
-    transform var(--toast-open) var(--toast-ease),
-    filter var(--toast-open) var(--toast-ease);
+  opacity: 1;
 }
-
+.t-toast[data-depth="1"] {
+  z-index: 2;
+  transform-origin: 50% 100%;
+  transform: translateY(calc(var(--stack-peek) * -1)) scale(calc(1 - var(--stack-depth-scale)));
+  opacity: calc(1 - var(--stack-depth-fade));
+}
+.t-toast[data-depth="2"] {
+  z-index: 1;
+  transform-origin: 50% 100%;
+  transform: translateY(calc(var(--stack-peek) * -2)) scale(calc(1 - var(--stack-depth-scale) * 2));
+  opacity: calc(1 - var(--stack-depth-fade) * 1.6);
+}
+/* 悬停展开：旧条各爬一个自身高度（is-spread 由 JS 按指针几何写入） */
+.toast-root.is-spread .t-toast[data-depth="1"],
+.toast-root.is-spread .t-toast[data-depth="2"] { opacity: 1; }
+.toast-root.is-spread .t-toast[data-depth="1"] {
+  transform: translateY(calc((100% + var(--stack-spread-gap)) * -1)) scale(1);
+}
+.toast-root.is-spread .t-toast[data-depth="2"] {
+  transform: translateY(calc((100% + var(--stack-spread-gap)) * -2)) scale(1);
+}
+.t-toast.is-enter {
+  transition: none;
+  transform: translateY(var(--stack-rise)) scale(var(--stack-scale));
+  opacity: 0;
+  filter: blur(var(--stack-blur));
+}
+.t-toast.is-leaving {
+  z-index: 0;
+  transform-origin: 50% 100%;
+  transform: translateY(calc(var(--stack-peek) * -3)) scale(calc(1 - var(--stack-depth-scale) * 3));
+  opacity: 0;
+  filter: blur(var(--stack-blur));
+  transition:
+    transform var(--stack-close) var(--stack-ease),
+    opacity var(--stack-close) var(--stack-ease),
+    filter var(--stack-close) var(--stack-ease);
+}
 @media (prefers-reduced-motion: reduce) {
-  .t-toast { transition: none !important; }
+  .t-toast { transition: none !important; transform: none !important; filter: none !important; }
 }
 
 /* ---------- 骨架屏 ---------- */
@@ -1432,6 +1571,48 @@ html[data-theme="dark"] .pv-card.lv-crit .pv-status { color: #ff9a94; }
   animation: sk 1.4s linear infinite;
 }
 @keyframes sk { to { background-position: -200% 0; } }
+
+/* —— 15-shimmer-text.md（catalog 片段 verbatim；颜色 token 在 :root 引用主题变量） —— */
+/* Two-layer construction:
+   1. The base text renders normally in --shimmer-base.
+   2. ::before duplicates it via content: attr(data-text),
+      paints a transparent → highlight → transparent gradient
+      onto it, and clips that gradient to the glyphs via
+      background-clip: text. Animating background-position
+      sweeps the band across the text. */
+.t-shimmer {
+  position: relative;
+  display: inline-block;
+  color: var(--shimmer-base);
+}
+.t-shimmer::before {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(
+    90deg,
+    transparent          0%,
+    transparent         40%,
+    var(--shimmer-highlight) 50%,
+    transparent         60%,
+    transparent        100%
+  );
+  background-size: var(--shimmer-band) 100%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: t-shimmer var(--shimmer-dur) var(--shimmer-ease) infinite;
+}
+@keyframes t-shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: 0% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .t-shimmer::before { animation: none !important; }
+}
 
 /* ---------- 底部导航（移动端） ---------- */
 .bottom-nav {
@@ -1556,7 +1737,7 @@ html[data-theme="dark"] .pv-card.lv-crit .pv-status { color: #ff9a94; }
   .dist-row { grid-template-columns: 108px 1fr; }
   .dist-val { grid-column: 2; justify-content: flex-start; }
 
-  .toast-root { right: 12px; left: 12px; bottom: calc(82px + env(safe-area-inset-bottom, 0px)); }
+  .toast-root { right: 12px; left: 12px; width: auto; bottom: calc(82px + env(safe-area-inset-bottom, 0px)); }
   .toast { justify-content: center; }
 }
 

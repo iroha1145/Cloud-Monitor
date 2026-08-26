@@ -674,23 +674,83 @@ function setConn(stateName, text) {
   $("#conn-text").textContent = text;
 }
 
+/* 32-banner-stacking：新 toast 顶入（depth 0），旧的后退压缩（更小、更高、更暗），
+   第 4 条到来顶出最旧条；悬停堆叠展开为可读列表。指针几何判定而非 :hover ——
+   展开后条目之间的间隙不属于任何元素，边界事件会抖动 */
+const toastStack = { items: [] /* newest first */, spreadBound: false };
+
+function toastMs(name, fb) {
+  const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+  return Number.isFinite(v) ? v : fb;
+}
+
+function toastRestack() {
+  toastStack.items.forEach((t, i) => t.setAttribute("data-depth", String(i)));
+}
+
+function toastBindSpread() {
+  const root = $("#toast-root");
+  if (!root) return;
+  if (toastStack.items.length > 1 && !toastStack.spreadBound) {
+    toastStack.spreadBound = true;
+    document.addEventListener("pointermove", toastSpreadTrack, { passive: true });
+  } else if (toastStack.items.length <= 1 && toastStack.spreadBound) {
+    toastStack.spreadBound = false;
+    root.classList.remove("is-spread");
+    document.removeEventListener("pointermove", toastSpreadTrack);
+  }
+}
+
+function toastSpreadTrack(e) {
+  const root = $("#toast-root");
+  if (!root) return;
+  const r = root.getBoundingClientRect();
+  const gap = toastMs("--stack-spread-gap", 8);
+  if (root.classList.contains("is-spread")) {
+    /* 展开后的保活区域：堆叠高度 + 展开增高的两倍余量，指针离开高列才收回 */
+    const hold = (r.height + gap) * 2;
+    const inside =
+      e.clientX >= r.left && e.clientX <= r.right &&
+      e.clientY <= r.bottom && e.clientY >= r.top - hold;
+    if (!inside) root.classList.remove("is-spread");
+  } else if (
+    e.clientX >= r.left && e.clientX <= r.right &&
+    e.clientY <= r.bottom && e.clientY >= r.top
+  ) {
+    root.classList.add("is-spread");
+  }
+}
+
+function toastRetire(el) {
+  if (!el || el.classList.contains("is-leaving")) return;
+  el.classList.add("is-leaving");
+  /* 关闭计时读 --stack-close，与 :root 值保持同步（22-toast 时期的手法沿用） */
+  setTimeout(() => el.remove(), toastMs("--stack-close", 200) + 40);
+  toastStack.items = toastStack.items.filter((t) => t !== el);
+  toastRestack();
+  toastBindSpread();
+}
+
 function toast(msg, isErr) {
   const root = $("#toast-root");
   const el = document.createElement("div");
-  el.className = "toast t-toast" + (isErr ? " err" : "");
+  el.className = "toast t-toast is-enter" + (isErr ? " err" : "");
+  el.setAttribute("data-depth", "0");
   el.innerHTML =
     `<svg class="ic" aria-hidden="true"><use href="${iconHref(isErr ? "i-alert" : "i-check")}"/></svg>` +
     `<span>${esc(msg)}</span>`;
   root.appendChild(el);
-  /* 22-toast：.is-open 切换驱动开 350ms / 关 250ms 不对称（含 cross-blur）；
-     关闭计时读 --toast-close，与 :root 值保持同步 */
-  requestAnimationFrame(() => el.classList.add("is-open"));
-  const closeMs =
-    parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--toast-close")) || 250;
-  setTimeout(() => {
-    el.classList.remove("is-open");
-    setTimeout(() => el.remove(), closeMs + 20);
-  }, 4200);
+  toastStack.items.unshift(el);
+  /* 超出 3 层的最旧条直接顶出；其余按新→旧重排 depth，位移由 CSS 过渡接管 */
+  const overflow = toastStack.items.slice(3);
+  toastStack.items = toastStack.items.slice(0, 3);
+  overflow.forEach((t) => toastRetire(t));
+  toastRestack();
+  /* 同任务内提交预入场态再释放：rAF 在帧时钟被节流时会被跳过，banner 会无动画落地 */
+  void el.offsetWidth;
+  el.classList.remove("is-enter");
+  setTimeout(() => toastRetire(el), 4200);
+  toastBindSpread();
 }
 
 /* ================= 全局悬浮 tooltip（玻璃浮层） ================= */
@@ -3348,7 +3408,7 @@ async function openUpdateDialog() {
   const btn = $("#upd-btn");
   if (btn) btn.setAttribute("aria-expanded", "true");
   const body = $("#upd-body");
-  if (body) body.textContent = "正在检索…";
+  if (body) body.innerHTML = `<span class="t-shimmer" data-text="正在检索…">正在检索…</span>`;
   try {
     renderUpdateDialog(await dataApi.updateCheck(undefined, true));
   } catch (err) {
@@ -3359,7 +3419,7 @@ async function openUpdateDialog() {
 async function applyUpdateRef(ref) {
   if (!ref) return;
   const body = $("#upd-body");
-  if (body) body.textContent = "已提交更新，后台执行中…";
+  if (body) body.innerHTML = `<span class="t-shimmer" data-text="已提交更新，后台执行中…">已提交更新，后台执行中…</span>`;
   const applyRel = $("#upd-apply-rel");
   const applyMain = $("#upd-apply-main");
   if (applyRel) applyRel.hidden = true;
