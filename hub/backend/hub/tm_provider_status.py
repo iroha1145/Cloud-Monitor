@@ -354,6 +354,17 @@ STATUS_FETCH_HEADERS = {
 }
 
 
+def _max_iso_ts(*values: Any) -> Optional[str]:
+    """在已规范化的 ISO 时间戳里取最新一条（字典序与时间序一致）。"""
+    newest: Optional[str] = None
+    for value in values:
+        if not isinstance(value, str) or not value:
+            continue
+        if newest is None or value > newest:
+            newest = value
+    return newest
+
+
 def _rss_date(raw: Optional[str]) -> Optional[str]:
     text = str(raw or "").strip()
     if not text:
@@ -422,6 +433,7 @@ def parse_rss_payload(page: StatusPage, xml_text: Any) -> dict[str, Any]:
         channel = root
     source_updated = _rss_date(channel.findtext("lastBuildDate") if channel is not None else None)
     open_components: list[dict[str, Any]] = []
+    item_newest: Optional[str] = None
     for item in channel.findall("item") if channel is not None else []:
         title = (item.findtext("title") or "").strip()
         desc = item.findtext("description") or ""
@@ -438,10 +450,12 @@ def parse_rss_payload(page: StatusPage, xml_text: Any) -> dict[str, Any]:
             "updated_at": pub,
             "title": title,
         })
-        if pub and not source_updated:
-            # 条目时间只作回填：feed 级 lastBuildDate 恒新于（或等于）任何条目，
-            # 循环 last-wins 会把来源时间倒退成最旧一条
-            source_updated = pub
+        item_newest = _max_iso_ts(item_newest, pub)
+
+    # 条目时间只作回填：feed 级 lastBuildDate 优先；无页面级时间时取最新
+    # open item（RSS 顺序不保证，不能用第一条）
+    if not source_updated:
+        source_updated = item_newest
 
     chosen, pick_kind = _pick_components(page, open_components)
     if pick_kind == "excluded_only":
@@ -451,9 +465,8 @@ def parse_rss_payload(page: StatusPage, xml_text: Any) -> dict[str, Any]:
         status = "operational"
         for component in chosen:
             status = _worse(status, _status_from_component(component))
-            updated = component.get("updated_at")
-            if updated and not source_updated:
-                source_updated = updated
+        if not source_updated:
+            source_updated = _max_iso_ts(*(c.get("updated_at") for c in chosen))
         titles = [str(c.get("title") or c.get("name") or "") for c in chosen[:2]]
         description = " · ".join(t for t in titles if t) or status
     else:
@@ -498,9 +511,8 @@ def parse_status_payload(page: StatusPage, payload: Any) -> dict[str, Any]:
         status = "operational"
         for component in chosen:
             status = _worse(status, _status_from_component(component))
-            updated = component.get("updated_at")
-            if updated and not source_updated:
-                source_updated = updated
+        if not source_updated:
+            source_updated = _max_iso_ts(*(c.get("updated_at") for c in chosen))
         if not description:
             names = ", ".join(_component_name(c) for c in chosen[:3])
             description = f"{names}: {status}"

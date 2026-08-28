@@ -10,6 +10,8 @@ COMPOSE="docker compose --project-directory $HUB_DIR"
 
 [ -f "$BACKUP/devices.json" ] || { echo "缺少 devices.json" >&2; exit 1; }
 [ -f "$BACKUP/cloud-monitor.sqlite3" ] || { echo "缺少 cloud-monitor.sqlite3" >&2; exit 1; }
+# compose run -v 相对的是工程目录；收成绝对路径再挂 /backup
+BACKUP=$(CDPATH= cd -- "$BACKUP" && pwd)
 
 resolve_named_volume() {
   logical="$1"
@@ -52,12 +54,20 @@ $COMPOSE down
 
 echo "恢复 tm-core devices.json..."
 # 用各镜像自身执行写入：容器内以 root 运行 cp 后按镜像内服务用户 chown，
-# 否则文件属主 root、hub(tm-core) 进程只读，SQLite 打开即 "readonly database"
-$COMPOSE run --rm --no-deps --user=0 --entrypoint sh tm-core -c \
+# 否则文件属主 root、hub(tm-core) 进程只读，SQLite 打开即 "readonly database"。
+# compose 服务声明了 cap_drop ALL + read_only：无 DAC_OVERRIDE/CHOWN 时
+# uid 0 也写不进 monitor 属主的 /data。显式挂备份目录（服务本身没有 /backup）。
+$COMPOSE run --rm --no-deps --user=0 \
+  --cap-add=DAC_OVERRIDE --cap-add=CHOWN --cap-add=FOWNER \
+  -v "$BACKUP:/backup:ro" \
+  --entrypoint sh tm-core -c \
   'cp /backup/devices.json /data/devices.json && chown "$(id -u monitor):$(id -g monitor)" /data/devices.json'
 
 echo "恢复 SQLite..."
-$COMPOSE run --rm --no-deps --user=0 --entrypoint sh cloud-hub -c \
+$COMPOSE run --rm --no-deps --user=0 \
+  --cap-add=DAC_OVERRIDE --cap-add=CHOWN --cap-add=FOWNER \
+  -v "$BACKUP:/backup:ro" \
+  --entrypoint sh cloud-hub -c \
   'cp /backup/cloud-monitor.sqlite3 /data/cloud-monitor.sqlite3 && rm -f /data/cloud-monitor.sqlite3-wal /data/cloud-monitor.sqlite3-shm && chown "$(id -u monitor):$(id -g monitor)" /data/cloud-monitor.sqlite3'
 
 echo "启动服务并验证..."

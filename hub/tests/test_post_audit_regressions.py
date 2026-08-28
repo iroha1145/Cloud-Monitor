@@ -387,6 +387,34 @@ def test_bootstrap_marks_device_rejected_on_deterministic_400(tmp_path):
     db.close()
 
 
+def test_bootstrap_does_not_reject_device_on_404(tmp_path):
+    """404/405 是路径或方法不兼容，不是 payload 损坏：不得永久跳过，
+    否则升级 tm-core 后也不会再回灌。"""
+    from types import SimpleNamespace
+
+    from hub.tm_proxy import TmBackground
+
+    class NotFoundCore:
+        def health(self):
+            return {"ok": True}
+
+        def request(self, _method, _path, *, json_body=None, **_kwargs):
+            return SimpleNamespace(status_code=404, text="not found", json=lambda: {})
+
+    db = db_for(tmp_path, "reject-404.sqlite3")
+    db.execute("CREATE TABLE tm_devices (device_id TEXT, payload TEXT, last_seen_at TEXT)")
+    db.execute(
+        "INSERT INTO tm_devices VALUES (?, ?, ?)",
+        ("dev", '{"deviceId":"dev","today":{"totalTokens":1}}', ""),
+    )
+    settings = SimpleNamespace(tm_ingest_secret="secret")
+    assert TmBackground(settings, db, NotFoundCore())._bootstrap() is False
+    row = db.fetchone("SELECT value FROM tm_meta WHERE key='legacy_rejected_devices'")
+    assert row is None
+    assert [p["deviceId"] for p in legacy_device_payloads(db)] == ["dev"]
+    db.close()
+
+
 def test_mark_legacy_rejected_filters_payload_list(tmp_path):
     from hub.tm_snapshots import mark_legacy_rejected
 
@@ -433,6 +461,7 @@ def test_rss_source_updated_prefers_feed_level_over_older_items():
 
 
 def test_rss_source_updated_falls_back_to_newest_open_item():
+    """无 lastBuildDate 时取最新 open item，不能用第一条（RSS 顺序不保证）。"""
     from hub.tm_provider_status import STATUS_PAGES, parse_rss_payload
 
     xml = (
@@ -440,10 +469,13 @@ def test_rss_source_updated_falls_back_to_newest_open_item():
         "<item><title>API (us-east-1) is degraded</title>"
         "<description>Status: Degraded\nSeverity: minor</description>"
         "<pubDate>Tue, 25 Aug 2026 09:00:00 GMT</pubDate></item>"
+        "<item><title>API (us-west-1) is degraded</title>"
+        "<description>Status: Degraded\nSeverity: minor</description>"
+        "<pubDate>Wed, 26 Aug 2026 11:00:00 GMT</pubDate></item>"
         "</channel></rss>"
     )
     parsed = parse_rss_payload(STATUS_PAGES["grok"], xml)
-    assert parsed["source_updated_at"] == "2026-08-25T09:00:00Z"
+    assert parsed["source_updated_at"] == "2026-08-26T11:00:00Z"
 
 
 def test_parse_ref_still_rejects_dangerous_refs():

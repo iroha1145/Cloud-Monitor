@@ -833,6 +833,8 @@ def test_resolve_source_rejects_meta_without_max_record_id(tmp_path):
     agent = make_agent(cfg, state, FakeSession())
     with pytest.raises(PermanentConfigError):
         agent._resolve_source({"source_instance_id": "src-1"})
+    with pytest.raises(PermanentConfigError):
+        agent._resolve_source({"source_instance_id": "src-1", "max_record_id": None})
 
 
 def test_time_round_sort_tolerates_non_numeric_ids():

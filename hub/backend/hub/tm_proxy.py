@@ -429,16 +429,10 @@ class TmBackground:
                 log.warning("v1 设备回灌失败（将随后台周期重试）: %s", exc)
                 return False
             if resp.status_code != 200:
-                # 401/403 是密钥配置错误：操作者修复后应继续回灌，不得把数据
-                # 当损坏丢弃；408/429/5xx 是临时失败。以上都中止本轮整轮重试
-                transient = (
-                    resp.status_code >= 500
-                    or resp.status_code in (401, 403, 408, 429)
-                )
-                if not transient:
-                    # 其余 4xx（校验不过等）为确定性拒绝：重试到永远也不会
-                    # 成功，只会每轮把全部旧 payload 重复 POST 一遍——标记
-                    # 该设备跳过，不阻塞其余设备回灌
+                # 仅 payload 校验失败（400/422）是确定性拒绝：重试到永远也不会
+                # 成功。404/405 是路径/方法不兼容、401/403 是密钥配错、
+                # 408/429/5xx 是临时失败——都保持整轮重试，升级/修好后再灌。
+                if resp.status_code in (400, 422):
                     device_key = str(payload.get("deviceId") or "")
                     if not device_key:
                         # 无法定位设备，无法按设备标记：保守起见保持整轮重试

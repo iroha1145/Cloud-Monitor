@@ -603,8 +603,8 @@ class SyncAgent:
         """
         if meta:
             live = str(meta.get("source_instance_id") or "")
-            if "max_record_id" not in meta:
-                # 缺字段时按 0 处理会让 records 接口（id <= snapshot_max_id）
+            if meta.get("max_record_id") is None:
+                # 缺字段或显式 null 时按 0 处理会让 records 接口（id <= snapshot_max_id）
                 # 永远返回 0 条而心跳照常成功——静默停摆比显式失败更危险
                 raise PermanentConfigError(
                     "/api/v1/sync/meta 缺少 max_record_id 字段（本地 monitor 版本过旧？）"
