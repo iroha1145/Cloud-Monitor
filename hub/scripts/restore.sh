@@ -51,19 +51,55 @@ echo "停止服务以保证一致性写入..."
 $COMPOSE down
 
 echo "恢复 tm-core devices.json..."
-docker run --rm -v "$TM_VOL:/data" -v "$BACKUP:/backup" alpine:3.21 \
-  sh -c 'cp /backup/devices.json /data/devices.json'
+# 用各镜像自身执行写入：容器内以 root 运行 cp 后按镜像内服务用户 chown，
+# 否则文件属主 root、hub(tm-core) 进程只读，SQLite 打开即 "readonly database"
+$COMPOSE run --rm --no-deps --user=0 --entrypoint sh tm-core -c \
+  'cp /backup/devices.json /data/devices.json && chown "$(id -u monitor):$(id -g monitor)" /data/devices.json'
 
 echo "恢复 SQLite..."
-docker run --rm -v "$HUB_VOL:/data" -v "$BACKUP:/backup" alpine:3.21 \
-  sh -c 'cp /backup/cloud-monitor.sqlite3 /data/cloud-monitor.sqlite3 && rm -f /data/cloud-monitor.sqlite3-wal /data/cloud-monitor.sqlite3-shm'
+$COMPOSE run --rm --no-deps --user=0 --entrypoint sh cloud-hub -c \
+  'cp /backup/cloud-monitor.sqlite3 /data/cloud-monitor.sqlite3 && rm -f /data/cloud-monitor.sqlite3-wal /data/cloud-monitor.sqlite3-shm && chown "$(id -u monitor):$(id -g monitor)" /data/cloud-monitor.sqlite3'
 
 echo "启动服务并验证..."
 $COMPOSE up -d
-sleep 5
-$COMPOSE exec -T cloud-hub sh -c \
-  'curl -sf http://127.0.0.1:7878/api/v1/health/ready' && echo ""
-$COMPOSE exec -T tm-core sh -c \
-  'wget -qO- http://127.0.0.1:17321/api/health' && echo ""
+
+# 容器内无 curl/wget（python-slim / node-slim），用镜像自带运行时探活；
+# 服务有 start-period，轮询等待而不是固定 sleep 后一锤定音。
+# compose exec 直连 argv，不经 shell 拼接；探活脚本内不含宿主机变量
+hub_ready() {
+  for _ in $(seq 1 30); do
+    if $COMPOSE exec -T cloud-hub python -c \
+      "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:7878/api/v1/health/ready', timeout=4).status == 200 else 1)" \
+      >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+tm_ready() {
+  for _ in $(seq 1 30); do
+    if $COMPOSE exec -T tm-core node -e \
+      "fetch('http://127.0.0.1:17321/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))" \
+      >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+if ! hub_ready; then
+  echo "cloud-hub 30s 内未就绪，恢复验证失败" >&2
+  exit 1
+fi
+echo "cloud-hub 就绪"
+
+if ! tm_ready; then
+  echo "tm-core 30s 内未就绪，恢复验证失败" >&2
+  exit 1
+fi
+echo "tm-core 就绪"
 
 echo "恢复完成。请确认两卷时间点接近（见 BACKUP-MANIFEST.txt）。"

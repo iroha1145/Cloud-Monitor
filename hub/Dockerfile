@@ -1,6 +1,7 @@
 FROM python:3.12.11-slim
 
-# 非 root 运行；/data 由 compose 卷挂载并在启动前修正属主
+# 非 root 运行；空 named volume 首次挂载时 Docker 会以镜像内 /data 属主
+# 初始化卷，之后属主随卷保持——restore.sh 回写文件后必须自行 chown
 RUN groupadd -r monitor && useradd -r -g monitor monitor \
     && mkdir -p /data /update && chown monitor:monitor /data /update
 
