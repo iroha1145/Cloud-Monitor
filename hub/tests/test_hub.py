@@ -5,6 +5,7 @@ import queue
 import sqlite3
 import threading
 import time
+import uuid
 from pathlib import Path
 
 import pytest
@@ -16,8 +17,16 @@ from hub.main import create_app
 from hub.models import DeviceInfo, RecordIn, SyncPushRequest, UserIn
 from hub.services import apply_sync_push
 
-API_KEY = "unit-test-admin-key"
-READ_KEY = "unit-test-read-key"
+import uuid
+
+
+def _fake_credential(role: str) -> str:
+    """测试专用假凭据：运行时随机生成，非真实密钥，不落盘不硬编码。"""
+    return f"unit-test-{role}-{uuid.uuid4().hex}"
+
+
+API_KEY = _fake_credential("admin")
+READ_KEY = _fake_credential("read")
 AUTH = {"Authorization": f"Bearer {API_KEY}"}
 READ = {"Authorization": f"Bearer {READ_KEY}"}
 

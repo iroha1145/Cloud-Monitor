@@ -43,6 +43,7 @@ from .tm_snapshots import (
     ensure_schema,
     legacy_device_payloads,
     mark_legacy_reingested,
+    mark_legacy_rejected,
     migrate_legacy_tables,
     write_snapshot,
 )
@@ -112,10 +113,16 @@ class TmCore:
             raise UpstreamUnavailable(f"tm-core 请求失败: {exc}") from exc
 
     def health(self) -> Optional[dict]:
+        """经共享客户端探测 tm-core（ready 探针高频调用，避免每次新建连接）。"""
         try:
-            resp = httpx.get(f"{self.base_url}/api/health", timeout=5.0)
-            return resp.json() if resp.status_code == 200 else None
-        except (httpx.HTTPError, ValueError):
+            resp = self.request("GET", "/api/health", timeout=httpx.Timeout(5.0))
+        except UpstreamUnavailable:
+            return None
+        if resp.status_code != 200:
+            return None
+        try:
+            return resp.json()
+        except ValueError:
             return None
 
 
@@ -422,8 +429,28 @@ class TmBackground:
                 log.warning("v1 设备回灌失败（将随后台周期重试）: %s", exc)
                 return False
             if resp.status_code != 200:
-                # 4xx/5xx 同样是失败：此前只查传输层异常，密钥不一致等
-                # 会被当成功写下永久标记，旧设备数据从此静默丢失
+                # 401/403 是密钥配置错误：操作者修复后应继续回灌，不得把数据
+                # 当损坏丢弃；408/429/5xx 是临时失败。以上都中止本轮整轮重试
+                transient = (
+                    resp.status_code >= 500
+                    or resp.status_code in (401, 403, 408, 429)
+                )
+                if not transient:
+                    # 其余 4xx（校验不过等）为确定性拒绝：重试到永远也不会
+                    # 成功，只会每轮把全部旧 payload 重复 POST 一遍——标记
+                    # 该设备跳过，不阻塞其余设备回灌
+                    device_key = str(payload.get("deviceId") or "")
+                    if not device_key:
+                        # 无法定位设备，无法按设备标记：保守起见保持整轮重试
+                        return False
+                    mark_legacy_rejected(self.db, device_key)
+                    log.warning(
+                        "v1 设备回灌被 tm-core 确定性拒绝（HTTP %s，已标记跳过设备 %s）: %s",
+                        resp.status_code,
+                        device_key,
+                        resp.text[:200],
+                    )
+                    continue
                 log.warning(
                     "v1 设备回灌被 tm-core 拒绝（HTTP %s，将随后台周期重试）: %s",
                     resp.status_code,

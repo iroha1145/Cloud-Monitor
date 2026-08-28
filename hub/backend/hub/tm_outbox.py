@@ -14,7 +14,7 @@
    - 否则重放载荷到 tm-core（官方 merge 幂等）并写快照；
    - 上游不可达时中止本轮重放，下轮再试。
 5. pending 数量上限（默认 1000）触发背压：新 ingest 拒绝为 503；
-   done 记录保留 1 天后清理。
+   done 记录保留 DONE_RETENTION_HOURS（2 小时）后清理。
 """
 
 from __future__ import annotations

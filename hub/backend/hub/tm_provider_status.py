@@ -16,11 +16,13 @@ import copy
 import logging
 import re
 import time
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from defusedxml import ElementTree as SafeET
+from defusedxml.common import DefusedXmlException
 from email.utils import parsedate_to_datetime
 from typing import Any, Iterable, Optional
+from xml.etree.ElementTree import ParseError
 
 import httpx
 
@@ -384,8 +386,6 @@ def _rss_component_status(item_status: str, severity: str) -> str:
         return "major_outage"
     if sev in _RSS_DEGRADED_SEV or "degraded" in sev or "disruption" in sev:
         return "degraded_performance"
-    if st in {"investigating", "identified", "monitoring", "update"}:
-        return "degraded_performance"
     return "degraded_performance"
 
 
@@ -399,9 +399,17 @@ def parse_rss_payload(page: StatusPage, xml_text: Any) -> dict[str, Any]:
             "error_code": "invalid_json",
         }
     cleaned = re.sub(r"^<\?xml[^?]*\?>", "", xml_text, count=1, flags=re.IGNORECASE).strip()
+    # 再剔除 DOCTYPE（含内部实体子集）作为纵深防御：defusedxml 已禁实体
+    # 扩展，剔除后连合法 DTD 声明也不进入解析器
+    cleaned = re.sub(
+        r"<!DOCTYPE[^>[]*(?:\[[^\]]*\])?[^>]*>",
+        "", cleaned, count=1, flags=re.IGNORECASE | re.DOTALL,
+    ).strip()
     try:
-        root = ET.fromstring(cleaned)
-    except ET.ParseError:
+        # defusedxml：拒绝实体扩展/外部实体（标准库 ElementTree 不禁 DTD，
+        # 远端 RSS 可用 billion laughs 制造资源耗尽）
+        root = SafeET.fromstring(cleaned)
+    except (ParseError, DefusedXmlException):
         log.warning("provider-status invalid rss canonical=%s", page.canonical)
         return {
             "status": "unknown",
@@ -430,7 +438,9 @@ def parse_rss_payload(page: StatusPage, xml_text: Any) -> dict[str, Any]:
             "updated_at": pub,
             "title": title,
         })
-        if pub:
+        if pub and not source_updated:
+            # 条目时间只作回填：feed 级 lastBuildDate 恒新于（或等于）任何条目，
+            # 循环 last-wins 会把来源时间倒退成最旧一条
             source_updated = pub
 
     chosen, pick_kind = _pick_components(page, open_components)
@@ -442,7 +452,7 @@ def parse_rss_payload(page: StatusPage, xml_text: Any) -> dict[str, Any]:
         for component in chosen:
             status = _worse(status, _status_from_component(component))
             updated = component.get("updated_at")
-            if updated:
+            if updated and not source_updated:
                 source_updated = updated
         titles = [str(c.get("title") or c.get("name") or "") for c in chosen[:2]]
         description = " · ".join(t for t in titles if t) or status
@@ -489,7 +499,7 @@ def parse_status_payload(page: StatusPage, payload: Any) -> dict[str, Any]:
         for component in chosen:
             status = _worse(status, _status_from_component(component))
             updated = component.get("updated_at")
-            if updated:
+            if updated and not source_updated:
                 source_updated = updated
         if not description:
             names = ", ".join(_component_name(c) for c in chosen[:3])
@@ -704,16 +714,6 @@ async def fetch_provider_statuses(
     return providers, errors
 
 
-def empty_envelope(*, generated_at: Optional[str] = None) -> dict[str, Any]:
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "generated_at": generated_at or utc_now_z(),
-        "providers": [],
-        "partial": False,
-        "errors": [],
-    }
-
-
 def assemble_envelope(
     providers: list[dict[str, Any]],
     errors: list[dict[str, str]],
@@ -883,14 +883,3 @@ class ProviderStatusService:
             payload=copy.deepcopy(payload),
         )
         return self._mark_stale(payload, False)
-
-
-def disabled_body() -> dict[str, Any]:
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "enabled": False,
-        "generated_at": utc_now_z(),
-        "providers": [],
-        "partial": False,
-        "errors": [{"error_code": "disabled"}],
-    }

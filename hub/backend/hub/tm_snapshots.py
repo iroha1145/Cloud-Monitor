@@ -53,8 +53,6 @@ CREATE TABLE IF NOT EXISTS tm_snapshot_buckets (
     device_time_zone TEXT NOT NULL DEFAULT '',
     producer_updated_at TEXT NOT NULL DEFAULT '',
     server_received_at TEXT NOT NULL DEFAULT '',
-    today_ends_at TEXT NOT NULL DEFAULT '',
-    month_ends_at TEXT NOT NULL DEFAULT '',
     UNIQUE(device_id, local_day, bucket_start)
 );
 CREATE INDEX IF NOT EXISTS idx_tm_buckets_day ON tm_snapshot_buckets(local_day);
@@ -295,9 +293,8 @@ def write_snapshot(
                 today_unclassified, today_cost,
                 month_total, month_cost, all_time_total, all_time_cost,
                 clients_json, models_json,
-                device_time_zone, producer_updated_at, server_received_at,
-                today_ends_at, month_ends_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                device_time_zone, producer_updated_at, server_received_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(device_id, local_day, bucket_start) DO UPDATE SET
                 today_total = excluded.today_total,
                 today_output = excluded.today_output,
@@ -313,9 +310,7 @@ def write_snapshot(
                 models_json = excluded.models_json,
                 device_time_zone = excluded.device_time_zone,
                 producer_updated_at = excluded.producer_updated_at,
-                server_received_at = excluded.server_received_at,
-                today_ends_at = excluded.today_ends_at,
-                month_ends_at = excluded.month_ends_at
+                server_received_at = excluded.server_received_at
             WHERE excluded.server_received_at >= tm_snapshot_buckets.server_received_at
             """,
             (
@@ -333,8 +328,6 @@ def write_snapshot(
                 tz_name,
                 norm_ts(record.get("updatedAt") or ""),
                 received_at,
-                norm_ts(((windows or {}).get("today") or {}).get("endsAt") or ""),
-                norm_ts(((windows or {}).get("month") or {}).get("endsAt") or ""),
             ),
         )
     _prune_if_due(db)
@@ -363,10 +356,6 @@ def _prune_if_due(db: Database) -> None:
     if last is not None and (now_dt - last).total_seconds() < PRUNE_INTERVAL_SECONDS:
         return
     prune_snapshots(db, now=now_dt)
-
-
-def _day_cutoff(now_dt: datetime, days: int) -> str:
-    return (now_dt - timedelta(days=days)).date().isoformat()
 
 
 def prune_snapshots(db: Database, *, now: Optional[datetime] = None) -> dict:
@@ -694,6 +683,24 @@ def migrate_legacy_tables(db: Database) -> dict:
     return {"migrated": True, "ported_snapshots": ported}
 
 
+def _legacy_rejected_ids(db: Database) -> set[str]:
+    raw = _meta_get(db, "legacy_rejected_devices")
+    if not raw:
+        return set()
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return set()
+    return {str(x) for x in data} if isinstance(data, list) else set()
+
+
+def mark_legacy_rejected(db: Database, device_id: str) -> None:
+    """单个旧设备 payload 被官方确定性拒绝（4xx）时记录，回灌不再重试它。"""
+    rejected = _legacy_rejected_ids(db)
+    rejected.add(str(device_id))
+    _meta_set(db, "legacy_rejected_devices", json.dumps(sorted(rejected)))
+
+
 def legacy_device_payloads(db: Database) -> list[dict]:
     """待回灌官方 hub 的 v1 设备 payload（一次性，配合 legacy_migrated 标记）。"""
     exists = db.fetchone(
@@ -701,6 +708,7 @@ def legacy_device_payloads(db: Database) -> list[dict]:
     )
     if not exists or _meta_get(db, "legacy_reingested"):
         return []
+    rejected = _legacy_rejected_ids(db)
     rows = db.fetchall("SELECT device_id, payload, last_seen_at FROM tm_devices")
     payloads = []
     for row in rows:
@@ -708,11 +716,17 @@ def legacy_device_payloads(db: Database) -> list[dict]:
             payload = json.loads(row.get("payload") or "{}")
         except ValueError:
             continue
+        device_key = ""
         if isinstance(payload, dict) and payload.get("deviceId"):
-            payloads.append(payload)
+            device_key = str(payload["deviceId"])
         elif isinstance(payload, dict) and row.get("device_id"):
             payload.setdefault("deviceId", row["device_id"])
-            payloads.append(payload)
+            device_key = str(row["device_id"])
+        if not device_key:
+            continue
+        if device_key in rejected:
+            continue
+        payloads.append(payload)
     return payloads
 
 

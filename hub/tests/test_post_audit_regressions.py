@@ -291,3 +291,168 @@ def test_merge_trend_with_history_sqlite_wins_same_day():
     assert by_day["2026-08-23"]["models"]["opus"] == 50
     assert by_day["2026-08-24"]["total"] == 100
     assert by_day["2026-08-24"]["models"] == {"grok": 100}
+
+
+# ---------------------------------------------------------------- 2026-08-28 审计回归
+
+
+def test_validate_rejects_non_object_containers():
+    """官方核心对非对象周期/容器宽容丢弃，但校验层声明"拒绝损坏载荷"——
+    结构损坏必须 400 而不是静默放行到 tm-core 后消失。"""
+    from hub.tm_validate import PayloadValidationError, validate_ingest_payload
+
+    cases = [
+        {"periods": "not-a-dict"},
+        {"today": 123},
+        {"allTime": ["x"]},
+        {"periodWindows": []},
+        {"history": "corrupt"},
+        {"limits": 5},
+    ]
+    for field_case in cases:
+        payload = {"deviceId": "dev", **field_case}
+        with pytest.raises(PayloadValidationError):
+            validate_ingest_payload(payload)
+
+
+def test_collect_sessions_without_session_id_does_not_collapse():
+    """会话键无冒号且载荷未带 sessionId 时，多个会话不得坍缩到同一
+    dedup 键互相覆盖（sessions_total 偏小）。"""
+    from hub.tm_overview import _collect_sessions
+
+    stats = {
+        "devices": [
+            {
+                "deviceId": "d1",
+                "hostname": "h",
+                "periods": {
+                    "today": {
+                        "sessions": {
+                            "sessA": {"client": "codex", "totalTokens": 5},
+                            "sessB": {"client": "codex", "totalTokens": 7},
+                        }
+                    }
+                },
+            }
+        ]
+    }
+    meta, sessions = _collect_sessions(stats)
+    assert meta["sessions_total"] == 2
+    assert {s["key"] for s in sessions} == {"d1:codex:sessA", "d1:codex:sessB"}
+
+
+def test_bootstrap_marks_device_rejected_on_deterministic_400(tmp_path):
+    """确定性 4xx（校验不过）：标记该设备跳过并不阻塞其余设备回灌，
+    而不是每 300s 把全部旧 payload 重复 POST 一遍。"""
+    from types import SimpleNamespace
+
+    from hub.tm_proxy import TmBackground
+    from hub.tm_snapshots import mark_legacy_rejected
+
+    class MixedCore:
+        """bad 设备回 400，good 设备回 200。"""
+
+        def __init__(self):
+            self.seen = []
+
+        def health(self):
+            return {"ok": True}
+
+        def request(self, _method, _path, *, json_body=None, **_kwargs):
+            self.seen.append(json_body)
+            device = str((json_body or {}).get("deviceId") or "")
+            body = {"stats": {"devices": []}}
+            if device == "bad":
+                return SimpleNamespace(status_code=400, text="invalid", json=lambda: body)
+            return SimpleNamespace(status_code=200, text="", json=lambda: body)
+
+    db = db_for(tmp_path, "reject.sqlite3")
+    db.execute("CREATE TABLE tm_devices (device_id TEXT, payload TEXT, last_seen_at TEXT)")
+    db.execute(
+        "INSERT INTO tm_devices VALUES (?, ?, ?)",
+        ("bad", '{"deviceId":"bad","today":{"totalTokens":1}}', ""),
+    )
+    db.execute(
+        "INSERT INTO tm_devices VALUES (?, ?, ?)",
+        ("good", '{"deviceId":"good","today":{"totalTokens":2}}', ""),
+    )
+    core = MixedCore()
+    settings = SimpleNamespace(tm_ingest_secret="secret")
+    assert TmBackground(settings, db, core)._bootstrap() is True
+    assert {c.get("deviceId") for c in core.seen} == {"bad", "good"}
+    rejected = db.fetchone(
+        "SELECT value FROM tm_meta WHERE key='legacy_rejected_devices'"
+    )["value"]
+    assert rejected == '["bad"]'
+    db.close()
+
+
+def test_mark_legacy_rejected_filters_payload_list(tmp_path):
+    from hub.tm_snapshots import mark_legacy_rejected
+
+    db = db_for(tmp_path, "reject-filter.sqlite3")
+    db.execute("CREATE TABLE tm_devices (device_id TEXT, payload TEXT, last_seen_at TEXT)")
+    for dev in ("bad", "good"):
+        db.execute(
+            "INSERT INTO tm_devices VALUES (?, ?, ?)",
+            (dev, f'{{"deviceId":"{dev}","today":{{"totalTokens":1}}}}', ""),
+        )
+    mark_legacy_rejected(db, "bad")
+    assert [p["deviceId"] for p in legacy_device_payloads(db)] == ["good"]
+    db.close()
+
+
+def test_rss_doctype_entity_subsets_are_neutralized():
+    """远端 RSS 的 DOCTYPE 内部实体子集必须剔除：标准库 ElementTree 不禁
+    DTD，保留会让 status 页响应得以用实体扩展制造资源耗尽。"""
+    from hub.tm_provider_status import STATUS_PAGES, parse_rss_payload
+
+    xml = (
+        '<?xml version="1.0"?><!DOCTYPE rss [<!ENTITY x "aaaa">]>'
+        "<rss><channel><title>&x;</title></channel></rss>"
+    )
+    parsed = parse_rss_payload(STATUS_PAGES["grok"], xml)
+    assert parsed["status"] == "unknown"
+    assert parsed["error_code"] == "invalid_json"
+
+
+def test_rss_source_updated_prefers_feed_level_over_older_items():
+    """source_updated_at 不得被循环 last-wins 倒退成最旧一条 open 事件。"""
+    from hub.tm_provider_status import STATUS_PAGES, parse_rss_payload
+
+    xml = (
+        "<rss><channel>"
+        "<lastBuildDate>Wed, 26 Aug 2026 10:00:00 GMT</lastBuildDate>"
+        "<item><title>API (us-east-1) is degraded</title>"
+        "<description>Status: Degraded\nSeverity: minor</description>"
+        "<pubDate>Tue, 25 Aug 2026 09:00:00 GMT</pubDate></item>"
+        "</channel></rss>"
+    )
+    parsed = parse_rss_payload(STATUS_PAGES["grok"], xml)
+    assert parsed["source_updated_at"] == "2026-08-26T10:00:00Z"
+
+
+def test_rss_source_updated_falls_back_to_newest_open_item():
+    from hub.tm_provider_status import STATUS_PAGES, parse_rss_payload
+
+    xml = (
+        "<rss><channel>"
+        "<item><title>API (us-east-1) is degraded</title>"
+        "<description>Status: Degraded\nSeverity: minor</description>"
+        "<pubDate>Tue, 25 Aug 2026 09:00:00 GMT</pubDate></item>"
+        "</channel></rss>"
+    )
+    parsed = parse_rss_payload(STATUS_PAGES["grok"], xml)
+    assert parsed["source_updated_at"] == "2026-08-25T09:00:00Z"
+
+
+def test_parse_ref_still_rejects_dangerous_refs():
+    from hub.tm_update import parse_ref
+
+    assert parse_ref(" v1.2.3 ") == "v1.2.3"
+    with pytest.raises(ValueError):
+        parse_ref("-evil")
+    with pytest.raises(ValueError):
+        parse_ref("main..evil")
+    with pytest.raises(ValueError):
+        parse_ref("not a ref")

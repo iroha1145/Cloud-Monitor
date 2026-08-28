@@ -632,7 +632,10 @@ def _collect_sessions(stats: dict) -> tuple[dict, list[dict]]:
                 "device": display,
             }
             item["deviceId"] = device.get("deviceId")
-            item["key"] = f"{device.get('deviceId')}:{client}:{session_id}"
+            # sessionId 解析不出来（键无冒号且载荷未带）时回退原始键，
+            # 避免多个会话坍缩到同一个 dedup 键互相覆盖
+            dedup_id = session_id or str(key)
+            item["key"] = f"{device.get('deviceId')}:{client}:{dedup_id}"
             by_key[item["key"]] = item
     all_sessions = sorted(by_key.values(), key=lambda s: s["tokens"], reverse=True)
     omitted_counts = stats.get("sessionDetailsOmitted")
@@ -957,9 +960,18 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         )
         if history_error:
             overview["partial"] = True
-            overview["partial_errors"].append(
-                {"code": "history_unavailable", "source": "tm-core", "reason": history_error}
+            errors = overview["partial_errors"]
+            # build_overview 对 history is None 已追加过无 reason 的基础条目；
+            # 这里升级它而不是再追加一条，避免同一错误渲染两遍
+            existing = next(
+                (e for e in errors if e.get("code") == "history_unavailable"), None
             )
+            if existing is not None:
+                existing["reason"] = history_error
+            else:
+                errors.append(
+                    {"code": "history_unavailable", "source": "tm-core", "reason": history_error}
+                )
         if devices_error:
             overview["partial"] = True
             overview["partial_errors"].append(

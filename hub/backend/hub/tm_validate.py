@@ -246,6 +246,20 @@ def validate_ingest_payload(payload: Any) -> dict:
             if not isinstance(name, str) or len(name) > LIMITS["generic_key"]:
                 _reject("trackedClients 条目必须是短字符串")
 
+    # 结构类型门：官方核心对非对象周期/容器一律宽容丢弃，但那属于"损坏
+    # 载荷静默降级"——校验层声明拒绝损坏载荷，这里必须显式 400 而不是放行
+    periods_container = payload.get("periods")
+    if periods_container is not None and not isinstance(periods_container, dict):
+        _reject("periods: 必须是对象")
+    for name in PERIOD_NAMES:
+        raw_period = payload.get(name)
+        if raw_period is not None and not isinstance(raw_period, dict):
+            _reject(f"{name}: 周期必须是对象")
+    for container in ("periodWindows", "history", "limits"):
+        raw_container = payload.get(container)
+        if raw_container is not None and not isinstance(raw_container, dict):
+            _reject(f"{container}: 必须是对象")
+
     periods = _periods_of(payload)
     for name, period in periods.items():
         if period is None:
