@@ -36,6 +36,10 @@ MAX_POST_ATTEMPTS = 3
 DEGRADED_INTERVAL_MULTIPLIER = 10
 # 与云端 hub/backend/hub/models.py 的 MAX_FUTURE_SKEW 保持一致
 MAX_FUTURE_SKEW = timedelta(hours=48)
+# created_at 缺失时的确定性兜底：指纹按内容（含 created_at）计算，同一
+# local_id 每次序列化必须逐字节一致——用墙钟时间兜底会让「已入库但响应
+# 丢失」的重推变成 conflict，游标从此永久卡死
+CREATED_AT_FALLBACK = "1970-01-01T00:00:00+00:00"
 
 log = logging.getLogger("sync-agent")
 
@@ -56,11 +60,34 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+def _iso_shift_seconds(value: str, seconds: int) -> str:
+    """ISO 时间字符串平移 N 秒（解析失败时原样返回，不阻塞同步）。"""
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return value
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return (dt + timedelta(seconds=seconds)).isoformat()
+
+
 # ---------------------------------------------------------------- 配置
 
 
 def _env_bool(raw: str | None) -> bool:
     return str(raw or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def parse_health_stale_seconds(raw: str | None) -> float:
+    """HEALTH_STALE_SECONDS 统一解析：非法回退 3600、下限 60。
+
+    load_config 与 healthcheck.py 共用，两侧阈值口径不一致会让容器
+    在 agent 明明健康时被判 unhealthy（或反之）。
+    """
+    try:
+        return max(float(str(raw or "").strip() or 3600.0), 60.0)
+    except ValueError:
+        return 3600.0
 
 
 LOCAL_HTTP_HOSTS = {"localhost", "127.0.0.1", "::1", "host.docker.internal", "0.0.0.0"}
@@ -160,9 +187,9 @@ def load_config(env: Optional[dict[str, str]] = None) -> AgentConfig:
         batch_size=_int("BATCH_SIZE", 200, 1, 500),
         state_path=state_path,
         request_timeout_seconds=_float("REQUEST_TIMEOUT_SECONDS", 15.0, minimum=1.0),
-        run_once=get("RUN_ONCE") in ("1", "true", "yes"),
+        run_once=_env_bool(env.get("RUN_ONCE")),
         allow_insecure_http=allow_insecure,
-        health_stale_seconds=_float("HEALTH_STALE_SECONDS", 3600.0, minimum=60.0),
+        health_stale_seconds=parse_health_stale_seconds(env.get("HEALTH_STALE_SECONDS")),
         time_zone=get("TIME_ZONE", "Asia/Tokyo"),
         token_monitor_hub_url=tm_hub,
         token_monitor_secret=get("TOKEN_MONITOR_SECRET"),
@@ -519,7 +546,7 @@ class SyncAgent:
             "model_name": r.get("model_name") or "",
             "input_tokens": int(r.get("input_tokens") or 0),
             "output_tokens": int(r.get("output_tokens") or 0),
-            "created_at": r.get("created_at") or utc_now_iso(),
+            "created_at": r.get("created_at") or CREATED_AT_FALLBACK,
         }
 
     @staticmethod
@@ -576,6 +603,12 @@ class SyncAgent:
         """
         if meta:
             live = str(meta.get("source_instance_id") or "")
+            if meta.get("max_record_id") is None:
+                # 缺字段或显式 null 时按 0 处理会让 records 接口（id <= snapshot_max_id）
+                # 永远返回 0 条而心跳照常成功——静默停摆比显式失败更危险
+                raise PermanentConfigError(
+                    "/api/v1/sync/meta 缺少 max_record_id 字段（本地 monitor 版本过旧？）"
+                )
             snapshot = int(meta.get("max_record_id") or 0)
             pinned = self.config.source_instance_id
             if pinned and live and live != pinned:
@@ -658,13 +691,26 @@ class SyncAgent:
             result = self.push_batch(send_users, wire_records, source)
             inserted += int(result.get("inserted") or 0)
             # 每批成功即推进游标并落盘：云端故障只影响未确认批次
-            self.state.cursor = int(records[-1]["id"])
+            try:
+                self.state.cursor = int(records[-1]["id"])
+            except (KeyError, TypeError, ValueError) as exc:
+                # 非数字 id 会让游标永久停在错误值：显式失败交给重试而非静默写坏状态
+                raise TransientError(f"记录 id 不是可推进的数字: {records[-1].get('id')!r}") from exc
             self.state.data["pushed_records"] += int(result.get("inserted") or 0)
             self.state.save()
             first_batch = False
             if len(records) < self.config.batch_size:
                 break
         return {"mode": "cursor", "fetched": fetched, "inserted": inserted}
+
+    @staticmethod
+    def _record_sort_key(r: dict) -> tuple[str, int]:
+        created = str(r.get("created_at") or "")
+        try:
+            rid = int(r.get("id") or 0)
+        except (TypeError, ValueError):
+            rid = 0
+        return (created, rid)
 
     def _run_time_round(self, source: str) -> dict:
         snapshot_end = utc_now_iso()
@@ -676,7 +722,9 @@ class SyncAgent:
         while True:
             params: dict[str, Any] = {"end_time": snapshot_end, "page": page, "page_size": 200}
             if watermark:
-                params["start_time"] = watermark
+                # 水位线前移 1 秒重叠：崩溃在两批边界时与水位线同秒的记录
+                # 不得丢失；重复由云端 (source_instance_id, local_id) 幂等去重
+                params["start_time"] = _iso_shift_seconds(watermark, -1)
             payload = self.local_get("/api/v1/records", params)
             batch = payload.get("records") or []
             records.extend(batch)
@@ -685,7 +733,7 @@ class SyncAgent:
                 break
             page += 1
 
-        records.sort(key=lambda r: (r.get("created_at") or "", r.get("id") or 0))
+        records.sort(key=self._record_sort_key)
         if not records:
             result = self.push_batch(users, [], source)
             log.info(
@@ -701,7 +749,7 @@ class SyncAgent:
             wire_records, _skipped = self._wire_valid(chunk)
             result = self.push_batch(send_users, wire_records, source)
             inserted += int(result.get("inserted") or 0)
-            # 批内按时间升序，推进水位线到本批最大时间（含 1 秒重叠，靠云端去重）
+            # 批内按时间升序，推进水位线到本批最大时间（下轮读取时前移 1s 重叠）
             self.state.watermark = chunk[-1].get("created_at") or snapshot_end
             self.state.data["pushed_records"] += int(result.get("inserted") or 0)
             self.state.save()

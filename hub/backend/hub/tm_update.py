@@ -50,7 +50,8 @@ def validate_github_repo(raw: str) -> str:
 
 def parse_ref(raw: str) -> str:
     ref = (raw or "").strip()
-    if not REF_RE.match(ref) or ".." in ref or ref.startswith("-"):
+    # REF_RE 锚定 ^ 已排除 "-" 开头，无需再查
+    if not REF_RE.match(ref) or ".." in ref:
         raise ValueError("非法更新目标")
     return ref
 

@@ -13,8 +13,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: 安装后端依赖（FastAPI/uvicorn）
-        run: pip install fastapi uvicorn httpx
+      - name: 安装后端依赖
+        run: pip install -r hub/requirements.txt
       - name: 安装测试依赖
         run: |
           cd hub/frontend/tests

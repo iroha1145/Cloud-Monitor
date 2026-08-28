@@ -10,7 +10,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sync_agent import AgentState
+from sync_agent import AgentState, parse_health_stale_seconds
 
 
 def _state_path() -> Path:
@@ -47,7 +47,9 @@ def main() -> int:
         return 1
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    stale = float(os.environ.get("HEALTH_STALE_SECONDS") or "3600")
+    # 与 sync_agent.load_config 同一解析规则（非法回退 3600、下限 60）：
+    # 两侧口径不一致会让容器在 agent 健康时被判 unhealthy
+    stale = parse_health_stale_seconds(os.environ.get("HEALTH_STALE_SECONDS"))
     age = (datetime.now(timezone.utc) - dt).total_seconds()
     if age > stale:
         print(f"unhealthy: 距上次成功同步 {age:.0f}s 超过阈值 {stale:.0f}s")

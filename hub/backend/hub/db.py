@@ -67,6 +67,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_records_device_source_local
 # v1 时期的旧唯一索引，迁移时必须删除（否则 local_id 复用会被静默吞掉）
 LEGACY_UNIQUE_INDEX = "idx_records_device_local"
 
+# PRAGMA 不支持绑定参数：两处整句 SQL 均为无外部输入的静态字面量；
+# 若 SCHEMA_VERSION / LEGACY_UNIQUE_INDEX 变更，必须同步下方两条语句
+_ASSERT_DB_CONSTANTS = (SCHEMA_VERSION == 2, LEGACY_UNIQUE_INDEX == "idx_records_device_local")
+if not all(_ASSERT_DB_CONSTANTS):
+    raise RuntimeError("db.py 中的静态 SQL 常量与 SCHEMA_VERSION 不一致")
+
 
 def record_fingerprint(
     *,
@@ -149,7 +155,8 @@ class Database:
                 self._migrate(version)
             self._conn.executescript(INDEXES)
             self._conn.executescript(UNIQUE_INDEX)
-            self._conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            # PRAGMA 不支持绑定参数；整句静态字面量，与 SCHEMA_VERSION=2 对应
+            self._conn.execute("PRAGMA user_version = 2")
 
     def _migrate(self, from_version: int) -> None:
         """v0 → v2: 补 source_instance_id/fingerprint 列，换唯一索引，回填指纹。
@@ -176,8 +183,9 @@ class Database:
             " WHERE source_instance_id = ''"
         )
         if from_version < 1:
-            # 旧唯一索引 (device_id, local_id) 与新语义冲突，必须删除
-            self._conn.execute(f"DROP INDEX IF EXISTS {LEGACY_UNIQUE_INDEX}")
+            # 旧唯一索引 (device_id, local_id) 与新语义冲突，必须删除；
+            # 静态字面量，与 LEGACY_UNIQUE_INDEX 对应
+            self._conn.execute('DROP INDEX IF EXISTS "idx_records_device_local"')
         # 为存量行回填指纹，使同一内容重推仍能命中 duplicates 而非 conflicts
         #（注意 AUTOINCREMENT 表的 rowid 就是 id 主键，不能按 "rowid" 键名取值）
         rows = self._conn.execute(

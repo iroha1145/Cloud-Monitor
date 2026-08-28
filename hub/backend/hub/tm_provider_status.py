@@ -16,11 +16,13 @@ import copy
 import logging
 import re
 import time
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from defusedxml import ElementTree as SafeET
+from defusedxml.common import DefusedXmlException
 from email.utils import parsedate_to_datetime
 from typing import Any, Iterable, Optional
+from xml.etree.ElementTree import ParseError
 
 import httpx
 
@@ -352,6 +354,17 @@ STATUS_FETCH_HEADERS = {
 }
 
 
+def _max_iso_ts(*values: Any) -> Optional[str]:
+    """在已规范化的 ISO 时间戳里取最新一条（字典序与时间序一致）。"""
+    newest: Optional[str] = None
+    for value in values:
+        if not isinstance(value, str) or not value:
+            continue
+        if newest is None or value > newest:
+            newest = value
+    return newest
+
+
 def _rss_date(raw: Optional[str]) -> Optional[str]:
     text = str(raw or "").strip()
     if not text:
@@ -384,8 +397,6 @@ def _rss_component_status(item_status: str, severity: str) -> str:
         return "major_outage"
     if sev in _RSS_DEGRADED_SEV or "degraded" in sev or "disruption" in sev:
         return "degraded_performance"
-    if st in {"investigating", "identified", "monitoring", "update"}:
-        return "degraded_performance"
     return "degraded_performance"
 
 
@@ -399,9 +410,17 @@ def parse_rss_payload(page: StatusPage, xml_text: Any) -> dict[str, Any]:
             "error_code": "invalid_json",
         }
     cleaned = re.sub(r"^<\?xml[^?]*\?>", "", xml_text, count=1, flags=re.IGNORECASE).strip()
+    # 再剔除 DOCTYPE（含内部实体子集）作为纵深防御：defusedxml 已禁实体
+    # 扩展，剔除后连合法 DTD 声明也不进入解析器
+    cleaned = re.sub(
+        r"<!DOCTYPE[^>[]*(?:\[[^\]]*\])?[^>]*>",
+        "", cleaned, count=1, flags=re.IGNORECASE | re.DOTALL,
+    ).strip()
     try:
-        root = ET.fromstring(cleaned)
-    except ET.ParseError:
+        # defusedxml：拒绝实体扩展/外部实体（标准库 ElementTree 不禁 DTD，
+        # 远端 RSS 可用 billion laughs 制造资源耗尽）
+        root = SafeET.fromstring(cleaned)
+    except (ParseError, DefusedXmlException):
         log.warning("provider-status invalid rss canonical=%s", page.canonical)
         return {
             "status": "unknown",
@@ -414,6 +433,7 @@ def parse_rss_payload(page: StatusPage, xml_text: Any) -> dict[str, Any]:
         channel = root
     source_updated = _rss_date(channel.findtext("lastBuildDate") if channel is not None else None)
     open_components: list[dict[str, Any]] = []
+    item_newest: Optional[str] = None
     for item in channel.findall("item") if channel is not None else []:
         title = (item.findtext("title") or "").strip()
         desc = item.findtext("description") or ""
@@ -430,8 +450,12 @@ def parse_rss_payload(page: StatusPage, xml_text: Any) -> dict[str, Any]:
             "updated_at": pub,
             "title": title,
         })
-        if pub:
-            source_updated = pub
+        item_newest = _max_iso_ts(item_newest, pub)
+
+    # 条目时间只作回填：feed 级 lastBuildDate 优先；无页面级时间时取最新
+    # open item（RSS 顺序不保证，不能用第一条）
+    if not source_updated:
+        source_updated = item_newest
 
     chosen, pick_kind = _pick_components(page, open_components)
     if pick_kind == "excluded_only":
@@ -441,9 +465,8 @@ def parse_rss_payload(page: StatusPage, xml_text: Any) -> dict[str, Any]:
         status = "operational"
         for component in chosen:
             status = _worse(status, _status_from_component(component))
-            updated = component.get("updated_at")
-            if updated:
-                source_updated = updated
+        if not source_updated:
+            source_updated = _max_iso_ts(*(c.get("updated_at") for c in chosen))
         titles = [str(c.get("title") or c.get("name") or "") for c in chosen[:2]]
         description = " · ".join(t for t in titles if t) or status
     else:
@@ -488,9 +511,8 @@ def parse_status_payload(page: StatusPage, payload: Any) -> dict[str, Any]:
         status = "operational"
         for component in chosen:
             status = _worse(status, _status_from_component(component))
-            updated = component.get("updated_at")
-            if updated:
-                source_updated = updated
+        if not source_updated:
+            source_updated = _max_iso_ts(*(c.get("updated_at") for c in chosen))
         if not description:
             names = ", ".join(_component_name(c) for c in chosen[:3])
             description = f"{names}: {status}"
@@ -704,16 +726,6 @@ async def fetch_provider_statuses(
     return providers, errors
 
 
-def empty_envelope(*, generated_at: Optional[str] = None) -> dict[str, Any]:
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "generated_at": generated_at or utc_now_z(),
-        "providers": [],
-        "partial": False,
-        "errors": [],
-    }
-
-
 def assemble_envelope(
     providers: list[dict[str, Any]],
     errors: list[dict[str, str]],
@@ -883,14 +895,3 @@ class ProviderStatusService:
             payload=copy.deepcopy(payload),
         )
         return self._mark_stale(payload, False)
-
-
-def disabled_body() -> dict[str, Any]:
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "enabled": False,
-        "generated_at": utc_now_z(),
-        "providers": [],
-        "partial": False,
-        "errors": [{"error_code": "disabled"}],
-    }
