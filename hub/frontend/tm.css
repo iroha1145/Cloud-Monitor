@@ -450,11 +450,6 @@ html[data-theme="dark"] .theme-ic-sun { opacity: 1; filter: blur(0); transform: 
   border-radius: var(--r-md); font-size: 12.5px; font-weight: 500;
 }
 #gate-form .btn-block { margin-top: 14px; }
-.gate-or {
-  display: flex; align-items: center; gap: 12px;
-  margin: 16px 0; color: var(--mute); font-size: 12px;
-}
-.gate-or::before, .gate-or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 .gate-hint { margin-top: 16px; color: var(--mute); font-size: 12px; line-height: 18px; }
 
 /* ---------- 壳布局 ---------- */
@@ -861,7 +856,6 @@ a.pv-card:focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2
 #trend-chart.has-hot .tseg.is-hot { opacity: 1; }
 .trend-bar { fill: var(--brand-500); transition: opacity var(--dur); }
 .trend-bar.is-zero { fill: var(--border-strong); }
-.trend-sum { fill: var(--ink-2); font-family: var(--font-mono); font-size: 10px; font-variant-numeric: tabular-nums; }
 
 /* 玻璃 tooltip（浮层） */
 .chart-tip {

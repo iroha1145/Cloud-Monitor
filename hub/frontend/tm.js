@@ -23,10 +23,12 @@ function compactParts(v, tight) {
   v = Number(v) || 0;
   if (v >= 1e8) {
     const y = v / 1e8;
+    // 只删小数部分尾零再删悬挂点：\.?0+$ 会把 toFixed(0) 整数自身的尾零
+    // 也吞掉（120亿 → "12亿"）
     const n = (tight
       ? (y >= 100 ? y.toFixed(0) : y >= 10 ? y.toFixed(1) : y.toFixed(2))
       : y.toFixed(2)
-    ).replace(/\.?0+$/, "");
+    ).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
     return { n, u: "亿" };
   }
   if (v >= 1e4) {
@@ -39,14 +41,6 @@ function compactParts(v, tight) {
 
 function fmtCompact(v) {
   const p = compactParts(v, false);
-  return p.n + p.u;
-}
-
-/* 环心专用限长压缩：随量级封顶有效位（≥1000万 去小数、≥10亿 一位小数、
-   ≥100亿 取整），任何量级都 ≤6 个字形 —— 25px 字号在环内孔恒定容纳，
-   周期切换（今日/本月/累计）时环心字号不再随数字长短漂移 */
-function fmtCompactTight(v) {
-  const p = compactParts(v, true);
   return p.n + p.u;
 }
 
@@ -82,8 +76,10 @@ function fmtPctHtml(ratio) {
 function fmtUsd(v) {
   v = Number(v) || 0;
   if (v === 0) return "$0.00";
-  if (v < 0.01) return "$" + v.toFixed(4);
-  return "$" + v.toFixed(2);
+  const sign = v < 0 ? "-" : "";
+  const abs = Math.abs(v);
+  if (abs < 0.01) return sign + "$" + abs.toFixed(4);
+  return sign + "$" + abs.toFixed(2);
 }
 
 const pad2 = (n) => String(n).padStart(2, "0");
@@ -513,7 +509,7 @@ const state = {
       status: "idle", rows: [], cursor: null, done: false,
       totalDays: null, retentionDays: null, unsupported: false,
       fallback: false, loading: false, seen: new Set(), aborter: null,
-      dayBasis: null, mixedTz: false, partial: false,
+      dayBasis: null, mixedTz: false, partial: false, retryTimer: null,
     },
   },
 };
@@ -1230,7 +1226,7 @@ function renderKpis(data) {
      全部离线 → 灰线 + 离线灰点 + 最后上报时间 */
   const isOnline = online > 0;
   const connLine = isOnline
-    ? `<span class="conn-track on" aria-hidden="true"><i></i><i></i><i></i></span>`
+    ? `<span class="conn-track" aria-hidden="true"><i></i><i></i><i></i></span>`
     : `<span class="conn-track" aria-hidden="true"></span>`;
   const connState = isOnline
     ? `<span class="conn-state on"><span class="status-dot"></span>在线</span>`
@@ -1991,10 +1987,14 @@ function renderSessions() {
   const meta = data.sessions_meta || {};
   $("#sess-sub").textContent =
     `最近使用的 ${Math.min(SESSIONS_SHOW, list.length)} 条会话 · 共 ${meta.sessions_total || list.length} 条`;
-  // 只保留最近 5 条：按 lastUsedAt 降序
+  // 只保留最近 5 条：按 lastUsedAt 降序（无效/缺失时间按 0 处理，NaN 参与比较会让排序不确定）
+  const lastUsedTs = (s) => {
+    const t = new Date(s && s.lastUsedAt).getTime();
+    return Number.isNaN(t) ? 0 : t;
+  };
   const rows = list
     .slice()
-    .sort((a, b) => new Date(b.lastUsedAt).getTime() - new Date(a.lastUsedAt).getTime())
+    .sort((a, b) => lastUsedTs(b) - lastUsedTs(a))
     .slice(0, SESSIONS_SHOW);
   body.innerHTML = rows.map((s) => {
     const client = String(s.client || "");
@@ -2098,9 +2098,11 @@ function renderProviderStatus() {
     if (p.stale === true) desc += " · 缓存数据";
     const checked = p.checked_at ? `检测于 ${esc(relTime(p.checked_at))}` : "";
     const url = String(p.url || "");
-    const tag = url ? "a" : "article";
-    const href = url ? ` href="${esc(url)}" target="_blank" rel="noopener noreferrer"` : "";
-    return `<${tag} class="pv-card lv-${lv}${riseCls()}"${riseStyle(i)}${href}${url ? ` title="${esc(url)}"` : ""}>
+    // scheme 白名单：esc() 只防属性逃逸，防不了 javascript:/data: 伪协议
+    const safeUrl = /^https?:\/\//i.test(url) ? url : "";
+    const tag = safeUrl ? "a" : "article";
+    const href = safeUrl ? ` href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer"` : "";
+    return `<${tag} class="pv-card lv-${lv}${riseCls()}"${riseStyle(i)}${href}${safeUrl ? ` title="${esc(safeUrl)}"` : ""}>
       <span class="pv-dot lv-${lv}" aria-hidden="true"></span>
       <div class="pv-info">
         <div class="pv-name"><strong>${esc(name)}</strong><em class="pv-status">${esc(text)}</em></div>
@@ -2113,6 +2115,7 @@ function renderProviderStatus() {
 
 function renderOverview() {
   const data = state.data;
+  floatTip.hide(); // 轮询重渲染会替换热点元素，旧 tooltip 的 mouseleave 永不触发
   renderKpis(data);
   renderProviderStatus();
   renderTrend();
@@ -2287,7 +2290,8 @@ function renderLimits(limits) {
         // credits 只有余额：显示绝对余额
         meta = "剩余 " + fmtCompact(w.remaining) +
           (w.limit != null ? " / 上限 " + fmtCompact(w.limit) : "") + (reset ? " · " + reset : "");
-      } else if (metric === "spend") {
+      } else if (metric === "spend" && w.used != null && Number.isFinite(Number(w.used))) {
+        // 与 credits 分支同规：used 未知时不得渲染成「已用 $0.00」
         meta = "已用 " + fmtUsd(w.used) + (w.limit != null ? " / " + fmtUsd(w.limit) : "") + (reset ? " · " + reset : "");
       } else if (hasPct) {
         // showMeter=false：纯文本百分比，不画仪表
@@ -2449,7 +2453,11 @@ function hourlyBuckets(act) {
   const todayKey = dp.today && dp.today.key;
   const ht = act.hourly_today;
   if (ht && Array.isArray(ht.buckets) && (!todayKey || ht.day === todayKey)) return ht.buckets;
-  return Array.isArray(act.hourly) ? act.hourly : [];
+  // 旧契约回退：带 hourly_day 时同样校验日期，缺该字段（更旧后端）才放行
+  if (Array.isArray(act.hourly) && (!todayKey || act.hourly_day == null || act.hourly_day === todayKey)) {
+    return act.hourly;
+  }
+  return [];
 }
 
 /* 日：今日 24 小时格子（桶起点为后端按仪表盘时区换算后的值，直接使用） */
@@ -2504,7 +2512,7 @@ function renderHmWeek(hm, daily) {
         .map((c) =>
           c.future
             ? `<span class="hm-cell hm-w hm-skip"></span>`
-            : `<span class="hm-cell hm-w hm-${hmLevel(c.v, max)}" data-day="${c.str}" data-v="${c.v}"></span>`
+            : `<span class="hm-cell hm-w hm-${hmLevel(c.v, max)}" data-day="${c.str}" data-v="${c.v}" aria-label="${c.str} · ${fmtInt(c.v)} tokens"></span>`
         )
         .join("")}</div>
     </div>
@@ -3104,7 +3112,7 @@ async function load(manual) {
     if (!fresh()) return; // 旧响应不得覆盖新密钥/新请求状态
     const dataUnchanged = !firstBoot && state.data
       && state.data.generated_at === data.generated_at
-      && state.data.total_tokens === data.total_tokens;
+      && ((state.data.totals || {}).allTime || {}).totalTokens === ((data.totals || {}).allTime || {}).totalTokens;
     state.data = data;
     state.staleData = false;
     state.booted = true;
@@ -3224,6 +3232,27 @@ async function ensureSubs() {
 }
 
 /* ---------- §9：历史日归档（服务端分页，404/失败优雅降级） ---------- */
+/* 首页加载失败（error 态）的定时重试：错误文案向用户承诺了「稍后自动重试」，
+   轮询与视图切换都只认 idle 态，没有这条路径错误后只能整页刷新恢复 */
+const HISTORY_RETRY_MS = 60000;
+
+function clearHistoryRetry() {
+  const aux = state.aux.history;
+  if (aux.retryTimer) {
+    clearTimeout(aux.retryTimer);
+    aux.retryTimer = null;
+  }
+}
+
+function scheduleHistoryRetry() {
+  clearHistoryRetry();
+  const aux = state.aux.history;
+  aux.retryTimer = setTimeout(() => {
+    aux.retryTimer = null;
+    if (state.alive && aux.status === "error") resetHistory();
+  }, HISTORY_RETRY_MS);
+}
+
 function fallbackHistoryRows() {
   const aux = state.aux.history;
   aux.unsupported = true;
@@ -3236,6 +3265,7 @@ function fallbackHistoryRows() {
 
 function resetHistory() {
   const aux = state.aux.history;
+  clearHistoryRetry();
   if (aux.aborter) aux.aborter.abort();
   aux.rows = [];
   aux.cursor = null;
@@ -3314,6 +3344,7 @@ async function loadHistoryPage() {
       fallbackHistoryRows();
     } else if (!aux.rows.length) {
       aux.status = "error";
+      scheduleHistoryRetry();
     } else {
       aux.status = "ready"; // 已有页保留
       aux.done = true;
@@ -3346,6 +3377,7 @@ function resetAux() {
     aux.data = null;
   }
   const h = state.aux.history;
+  clearHistoryRetry();
   if (h.aborter) h.aborter.abort();
   h.status = "idle";
   h.rows = [];
@@ -3398,7 +3430,6 @@ function peekUpdateBadge() {
   dataApi.updateCheck().then((data) => {
     const dot = btn.querySelector(".upd-dot");
     if (dot) dot.hidden = !data.update_available;
-    btn.classList.toggle("has-update", Boolean(data.update_available));
   }).catch(() => {});
 }
 
@@ -3488,7 +3519,6 @@ function renderUpdateDialog(data, errMsg) {
   if (btn) {
     const dot = btn.querySelector(".upd-dot");
     if (dot) dot.hidden = !data.update_available;
-    btn.classList.toggle("has-update", Boolean(data.update_available));
   }
 }
 
