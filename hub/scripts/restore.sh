@@ -13,6 +13,13 @@ COMPOSE="docker compose --project-directory $HUB_DIR"
 # compose run -v 相对的是工程目录；收成绝对路径再挂 /backup
 BACKUP=$(CDPATH= cd -- "$BACKUP" && pwd)
 
+# 恢复写入依赖 compose run --cap-add（服务声明 cap_drop ALL）：较老的
+# compose 没有该旗标，必须在 down 之前失败，否则报错时服务已停机
+if ! $COMPOSE run --help 2>/dev/null | grep -q -- '--cap-add'; then
+  echo "当前 docker compose 的 run 子命令不支持 --cap-add，请先升级 Docker Compose" >&2
+  exit 1
+fi
+
 resolve_named_volume() {
   logical="$1"
   proj=""
