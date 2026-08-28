@@ -662,7 +662,7 @@ def test_payload_uses_models_not_permodel(tmp_path):
         assert "clientOutputs" in payload[period]
         assert "clientUnclassifiedTokens" in payload[period]
         assert "clientModelCosts" in payload[period]
-    assert payload["capabilities"] == {"tokenComponents": False}
+    assert "capabilities" not in payload  # 顶层 capabilities 官方不读取（period 级才有意义）
     assert payload["hostname"] == "My Mac"
     assert payload["platform"] == "macos"
     assert payload["historyAvailable"] is False and payload["projectsEnabled"] is False
@@ -793,3 +793,59 @@ def test_healthcheck_states(tmp_path, monkeypatch, capsys):
     state.data["last_success_at"] = "2020-01-01T00:00:00+00:00"
     state.save()
     assert healthcheck.main() == 1
+
+
+# ---------------------------------------------------------------- 2026-08 审计回归
+
+
+def test_record_wire_created_at_fallback_is_deterministic():
+    """created_at 缺失若用墙钟兜底，重推（已入库但响应丢失）会因指纹变化
+    被云端判 conflict，游标从此永久卡死——兜底值必须逐字节确定。"""
+    a = SyncAgent._record_wire({"id": "r1", "user_id": "u"})
+    b = SyncAgent._record_wire({"id": "r1", "user_id": "u"})
+    assert a["created_at"] == b["created_at"] == sa.CREATED_AT_FALLBACK
+
+
+def test_run_once_accepts_uppercase_bool(tmp_path):
+    """compose/.env 常见写法 True/Yes 必须生效，不能静默当 false。"""
+    base = {
+        "CLOUD_HUB_URL": "https://cloud.example.com",
+        "STATE_PATH": str(tmp_path / "s.json"),
+    }
+    assert sa.load_config({**base, "RUN_ONCE": "True"}).run_once is True
+    assert sa.load_config({**base, "RUN_ONCE": "YES"}).run_once is True
+    assert sa.load_config({**base, "RUN_ONCE": "0"}).run_once is False
+
+
+def test_parse_health_stale_seconds_shared_by_healthcheck():
+    """agent 配置与 healthcheck 必须同一解析规则，否则阈值口径分裂。"""
+    assert sa.parse_health_stale_seconds("abc") == 3600.0
+    assert sa.parse_health_stale_seconds("10") == 60.0
+    assert sa.parse_health_stale_seconds("7200") == 7200.0
+    assert sa.parse_health_stale_seconds(None) == 3600.0
+
+
+def test_resolve_source_rejects_meta_without_max_record_id(tmp_path):
+    """meta 缺 max_record_id 时按 0 处理会静默停摆（records 恒空、心跳全绿）。"""
+    cfg = make_config(tmp_path)
+    state = AgentState(cfg.state_path)
+    state.device_id = cfg.device_id
+    agent = make_agent(cfg, state, FakeSession())
+    with pytest.raises(PermanentConfigError):
+        agent._resolve_source({"source_instance_id": "src-1"})
+
+
+def test_time_round_sort_tolerates_non_numeric_ids():
+    """id/created_at 类型异常不得抛 TypeError 崩掉主循环（不在捕获列表）。"""
+    key = SyncAgent._record_sort_key({"created_at": "t", "id": "not-a-number"})
+    assert key == ("t", 0)
+    assert SyncAgent._record_sort_key({}) == ("", 0)
+
+
+def test_iso_shift_seconds_overlap():
+    """水位线前移 1s 的重叠读取：解析失败原样返回，不阻塞同步。"""
+    assert (
+        sa._iso_shift_seconds("2026-08-28T00:00:00+00:00", -1)
+        == "2026-08-27T23:59:59+00:00"
+    )
+    assert sa._iso_shift_seconds("not-a-date", -1) == "not-a-date"

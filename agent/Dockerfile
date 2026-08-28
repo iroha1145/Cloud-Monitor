@@ -5,8 +5,9 @@ RUN groupadd -r monitor && useradd -r -g monitor monitor \
 
 WORKDIR /app
 
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+COPY requirements.txt requirements-lock.txt /app/
+# 锁定安装（--require-hashes）：lock 覆盖全部传递依赖；升级依赖时须同步重算 lock
+RUN pip install --no-cache-dir --require-hashes -r /app/requirements-lock.txt
 
 COPY sync_agent.py token_monitor_bridge.py healthcheck.py /app/
 

@@ -162,7 +162,8 @@ def build_ingest_payload(
         "projectsEnabled": False,
         "historyAvailable": False,
         "syncUploadIntervalMs": int(config.token_monitor_interval_seconds * 1000),
-        "capabilities": {"tokenComponents": False},
+        # 不发顶层 capabilities：官方 normalizeDeviceRecord 只读 period 级，
+        # 顶层字段被直接丢弃；无组件数据由官方从各 period 形状自行推断
         "updatedAt": now_utc.isoformat(timespec="seconds"),
         "periodWindows": {
             "timeZone": str(tz),
