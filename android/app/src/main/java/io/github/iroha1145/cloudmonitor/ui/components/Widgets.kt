@@ -18,6 +18,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -74,12 +75,20 @@ fun Panel(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val cm = CmColorsCurrent
+    val shape = RoundedCornerShape(24.dp)
     Column(
         modifier
             .fillMaxWidth()
-            .shadow(8.dp, RoundedCornerShape(24.dp), ambientColor = Color(0x14003770), spotColor = Color(0x0A003B89))
-            .clip(RoundedCornerShape(24.dp))
-            .background(cm.card)
+            .shadow(
+                elevation = 12.dp,
+                shape = shape,
+                clip = false,
+                ambientColor = cm.shadowAmbient,
+                spotColor = cm.shadowSpot,
+            )
+            .border(1.dp, cm.border, shape)
+            .background(cm.card, shape)
+            .clip(shape)
             .padding(16.dp),
         content = content,
     )

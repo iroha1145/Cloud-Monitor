@@ -88,7 +88,32 @@ class HubClient(
             if (!s.startsWith("http://") && !s.startsWith("https://")) {
                 s = "https://$s"
             }
-            return s.trimEnd('/')
+            s = s.trimEnd('/')
+            val parsed = s.toHttpUrlOrNull() ?: throw ApiException(0, "面板地址无效")
+            if (parsed.scheme == "http" && !isCleartextAllowedHost(parsed.host)) {
+                throw ApiException(0, "公网请使用 HTTPS；明文 HTTP 仅允许本机和局域网地址")
+            }
+            return s
+        }
+
+        internal fun isCleartextAllowedHost(host: String): Boolean {
+            val h = host.trim().lowercase().removePrefix("[").removeSuffix("]")
+            if (h.isEmpty()) return false
+            if (h == "localhost" || h == "::1" || h == "0:0:0:0:0:0:0:1" || h == "10.0.2.2") return true
+            if (h.endsWith(".local")) return true
+            val parts = h.split('.')
+            if (parts.size == 4) {
+                val oct = parts.map { it.toIntOrNull() }
+                if (oct.all { it != null && it in 0..255 }) {
+                    val a = oct[0]!!
+                    val b = oct[1]!!
+                    return a == 127 || a == 10 || (a == 192 && b == 168) ||
+                        (a == 172 && b in 16..31) || (a == 169 && b == 254)
+                }
+            }
+            return h.contains(':') && (
+                h.startsWith("fe80:") || h.startsWith("fc") || h.startsWith("fd")
+            )
         }
     }
 }

@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package io.github.iroha1145.cloudmonitor.data
 
 import android.content.Context

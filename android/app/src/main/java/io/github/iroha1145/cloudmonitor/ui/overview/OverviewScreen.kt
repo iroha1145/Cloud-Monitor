@@ -1,7 +1,5 @@
 package io.github.iroha1145.cloudmonitor.ui.overview
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -54,6 +52,7 @@ import io.github.iroha1145.cloudmonitor.data.rankedNames
 import io.github.iroha1145.cloudmonitor.data.sessionsDetailsIncomplete
 import io.github.iroha1145.cloudmonitor.data.trendRows
 import io.github.iroha1145.cloudmonitor.ui.AppIcons
+import io.github.iroha1145.cloudmonitor.ui.openHttpUrl
 import io.github.iroha1145.cloudmonitor.ui.components.ClientLogo
 import io.github.iroha1145.cloudmonitor.ui.components.CompactNumber
 import io.github.iroha1145.cloudmonitor.ui.components.ConnFlowTrack
@@ -450,11 +449,7 @@ private fun ProviderPanel(providers: List<ProviderCard>, partial: Boolean, error
                     .fillMaxWidth()
                     .padding(vertical = 8.dp)
                     .then(
-                        if (url != null) Modifier.clickable {
-                            try {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                            } catch (_: Exception) { }
-                        } else Modifier,
+                        if (url != null) Modifier.clickable { context.openHttpUrl(url) } else Modifier,
                     ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

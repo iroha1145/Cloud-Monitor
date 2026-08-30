@@ -24,7 +24,7 @@ object DemoCatalog {
     private val PROJECTS = listOf("cloud-monitor", "stitch-ui", "data-pipeline")
     private const val DAY = 86_400_000L
 
-    private fun demoZone(): ZoneId = ZoneId.systemDefault()
+    private fun demoZone(): ZoneId = ZoneId.of("Asia/Shanghai")
 
     private fun Random.rand(a: Double, b: Double) = a + nextDouble() * (b - a)
     private fun Random.randInt(a: Int, b: Int) = nextInt(a, b + 1)
@@ -408,6 +408,7 @@ object DemoCatalog {
             Triple("deepseek", Regex("deepseek", RegexOption.IGNORE_CASE), "DeepSeek" to "https://status.deepseek.com"),
             Triple("kimi", Regex("kimi|moonshot", RegexOption.IGNORE_CASE), "Kimi" to "https://status.moonshot.cn"),
             Triple("grok", Regex("grok|xai", RegexOption.IGNORE_CASE), "SpaceXAI API" to "https://status.x.ai"),
+            Triple("grok-web", Regex("grok|xai", RegexOption.IGNORE_CASE), "SpaceXAI (Web)" to "https://status.x.ai/grok-com"),
         )
         val iso = Instant.ofEpochMilli(now).toString()
         val providers = catalog.mapNotNull { (id, match, nameUrl) ->

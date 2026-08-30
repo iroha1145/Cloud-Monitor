@@ -15,16 +15,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
@@ -32,18 +33,16 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -104,29 +103,12 @@ fun AppRoot(vm: AppViewModel) {
                 )
             } else {
                 val cm = CmColorsCurrent
-                var confirmLogout by remember { mutableStateOf(false) }
                 val titles = mapOf(
                     AppTab.Overview to ("概览" to "实时用量全景"),
                     AppTab.Devices to ("设备" to "上报设备与健康度"),
                     AppTab.Quota to ("配额与订阅" to "配额窗口与订阅清单"),
                     AppTab.History to ("历史" to "活动热力与日归档"),
                 )
-                if (confirmLogout) {
-                    AlertDialog(
-                        onDismissRequest = { confirmLogout = false },
-                        title = { Text("退出登录") },
-                        text = { Text(if (state.demo) "将离开演示数据。" else "将清除本机保存的访问密钥。") },
-                        confirmButton = {
-                            TextButton({
-                                confirmLogout = false
-                                vm.logout()
-                            }) { Text("退出") }
-                        },
-                        dismissButton = {
-                            TextButton({ confirmLogout = false }) { Text("取消") }
-                        },
-                    )
-                }
                 if (state.showUpdate) {
                     UpdateDialog(
                         demo = state.demo,
@@ -138,10 +120,12 @@ fun AppRoot(vm: AppViewModel) {
                 }
                 Scaffold(
                     containerColor = cm.canvas,
+                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
                     topBar = {
                         Column(
                             Modifier
                                 .fillMaxWidth()
+                                .statusBarsPadding()
                                 .background(cm.canvas.copy(alpha = 0.94f))
                                 .padding(horizontal = 16.dp, vertical = 10.dp),
                         ) {
@@ -179,8 +163,12 @@ fun AppRoot(vm: AppViewModel) {
                                         modifier = Modifier.graphicsLayer { rotationZ = spin },
                                     )
                                 }
-                                IconButton({ confirmLogout = true }) {
-                                    Icon(AppIcons.Logout, "退出登录", tint = cm.ink2)
+                                IconButton({ vm.logout() }) {
+                                    Icon(
+                                        AppIcons.Logout,
+                                        if (state.demo) "退出演示" else "更换密钥",
+                                        tint = cm.ink2,
+                                    )
                                 }
                             }
                             Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -221,7 +209,12 @@ fun AppRoot(vm: AppViewModel) {
                         }
                     },
                 ) { padding: PaddingValues ->
-                    Box(Modifier.fillMaxSize().padding(padding)) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(padding)
+                            .clipToBounds(),
+                    ) {
                         if (state.loading && state.overview == null) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 ShimmerPanel(110.dp)
@@ -258,7 +251,7 @@ fun AppRoot(vm: AppViewModel) {
                                 LazyColumn(
                                     state = listState,
                                     modifier = Modifier.fillMaxSize(),
-                                    contentPadding = PaddingValues(16.dp),
+                                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 28.dp),
                                 ) {
                                     when (tab) {
                                         AppTab.Overview -> overviewItems(
@@ -272,7 +265,7 @@ fun AppRoot(vm: AppViewModel) {
                                         AppTab.Quota -> quotaItems(state)
                                         AppTab.History -> historyItems(state, vm::setActView, vm::loadMoreHistory)
                                     }
-                                    item("bottom-space") { Spacer(Modifier.height(8.dp)) }
+                                    item("bottom-space") { Spacer(Modifier.height(24.dp)) }
                                 }
                             }
                         }

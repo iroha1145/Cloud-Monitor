@@ -77,7 +77,12 @@ data class UiState(
     val update: SystemUpdate? = null,
     val updateLoading: Boolean = false,
     val updateError: String? = null,
-)
+) {
+    override fun toString(): String {
+        val tokenMark = if (token.isBlank()) "" else "•••"
+        return "UiState(signedIn=$signedIn, demo=$demo, hubUrl=$hubUrl, token=$tokenMark, tab=$tab, loading=$loading)"
+    }
+}
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val store = SessionStore(app)

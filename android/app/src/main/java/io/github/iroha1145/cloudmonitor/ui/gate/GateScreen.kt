@@ -5,6 +5,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +15,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -33,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -80,6 +85,9 @@ fun GateScreen(
         Modifier
             .fillMaxSize()
             .background(cm.canvas)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
     ) {
@@ -100,6 +108,14 @@ fun GateScreen(
                     scaleY = 0.96f + 0.04f * enter.value
                 }
                 .offset { IntOffset(shake.value.roundToInt(), 0) }
+                .shadow(
+                    elevation = 16.dp,
+                    shape = RoundedCornerShape(28.dp),
+                    clip = false,
+                    ambientColor = cm.shadowAmbient,
+                    spotColor = cm.shadowSpot,
+                )
+                .border(1.dp, cm.border, RoundedCornerShape(28.dp))
                 .clip(RoundedCornerShape(28.dp))
                 .background(cm.card)
                 .padding(24.dp),
@@ -162,7 +178,7 @@ fun GateScreen(
             }
             if (state.hubUrl.trim().startsWith("http://", ignoreCase = true)) {
                 Spacer(Modifier.height(8.dp))
-                Text("当前为 HTTP，局域网内可被中间人读取密钥。公网请用 HTTPS。", color = cm.warnInk, fontSize = 12.sp)
+                Text("当前为 HTTP。明文仅允许本机和局域网；公网请用 HTTPS。", color = cm.warnInk, fontSize = 12.sp)
             }
             Spacer(Modifier.height(16.dp))
             Button(

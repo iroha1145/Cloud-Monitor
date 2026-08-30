@@ -1,7 +1,5 @@
 package io.github.iroha1145.cloudmonitor.ui.update
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.iroha1145.cloudmonitor.data.Format
 import io.github.iroha1145.cloudmonitor.data.SystemUpdate
+import io.github.iroha1145.cloudmonitor.ui.openHttpUrl
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
 
 @Composable
@@ -54,11 +53,7 @@ fun UpdateDialog(
         confirmButton = {
             val url = data?.latestRelease?.htmlUrl ?: data?.repo
             if (!url.isNullOrBlank() && Format.safeHttpUrl(url) != null) {
-                TextButton({
-                    try {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                    } catch (_: Exception) { }
-                }) { Text("打开 GitHub") }
+                TextButton({ context.openHttpUrl(url) }) { Text("打开 GitHub") }
             }
         },
         dismissButton = { TextButton(onDismiss) { Text("关闭") } },
