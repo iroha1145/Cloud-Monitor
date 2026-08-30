@@ -32,6 +32,7 @@ import io.github.iroha1145.cloudmonitor.data.ProviderCard
 import io.github.iroha1145.cloudmonitor.data.clientBreakdown
 import io.github.iroha1145.cloudmonitor.data.componentBreakdown
 import io.github.iroha1145.cloudmonitor.data.deviceOnline
+import io.github.iroha1145.cloudmonitor.data.period
 import io.github.iroha1145.cloudmonitor.data.rankedNames
 import io.github.iroha1145.cloudmonitor.data.trendRows
 import io.github.iroha1145.cloudmonitor.ui.components.ClientLogo
@@ -145,8 +146,8 @@ fun OverviewBody(state: UiState, onModelPeriod: (Period) -> Unit, onClientPeriod
             }
             Spacer(Modifier.height(10.dp))
             MatrixGrid(mxClients, mxModels) { c, m ->
-                if (state.mxCost) mxPer.clientModels[c]?.get(m)?.let { it / 1e6 * 6.4 } ?: 0.0
-                else mxPer.clientModels[c]?.get(m) ?: 0.0
+                val tokens = mxPer.clientModels[c]?.get(m) ?: 0.0
+                if (state.mxCost) tokens / 1e6 * 6.4 else tokens
             }
         }
     }

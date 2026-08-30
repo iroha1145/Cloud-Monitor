@@ -74,17 +74,17 @@ fun StackedTrendChart(
                         Modifier.fillMaxWidth().fillMaxHeight(hFrac.coerceAtLeast(0.02f)),
                         verticalArrangement = Arrangement.Bottom,
                     ) {
-                        val segs = buildList {
+                        val segs = buildList<Pair<Color, Double>> {
                             var used = 0.0
                             topModels.forEach { m ->
                                 val v = row.models[m] ?: 0.0
                                 if (v > 0) {
-                                    add(colors[m] ?: OTHER_COLOR to v)
+                                    add(Pair(colors[m] ?: OTHER_COLOR, v))
                                     used += v
                                 }
                             }
                             val rest = row.total - used
-                            if (rest > 1) add(OTHER_COLOR to rest)
+                            if (rest > 1) add(Pair(OTHER_COLOR, rest))
                         }
                         val sum = segs.sumOf { it.second }.coerceAtLeast(1.0)
                         segs.asReversed().forEach { (c, v) ->
@@ -213,8 +213,8 @@ fun HeatCells(values: List<Pair<String, Double>>, columns: Int, showLabel: Boole
 fun MatrixGrid(
     rows: List<String>,
     cols: List<String>,
-    valueAt: (String, String) -> Double,
     modifier: Modifier = Modifier,
+    valueAt: (String, String) -> Double,
 ) {
     val cm = CmColorsCurrent
     val max = rows.maxOfOrNull { r -> cols.maxOfOrNull { c -> valueAt(r, c) } ?: 0.0 }?.coerceAtLeast(1.0) ?: 1.0
