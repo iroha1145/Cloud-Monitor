@@ -40,6 +40,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,7 +52,9 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -59,6 +62,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.decode.SvgDecoder
 import coil.request.ImageRequest
 import io.github.iroha1145.cloudmonitor.data.Format
 import io.github.iroha1145.cloudmonitor.data.logoAssetPath
@@ -141,6 +145,7 @@ fun CompactNumber(value: Double, size: TextUnit = 32.sp, tight: Boolean = false,
 @Composable
 fun PeriodSeg(selected: Period, onSelect: (Period) -> Unit) {
     val cm = CmColorsCurrent
+    val haptic = LocalHapticFeedback.current
     Row(
         Modifier
             .clip(RoundedCornerShape(999.dp))
@@ -159,7 +164,14 @@ fun PeriodSeg(selected: Period, onSelect: (Period) -> Unit) {
                 modifier = Modifier
                     .clip(RoundedCornerShape(999.dp))
                     .background(if (on) cm.card else Color.Transparent)
-                    .selectable(selected = on, role = Role.Tab, onClick = { onSelect(p) })
+                    .selectable(
+                        selected = on,
+                        role = Role.Tab,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onSelect(p)
+                        },
+                    )
                     .padding(horizontal = 10.dp, vertical = 6.dp),
             )
         }
@@ -171,10 +183,18 @@ fun ClientLogo(name: String?, size: Dp = 16.dp, tint: Color = CmColorsCurrent.in
     val path = logoAssetPath(name)
     val letter = name.orEmpty().trim().take(1).uppercase().ifEmpty { "?" }
     if (path != null) {
-        AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
+        val context = LocalContext.current
+        val request = remember(path) {
+            ImageRequest.Builder(context)
                 .data(path)
-                .build(),
+                .memoryCacheKey("cm-logo:$path")
+                .decoderFactory(SvgDecoder.Factory())
+                .crossfade(false)
+                .allowHardware(true)
+                .build()
+        }
+        AsyncImage(
+            model = request,
             contentDescription = name,
             modifier = Modifier.size(size),
             contentScale = ContentScale.Fit,
@@ -260,9 +280,13 @@ fun EmptyHint(text: String) {
 @Composable
 fun Modifier.tipClick(title: String, rows: List<Pair<String, String>>): Modifier {
     val tip = LocalFloatTip.current
+    val haptic = LocalHapticFeedback.current
     return combinedClickable(
         onClick = { tip.show(title, rows) },
-        onLongClick = { tip.show(title, rows) },
+        onLongClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            tip.show(title, rows)
+        },
     )
 }
 

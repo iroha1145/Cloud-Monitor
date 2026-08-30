@@ -19,6 +19,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -51,6 +53,7 @@ fun LazyListScope.historyItems(state: UiState, onActView: (Int) -> Unit, onMore:
     val today = ov.dashboardPeriod?.today?.key ?: Format.dayKeyTz(System.currentTimeMillis(), tz)
     item("heat") {
         val cm = CmColorsCurrent
+        val haptic = LocalHapticFeedback.current
         Panel(Modifier.padding(bottom = 12.dp).riseIn(0).animateContentSize()) {
             PanelHead("活动热力图", "时区 $tz")
             Spacer(Modifier.height(8.dp))
@@ -72,7 +75,14 @@ fun LazyListScope.historyItems(state: UiState, onActView: (Int) -> Unit, onMore:
                         modifier = Modifier
                             .clip(RoundedCornerShape(999.dp))
                             .background(if (on) cm.card else androidx.compose.ui.graphics.Color.Transparent)
-                            .selectable(selected = on, role = Role.Tab, onClick = { onActView(i) })
+                            .selectable(
+                                selected = on,
+                                role = Role.Tab,
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onActView(i)
+                                },
+                            )
                             .padding(horizontal = 12.dp, vertical = 6.dp),
                     )
                 }

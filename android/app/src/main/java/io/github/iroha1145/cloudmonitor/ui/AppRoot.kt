@@ -16,23 +16,28 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -45,6 +50,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -79,6 +88,7 @@ private val TABS = listOf(
     TabSpec(AppTab.History, "历史", AppIcons.History),
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppRoot(vm: AppViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -86,7 +96,10 @@ fun AppRoot(vm: AppViewModel) {
     val dark = state.dark ?: systemDark
     val reduced = rememberReducedMotion()
     val tip = remember { FloatTipController() }
+    val haptic = LocalHapticFeedback.current
+    val statusInset = statusBarInsetDp()
     CloudMonitorTheme(darkTheme = dark) {
+        ApplyEdgeToEdge(dark)
         CompositionLocalProvider(
             LocalReducedMotion provides reduced,
             LocalFloatTip provides tip,
@@ -119,20 +132,30 @@ fun AppRoot(vm: AppViewModel) {
                     )
                 }
                 Scaffold(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
                     containerColor = cm.canvas,
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
                     topBar = {
+                        // 背景铺进状态栏；文字/图标用 inset 让开时钟与电量（官方 edge-to-edge）。
                         Column(
                             Modifier
                                 .fillMaxWidth()
-                                .statusBarsPadding()
                                 .background(cm.canvas.copy(alpha = 0.94f))
+                                .padding(top = statusInset)
                                 .padding(horizontal = 16.dp, vertical = 10.dp),
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     val t = titles[state.tab]!!
-                                    Text(t.first, color = cm.ink, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        t.first,
+                                        color = cm.ink,
+                                        fontSize = 22.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.semantics { heading() },
+                                    )
                                     Text(t.second, color = cm.mute, fontSize = 11.sp)
                                 }
                                 if (state.demo) {
@@ -148,14 +171,23 @@ fun AppRoot(vm: AppViewModel) {
                                     )
                                     Spacer(Modifier.width(4.dp))
                                 }
-                                IconButton({ vm.toggleDark(systemDark) }) {
+                                IconButton({
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    vm.toggleDark(systemDark)
+                                }) {
                                     Icon(if (dark) AppIcons.LightMode else AppIcons.DarkMode, "夜间模式", tint = cm.ink2)
                                 }
-                                IconButton({ vm.openUpdate() }) {
+                                IconButton({
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    vm.openUpdate()
+                                }) {
                                     Icon(AppIcons.SystemUpdate, "检索更新", tint = if (state.update?.updateAvailable == true) cm.brand else cm.ink2)
                                 }
                                 val spin = rememberSpin(state.refreshing)
-                                IconButton({ vm.refresh() }) {
+                                IconButton({
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    vm.refresh()
+                                }) {
                                     Icon(
                                         AppIcons.Refresh,
                                         "刷新",
@@ -190,11 +222,19 @@ fun AppRoot(vm: AppViewModel) {
                         }
                     },
                     bottomBar = {
-                        NavigationBar(containerColor = cm.card, contentColor = cm.ink) {
+                        NavigationBar(
+                            windowInsets = NavigationBarDefaults.windowInsets,
+                            containerColor = cm.card,
+                            contentColor = cm.ink,
+                            tonalElevation = 0.dp,
+                        ) {
                             TABS.forEach { spec ->
                                 NavigationBarItem(
                                     selected = state.tab == spec.tab,
-                                    onClick = { vm.selectTab(spec.tab) },
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        vm.selectTab(spec.tab)
+                                    },
                                     icon = { Icon(spec.icon, spec.label) },
                                     label = { Text(spec.label) },
                                     colors = NavigationBarItemDefaults.colors(
@@ -215,57 +255,66 @@ fun AppRoot(vm: AppViewModel) {
                             .padding(padding)
                             .clipToBounds(),
                     ) {
-                        if (state.loading && state.overview == null) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                ShimmerPanel(110.dp)
-                                ShimmerPanel(110.dp)
-                                ShimmerPanel(160.dp)
-                                ShimmerPanel(160.dp)
-                            }
-                        } else {
-                            AnimatedContent(
-                                targetState = state.tab,
-                                transitionSpec = {
-                                    if (reduced) {
-                                        EnterTransition.None togetherWith ExitTransition.None
-                                    } else {
-                                        val forward = targetState.ordinal >= initialState.ordinal
-                                        (slideInHorizontally(tween(Motion.Fast)) { if (forward) it / 14 else -it / 14 } togetherWith
-                                            ExitTransition.None)
-                                            .using(SizeTransform(clip = false))
-                                    }
-                                },
-                                label = "tab",
-                            ) { tab ->
-                                val listState = rememberLazyListState()
-                                val nearEnd by remember {
-                                    derivedStateOf {
-                                        val info = listState.layoutInfo
-                                        val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
-                                        info.totalItemsCount > 0 && last >= info.totalItemsCount - 4
-                                    }
+                        PullToRefreshBox(
+                            isRefreshing = state.refreshing,
+                            onRefresh = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                vm.refresh()
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            if (state.loading && state.overview == null) {
+                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    ShimmerPanel(110.dp)
+                                    ShimmerPanel(110.dp)
+                                    ShimmerPanel(160.dp)
+                                    ShimmerPanel(160.dp)
                                 }
-                                LaunchedEffect(nearEnd, tab) {
-                                    if (tab == AppTab.History && nearEnd) vm.loadMoreHistory()
-                                }
-                                LazyColumn(
-                                    state = listState,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 28.dp),
-                                ) {
-                                    when (tab) {
-                                        AppTab.Overview -> overviewItems(
-                                            state,
-                                            vm::setModelPeriod,
-                                            vm::setClientPeriod,
-                                            vm::setMxPeriod,
-                                            vm::setMxCost,
-                                        )
-                                        AppTab.Devices -> devicesItems(state)
-                                        AppTab.Quota -> quotaItems(state)
-                                        AppTab.History -> historyItems(state, vm::setActView, vm::loadMoreHistory)
+                            } else {
+                                AnimatedContent(
+                                    targetState = state.tab,
+                                    transitionSpec = {
+                                        if (reduced) {
+                                            EnterTransition.None togetherWith ExitTransition.None
+                                        } else {
+                                            val forward = targetState.ordinal >= initialState.ordinal
+                                            (slideInHorizontally(tween(Motion.Fast)) { if (forward) it / 14 else -it / 14 } togetherWith
+                                                ExitTransition.None)
+                                                .using(SizeTransform(clip = false))
+                                        }
+                                    },
+                                    label = "tab",
+                                ) { tab ->
+                                    val listState = rememberLazyListState()
+                                    val nearEnd by remember {
+                                        derivedStateOf {
+                                            val info = listState.layoutInfo
+                                            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                                            info.totalItemsCount > 0 && last >= info.totalItemsCount - 4
+                                        }
                                     }
-                                    item("bottom-space") { Spacer(Modifier.height(24.dp)) }
+                                    LaunchedEffect(nearEnd, tab) {
+                                        if (tab == AppTab.History && nearEnd) vm.loadMoreHistory()
+                                    }
+                                    LazyColumn(
+                                        state = listState,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 28.dp),
+                                    ) {
+                                        when (tab) {
+                                            AppTab.Overview -> overviewItems(
+                                                state,
+                                                vm::setModelPeriod,
+                                                vm::setClientPeriod,
+                                                vm::setMxPeriod,
+                                                vm::setMxCost,
+                                            )
+                                            AppTab.Devices -> devicesItems(state)
+                                            AppTab.Quota -> quotaItems(state)
+                                            AppTab.History -> historyItems(state, vm::setActView, vm::loadMoreHistory)
+                                        }
+                                        item("bottom-space") { Spacer(Modifier.height(24.dp)) }
+                                    }
                                 }
                             }
                         }

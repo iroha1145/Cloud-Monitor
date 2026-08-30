@@ -33,11 +33,22 @@ fun rememberReducedMotion(): Boolean {
     val context = LocalContext.current
     return remember(context) {
         try {
-            Settings.Global.getFloat(
+            val animator = Settings.Global.getFloat(
                 context.contentResolver,
                 Settings.Global.ANIMATOR_DURATION_SCALE,
                 1f,
-            ) == 0f
+            )
+            val transition = Settings.Global.getFloat(
+                context.contentResolver,
+                Settings.Global.TRANSITION_ANIMATION_SCALE,
+                1f,
+            )
+            val window = Settings.Global.getFloat(
+                context.contentResolver,
+                Settings.Global.WINDOW_ANIMATION_SCALE,
+                1f,
+            )
+            animator == 0f || transition == 0f || window == 0f
         } catch (_: Exception) {
             false
         }

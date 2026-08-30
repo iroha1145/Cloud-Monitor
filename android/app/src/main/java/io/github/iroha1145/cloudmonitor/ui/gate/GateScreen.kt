@@ -15,11 +15,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -38,10 +38,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -49,6 +55,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.iroha1145.cloudmonitor.ui.AppIcons
+import io.github.iroha1145.cloudmonitor.ui.statusBarInsetDp
 import io.github.iroha1145.cloudmonitor.ui.theme.Brand
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
 import io.github.iroha1145.cloudmonitor.ui.theme.LocalReducedMotion
@@ -68,6 +75,10 @@ fun GateScreen(
 ) {
     val cm = CmColorsCurrent
     val reduced = LocalReducedMotion.current
+    val statusInset = statusBarInsetDp()
+    val haptic = LocalHapticFeedback.current
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     val enter = remember { Animatable(if (reduced) 1f else 0f) }
     LaunchedEffect(Unit) {
         if (!reduced) enter.animateTo(1f, tween(Motion.Gate, easing = FastOutSlowInEasing))
@@ -84,13 +95,17 @@ fun GateScreen(
     Box(
         Modifier
             .fillMaxSize()
-            .background(cm.canvas)
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
+            .background(cm.canvas),
     ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp)
+                .padding(top = statusInset),
+        ) {
         IconButton(onToggleDark, Modifier.align(Alignment.TopEnd)) {
             Icon(
                 if (dark) AppIcons.LightMode else AppIcons.DarkMode,
@@ -154,7 +169,13 @@ fun GateScreen(
                 leadingIcon = { Icon(AppIcons.Language, "面板地址") },
                 singleLine = true,
                 isError = err,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Next,
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { focus.moveFocus(FocusDirection.Down) },
+                ),
                 colors = fieldColors(),
                 shape = RoundedCornerShape(14.dp),
             )
@@ -169,6 +190,17 @@ fun GateScreen(
                 singleLine = true,
                 isError = err,
                 visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Go,
+                ),
+                keyboardActions = KeyboardActions(
+                    onGo = {
+                        keyboard?.hide()
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onLogin()
+                    },
+                ),
                 colors = fieldColors(),
                 shape = RoundedCornerShape(14.dp),
             )
@@ -182,7 +214,11 @@ fun GateScreen(
             }
             Spacer(Modifier.height(16.dp))
             Button(
-                onClick = onLogin,
+                onClick = {
+                    keyboard?.hide()
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onLogin()
+                },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 enabled = !state.loading,
                 shape = RoundedCornerShape(14.dp),
@@ -193,7 +229,10 @@ fun GateScreen(
             }
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
-                onClick = onDemo,
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onDemo()
+                },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(14.dp),
             ) {
@@ -203,6 +242,7 @@ fun GateScreen(
             }
             Spacer(Modifier.height(8.dp))
             Text("演示数据在设备本地生成，不访问任何服务器。", color = cm.mute, fontSize = 11.sp, textAlign = TextAlign.Center)
+        }
         }
     }
 }
