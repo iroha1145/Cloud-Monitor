@@ -11,6 +11,7 @@ import io.github.iroha1145.cloudmonitor.data.Overview
 import io.github.iroha1145.cloudmonitor.data.ProviderCard
 import io.github.iroha1145.cloudmonitor.data.SessionStore
 import io.github.iroha1145.cloudmonitor.data.SubscriptionsPayload
+import io.github.iroha1145.cloudmonitor.data.SystemUpdate
 import io.github.iroha1145.cloudmonitor.data.assignColors
 import io.github.iroha1145.cloudmonitor.data.rankedNames
 import io.github.iroha1145.cloudmonitor.data.trendRows
@@ -31,6 +32,7 @@ enum class Period(val key: String, val label: String) {
     Month("month", "本月"),
     AllTime("allTime", "累计"),
 }
+enum class AuxStatus { Idle, Loading, Ready, Empty, Error, Unsupported }
 
 data class UiState(
     val signedIn: Boolean = false,
@@ -45,25 +47,43 @@ data class UiState(
     val refreshing: Boolean = false,
     val error: String? = null,
     val gateError: String? = null,
+    val toast: String? = null,
+    val staleData: Boolean = false,
     val overview: Overview? = null,
     val providers: List<ProviderCard> = emptyList(),
+    val providersStatus: AuxStatus = AuxStatus.Idle,
+    val providersPartial: Boolean = false,
+    val providersPartialErrors: List<String> = emptyList(),
     val subscriptions: SubscriptionsPayload? = null,
+    val subsStatus: AuxStatus = AuxStatus.Idle,
     val history: List<HistoryDay> = emptyList(),
     val historyCursor: String? = null,
     val historyHasMore: Boolean = false,
     val historyLoading: Boolean = false,
+    val historyStatus: AuxStatus = AuxStatus.Idle,
+    val historyError: String? = null,
+    val historyFallback: Boolean = false,
+    val historyDayBasis: String? = null,
+    val historyMixedTz: Boolean = false,
+    val historyPartial: Boolean = false,
+    val historyRetentionDays: Int = 370,
     val modelPeriod: Period = Period.Today,
     val clientPeriod: Period = Period.Today,
     val mxPeriod: Period = Period.Today,
     val mxCost: Boolean = false,
-    val actView: Int = 2, // 0 day 1 week 2 month
+    val actView: Int = 2,
     val lastUpdated: Long? = null,
+    val showUpdate: Boolean = false,
+    val update: SystemUpdate? = null,
+    val updateLoading: Boolean = false,
+    val updateError: String? = null,
 )
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val store = SessionStore(app)
     private val hub = HubClient()
     private var poll: Job? = null
+    private var toastJob: Job? = null
     private var demoRng = Random.Default
     private var sessionToken: String = if (store.signedIn && !store.demo) store.token else ""
 
@@ -98,6 +118,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setMxPeriod(p: Period) = _state.update { it.copy(mxPeriod = p) }
     fun setMxCost(v: Boolean) = _state.update { it.copy(mxCost = v) }
     fun setActView(v: Int) = _state.update { it.copy(actView = v) }
+    fun dismissToast() = _state.update { it.copy(toast = null) }
+    fun closeUpdate() = _state.update { it.copy(showUpdate = false, updateError = null) }
 
     fun toggleDark(systemDark: Boolean) {
         val cur = _state.value.dark ?: systemDark
@@ -119,6 +141,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 error = null,
                 sessionWarning = null,
                 tab = AppTab.Overview,
+                staleData = false,
             )
         }
         refresh(initial = true)
@@ -155,9 +178,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         lastUpdated = System.currentTimeMillis(),
                         tab = AppTab.Overview,
                         sessionWarning = warn,
+                        staleData = false,
+                        error = null,
                     )
                 }
-                loadAux(store.hubUrl, token, false)
+                loadAux(store.hubUrl, token, ov)
                 startPoll()
             } catch (e: ApiException) {
                 _state.update { it.copy(loading = false, gateError = e.message) }
@@ -189,20 +214,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 if (s.demo) {
                     val ov = DemoCatalog.overview(demoRng)
-                    val hist = DemoCatalog.historyPage(null, rng = demoRng)
+                    applyHistoryPage(DemoCatalog.historyPage(null, rng = demoRng), replace = true, fallback = false)
                     _state.update {
                         it.copy(
                             overview = ov,
                             providers = DemoCatalog.providerStatus(ov).providers,
+                            providersStatus = AuxStatus.Ready,
+                            providersPartial = false,
+                            providersPartialErrors = emptyList(),
                             subscriptions = DemoCatalog.subscriptions(demoRng),
-                            history = hist.items,
-                            historyCursor = hist.nextCursor,
-                            historyHasMore = hist.hasMore,
+                            subsStatus = AuxStatus.Ready,
                             loading = false,
                             refreshing = false,
                             lastUpdated = System.currentTimeMillis(),
+                            staleData = false,
                         )
                     }
+                    if (!initial) toast("已重新生成演示数据")
                 } else {
                     val ov = withContext(Dispatchers.IO) { hub.overview(s.hubUrl, accessToken()) }
                     _state.update {
@@ -211,75 +239,214 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             loading = false,
                             refreshing = false,
                             lastUpdated = System.currentTimeMillis(),
+                            staleData = false,
                         )
                     }
-                    loadAux(s.hubUrl, accessToken(), false)
+                    loadAux(s.hubUrl, accessToken(), ov)
                 }
             } catch (e: ApiException) {
                 if (e.status == 401 || e.status == 403) {
                     logout()
                     _state.update { it.copy(gateError = e.message) }
                 } else {
-                    _state.update { it.copy(loading = false, refreshing = false, error = e.message) }
+                    _state.update {
+                        it.copy(
+                            loading = false,
+                            refreshing = false,
+                            error = e.message,
+                            staleData = it.overview != null,
+                        )
+                    }
+                    if (_state.value.overview != null) toast("${e.message}，显示上一份数据")
                 }
             } catch (e: Exception) {
-                _state.update { it.copy(loading = false, refreshing = false, error = e.message ?: "刷新失败") }
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        refreshing = false,
+                        error = e.message ?: "刷新失败",
+                        staleData = it.overview != null,
+                    )
+                }
             }
         }
     }
 
     fun loadMoreHistory() {
         val s = _state.value
-        if (!s.signedIn || s.historyLoading || !s.historyHasMore) return
+        if (!s.signedIn || s.historyLoading || !s.historyHasMore || s.historyFallback) return
         viewModelScope.launch {
-            _state.update { it.copy(historyLoading = true) }
+            _state.update { it.copy(historyLoading = true, historyError = null) }
             try {
                 val page = if (s.demo) {
                     DemoCatalog.historyPage(s.historyCursor, rng = demoRng)
                 } else {
                     withContext(Dispatchers.IO) { hub.historyDaily(s.hubUrl, accessToken(), s.historyCursor) }
                 }
+                applyHistoryPage(page, replace = false, fallback = false)
+            } catch (e: Exception) {
                 _state.update {
                     it.copy(
-                        history = it.history + page.items,
-                        historyCursor = page.nextCursor,
-                        historyHasMore = page.hasMore,
                         historyLoading = false,
+                        historyStatus = AuxStatus.Error,
+                        historyError = e.message ?: "加载更早记录失败",
                     )
                 }
-            } catch (_: Exception) {
-                _state.update { it.copy(historyLoading = false) }
+            }
+        }
+    }
+
+    fun openUpdate() {
+        val s = _state.value
+        if (!s.signedIn) return
+        _state.update { it.copy(showUpdate = true, updateLoading = true, updateError = null) }
+        viewModelScope.launch {
+            try {
+                val data = if (s.demo) {
+                    DemoCatalog.updateCheck()
+                } else {
+                    withContext(Dispatchers.IO) { hub.systemUpdate(s.hubUrl, accessToken(), refresh = true) }
+                }
+                _state.update { it.copy(update = data, updateLoading = false, updateError = null) }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(
+                        updateLoading = false,
+                        updateError = e.message ?: "检索失败",
+                    )
+                }
             }
         }
     }
 
     private fun accessToken(): String = sessionToken.ifBlank { store.token }
 
-    private suspend fun loadAux(url: String, token: String, demo: Boolean) {
-        if (demo) return
-        try {
-            val pv = withContext(Dispatchers.IO) { hub.providerStatus(url, token) }
-            _state.update { it.copy(providers = pv.providers) }
-        } catch (_: Exception) {
-            _state.update { it.copy(providers = emptyList()) }
-        }
-        try {
-            val sub = withContext(Dispatchers.IO) { hub.subscriptions(url, token) }
-            _state.update { it.copy(subscriptions = sub) }
-        } catch (_: Exception) {
-            _state.update { it.copy(subscriptions = null) }
-        }
-        try {
-            val hist = withContext(Dispatchers.IO) { hub.historyDaily(url, token, null) }
+    private suspend fun loadAux(url: String, token: String, ov: Overview) {
+        val failed = mutableListOf<String>()
+        if (!ov.features.providerStatus) {
             _state.update {
                 it.copy(
-                    history = hist.items,
-                    historyCursor = hist.nextCursor,
-                    historyHasMore = hist.hasMore,
+                    providers = emptyList(),
+                    providersStatus = AuxStatus.Unsupported,
+                    providersPartial = false,
+                    providersPartialErrors = emptyList(),
                 )
             }
-        } catch (_: Exception) {
-            /* keep empty; history screen falls back to overview activity */
+        } else {
+            try {
+                val pv = withContext(Dispatchers.IO) { hub.providerStatus(url, token) }
+                _state.update {
+                    it.copy(
+                        providers = pv.providers,
+                        providersStatus = if (pv.providers.isEmpty()) AuxStatus.Empty else AuxStatus.Ready,
+                        providersPartial = pv.partial,
+                        providersPartialErrors = pv.errors,
+                    )
+                }
+            } catch (e: ApiException) {
+                val st = if (e.status == 404) AuxStatus.Unsupported else AuxStatus.Error
+                _state.update { it.copy(providers = emptyList(), providersStatus = st) }
+                if (st == AuxStatus.Error) failed += "提供商状态"
+            } catch (_: Exception) {
+                _state.update { it.copy(providers = emptyList(), providersStatus = AuxStatus.Error) }
+                failed += "提供商状态"
+            }
+        }
+
+        if (!ov.features.subscriptions) {
+            _state.update { it.copy(subscriptions = null, subsStatus = AuxStatus.Unsupported) }
+        } else {
+            try {
+                val sub = withContext(Dispatchers.IO) { hub.subscriptions(url, token) }
+                val empty = sub.subscriptions.isEmpty()
+                _state.update {
+                    it.copy(
+                        subscriptions = sub,
+                        subsStatus = if (empty) AuxStatus.Empty else AuxStatus.Ready,
+                    )
+                }
+            } catch (e: ApiException) {
+                val st = if (e.status == 404) AuxStatus.Unsupported else AuxStatus.Error
+                _state.update { it.copy(subscriptions = null, subsStatus = st) }
+                if (st == AuxStatus.Error) failed += "订阅清单"
+            } catch (_: Exception) {
+                _state.update { it.copy(subscriptions = null, subsStatus = AuxStatus.Error) }
+                failed += "订阅清单"
+            }
+        }
+
+        if (!ov.features.historyDaily) {
+            applyFallbackHistory(ov, "overview")
+        } else {
+            try {
+                val hist = withContext(Dispatchers.IO) { hub.historyDaily(url, token, null) }
+                applyHistoryPage(hist, replace = true, fallback = false)
+            } catch (e: ApiException) {
+                if (e.status == 404) {
+                    applyFallbackHistory(ov, "unsupported")
+                } else {
+                    applyFallbackHistory(ov, e.message ?: "日归档加载失败")
+                    failed += "日归档"
+                }
+            } catch (e: Exception) {
+                applyFallbackHistory(ov, e.message ?: "日归档加载失败")
+                failed += "日归档"
+            }
+        }
+        if (failed.isNotEmpty()) toast("部分数据暂不可用（${failed.joinToString("、")}）")
+    }
+
+    private fun applyHistoryPage(
+        page: io.github.iroha1145.cloudmonitor.data.HistoryPage,
+        replace: Boolean,
+        fallback: Boolean,
+    ) {
+        _state.update {
+            val items = if (replace) page.items else it.history + page.items
+            it.copy(
+                history = items,
+                historyCursor = page.nextCursor,
+                historyHasMore = page.hasMore && !fallback,
+                historyLoading = false,
+                historyStatus = if (items.isEmpty()) AuxStatus.Empty else AuxStatus.Ready,
+                historyError = null,
+                historyFallback = fallback,
+                historyDayBasis = page.dayBasis,
+                historyMixedTz = page.mixedTimeZones,
+                historyPartial = page.partial,
+                historyRetentionDays = page.retentionDays ?: 370,
+            )
+        }
+    }
+
+    private fun applyFallbackHistory(ov: Overview, reason: String) {
+        val rows = ov.activity.daily.sortedByDescending { it.day }.map {
+            HistoryDay(it.day, it.total, perModel = it.models)
+        }
+        _state.update {
+            it.copy(
+                history = rows,
+                historyCursor = null,
+                historyHasMore = false,
+                historyLoading = false,
+                historyStatus = if (reason == "unsupported" || reason == "overview") {
+                    if (rows.isEmpty()) AuxStatus.Empty else AuxStatus.Unsupported
+                } else AuxStatus.Error,
+                historyError = if (reason == "unsupported" || reason == "overview") null else reason,
+                historyFallback = true,
+                historyDayBasis = null,
+                historyMixedTz = false,
+                historyPartial = false,
+            )
+        }
+    }
+
+    private fun toast(msg: String) {
+        toastJob?.cancel()
+        _state.update { it.copy(toast = msg) }
+        toastJob = viewModelScope.launch {
+            delay(2600)
+            _state.update { if (it.toast == msg) it.copy(toast = null) else it }
         }
     }
 

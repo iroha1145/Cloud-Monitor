@@ -6,11 +6,16 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonEncoder
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -71,6 +76,58 @@ object NestedTokenMapSerializer : KSerializer<Map<String, Map<String, Double>>> 
     }
 }
 
+object ErrorCodesSerializer : KSerializer<List<String>> {
+    override val descriptor = buildClassSerialDescriptor("ErrorCodes")
+
+    override fun serialize(encoder: Encoder, value: List<String>) {
+        val json = encoder as JsonEncoder
+        json.encodeJsonElement(JsonArray(value.map { JsonPrimitive(it) }))
+    }
+
+    override fun deserialize(decoder: Decoder): List<String> {
+        val el = (decoder as JsonDecoder).decodeJsonElement()
+        if (el is JsonNull) return emptyList()
+        val arr = el as? JsonArray ?: return emptyList()
+        return arr.mapNotNull { item ->
+            when (item) {
+                is JsonPrimitive -> item.contentOrNull?.takeIf { it.isNotBlank() }
+                is JsonObject -> (item["code"] as? JsonPrimitive)?.contentOrNull
+                    ?: (item["error_code"] as? JsonPrimitive)?.contentOrNull
+                else -> null
+            }
+        }
+    }
+}
+
+object FlexibleTextSerializer : KSerializer<String?> {
+    override val descriptor = PrimitiveSerialDescriptor("FlexibleText", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: Encoder, value: String?) {
+        val json = encoder as JsonEncoder
+        if (value == null) json.encodeJsonElement(JsonNull)
+        else json.encodeJsonElement(JsonPrimitive(value))
+    }
+
+    override fun deserialize(decoder: Decoder): String? {
+        val el = (decoder as JsonDecoder).decodeJsonElement()
+        return when (el) {
+            is JsonNull -> null
+            is JsonPrimitive -> el.contentOrNull
+            is JsonObject -> el.entries.take(4).joinToString(" · ") { (k, v) ->
+                val inner = when (v) {
+                    is JsonPrimitive -> v.content
+                    else -> v.toString()
+                }
+                "$k: $inner"
+            }.ifBlank { null }
+            is JsonArray -> el.joinToString(" · ") { item ->
+                (item as? JsonPrimitive)?.contentOrNull ?: item.toString()
+            }.ifBlank { null }
+            else -> el.toString()
+        }
+    }
+}
+
 @Serializable
 data class Capabilities(
     val tokenComponents: Boolean = false,
@@ -114,6 +171,8 @@ data class PeriodTotals(
     val modelUnclassifiedTokens: Map<String, Double> = emptyMap(),
     @Serializable(with = NestedTokenMapSerializer::class)
     val clientModels: Map<String, Map<String, Double>> = emptyMap(),
+    @Serializable(with = NestedTokenMapSerializer::class)
+    val clientModelCosts: Map<String, Map<String, Double>> = emptyMap(),
 )
 
 @Serializable
@@ -216,6 +275,7 @@ data class Activity(
     @SerialName("hourly_today") val hourlyToday: HourlyToday? = null,
     val daily: List<DailyPoint> = emptyList(),
     val coverage: Coverage? = null,
+    @SerialName("daily_mixed_basis") val dailyMixedBasis: Boolean = false,
 )
 
 @Serializable
@@ -284,24 +344,27 @@ data class SessionsMeta(
     @SerialName("sessions_total") val sessionsTotal: Int = 0,
     @SerialName("sessions_returned") val sessionsReturned: Int = 0,
     @SerialName("sessions_omitted_count") val sessionsOmittedCount: Int = 0,
+    @SerialName("session_details_incomplete") val sessionDetailsIncomplete: Boolean = false,
 )
 
 @Serializable
 data class Diagnostic(
     val deviceId: String = "",
     val hostname: String? = null,
-    val clientHealth: JsonObject? = null,
+    val clientHealth: JsonElement? = null,
+    @Serializable(with = FlexibleTextSerializer::class)
     val clientStatus: String? = null,
+    @Serializable(with = FlexibleTextSerializer::class)
     val wslStatus: String? = null,
 )
 
 @Serializable
 data class Features(
-    @SerialName("trend_models") val trendModels: Boolean = false,
-    @SerialName("activity_hourly") val activityHourly: Boolean = false,
-    val subscriptions: Boolean = false,
-    @SerialName("provider_status") val providerStatus: Boolean = false,
-    @SerialName("history_daily") val historyDaily: Boolean = false,
+    @SerialName("trend_models") val trendModels: Boolean = true,
+    @SerialName("activity_hourly") val activityHourly: Boolean = true,
+    val subscriptions: Boolean = true,
+    @SerialName("provider_status") val providerStatus: Boolean = true,
+    @SerialName("history_daily") val historyDaily: Boolean = true,
 )
 
 @Serializable
@@ -312,6 +375,13 @@ data class Overview(
     @SerialName("dashboard_time_zone") val dashboardTimeZone: String = "UTC",
     val features: Features = Features(),
     val partial: Boolean = false,
+    @Serializable(with = ErrorCodesSerializer::class)
+    @SerialName("partial_errors") val partialErrors: List<String> = emptyList(),
+    @SerialName("pending_outbox") val pendingOutbox: Int = 0,
+    @SerialName("last_snapshot_success_at") val lastSnapshotSuccessAt: String? = null,
+    @SerialName("last_snapshot_error") val lastSnapshotError: String? = null,
+    @SerialName("snapshot_degraded") val snapshotDegraded: Boolean = false,
+    @SerialName("sessions_omitted") val sessionsOmitted: Boolean = false,
     val totals: Totals = Totals(),
     val devices: List<Device> = emptyList(),
     val trend: List<TrendPoint> = emptyList(),
@@ -381,6 +451,8 @@ data class ProviderStatusPayload(
     @SerialName("schema_version") val schemaVersion: Int = 1,
     val providers: List<ProviderCard> = emptyList(),
     val partial: Boolean = false,
+    @Serializable(with = ErrorCodesSerializer::class)
+    val errors: List<String> = emptyList(),
 )
 
 @Serializable
@@ -405,6 +477,57 @@ data class HistoryPage(
     @SerialName("day_basis") val dayBasis: String? = null,
     @SerialName("dashboard_time_zone") val dashboardTimeZone: String? = null,
     @SerialName("retention_days") val retentionDays: Int? = null,
+    @SerialName("mixed_time_zones") val mixedTimeZones: Boolean = false,
+    val partial: Boolean = false,
+    @Serializable(with = ErrorCodesSerializer::class)
+    @SerialName("partial_errors") val partialErrors: List<String> = emptyList(),
+)
+
+@Serializable
+data class UpdateCurrent(
+    val version: String? = null,
+    @SerialName("git_sha") val gitSha: String? = null,
+)
+
+@Serializable
+data class UpdateRelease(
+    val tag: String = "",
+    val name: String = "",
+    @SerialName("published_at") val publishedAt: String? = null,
+    @SerialName("html_url") val htmlUrl: String? = null,
+    val prerelease: Boolean = false,
+    val notes: String? = null,
+)
+
+@Serializable
+data class UpdateMain(
+    val sha: String? = null,
+    @SerialName("short_sha") val shortSha: String? = null,
+    val message: String? = null,
+)
+
+@Serializable
+data class UpdateJob(
+    val id: String? = null,
+    val state: String? = null,
+    val ref: String? = null,
+    val message: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null,
+)
+
+@Serializable
+data class SystemUpdate(
+    val current: UpdateCurrent = UpdateCurrent(),
+    val repo: String? = null,
+    @SerialName("latest_release") val latestRelease: UpdateRelease? = null,
+    val main: UpdateMain? = null,
+    @SerialName("release_ahead") val releaseAhead: Boolean = false,
+    @SerialName("main_ahead") val mainAhead: Boolean = false,
+    @SerialName("update_available") val updateAvailable: Boolean = false,
+    @SerialName("github_error") val githubError: String? = null,
+    @SerialName("checked_at") val checkedAt: String? = null,
+    @SerialName("apply_enabled") val applyEnabled: Boolean = false,
+    val job: UpdateJob? = null,
 )
 
 class ApiException(val status: Int, override val message: String) : RuntimeException(message)

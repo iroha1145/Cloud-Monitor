@@ -219,6 +219,54 @@ object Format {
         return if (generic) label else "$label · $desc"
     }
 
+    fun fmtClock(millis: Long): String {
+        val d = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault())
+        return "%02d:%02d".format(d.hour, d.minute)
+    }
+
+    fun fmtDateTime(iso: String?): String {
+        val t = parseMillis(iso) ?: return iso.orEmpty()
+        val d = Instant.ofEpochMilli(t).atZone(ZoneId.systemDefault())
+        return "%04d-%02d-%02d %02d:%02d".format(d.year, d.monthValue, d.dayOfMonth, d.hour, d.minute)
+    }
+
+    fun truncateKey(v: String?): String {
+        val s = v.orEmpty()
+        if (s.isEmpty()) return ""
+        return if (s.length > 8) s.take(6) + "…" else s
+    }
+
+    fun attributionMode(raw: String?): String = when (raw) {
+        "delta" -> "增量归属"
+        "delta-low-coverage" -> "增量归属（低覆盖）"
+        "delta-with-reset" -> "增量归属（含计数重置）"
+        "none" -> "无归属"
+        else -> raw.orEmpty()
+    }
+
+    fun pvErrorText(code: String?): String = when (code.orEmpty()) {
+        "timeout" -> "状态页请求超时"
+        "http_status" -> "状态页返回异常"
+        "invalid_json" -> "状态页响应无法解析"
+        "network" -> "状态页网络错误"
+        "stats_unavailable" -> "用量来源暂不可用"
+        "subscriptions_unavailable" -> "订阅来源暂不可用"
+        else -> code.orEmpty()
+    }
+
+    fun pvNameOverride(provider: String?, fallback: String): String {
+        return when (provider.orEmpty().lowercase(Locale.US)) {
+            "grok", "xai" -> "SpaceXAI API"
+            "grok-web" -> "SpaceXAI (Web)"
+            else -> fallback
+        }
+    }
+
+    fun safeHttpUrl(raw: String?): String? {
+        val u = raw.orEmpty().trim()
+        return if (u.startsWith("https://", true) || u.startsWith("http://", true)) u else null
+    }
+
     fun billingInterval(interval: String?, count: Int): String {
         val unit = when (interval.orEmpty().lowercase(Locale.US)) {
             "day", "daily" -> "天"

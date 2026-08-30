@@ -37,6 +37,11 @@ class HubClient(
         return get(baseUrl, "/api/v1/tm/history/daily", token, query)
     }
 
+    fun systemUpdate(baseUrl: String, token: String, refresh: Boolean = false): SystemUpdate {
+        val query = if (refresh) mapOf("refresh" to "1") else emptyMap()
+        return get(baseUrl, "/api/v1/system/update", token, query)
+    }
+
     private inline fun <reified T> get(
         baseUrl: String,
         path: String,

@@ -1,5 +1,7 @@
 package io.github.iroha1145.cloudmonitor.data
 
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.time.Instant
 import java.time.ZoneId
 import kotlin.math.max
@@ -120,6 +122,11 @@ object DemoCatalog {
             clientWrites[c] = clamp0(v * writeShare)
             clientUncls[c] = clamp0(v * unclsShare)
         }
+        val clientModelCosts = clientModels.mapValues { (_, models) ->
+            models.mapValues { (m, tokens) ->
+                kotlin.math.round((tokens / 1e6) * (COST_PER_M[m] ?: 0.0) * 100) / 100.0
+            }
+        }
         return PeriodTotals(
             capabilities = Capabilities(tokenComponents = true),
             totalTokens = totalTokens,
@@ -144,6 +151,7 @@ object DemoCatalog {
             modelOutputs = modelOutputs,
             modelUnclassifiedTokens = modelUncls,
             clientModels = clientModels,
+            clientModelCosts = clientModelCosts,
         )
     }
 
@@ -241,7 +249,7 @@ object DemoCatalog {
                 syncUploadIntervalMs = d.sync, trackedClients = d.tracked,
                 today = split(totals.today, d.split), month = split(totals.month, d.split),
                 allTime = split(totals.allTime, d.split),
-                projectsEnabled = d.projects, historyAvailable = true,
+                projectsEnabled = d.projects, historyAvailable = !d.stale,
             )
         }
         val windows = devicesRaw.associate { d ->
@@ -252,7 +260,20 @@ object DemoCatalog {
             )
         }
         val diagnostics = devicesRaw.map { d ->
-            Diagnostic(d.deviceId, d.hostname, clientStatus = d.status, wslStatus = d.wsl)
+            Diagnostic(
+                deviceId = d.deviceId,
+                hostname = d.hostname,
+                clientHealth = buildJsonObject {
+                    d.health.forEach { (name, st) ->
+                        put(name, buildJsonObject {
+                            put("status", st)
+                            put("version", d.agentVersion)
+                        })
+                    }
+                },
+                clientStatus = d.status,
+                wslStatus = d.wsl,
+            )
         }
         val limits = listOf(
             LimitProvider(
@@ -305,6 +326,10 @@ object DemoCatalog {
             staleAfterMs = 600_000,
             dashboardTimeZone = demoZone().id,
             features = Features(trendModels = true, activityHourly = true, subscriptions = true, providerStatus = true, historyDaily = true),
+            partial = false,
+            pendingOutbox = 0,
+            snapshotDegraded = false,
+            sessionsOmitted = true,
             totals = totals,
             devices = devices,
             trend = trend,
@@ -322,7 +347,19 @@ object DemoCatalog {
                     observedBuckets = 70,
                     coveragePercent = 97.2,
                     attributionMode = "delta",
+                    devices = devicesRaw.map { d ->
+                        CoverageDevice(
+                            deviceId = d.deviceId,
+                            firstSampleAt = utcHour(8 * 3_600_000, now),
+                            lastSampleAt = Instant.ofEpochMilli(now - d.receivedOff).toString(),
+                            expectedBuckets = 24,
+                            observedBuckets = if (d.stale) 18 else 24,
+                            gapCount = if (d.stale) 3 else 0,
+                            resetCount = if (d.stale) 1 else 0,
+                        )
+                    },
                 ),
+                dailyMixedBasis = true,
             ),
             dashboardPeriod = DashboardPeriod(
                 timeZone = demoZone().id,
@@ -331,7 +368,7 @@ object DemoCatalog {
             ),
             limits = limits,
             sessions = sessions,
-            sessionsMeta = SessionsMeta(sessions.size, sessions.size, 0),
+            sessionsMeta = SessionsMeta(sessions.size + 3, sessions.size, 3, sessionDetailsIncomplete = true),
             diagnostics = diagnostics,
             periodWindowsByDevice = windows,
         )
@@ -390,6 +427,29 @@ object DemoCatalog {
             dayBasis = "device-local",
             dashboardTimeZone = demoZone().id,
             retentionDays = 370,
+            mixedTimeZones = true,
+        )
+    }
+
+    fun updateCheck(now: Long = System.currentTimeMillis()): SystemUpdate {
+        val iso = Instant.ofEpochMilli(now).toString()
+        return SystemUpdate(
+            current = UpdateCurrent("0.1.4", "demo000abcdef"),
+            repo = "https://github.com/iroha1145/Cloud-Monitor",
+            latestRelease = UpdateRelease(
+                tag = "v0.2.0",
+                name = "v0.2.0",
+                publishedAt = iso,
+                htmlUrl = "https://github.com/iroha1145/Cloud-Monitor/releases/tag/v0.2.0",
+                notes = "演示数据：假的新版本说明。手机端只检索，不会改服务器。",
+            ),
+            main = UpdateMain("abcdef1234567890", "abcdef1", "docs: README 增加 LINUX DO 友情链接"),
+            releaseAhead = true,
+            mainAhead = true,
+            updateAvailable = true,
+            checkedAt = iso,
+            applyEnabled = false,
+            job = UpdateJob(state = "idle", message = ""),
         )
     }
 }

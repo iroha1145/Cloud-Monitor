@@ -84,6 +84,75 @@ fun clientBreakdown(period: PeriodTotals, name: String): List<TokenSeg> {
     ).filter { it.value > 0 }
 }
 
+fun modelBreakdown(period: PeriodTotals, name: String): List<TokenSeg> {
+    val total = period.models[name] ?: 0.0
+    if (!period.capabilities.tokenComponents || total <= 0) return emptyList()
+    val output = period.modelOutputs[name] ?: 0.0
+    val cacheRead = period.modelCacheReads[name] ?: 0.0
+    val cacheWrite = period.modelCacheWrites[name] ?: 0.0
+    val unclassified = period.modelUnclassifiedTokens[name] ?: 0.0
+    val input = maxOf(0.0, total - output - cacheRead - cacheWrite - unclassified)
+    return listOf(
+        TokenSeg("input", "非缓存输入", SEG_INPUT, input),
+        TokenSeg("output", "输出", SEG_OUTPUT, output),
+        TokenSeg("cacheRead", "缓存读", SEG_CACHE_READ, cacheRead),
+        TokenSeg("cacheWrite", "缓存写", SEG_CACHE_WRITE, cacheWrite),
+        TokenSeg("unclassified", "未分类", SEG_UNCLS, unclassified),
+    ).filter { it.value > 0 }
+}
+
+fun cacheHitRate(period: PeriodTotals, name: String): Double? {
+    val segs = modelBreakdown(period, name)
+    if (segs.isEmpty()) return null
+    val total = period.models[name] ?: 0.0
+    if (total <= 0) return null
+    val read = segs.find { it.key == "cacheRead" }?.value ?: 0.0
+    return read / total
+}
+
+fun componentsComplete(period: PeriodTotals, segs: List<TokenSeg>): Boolean {
+    val total = period.totalTokens
+    if (total <= 0 || segs.isEmpty()) return true
+    val sum = segs.sumOf { it.value }
+    return kotlin.math.abs(sum - total) <= maxOf(1.0, total * 0.01)
+}
+
+fun matrixAxes(map: Map<String, Map<String, Double>>, top: Int = 8): Pair<List<String>, List<String>> {
+    val rowSum = mutableMapOf<String, Double>()
+    val colSum = mutableMapOf<String, Double>()
+    map.forEach { (client, models) ->
+        models.forEach { (model, v) ->
+            if (v > 0) {
+                rowSum[client] = (rowSum[client] ?: 0.0) + v
+                colSum[model] = (colSum[model] ?: 0.0) + v
+            }
+        }
+    }
+    return rankedNames(rowSum).take(top) to rankedNames(colSum).take(top)
+}
+
+fun connBanner(overview: Overview, demo: Boolean, staleData: Boolean): Pair<String, Boolean> {
+    if (demo) return "演示模式" to true
+    var text = when {
+        staleData -> "数据可能已过期"
+        overview.snapshotDegraded -> "快照历史降级"
+        overview.partial -> "部分数据不可用"
+        else -> "正常"
+    }
+    val outbox = overview.pendingOutbox
+    if (outbox > 0) text += " · 待同步快照 $outbox 条"
+    val ok = text == "正常"
+    return text to ok
+}
+
+fun sessionsDetailsIncomplete(overview: Overview): Boolean =
+    overview.sessionsOmitted || overview.sessionsMeta.sessionDetailsIncomplete
+
+fun isWindowsPlatform(platform: String?, osName: String?): Boolean {
+    val s = "${platform.orEmpty()} ${osName.orEmpty()}".lowercase()
+    return "win" in s
+}
+
 fun hmLevel(v: Double, max: Double): Int {
     if (v <= 0 || max <= 0) return 0
     return minOf(5, maxOf(1, kotlin.math.ceil(v / max * 5).toInt()))

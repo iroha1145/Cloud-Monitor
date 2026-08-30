@@ -65,6 +65,33 @@ object AppIcons {
     val PlayArrow: ImageVector by lazy {
         icon("PlayArrow", "M10,8.64L15.27,12L10,15.36V8.64M8,5v14l11,-7L8,5z")
     }
+    val Cloud: ImageVector by lazy {
+        icon(
+            "Cloud",
+            "M19.35,10.04C18.67,6.59 15.64,4 12,4C9.11,4 6.6,5.64 5.35,8.04C2.34,8.36 0,10.91 0,14c0,3.31 2.69,6 6,6h13c2.76,0 5,-2.24 5,-5C24,12.36 21.95,10.22 19.35,10.04z M19,18H6c-2.21,0 -4,-1.79 -4,-4c0,-2.05 1.53,-3.76 3.56,-3.97l1.07,-0.11l0.5,-0.95C8.08,7.14 9.94,6 12,6c2.62,0 4.88,1.86 5.39,4.35l0.3,1.5l1.53,0.11C20.37,12.06 21.5,13.4 21.5,15C21.5,16.66 20.16,18 18.5,18H19z",
+        )
+    }
+    val Terminal: ImageVector by lazy {
+        icon(
+            "Terminal",
+            "M20,4H4C2.89,4 2,4.89 2,6v12c0,1.1 0.89,2 2,2h16c1.1,0 2,-0.9 2,-2V6C22,4.89 21.11,4 20,4z M20,18H4V8h16V18z M6.4,13.2l1.4,1.4L6.2,16.2L5,15l1.4,-1.8z M11,16v-1.5h6V16H11z M7.8,10.8L9.2,12.2 6.2,15.2 4.8,13.8z",
+        )
+    }
+    val SystemUpdate: ImageVector by lazy {
+        icon(
+            "SystemUpdate",
+            "M17,1.01L7,1C5.9,1 5,1.9 5,3v18c0,1.1 0.9,2 2,2h10c1.1,0 2,-0.9 2,-2V3C19,1.9 18.1,1.01 17,1.01z M17,21H7v-1h10V21z M17,18H7V6h10V18z M16,13h-3V8h-2v5H8l4,4L16,13z",
+        )
+    }
+    val OpenInNew: ImageVector by lazy {
+        icon(
+            "OpenInNew",
+            "M19,19H5V5h7V3H5C3.89,3 3,3.9 3,5v14c0,1.1 0.89,2 2,2h14c1.1,0 2,-0.9 2,-2v-7h-2V19z M14,3v2h3.59l-9.83,9.83l1.41,1.41L19,6.41V10h2V3H14z",
+        )
+    }
+    val ExpandMore: ImageVector by lazy {
+        icon("ExpandMore", "M16.59,8.59L12,13.17L7.41,8.59L6,10l6,6l6,-6z")
+    }
 }
 
 private fun icon(name: String, pathData: String): ImageVector =
