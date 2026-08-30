@@ -5,7 +5,6 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-val versionProps = Properties()
 val versionFile = rootProject.file("../VERSION")
 val fallbackName = if (versionFile.exists()) versionFile.readText().trim() else "0.1.4"
 val appVersionName = (findProperty("versionName") as String?)?.ifBlank { null } ?: fallbackName
