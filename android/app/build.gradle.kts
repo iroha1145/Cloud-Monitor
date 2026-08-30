@@ -7,8 +7,9 @@ plugins {
 
 val versionFile = rootProject.file("../VERSION")
 val fallbackName = if (versionFile.exists()) versionFile.readText().trim() else "0.1.4"
-val appVersionName = (findProperty("versionName") as String?)?.ifBlank { null } ?: fallbackName
-val appVersionCode = (findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
+fun propText(name: String): String? = findProperty(name)?.toString()?.ifBlank { null }
+val appVersionName = propText("versionName") ?: fallbackName
+val appVersionCode = propText("versionCode")?.toIntOrNull() ?: 1
 
 android {
     namespace = "io.github.iroha1145.cloudmonitor"
