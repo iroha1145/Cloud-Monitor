@@ -166,6 +166,7 @@ docker compose up -d --build
 | `CM_GITHUB_REPO` | 检索用的 GitHub `owner/name` | `iroha1145/Cloud-Monitor` |
 | `GITHUB_TOKEN` | 可选，提高 GitHub API 限额 | 空 |
 | `CM_UPDATE_DIR` | 容器内更新请求目录（需挂载到宿主机） | `/update` |
+| `ASSETLINKS_FILE` | TWA 域名校验文件路径，在 `/.well-known/assetlinks.json` 暴露 | `data/assetlinks.json` |
 
 agent 变量见 `agent/.env.example`。
 
@@ -185,6 +186,17 @@ cd agent && python -m pytest tests/ -q
 ```
 
 hub 测试覆盖 provider-status（Mock 网络）、history/daily SQL 分页、100×370 查询计划、activity 覆盖率、乱序快照压缩，以及前端契约 fixture 导出。
+
+## 安卓 APK（TWA）
+
+面板已带最小 PWA 支持（manifest + 图标），可用 TWA（Trusted Web Activity）封装成安卓 APK：APK 本身几乎没有业务代码，全屏加载你自己的 HTTPS 面板，改版无需重新打包。构建在 GitHub Actions 云端完成，本机不需要安装 JDK / Android SDK。
+
+1. 保证面板可通过 HTTPS 域名访问（APK 运行时需要；构建过程不访问面板）。
+2. 仓库 **Settings → Secrets and variables → Actions → Variables** 里新建 `TWA_HOST_URL`（如 `https://panel.example.com`）。
+3. **Actions → build-apk → Run workflow**，完成后下载 Artifact `cloud-monitor-apk`（未配置正式签名时为 `cloud-monitor-apk-debug`）。
+4. 把填好指纹的 `assetlinks.json` 放到服务器 `data/` 目录，网关自动在 `/.well-known/assetlinks.json` 暴露，地址栏即消失。
+
+包名固定 `io.github.iroha1145.cloudmonitor`；默认用 CI 临时调试 keystore 签名（仅测试用），正式发布请按文档配置 keystore Secret 并务必备份。详见 [docs/twa/README.md](docs/twa/README.md)。
 
 ## 友情链接
 
