@@ -100,6 +100,7 @@ fun AppRoot(vm: AppViewModel) {
     val statusInset = statusBarInsetDp()
     CloudMonitorTheme(darkTheme = dark) {
         ApplyEdgeToEdge(dark)
+        SecureScreen(enabled = !state.signedIn)
         CompositionLocalProvider(
             LocalReducedMotion provides reduced,
             LocalFloatTip provides tip,
@@ -223,7 +224,7 @@ fun AppRoot(vm: AppViewModel) {
                     },
                     bottomBar = {
                         NavigationBar(
-                            windowInsets = NavigationBarDefaults.windowInsets,
+                            windowInsets = NavigationBarDefaults.windowInsets.only(WindowInsetsSides.Bottom),
                             containerColor = cm.card,
                             contentColor = cm.ink,
                             tonalElevation = 0.dp,

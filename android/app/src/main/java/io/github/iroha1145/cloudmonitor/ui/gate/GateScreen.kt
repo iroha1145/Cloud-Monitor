@@ -9,14 +9,20 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -97,16 +103,14 @@ fun GateScreen(
             .fillMaxSize()
             .background(cm.canvas),
     ) {
-        Box(
+        IconButton(
+            onToggleDark,
             Modifier
-                .fillMaxSize()
-                .navigationBarsPadding()
-                .imePadding()
-                .verticalScroll(rememberScrollState())
-                .padding(24.dp)
-                .padding(top = statusInset),
+                .align(Alignment.TopEnd)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                .padding(top = statusInset)
+                .padding(8.dp),
         ) {
-        IconButton(onToggleDark, Modifier.align(Alignment.TopEnd)) {
             Icon(
                 if (dark) AppIcons.LightMode else AppIcons.DarkMode,
                 contentDescription = "夜间模式",
@@ -116,26 +120,35 @@ fun GateScreen(
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(top = 72.dp)
-                .graphicsLayer {
-                    alpha = enter.value
-                    scaleX = 0.96f + 0.04f * enter.value
-                    scaleY = 0.96f + 0.04f * enter.value
-                }
-                .offset { IntOffset(shake.value.roundToInt(), 0) }
-                .shadow(
-                    elevation = 16.dp,
-                    shape = RoundedCornerShape(28.dp),
-                    clip = false,
-                    ambientColor = cm.shadowAmbient,
-                    spotColor = cm.shadowSpot,
-                )
-                .border(1.dp, cm.border, RoundedCornerShape(28.dp))
-                .clip(RoundedCornerShape(28.dp))
-                .background(cm.card)
-                .padding(24.dp),
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp)
+                .padding(top = statusInset + 48.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        alpha = enter.value
+                        scaleX = 0.96f + 0.04f * enter.value
+                        scaleY = 0.96f + 0.04f * enter.value
+                    }
+                    .offset { IntOffset(shake.value.roundToInt(), 0) }
+                    .shadow(
+                        elevation = 16.dp,
+                        shape = RoundedCornerShape(28.dp),
+                        clip = false,
+                        ambientColor = cm.shadowAmbient,
+                        spotColor = cm.shadowSpot,
+                    )
+                    .border(1.dp, cm.border, RoundedCornerShape(28.dp))
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(cm.card)
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
             Box(
                 Modifier
                     .size(56.dp)

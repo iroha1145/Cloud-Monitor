@@ -13,11 +13,13 @@ import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 object Format {
-    private val nf: NumberFormat = NumberFormat.getInstance(Locale.SIMPLIFIED_CHINESE).apply {
-        maximumFractionDigits = 0
+    private val nfLocal = ThreadLocal.withInitial {
+        NumberFormat.getInstance(Locale.SIMPLIFIED_CHINESE).apply {
+            maximumFractionDigits = 0
+        }
     }
 
-    fun fmtInt(v: Double): String = nf.format(v.roundToLong())
+    fun fmtInt(v: Double): String = nfLocal.get().format(v.roundToLong())
 
     data class Compact(val n: String, val u: String)
 
