@@ -206,9 +206,13 @@ fun LazyListScope.overviewItems(
         }
     }
     val mxPer = ov.totals.period(state.mxPeriod.key)
-    val mxMap = if (state.mxCost) mxPer.clientModelCosts else mxPer.clientModels
-    val (mxClients, mxModels) = matrixAxes(mxMap)
-    if (mxClients.isNotEmpty() && mxModels.isNotEmpty()) {
+    val tokenAxes = matrixAxes(mxPer.clientModels)
+    val costAxes = matrixAxes(mxPer.clientModelCosts)
+    val hasTokenMatrix = tokenAxes.first.isNotEmpty() && tokenAxes.second.isNotEmpty()
+    val hasCostMatrix = costAxes.first.isNotEmpty() && costAxes.second.isNotEmpty()
+    if (hasTokenMatrix || hasCostMatrix) {
+        val mxMap = if (state.mxCost) mxPer.clientModelCosts else mxPer.clientModels
+        val (mxClients, mxModels) = if (state.mxCost) costAxes else tokenAxes
         item("matrix") {
             val cm = CmColorsCurrent
             Panel(Modifier.padding(bottom = 12.dp).riseIn(5)) {
@@ -237,8 +241,12 @@ fun LazyListScope.overviewItems(
                     }
                 }
                 Spacer(Modifier.height(10.dp))
-                MatrixGrid(mxClients, mxModels, cost = state.mxCost) { c, m ->
-                    mxMap[c]?.get(m) ?: 0.0
+                if (mxClients.isEmpty() || mxModels.isEmpty()) {
+                    EmptyHint(if (state.mxCost) "该周期暂无费用数据" else "该周期暂无矩阵数据")
+                } else {
+                    MatrixGrid(mxClients, mxModels, cost = state.mxCost) { c, m ->
+                        mxMap[c]?.get(m) ?: 0.0
+                    }
                 }
             }
         }

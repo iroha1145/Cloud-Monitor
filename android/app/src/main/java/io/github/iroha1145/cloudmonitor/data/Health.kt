@@ -25,11 +25,14 @@ private val HEALTH_LEVEL = mapOf(
     "normal" to "ok",
     "waiting" to "warn",
     "warning" to "warn",
+    "warn" to "warn",
+    "attention" to "warn",
     "stale" to "warn",
     "degraded" to "warn",
     "partial" to "warn",
     "no-data" to "warn",
     "missing" to "crit",
+    "unavailable" to "crit",
     "error" to "crit",
     "failed" to "crit",
     "unhealthy" to "crit",
@@ -90,10 +93,13 @@ fun healthEntries(ch: JsonElement?): List<Pair<String, JsonElement?>> {
         .map { it.key to it.value }
 }
 
-private fun diagnosticState(@Suppress("UNUSED_PARAMETER") name: String, value: JsonElement?, @Suppress("UNUSED_PARAMETER") diag: Diagnostic): String {
+internal fun diagnosticState(name: String, value: JsonElement?, diag: Diagnostic): String {
+    val perClient = clientStatusOf(diag.clientStatus, name)
+    if (!perClient.isNullOrBlank()) return perClient
     val obj = value as? JsonObject
     if (obj == null) return shortStatusText(value).ifEmpty { "unknown" }
     val candidates = listOf(
+        obj.string("overall"),
         obj.string("status"),
         obj.string("health"),
         obj.string("state"),
@@ -109,6 +115,11 @@ private fun diagnosticState(@Suppress("UNUSED_PARAMETER") name: String, value: J
         false -> "unhealthy"
         null -> "unknown"
     }
+}
+
+private fun clientStatusOf(raw: JsonElement?, name: String): String? {
+    val obj = raw as? JsonObject ?: return null
+    return obj.string(name)
 }
 
 fun shortStatusText(v: Any?): String {

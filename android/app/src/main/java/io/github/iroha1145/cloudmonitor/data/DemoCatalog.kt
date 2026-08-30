@@ -1,5 +1,6 @@
 package io.github.iroha1145.cloudmonitor.data
 
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.time.Instant
@@ -28,6 +29,21 @@ object DemoCatalog {
     private fun Random.rand(a: Double, b: Double) = a + nextDouble() * (b - a)
     private fun Random.randInt(a: Int, b: Int) = nextInt(a, b + 1)
     private fun clamp0(v: Double) = max(0.0, kotlin.math.round(v))
+
+    /** 已安装未用量客户端走官方 overall=waiting，避免 collection.direct 被误判为健康。 */
+    private fun demoHealthEntry(st: String, version: String) = when (st) {
+        "waiting", "warn" -> buildJsonObject {
+            put("overall", "waiting")
+            put("version", version)
+            put("source", buildJsonObject { put("state", "detected") })
+            put("collection", buildJsonObject { put("state", "direct") })
+            put("data", buildJsonObject { put("liveTokens", 0) })
+        }
+        else -> buildJsonObject {
+            put("status", st)
+            put("version", version)
+        }
+    }
 
     private fun cnDay(offset: Int, now: Long): String =
         Instant.ofEpochMilli(now).atZone(demoZone()).toLocalDate().minusDays(offset.toLong()).toString()
@@ -265,13 +281,10 @@ object DemoCatalog {
                 hostname = d.hostname,
                 clientHealth = buildJsonObject {
                     d.health.forEach { (name, st) ->
-                        put(name, buildJsonObject {
-                            put("status", st)
-                            put("version", d.agentVersion)
-                        })
+                        put(name, demoHealthEntry(st, d.agentVersion))
                     }
                 },
-                clientStatus = d.status,
+                clientStatus = JsonPrimitive(d.status),
                 wslStatus = d.wsl,
             )
         }

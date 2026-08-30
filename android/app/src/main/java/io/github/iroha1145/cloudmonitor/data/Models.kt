@@ -352,8 +352,7 @@ data class Diagnostic(
     val deviceId: String = "",
     val hostname: String? = null,
     val clientHealth: JsonElement? = null,
-    @Serializable(with = FlexibleTextSerializer::class)
-    val clientStatus: String? = null,
+    val clientStatus: JsonElement? = null,
     @Serializable(with = FlexibleTextSerializer::class)
     val wslStatus: String? = null,
 )

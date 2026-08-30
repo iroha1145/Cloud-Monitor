@@ -28,6 +28,7 @@ import io.github.iroha1145.cloudmonitor.data.healthBarWidth
 import io.github.iroha1145.cloudmonitor.data.healthLabel
 import io.github.iroha1145.cloudmonitor.data.healthTools
 import io.github.iroha1145.cloudmonitor.data.isWindowsPlatform
+import io.github.iroha1145.cloudmonitor.data.shortStatusText
 import io.github.iroha1145.cloudmonitor.ui.components.ClientLogo
 import io.github.iroha1145.cloudmonitor.ui.components.Panel
 import io.github.iroha1145.cloudmonitor.ui.components.StatusDot
@@ -169,9 +170,12 @@ fun LazyListScope.devicesItems(state: UiState) {
                     }
                 }
             }
-            diag?.clientStatus?.let {
-                Spacer(Modifier.height(6.dp))
-                Text(it, color = cm.mute, fontSize = 12.sp)
+            diag?.clientStatus?.let { raw ->
+                val text = shortStatusText(raw)
+                if (text.isNotBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(text, color = cm.mute, fontSize = 12.sp)
+                }
             }
             if (isWindowsPlatform(d.platform, d.osName)) {
                 diag?.wslStatus?.let { Text("WSL $it", color = cm.mute, fontSize = 12.sp) }
