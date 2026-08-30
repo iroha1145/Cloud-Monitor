@@ -16,6 +16,7 @@ private val CLIENT_LOGO_ALIAS = mapOf(
     "chatgpt" to "codex",
     "google" to "gemini",
     "github" to "copilot",
+    "qodercn" to "qoder",
     "zhipu" to "zai",
     "moonshot" to "kimi",
     "bytedance" to "doubao",

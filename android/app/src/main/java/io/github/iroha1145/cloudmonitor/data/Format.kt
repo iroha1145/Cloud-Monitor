@@ -198,6 +198,27 @@ object Format {
         return "%04d-%02d-%02d".format(d.year, d.monthValue, d.dayOfMonth)
     }
 
+    fun fmtStatusLabel(status: String?): String {
+        return when (status.orEmpty().lowercase(Locale.US)) {
+            "operational" -> "正常"
+            "degraded_performance", "degraded" -> "性能下降"
+            "partial_outage" -> "部分故障"
+            "major_outage" -> "严重故障"
+            "maintenance", "under_maintenance" -> "维护中"
+            "unknown", "" -> "未知"
+            else -> status.orEmpty()
+        }
+    }
+
+    fun fmtStatusLine(status: String?, description: String?): String {
+        val label = fmtStatusLabel(status)
+        val desc = description?.trim().orEmpty()
+        if (desc.isEmpty()) return label
+        val generic = desc.equals("all systems operational", ignoreCase = true) ||
+            desc.equals(status, ignoreCase = true)
+        return if (generic) label else "$label · $desc"
+    }
+
     fun billingInterval(interval: String?, count: Int): String {
         val unit = when (interval.orEmpty().lowercase(Locale.US)) {
             "day", "daily" -> "天"

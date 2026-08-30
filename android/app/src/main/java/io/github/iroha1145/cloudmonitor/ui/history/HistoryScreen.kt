@@ -1,7 +1,6 @@
 package io.github.iroha1145.cloudmonitor.ui.history
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,13 +8,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,17 +33,21 @@ import io.github.iroha1145.cloudmonitor.vm.UiState
 
 private val DOW = listOf("日", "一", "二", "三", "四", "五", "六")
 
-@Composable
-fun HistoryBody(state: UiState, onActView: (Int) -> Unit, onMore: () -> Unit) {
+fun LazyListScope.historyItems(state: UiState, onActView: (Int) -> Unit, onMore: () -> Unit) {
     val ov = state.overview ?: return
-    val cm = CmColorsCurrent
     val tz = ov.dashboardPeriod?.timeZone ?: ov.dashboardTimeZone
     val today = ov.dashboardPeriod?.today?.key ?: Format.dayKeyTz(System.currentTimeMillis(), tz)
-    Panel {
+    item("heat") {
+    val cm = CmColorsCurrent
+    Panel(Modifier.padding(bottom = 12.dp)) {
         PanelHead("活动热力图", "时区 $tz")
         Spacer(Modifier.height(8.dp))
         Row(
-            Modifier.clip(RoundedCornerShape(999.dp)).background(cm.brand25).padding(3.dp),
+            Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(cm.brand25)
+                .padding(3.dp)
+                .selectableGroup(),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             listOf("日", "周", "月").forEachIndexed { i, label ->
@@ -54,7 +60,7 @@ fun HistoryBody(state: UiState, onActView: (Int) -> Unit, onMore: () -> Unit) {
                     modifier = Modifier
                         .clip(RoundedCornerShape(999.dp))
                         .background(if (on) cm.card else androidx.compose.ui.graphics.Color.Transparent)
-                        .clickable { onActView(i) }
+                        .selectable(selected = on, role = Role.Tab, onClick = { onActView(i) })
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                 )
             }
@@ -102,7 +108,9 @@ fun HistoryBody(state: UiState, onActView: (Int) -> Unit, onMore: () -> Unit) {
             Text("采样覆盖率 ${String.format("%.1f", it)}%", color = cm.mute, fontSize = 12.sp)
         }
     }
-    Spacer(Modifier.height(12.dp))
+    }
+    item("archive") {
+    val cm = CmColorsCurrent
     Panel {
         PanelHead("日归档", "最多保留 ${370} 天")
         Spacer(Modifier.height(8.dp))
@@ -133,5 +141,6 @@ fun HistoryBody(state: UiState, onActView: (Int) -> Unit, onMore: () -> Unit) {
                 Text(if (state.historyLoading) "加载中…" else "加载更多")
             }
         }
+    }
     }
 }

@@ -1,7 +1,8 @@
 package io.github.iroha1145.cloudmonitor.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,13 +26,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import coil.decode.SvgDecoder
 import coil.request.ImageRequest
 import io.github.iroha1145.cloudmonitor.data.Format
 import io.github.iroha1145.cloudmonitor.data.logoAssetPath
@@ -94,7 +95,8 @@ fun PeriodSeg(selected: Period, onSelect: (Period) -> Unit) {
         Modifier
             .clip(RoundedCornerShape(999.dp))
             .background(cm.brand25)
-            .padding(3.dp),
+            .padding(3.dp)
+            .selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Period.entries.forEach { p ->
@@ -107,7 +109,7 @@ fun PeriodSeg(selected: Period, onSelect: (Period) -> Unit) {
                 modifier = Modifier
                     .clip(RoundedCornerShape(999.dp))
                     .background(if (on) cm.card else Color.Transparent)
-                    .clickable { onSelect(p) }
+                    .selectable(selected = on, role = Role.Tab, onClick = { onSelect(p) })
                     .padding(horizontal = 10.dp, vertical = 6.dp),
             )
         }
@@ -122,9 +124,8 @@ fun ClientLogo(name: String?, size: Dp = 16.dp, tint: Color = CmColorsCurrent.in
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
                 .data(path)
-                .decoderFactory(SvgDecoder.Factory())
                 .build(),
-            contentDescription = null,
+            contentDescription = name,
             modifier = Modifier.size(size),
             contentScale = ContentScale.Fit,
             colorFilter = ColorFilter.tint(tint),

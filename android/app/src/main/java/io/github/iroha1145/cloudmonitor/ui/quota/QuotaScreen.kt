@@ -7,8 +7,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -23,18 +23,18 @@ import io.github.iroha1145.cloudmonitor.ui.components.QuotaRing
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
 import io.github.iroha1145.cloudmonitor.vm.UiState
 
-@Composable
-fun QuotaBody(state: UiState) {
+fun LazyListScope.quotaItems(state: UiState) {
     val ov = state.overview
     val limits = ov?.limits.orEmpty()
     val subs = state.subscriptions?.subscriptions.orEmpty()
-    val cm = CmColorsCurrent
     if (limits.isEmpty() && subs.isEmpty()) {
-        Panel { EmptyHint("暂无配额与订阅数据") }
+        item { Panel { EmptyHint("暂无配额与订阅数据") } }
         return
     }
     if (limits.isNotEmpty()) {
-        Panel {
+        item("limits") {
+        val cm = CmColorsCurrent
+        Panel(Modifier.padding(bottom = 12.dp)) {
             PanelHead("订阅配额", "各 provider 账户的窗口用量与余额")
             Spacer(Modifier.height(8.dp))
             limits.forEach { l ->
@@ -91,9 +91,11 @@ fun QuotaBody(state: UiState) {
                 }
             }
         }
-        Spacer(Modifier.height(12.dp))
+        }
     }
     if (subs.isNotEmpty()) {
+        item("subs") {
+        val cm = CmColorsCurrent
         Panel {
             PanelHead("订阅清单", state.subscriptions?.updatedAt?.let { "更新于 ${Format.relTime(it)}" } ?: "")
             Spacer(Modifier.height(8.dp))
@@ -114,6 +116,7 @@ fun QuotaBody(state: UiState) {
                     }
                 }
             }
+        }
         }
     }
 }

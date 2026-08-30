@@ -37,6 +37,8 @@ data class UiState(
     val demo: Boolean = false,
     val hubUrl: String = "",
     val token: String = "",
+    val encryptionAvailable: Boolean = true,
+    val sessionWarning: String? = null,
     val dark: Boolean? = null,
     val tab: AppTab = AppTab.Overview,
     val loading: Boolean = false,
@@ -63,13 +65,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val hub = HubClient()
     private var poll: Job? = null
     private var demoRng = Random.Default
+    private var sessionToken: String = if (store.signedIn && !store.demo) store.token else ""
 
     private val _state = MutableStateFlow(
         UiState(
             signedIn = store.signedIn,
             demo = store.demo,
             hubUrl = store.hubUrl,
-            token = if (store.signedIn && !store.demo) store.token else "",
+            token = "",
+            encryptionAvailable = store.encryptionAvailable,
             dark = when (store.darkOverride) {
                 "dark" -> true
                 "light" -> false
@@ -104,11 +108,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun enterDemo() {
         demoRng = Random.Default
-        store.demo = true
-        store.signedIn = true
-        store.token = ""
+        sessionToken = ""
+        store.persistSession(demoMode = true, accessToken = "")
         _state.update {
-            it.copy(signedIn = true, demo = true, gateError = null, error = null, tab = AppTab.Overview)
+            it.copy(
+                signedIn = true,
+                demo = true,
+                token = "",
+                gateError = null,
+                error = null,
+                sessionWarning = null,
+                tab = AppTab.Overview,
+            )
         }
         refresh(initial = true)
         poll?.cancel()
@@ -129,19 +140,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(loading = true, gateError = null) }
             try {
                 val ov = withContext(Dispatchers.IO) { hub.overview(url, token) }
+                sessionToken = token
                 store.hubUrl = HubClient.normalizeBase(url)
-                store.token = token
-                store.demo = false
-                store.signedIn = true
+                store.persistSession(demoMode = false, accessToken = token)
+                val warn = if (store.encryptionAvailable) null else "系统密钥库不可用，本次不会记住密钥"
                 _state.update {
                     it.copy(
                         signedIn = true,
                         demo = false,
                         hubUrl = store.hubUrl,
+                        token = "",
                         loading = false,
                         overview = ov,
                         lastUpdated = System.currentTimeMillis(),
                         tab = AppTab.Overview,
+                        sessionWarning = warn,
                     )
                 }
                 loadAux(store.hubUrl, token, false)
@@ -156,11 +169,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun logout() {
         poll?.cancel()
+        sessionToken = ""
         store.clearSecrets()
         _state.update {
             UiState(
                 signedIn = false,
                 hubUrl = store.hubUrl,
+                encryptionAvailable = store.encryptionAvailable,
                 dark = it.dark,
             )
         }
@@ -189,7 +204,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         )
                     }
                 } else {
-                    val ov = withContext(Dispatchers.IO) { hub.overview(s.hubUrl, store.token) }
+                    val ov = withContext(Dispatchers.IO) { hub.overview(s.hubUrl, accessToken()) }
                     _state.update {
                         it.copy(
                             overview = ov,
@@ -198,7 +213,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             lastUpdated = System.currentTimeMillis(),
                         )
                     }
-                    loadAux(s.hubUrl, store.token, false)
+                    loadAux(s.hubUrl, accessToken(), false)
                 }
             } catch (e: ApiException) {
                 if (e.status == 401 || e.status == 403) {
@@ -222,7 +237,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val page = if (s.demo) {
                     DemoCatalog.historyPage(s.historyCursor, rng = demoRng)
                 } else {
-                    withContext(Dispatchers.IO) { hub.historyDaily(s.hubUrl, store.token, s.historyCursor) }
+                    withContext(Dispatchers.IO) { hub.historyDaily(s.hubUrl, accessToken(), s.historyCursor) }
                 }
                 _state.update {
                     it.copy(
@@ -237,6 +252,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
+    private fun accessToken(): String = sessionToken.ifBlank { store.token }
 
     private suspend fun loadAux(url: String, token: String, demo: Boolean) {
         if (demo) return

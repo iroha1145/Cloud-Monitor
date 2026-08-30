@@ -2,6 +2,8 @@
 
 APK 由 `.github/workflows/build-apk.yml` 在 GitHub Actions 云端构建，本机无需 JDK / Android SDK。这是原生 Material 客户端，直接请求 `/api/v1/tm/*`，不是 WebView / TWA 套壳。
 
+Release 会开 R8 压缩与资源收缩；图标只用到的十来个矢量路径，不打包 `material-icons-extended`。
+
 ## 最低要求
 
 - Android 9（API 28）及以上
@@ -11,7 +13,9 @@ APK 由 `.github/workflows/build-apk.yml` 在 GitHub Actions 云端构建，本�
 
 1. **Actions → build-apk → Run workflow**（PR 改动 `android/` 时也会自动跑）。
 2. 完成后下载 Artifact：`cloud-monitor-apk` 或调试签名的 `cloud-monitor-apk-debug`。
-3. 传到手机安装。首次打开可点「先看演示数据」，或填面板 HTTPS 地址 + `ACCESS_TOKEN`。
+3. 传到手机安装。首次打开可点「先看演示数据」，或填面板 HTTPS 地址 + `ACCESS_TOKEN`。局域网 HTTP 可用，登录页会提示明文风险。
+
+访问密钥写入系统密钥库加密存储；若设备无法启用密钥库，本次登录不会把密钥写进磁盘。
 
 ## 签名
 

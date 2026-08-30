@@ -1,7 +1,7 @@
 package io.github.iroha1145.cloudmonitor.data
 
 import java.time.Instant
-import java.time.ZoneOffset
+import java.time.ZoneId
 import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.roundToInt
@@ -20,16 +20,15 @@ object DemoCatalog {
     private val CACHE_HIT = mapOf("claude-opus-4.1" to 0.62, "claude-sonnet-4.5" to 0.39, "gpt-5-codex" to 0.17)
     private val PROJECTS = listOf("cloud-monitor", "stitch-ui", "data-pipeline")
     private const val DAY = 86_400_000L
-    private const val TZ_OFFSET = 8 * 3_600_000L
+
+    private fun demoZone(): ZoneId = ZoneId.systemDefault()
 
     private fun Random.rand(a: Double, b: Double) = a + nextDouble() * (b - a)
     private fun Random.randInt(a: Int, b: Int) = nextInt(a, b + 1)
     private fun clamp0(v: Double) = max(0.0, kotlin.math.round(v))
 
-    private fun cnDay(offset: Int, now: Long): String {
-        val t = Instant.ofEpochMilli(now + TZ_OFFSET - offset * DAY)
-        return t.atZone(ZoneOffset.UTC).toLocalDate().toString()
-    }
+    private fun cnDay(offset: Int, now: Long): String =
+        Instant.ofEpochMilli(now).atZone(demoZone()).toLocalDate().minusDays(offset.toLong()).toString()
 
     private fun utcHour(offsetMs: Long, now: Long): String =
         Instant.ofEpochMilli(now - offsetMs).toString()
@@ -40,7 +39,7 @@ object DemoCatalog {
         val out = ArrayList<Hist>(370)
         for (i in 369 downTo 1) {
             val t = now - i * DAY
-            val dow = Instant.ofEpochMilli(t + TZ_OFFSET).atZone(ZoneOffset.UTC).dayOfWeek.value
+            val dow = Instant.ofEpochMilli(t).atZone(demoZone()).dayOfWeek.value
             val weekend = dow >= 6
             val weekday = if (weekend) rng.rand(0.34, 0.58) else rng.rand(0.86, 1.18)
             val growth = 0.55 + (1 - i / 370.0) * 0.75
@@ -201,7 +200,7 @@ object DemoCatalog {
         val daily = history.takeLast(89).map { DailyPoint(it.day, it.tokens, it.perModel) } +
             DailyPoint(cnDay(0, now), todayTokens, todayModels)
 
-        val nowHour = Instant.ofEpochMilli(now + TZ_OFFSET).atZone(ZoneOffset.UTC).hour
+        val nowHour = Instant.ofEpochMilli(now).atZone(demoZone()).hour
         val weights = (0 until 24).map { h ->
             if (h > nowHour) 0.0
             else {
@@ -224,8 +223,8 @@ object DemoCatalog {
             val status: String, val wsl: String?,
         )
         val devicesRaw = listOf(
-            DevRaw("dev-mac-9f2ac1", "MacBook-Pro.local", "darwin", "macOS", "15.5", "1.4.2", "node v22.11.0", 300_000.0, rng.randInt(1, 4) * 60_000L, CLIENTS, 0.52, false, true, "Asia/Shanghai", mapOf("claude" to "healthy", "codex" to "healthy", "cursor" to "warn"), "3 个工具采集中", null),
-            DevRaw("dev-win-47bd90", "Win11-Desktop", "win32", "Windows 11", "23H2", "1.4.2", "node v20.18.1", 300_000.0, rng.randInt(5, 9) * 60_000L, listOf("claude", "codex"), 0.31, false, true, "Asia/Shanghai", mapOf("claude" to "healthy", "codex" to "healthy"), "2 个工具采集中", "WSL2 运行中"),
+            DevRaw("dev-mac-9f2ac1", "MacBook-Pro.local", "darwin", "macOS", "15.5", "1.4.2", "node v22.11.0", 300_000.0, rng.randInt(1, 4) * 60_000L, CLIENTS, 0.52, false, true, demoZone().id, mapOf("claude" to "healthy", "codex" to "healthy", "cursor" to "warn"), "3 个工具采集中", null),
+            DevRaw("dev-win-47bd90", "Win11-Desktop", "win32", "Windows 11", "23H2", "1.4.2", "node v20.18.1", 300_000.0, rng.randInt(5, 9) * 60_000L, listOf("claude", "codex"), 0.31, false, true, demoZone().id, mapOf("claude" to "healthy", "codex" to "healthy"), "2 个工具采集中", "WSL2 运行中"),
             DevRaw("dev-ubu-e0538a", "ubuntu-server", "linux", "Ubuntu", "22.04 LTS", "1.3.7", "node v20.11.0", 600_000.0, rng.randInt(150, 220) * 60_000L, listOf("codex"), 0.17, true, false, "UTC", mapOf("codex" to "stale"), "采集暂停（设备离线）", null),
         )
         fun split(p: PeriodTotals, r: Double) = PeriodTotals(
@@ -304,17 +303,17 @@ object DemoCatalog {
         return Overview(
             generatedAt = Instant.ofEpochMilli(now).toString(),
             staleAfterMs = 600_000,
-            dashboardTimeZone = "Asia/Shanghai",
+            dashboardTimeZone = demoZone().id,
             features = Features(trendModels = true, activityHourly = true, subscriptions = true, providerStatus = true, historyDaily = true),
             totals = totals,
             devices = devices,
             trend = trend,
             trendModels = trendModels,
             activity = Activity(
-                timeZone = "Asia/Shanghai",
+                timeZone = demoZone().id,
                 hourly = hourly,
                 hourlyDay = cnDay(0, now),
-                hourlyToday = HourlyToday(cnDay(0, now), "Asia/Shanghai", hourly),
+                hourlyToday = HourlyToday(cnDay(0, now), demoZone().id, hourly),
                 daily = daily,
                 coverage = Coverage(
                     firstSampleAt = utcHour(6 * 3_600_000, now),
@@ -326,7 +325,7 @@ object DemoCatalog {
                 ),
             ),
             dashboardPeriod = DashboardPeriod(
-                timeZone = "Asia/Shanghai",
+                timeZone = demoZone().id,
                 today = PeriodKey(cnDay(0, now), Instant.ofEpochMilli(now + DAY).toString()),
                 month = PeriodKey(thisMonth, Instant.ofEpochMilli(now + 10 * DAY).toString()),
             ),
@@ -364,7 +363,7 @@ object DemoCatalog {
         val providers = catalog.mapNotNull { (id, match, nameUrl) ->
             val observed = names.filter { match.containsMatchIn(it) }.distinct()
             if (observed.isEmpty()) null
-            else ProviderCard(id, observed, nameUrl.first, "operational", "All Systems Operational", iso, false, null, nameUrl.second)
+            else ProviderCard(id, observed, nameUrl.first, "operational", "运行正常", iso, false, null, nameUrl.second)
         }
         return ProviderStatusPayload(1, providers, false)
     }
@@ -389,7 +388,7 @@ object DemoCatalog {
             nextCursor = if (more && page.isNotEmpty()) page.last().day else null,
             hasMore = more,
             dayBasis = "device-local",
-            dashboardTimeZone = "Asia/Shanghai",
+            dashboardTimeZone = demoZone().id,
             retentionDays = 370,
         )
     }

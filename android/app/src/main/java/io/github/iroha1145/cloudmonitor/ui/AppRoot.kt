@@ -12,18 +12,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AccountBalanceWallet
-import androidx.compose.material.icons.outlined.Computer
-import androidx.compose.material.icons.outlined.DarkMode
-import androidx.compose.material.icons.outlined.GridView
-import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.LightMode
-import androidx.compose.material.icons.outlined.Logout
-import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -33,8 +25,12 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,11 +39,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.github.iroha1145.cloudmonitor.ui.devices.DevicesBody
+import io.github.iroha1145.cloudmonitor.ui.devices.devicesItems
 import io.github.iroha1145.cloudmonitor.ui.gate.GateScreen
-import io.github.iroha1145.cloudmonitor.ui.history.HistoryBody
-import io.github.iroha1145.cloudmonitor.ui.overview.OverviewBody
-import io.github.iroha1145.cloudmonitor.ui.quota.QuotaBody
+import io.github.iroha1145.cloudmonitor.ui.history.historyItems
+import io.github.iroha1145.cloudmonitor.ui.overview.overviewItems
+import io.github.iroha1145.cloudmonitor.ui.quota.quotaItems
 import io.github.iroha1145.cloudmonitor.ui.theme.CloudMonitorTheme
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
 import io.github.iroha1145.cloudmonitor.vm.AppTab
@@ -56,10 +52,10 @@ import io.github.iroha1145.cloudmonitor.vm.AppViewModel
 private data class TabSpec(val tab: AppTab, val label: String, val icon: ImageVector)
 
 private val TABS = listOf(
-    TabSpec(AppTab.Overview, "概览", Icons.Outlined.GridView),
-    TabSpec(AppTab.Devices, "设备", Icons.Outlined.Computer),
-    TabSpec(AppTab.Quota, "配额", Icons.Outlined.AccountBalanceWallet),
-    TabSpec(AppTab.History, "历史", Icons.Outlined.History),
+    TabSpec(AppTab.Overview, "概览", AppIcons.GridView),
+    TabSpec(AppTab.Devices, "设备", AppIcons.Computer),
+    TabSpec(AppTab.Quota, "配额", AppIcons.AccountBalanceWallet),
+    TabSpec(AppTab.History, "历史", AppIcons.History),
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -81,12 +77,29 @@ fun AppRoot(vm: AppViewModel) {
             )
         } else {
             val cm = CmColorsCurrent
+            var confirmLogout by remember { mutableStateOf(false) }
             val titles = mapOf(
-                AppTab.Overview to ("概览" to "CLOUD MONITOR · 实时用量全景"),
-                AppTab.Devices to ("设备" to "DEVICES · 上报设备与健康度"),
-                AppTab.Quota to ("配额与订阅" to "ACCOUNTS · 配额窗口与订阅清单"),
-                AppTab.History to ("历史" to "HISTORY · 活动热力与日归档"),
+                AppTab.Overview to ("概览" to "实时用量全景"),
+                AppTab.Devices to ("设备" to "上报设备与健康度"),
+                AppTab.Quota to ("配额与订阅" to "配额窗口与订阅清单"),
+                AppTab.History to ("历史" to "活动热力与日归档"),
             )
+            if (confirmLogout) {
+                AlertDialog(
+                    onDismissRequest = { confirmLogout = false },
+                    title = { Text("退出登录") },
+                    text = { Text(if (state.demo) "将离开演示数据。" else "将清除本机保存的访问密钥。") },
+                    confirmButton = {
+                        TextButton({
+                            confirmLogout = false
+                            vm.logout()
+                        }) { Text("退出") }
+                    },
+                    dismissButton = {
+                        TextButton({ confirmLogout = false }) { Text("取消") }
+                    },
+                )
+            }
             Scaffold(
                 containerColor = cm.canvas,
                 topBar = {
@@ -116,15 +129,18 @@ fun AppRoot(vm: AppViewModel) {
                                 Spacer(Modifier.width(4.dp))
                             }
                             IconButton({ vm.toggleDark(systemDark) }) {
-                                Icon(if (dark) Icons.Outlined.LightMode else Icons.Outlined.DarkMode, "夜间模式", tint = cm.ink2)
+                                Icon(if (dark) AppIcons.LightMode else AppIcons.DarkMode, "夜间模式", tint = cm.ink2)
                             }
                             IconButton({ vm.refresh() }) {
                                 if (state.refreshing) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = cm.brand)
-                                else Icon(Icons.Outlined.Refresh, "刷新", tint = cm.ink2)
+                                else Icon(AppIcons.Refresh, "刷新", tint = cm.ink2)
                             }
-                            IconButton(vm::logout) {
-                                Icon(Icons.Outlined.Logout, "退出", tint = cm.ink2)
+                            IconButton({ confirmLogout = true }) {
+                                Icon(AppIcons.Logout, "退出登录", tint = cm.ink2)
                             }
+                        }
+                        state.sessionWarning?.let {
+                            Text(it, color = cm.warnInk, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                         }
                         state.error?.let {
                             Text(it, color = cm.crit, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
@@ -155,23 +171,23 @@ fun AppRoot(vm: AppViewModel) {
                     if (state.loading && state.overview == null) {
                         CircularProgressIndicator(Modifier.align(Alignment.Center), color = cm.brand)
                     } else {
-                        Column(
-                            Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
-                                .padding(16.dp),
+                        val listState = remember(state.tab) { LazyListState() }
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(16.dp),
                         ) {
                             when (state.tab) {
-                                AppTab.Overview -> OverviewBody(
+                                AppTab.Overview -> overviewItems(
                                     state,
                                     vm::setModelPeriod,
                                     vm::setClientPeriod,
                                     vm::setMxPeriod,
                                     vm::setMxCost,
                                 )
-                                AppTab.Devices -> DevicesBody(state)
-                                AppTab.Quota -> QuotaBody(state)
-                                AppTab.History -> HistoryBody(state, vm::setActView, vm::loadMoreHistory)
+                                AppTab.Devices -> devicesItems(state)
+                                AppTab.Quota -> quotaItems(state)
+                                AppTab.History -> historyItems(state, vm::setActView, vm::loadMoreHistory)
                             }
                         }
                     }

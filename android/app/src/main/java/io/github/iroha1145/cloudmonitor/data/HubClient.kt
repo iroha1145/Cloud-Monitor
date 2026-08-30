@@ -30,19 +30,26 @@ class HubClient(
         get(baseUrl, "/api/v1/tm/provider-status", token)
 
     fun historyDaily(baseUrl: String, token: String, cursor: String?): HistoryPage {
-        val q = buildString {
-            append("/api/v1/tm/history/daily?limit=30")
-            if (!cursor.isNullOrBlank()) append("&cursor=").append(cursor)
+        val query = buildMap {
+            put("limit", "30")
+            if (!cursor.isNullOrBlank()) put("cursor", cursor)
         }
-        return get(baseUrl, q, token)
+        return get(baseUrl, "/api/v1/tm/history/daily", token, query)
     }
 
-    private inline fun <reified T> get(baseUrl: String, path: String, token: String): T {
-        val root = normalizeBase(baseUrl)
-        val url = (root + path).toHttpUrlOrNull()
+    private inline fun <reified T> get(
+        baseUrl: String,
+        path: String,
+        token: String,
+        query: Map<String, String> = emptyMap(),
+    ): T {
+        val root = normalizeBase(baseUrl).toHttpUrlOrNull()
             ?: throw ApiException(0, "面板地址无效")
+        val builder = root.newBuilder()
+        path.trim('/').split('/').filter { it.isNotEmpty() }.forEach { builder.addPathSegment(it) }
+        query.forEach { (k, v) -> builder.addQueryParameter(k, v) }
         val req = Request.Builder()
-            .url(url)
+            .url(builder.build())
             .header("Accept", "application/json")
             .header("Authorization", "Bearer $token")
             .get()

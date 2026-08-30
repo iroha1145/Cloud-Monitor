@@ -13,12 +13,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.DarkMode
-import androidx.compose.material.icons.outlined.Key
-import androidx.compose.material.icons.outlined.Language
-import androidx.compose.material.icons.outlined.LightMode
-import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -40,6 +34,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.iroha1145.cloudmonitor.ui.AppIcons
 import io.github.iroha1145.cloudmonitor.ui.theme.Brand
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
 import io.github.iroha1145.cloudmonitor.vm.UiState
@@ -64,7 +59,7 @@ fun GateScreen(
     ) {
         IconButton(onToggleDark, Modifier.align(Alignment.TopEnd)) {
             Icon(
-                if (dark) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
+                if (dark) AppIcons.LightMode else AppIcons.DarkMode,
                 contentDescription = "夜间模式",
                 tint = cm.ink2,
             )
@@ -91,7 +86,10 @@ fun GateScreen(
             Text("云端用量面板", color = cm.ink, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(6.dp))
             Text(
-                "原生客户端直连你的 Cloud Monitor 面板。密钥只存在本机，可用系统密钥库加密。",
+                if (state.encryptionAvailable)
+                    "原生客户端直连你的 Cloud Monitor 面板。访问密钥用系统密钥库加密后只存在本机。"
+                else
+                    "原生客户端直连你的 Cloud Monitor 面板。当前设备无法启用系统密钥库，登录后不会记住密钥。",
                 color = cm.mute,
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center,
@@ -104,7 +102,7 @@ fun GateScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("面板地址") },
                 placeholder = { Text("https://panel.example.com") },
-                leadingIcon = { Icon(Icons.Outlined.Language, null) },
+                leadingIcon = { Icon(AppIcons.Language, "面板地址") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 colors = fieldColors(),
@@ -117,7 +115,7 @@ fun GateScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("访问密钥") },
                 placeholder = { Text("ACCESS_TOKEN") },
-                leadingIcon = { Icon(Icons.Outlined.Key, null) },
+                leadingIcon = { Icon(AppIcons.Key, "访问密钥") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 colors = fieldColors(),
@@ -126,6 +124,10 @@ fun GateScreen(
             if (!state.gateError.isNullOrBlank()) {
                 Spacer(Modifier.height(8.dp))
                 Text(state.gateError, color = cm.crit, fontSize = 13.sp)
+            }
+            if (state.hubUrl.trim().startsWith("http://", ignoreCase = true)) {
+                Spacer(Modifier.height(8.dp))
+                Text("当前为 HTTP，局域网内可被中间人读取密钥。公网请用 HTTPS。", color = cm.warnInk, fontSize = 12.sp)
             }
             Spacer(Modifier.height(16.dp))
             Button(
@@ -144,7 +146,7 @@ fun GateScreen(
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(14.dp),
             ) {
-                Icon(Icons.Outlined.PlayArrow, null, Modifier.size(18.dp))
+                Icon(AppIcons.PlayArrow, "演示", Modifier.size(18.dp))
                 Spacer(Modifier.size(6.dp))
                 Text("先看演示数据")
             }

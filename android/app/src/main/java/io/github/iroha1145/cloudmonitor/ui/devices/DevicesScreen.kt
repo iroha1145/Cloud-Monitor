@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,26 +31,26 @@ import io.github.iroha1145.cloudmonitor.ui.components.StatusDot
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
 import io.github.iroha1145.cloudmonitor.vm.UiState
 
-@Composable
-fun DevicesBody(state: UiState) {
+fun LazyListScope.devicesItems(state: UiState) {
     val ov = state.overview ?: return
-    val cm = CmColorsCurrent
     val onlineMap = ov.devices.associate { it.deviceId to deviceOnline(it, ov) }
     val online = onlineMap.values.count { it == true }
     val clients = ov.devices.flatMap { it.trackedClients }.toSet().size
     val todaySum = ov.devices.sumOf { it.today.totalTokens }
 
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        SumPill("在线 $online / ${ov.devices.size}")
-        SumPill("客户端 $clients")
-        SumPill("今日 ${Format.fmtCompact(todaySum)}")
+    item("sum") {
+        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SumPill("在线 $online / ${ov.devices.size}")
+            SumPill("客户端 $clients")
+            SumPill("今日 ${Format.fmtCompact(todaySum)}")
+        }
     }
-    Spacer(Modifier.height(12.dp))
     if (ov.devices.isEmpty()) {
-        Panel { EmptyHint("还没有设备数据") }
+        item("empty") { Panel { EmptyHint("还没有设备数据") } }
         return
     }
-    ov.devices.forEach { d ->
+    items(ov.devices, key = { it.deviceId }) { d ->
+        val cm = CmColorsCurrent
         val on = onlineMap[d.deviceId]
         val tz = ov.periodWindowsByDevice[d.deviceId]?.timeZone
         val diag = ov.diagnostics.find { it.deviceId == d.deviceId }

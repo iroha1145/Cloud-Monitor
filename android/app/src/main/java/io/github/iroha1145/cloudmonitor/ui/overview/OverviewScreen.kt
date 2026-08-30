@@ -3,6 +3,7 @@ package io.github.iroha1145.cloudmonitor.ui.overview
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,21 +51,18 @@ import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
 import io.github.iroha1145.cloudmonitor.vm.Period
 import io.github.iroha1145.cloudmonitor.vm.UiState
 
-@Composable
-fun OverviewBody(state: UiState, onModelPeriod: (Period) -> Unit, onClientPeriod: (Period) -> Unit, onMxPeriod: (Period) -> Unit, onMxCost: (Boolean) -> Unit) {
+fun LazyListScope.overviewItems(state: UiState, onModelPeriod: (Period) -> Unit, onClientPeriod: (Period) -> Unit, onMxPeriod: (Period) -> Unit, onMxCost: (Boolean) -> Unit) {
     val ov = state.overview ?: return
-    val cm = CmColorsCurrent
     val modelColors = io.github.iroha1145.cloudmonitor.data.assignColors(rankedNames(ov.totals.allTime.models.ifEmpty { ov.totals.today.models }))
     val clientColors = io.github.iroha1145.cloudmonitor.data.assignColors(rankedNames(ov.totals.allTime.clients.ifEmpty { ov.totals.today.clients }))
 
-    KpiBlock(ov)
+    item("kpi") { Column(Modifier.padding(bottom = 12.dp)) { KpiBlock(ov) } }
     if (state.providers.isNotEmpty()) {
-        Spacer(Modifier.height(12.dp))
-        ProviderPanel(state.providers)
+        item("providers") { Box(Modifier.padding(bottom = 12.dp)) { ProviderPanel(state.providers) } }
     }
-    Spacer(Modifier.height(12.dp))
     val rows = trendRows(ov)
-    Panel {
+    item("trend") {
+    Panel(Modifier.padding(bottom = 12.dp)) {
         PanelHead("近 30 天趋势", "每日 token 合计")
         Spacer(Modifier.height(12.dp))
         if (rows.none { it.total > 0 }) EmptyHint("暂无趋势数据")
@@ -76,8 +74,9 @@ fun OverviewBody(state: UiState, onModelPeriod: (Period) -> Unit, onClientPeriod
             StackedTrendChart(rows, modelColors, top)
         }
     }
-    Spacer(Modifier.height(12.dp))
-    Panel {
+    }
+    item("models") {
+    Panel(Modifier.padding(bottom = 12.dp)) {
         PanelHead("模型分布", "按 token 占比", trailing = { PeriodSeg(state.modelPeriod, onModelPeriod) })
         Spacer(Modifier.height(12.dp))
         val per = ov.totals.period(state.modelPeriod.key)
@@ -85,8 +84,10 @@ fun OverviewBody(state: UiState, onModelPeriod: (Period) -> Unit, onClientPeriod
         if (slices.isEmpty()) EmptyHint("该周期暂无模型数据")
         else DonutChart(slices, modelColors, per.totalTokens)
     }
-    Spacer(Modifier.height(12.dp))
-    Panel {
+    }
+    item("clients") {
+    val cm = CmColorsCurrent
+    Panel(Modifier.padding(bottom = 12.dp)) {
         PanelHead("客户端分布", "条内为真实构成分段", trailing = { PeriodSeg(state.clientPeriod, onClientPeriod) })
         Spacer(Modifier.height(12.dp))
         val per = ov.totals.period(state.clientPeriod.key)
@@ -114,12 +115,14 @@ fun OverviewBody(state: UiState, onModelPeriod: (Period) -> Unit, onClientPeriod
             }
         }
     }
+    }
     val mxPer = ov.totals.period(state.mxPeriod.key)
     val mxClients = rankedNames(mxPer.clients).take(8)
     val mxModels = rankedNames(mxPer.models).take(8)
     if (mxClients.isNotEmpty() && mxModels.isNotEmpty()) {
-        Spacer(Modifier.height(12.dp))
-        Panel {
+        item("matrix") {
+        val cm = CmColorsCurrent
+        Panel(Modifier.padding(bottom = 12.dp)) {
             PanelHead("工具 × 模型矩阵", "色阶 = ${if (state.mxCost) "费用" else "tokens"}")
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -150,11 +153,13 @@ fun OverviewBody(state: UiState, onModelPeriod: (Period) -> Unit, onClientPeriod
                 if (state.mxCost) tokens / 1e6 * 6.4 else tokens
             }
         }
+        }
     }
     val sessions = ov.sessions.sortedByDescending { Format.parseMillis(it.lastUsedAt) ?: 0L }.take(5)
     if (sessions.isNotEmpty()) {
-        Spacer(Modifier.height(12.dp))
-        Panel {
+        item("sessions") {
+        val cm = CmColorsCurrent
+        Panel(Modifier.padding(bottom = 12.dp)) {
             PanelHead("会话明细", "最近使用的 ${sessions.size} 条 · 共 ${ov.sessionsMeta.sessionsTotal.coerceAtLeast(ov.sessions.size)} 条")
             Spacer(Modifier.height(8.dp))
             sessions.forEach { s ->
@@ -177,6 +182,7 @@ fun OverviewBody(state: UiState, onModelPeriod: (Period) -> Unit, onClientPeriod
                     Text(Format.fmtUsd(s.costUsd), color = cm.mute, fontSize = 12.sp)
                 }
             }
+        }
         }
     }
 }
@@ -280,7 +286,7 @@ private fun ProviderPanel(providers: List<ProviderCard>) {
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(p.name.ifBlank { Format.fmtProvider(p.provider) }, color = cm.ink, fontWeight = FontWeight.Medium)
-                    Text(p.description?.ifBlank { p.status } ?: p.status, color = cm.mute, fontSize = 12.sp)
+                    Text(Format.fmtStatusLine(p.status, p.description), color = cm.mute, fontSize = 12.sp)
                 }
                 val ok = p.status == "operational" && p.errorCode == null
                 Box(
@@ -289,7 +295,7 @@ private fun ProviderPanel(providers: List<ProviderCard>) {
                         .background(if (ok) cm.okBg else cm.warnBg)
                         .padding(horizontal = 8.dp, vertical = 3.dp),
                 ) {
-                    Text(if (ok) "正常" else p.status, color = if (ok) cm.okInk else cm.warnInk, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (ok) "正常" else Format.fmtStatusLabel(p.status), color = if (ok) cm.okInk else cm.warnInk, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
