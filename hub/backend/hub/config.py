@@ -101,7 +101,6 @@ class Settings:
     cm_github_repo: str = "iroha1145/Cloud-Monitor"
     cm_update_dir: Path | None = None
     github_api_token: str = ""
-    assetlinks_file: Path | None = None  # TWA 域名校验文件（/.well-known/assetlinks.json）
 
 
 def _int_env(name: str, default: int, *, minimum: int = 1, maximum: int | None = None) -> int:
@@ -246,18 +245,7 @@ def load_settings() -> Settings:
         cm_github_repo=_github_repo_env(),
         cm_update_dir=_update_dir_env(),
         github_api_token=(os.environ.get("GITHUB_TOKEN") or "").strip(),
-        assetlinks_file=_assetlinks_file_env(),
     )
-
-
-def _assetlinks_file_env() -> Path | None:
-    """TWA 域名校验文件：ASSETLINKS_FILE 显式指定，默认 data/assetlinks.json。"""
-    raw = os.environ.get("ASSETLINKS_FILE")
-    if raw:
-        return Path(raw).expanduser().resolve()
-    default = _default_database_path().parent / "assetlinks.json"
-    return default
-
 
 def _file_version() -> str:
     for candidate in (Path("/app/VERSION"), _project_root() / "VERSION"):

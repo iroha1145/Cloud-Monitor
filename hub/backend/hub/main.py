@@ -311,19 +311,6 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     def tm_redirect() -> RedirectResponse:
         return RedirectResponse(url="/", status_code=301)
 
-    # TWA 域名校验（安卓 APK 消除地址栏）：把 docs/twa/assetlinks.json.example
-    # 填好指纹后放到 data/assetlinks.json（或 ASSETLINKS_FILE 指定的路径）即可，
-    # 文件按请求读取，放入后无需重启。
-    assetlinks_path = settings.assetlinks_file
-
-    @app.get("/.well-known/assetlinks.json", include_in_schema=False)
-    def assetlinks() -> FileResponse:
-        if assetlinks_path is None or not assetlinks_path.is_file():
-            raise HTTPException(status_code=404, detail="assetlinks.json 未部署")
-        return FileResponse(
-            assetlinks_path, media_type="application/json", headers={"Cache-Control": "no-store"}
-        )
-
     @app.exception_handler(HTTPException)
     async def http_error(_request: Request, exc: HTTPException) -> JSONResponse:
         return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})

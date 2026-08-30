@@ -1,0 +1,163 @@
+package io.github.iroha1145.cloudmonitor.ui.gate
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import io.github.iroha1145.cloudmonitor.ui.theme.Brand
+import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
+import io.github.iroha1145.cloudmonitor.vm.UiState
+
+@Composable
+fun GateScreen(
+    state: UiState,
+    dark: Boolean,
+    onUrl: (String) -> Unit,
+    onToken: (String) -> Unit,
+    onLogin: () -> Unit,
+    onDemo: () -> Unit,
+    onToggleDark: () -> Unit,
+) {
+    val cm = CmColorsCurrent
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(cm.canvas)
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+    ) {
+        IconButton(onToggleDark, Modifier.align(Alignment.TopEnd)) {
+            Icon(
+                if (dark) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
+                contentDescription = "夜间模式",
+                tint = cm.ink2,
+            )
+        }
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 72.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(cm.card)
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(
+                Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Brush.linearGradient(listOf(Brand, Color(0xFF7F7DFC)))),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("☁", fontSize = 26.sp)
+            }
+            Spacer(Modifier.height(16.dp))
+            Text("云端用量面板", color = cm.ink, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "原生客户端直连你的 Cloud Monitor 面板。密钥只存在本机，可用系统密钥库加密。",
+                color = cm.mute,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center,
+                lineHeight = 18.sp,
+            )
+            Spacer(Modifier.height(20.dp))
+            OutlinedTextField(
+                value = state.hubUrl,
+                onValueChange = onUrl,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("面板地址") },
+                placeholder = { Text("https://panel.example.com") },
+                leadingIcon = { Icon(Icons.Outlined.Language, null) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                colors = fieldColors(),
+                shape = RoundedCornerShape(14.dp),
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = state.token,
+                onValueChange = onToken,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("访问密钥") },
+                placeholder = { Text("ACCESS_TOKEN") },
+                leadingIcon = { Icon(Icons.Outlined.Key, null) },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                colors = fieldColors(),
+                shape = RoundedCornerShape(14.dp),
+            )
+            if (!state.gateError.isNullOrBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(state.gateError, color = cm.crit, fontSize = 13.sp)
+            }
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = onLogin,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                enabled = !state.loading,
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Brand, contentColor = Color.White),
+            ) {
+                if (state.loading) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                else Text("进入面板", fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = onDemo,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Icon(Icons.Outlined.PlayArrow, null, Modifier.size(18.dp))
+                Spacer(Modifier.size(6.dp))
+                Text("先看演示数据")
+            }
+            Spacer(Modifier.height(8.dp))
+            Text("演示数据在设备本地生成，不访问任何服务器。", color = cm.mute, fontSize = 11.sp, textAlign = TextAlign.Center)
+        }
+    }
+}
+
+@Composable
+private fun fieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = Brand,
+    unfocusedBorderColor = CmColorsCurrent.border,
+    focusedContainerColor = CmColorsCurrent.card,
+    unfocusedContainerColor = CmColorsCurrent.card,
+)

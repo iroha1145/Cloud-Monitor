@@ -1,24 +1,22 @@
-# 用 Bubblewrap 在 GitHub 云端构建 Cloud Monitor 的 TWA APK，本机无需 JDK/Android SDK。
+# 用 GitHub Actions 云端构建原生安卓 APK（Jetpack Compose），本机无需 JDK / Android SDK。
 #
-# 前置条件（Settings → Secrets and variables → Actions）：
-#   Variables:
-#     TWA_HOST_URL      面板 HTTPS 地址，如 https://panel.example.com（不带末尾斜杠）。
-#   Secrets（可选，正式签名用；不配则用 CI 临时调试 keystore，仅适合测试）：
-#     ANDROID_KEYSTORE_B64       keystore 文件的 base64（`openssl base64 -A -in release.keystore`）
+# 前置（Settings → Secrets and variables → Actions）：
+#   Secrets（可选，正式签名；不配则 CI 生成临时 keystore，Artifact 名带 -debug）：
+#     ANDROID_KEYSTORE_B64       keystore 的 base64
 #     ANDROID_KEYSTORE_PASSWORD  keystore 密码
+#     ANDROID_KEY_PASSWORD       密钥密码（可省略，默认与 keystore 密码相同）
 #     ANDROID_KEY_ALIAS          密钥别名（默认 cloudmonitor）
 #
-# 构建不访问线上面板：TWA 工程由仓库内 twa/twa-manifest.json 模板生成，
-# 图标在 CI 里由本地静态服务（hub/frontend）提供给 Bubblewrap 下载。
+# 产物只上传 Artifact，不创建 GitHub Release，避免干扰面板「检索更新」。
 name: build-apk
 
 on:
   workflow_dispatch:
-    inputs:
-      host:
-        description: "覆盖面板地址（留空则使用 Variable TWA_HOST_URL）"
-        required: false
-        type: string
+  pull_request:
+    paths:
+      - "android/**"
+      - ".github/workflows/build-apk.yml"
+      - "VERSION"
 
 permissions:
   contents: read
@@ -26,11 +24,9 @@ permissions:
 jobs:
   apk:
     runs-on: ubuntu-latest
-    env:
-      # Bubblewrap 签名密码只走环境变量，不写进 twa-manifest.json
-      BUBBLEWRAP_KEYSTORE_PASSWORD: cloudmonitor-ci
-      BUBBLEWRAP_KEY_PASSWORD: cloudmonitor-ci
-      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'cloudmonitor' }}
+    defaults:
+      run:
+        working-directory: android
     steps:
       - uses: actions/checkout@v4
 
@@ -38,86 +34,76 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+          cache: gradle
+          cache-dependency-path: android/gradle/libs.versions.toml
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
+      - name: 安装 Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: 解析面板地址（TWA_HOST_URL）
-        env:
-          HOST_INPUT: ${{ inputs.host }}
-          HOST_VAR: ${{ vars.TWA_HOST_URL }}
+      - name: 安装 compileSdk 35
+        working-directory: .
         run: |
-          HOST="${HOST_INPUT:-$HOST_VAR}"
-          if [ -z "$HOST" ]; then
-            echo "::error::未提供面板地址：请手动触发时填写 host 输入，或在 Settings → Secrets and variables → Actions → Variables 里设置 TWA_HOST_URL（HTTPS，不带末尾斜杠）。"
-            exit 1
-          fi
-          case "$HOST" in
-            https://*) : ;;
-            *) echo "::error::TWA 要求 HTTPS：'$HOST' 不是 https:// 地址"; exit 1 ;;
-          esac
-          echo "TWA_HOST_URL=$HOST" >> "$GITHUB_ENV"
-          echo "TWA_HOST_DOMAIN=${HOST#https://}" >> "$GITHUB_ENV"
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager --list | head -n 5 || true
 
-      - name: 安装 Bubblewrap（固定版本）
-        run: npm i -g @bubblewrap/cli@1.25.0
-
-      - name: 写入 Bubblewrap 配置（跳过 JDK/SDK 交互询问）
-        run: |
-          mkdir -p ~/.bubblewrap
-          printf '{"jdkPath": "%s", "androidSdkPath": "%s"}\n' "$JAVA_HOME" "$ANDROID_HOME" \
-            > ~/.bubblewrap/config.json
-          cat ~/.bubblewrap/config.json
-
-      - name: 启动本地静态服务（供 Bubblewrap 下载图标）
-        run: |
-          (cd hub/frontend && nohup python3 -m http.server 8788 >/dev/null 2>&1 &)
-          for i in $(seq 1 20); do
-            curl -fsS http://127.0.0.1:8788/static/icons/icon-512.png -o /dev/null && break
-            sleep 0.5
-          done
-
-      - name: 准备 TWA 工程（模板 + 地址替换 + keystore）
+      - name: 准备签名 keystore
+        working-directory: .
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
-          mkdir -p app
-          sed "s|__TWA_HOST__|$TWA_HOST_DOMAIN|" twa/twa-manifest.json > app/twa-manifest.json
-          cd app
-          PW="${BUBBLEWRAP_KEYSTORE_PASSWORD}"
-          if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > release.keystore
+          set -euo pipefail
+          KS="$RUNNER_TEMP/release.keystore"
+          ALIAS="${ANDROID_KEY_ALIAS:-cloudmonitor}"
+          if [ -n "${KEYSTORE_B64:-}" ]; then
+            if [ -z "${ANDROID_KEYSTORE_PASSWORD:-}" ]; then
+              echo "::error::配置了 ANDROID_KEYSTORE_B64 就必须同时配置 ANDROID_KEYSTORE_PASSWORD"
+              exit 1
+            fi
+            echo "$KEYSTORE_B64" | base64 -d > "$KS"
+            PW="$ANDROID_KEYSTORE_PASSWORD"
+            KEY_PW="${ANDROID_KEY_PASSWORD:-$PW}"
             echo "KEYSTORE_SOURCE=release" >> "$GITHUB_ENV"
           else
             echo "::warning::未配置 ANDROID_KEYSTORE_B64：使用 CI 临时调试 keystore 签名（每次构建指纹都不同，仅供测试安装）。"
-            keytool -genkeypair -v -keystore release.keystore -storepass "$PW" -keypass "$PW" \
-              -alias "$KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 10000 \
+            PW="cloudmonitor-ci"
+            KEY_PW="$PW"
+            keytool -genkeypair -v -keystore "$KS" -storepass "$PW" -keypass "$KEY_PW" \
+              -alias "$ALIAS" -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=Cloud Monitor, OU=Cloud-Monitor, O=iroha1145"
             echo "KEYSTORE_SOURCE=debug" >> "$GITHUB_ENV"
           fi
+          echo "ANDROID_KEYSTORE_PATH=$KS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$PW" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$KEY_PW" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
 
-      - name: 生成 Android 工程（bubblewrap update，非交互）
+      - name: 构建 Release APK（64 位）
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ env.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ env.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ env.ANDROID_KEY_ALIAS }}
         run: |
-          cd app
-          bubblewrap update --skipVersionUpgrade --manifest=twa-manifest.json --directory=.
+          chmod +x gradlew
+          VERSION_NAME=$(tr -d ' \n' < ../VERSION)
+          ./gradlew assembleRelease --no-daemon --stacktrace \
+            -PversionCode="${{ github.run_number }}" \
+            -PversionName="$VERSION_NAME"
+          ls -lh app/build/outputs/apk/release/
 
-      - name: 构建 APK / AAB（bubblewrap build，非交互）
+      - name: 打印签名指纹
+        working-directory: .
         run: |
-          cd app
-          bubblewrap build --manifest=twa-manifest.json --directory=.
-          ls -la app-release-signed.apk app-release-bundle.aab
+          keytool -list -v -keystore "$ANDROID_KEYSTORE_PATH" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" \
+            | grep -E "SHA256:|SHA1:" || true
 
-      - name: 打印签名指纹（用于 assetlinks.json）
-        run: |
-          cd app
-          keytool -list -v -keystore release.keystore \
-            -storepass "$BUBBLEWRAP_KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" | grep -E "SHA256:" || true
-
-      - name: 上传 Artifact（debug 签名时名称带后缀）
+      - name: 上传 Artifact
         uses: actions/upload-artifact@v4
         with:
           name: cloud-monitor-apk${{ env.KEYSTORE_SOURCE == 'release' && '' || '-debug' }}
-          path: |
-            app/app-release-signed.apk
-            app/app-release-bundle.aab
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error

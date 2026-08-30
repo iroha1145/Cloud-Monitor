@@ -9,7 +9,7 @@ agent-state.json
 *.sqlite3-wal
 .deploy-mode
 .DS_Store
-data/
+/data/
 hub/update-control/*.json
 hub/update-control/*.log
 hub/update-control/*.pid
@@ -22,3 +22,9 @@ playwright-report/
 test-results/
 .mimosa/
 .DS_Store
+*.apk
+*.aab
+*.keystore
+android/.gradle/
+android/**/build/
+android/local.properties

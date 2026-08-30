@@ -333,9 +333,9 @@ const reducedMotion = () =>
 
 /* ================= 常量与状态 ================= */
 const TOKEN_KEY = "cm_access_token";
-/* TWA/安装到主屏（standalone）没有"标签页会话"概念，进程被系统回收后
+/* 安装到主屏（standalone）没有标签页会话，进程被系统回收后
  * sessionStorage 会丢失，导致每次打开都要重输密钥；这类场景改用 localStorage。
- * 浏览器标签页里仍用 sessionStorage，保持"关闭标签页即清除"的隐私语义。 */
+ * 浏览器标签页里仍用 sessionStorage，保持「关闭标签页即清除」的隐私语义。 */
 const IS_STANDALONE = () =>
   window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
 const tokenStore = () => (IS_STANDALONE() ? localStorage : sessionStorage);
