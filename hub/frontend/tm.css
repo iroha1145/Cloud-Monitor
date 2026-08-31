@@ -788,7 +788,11 @@ a.pv-card:focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2
 .pv-card.lv-warn .pv-status { color: var(--warn-ink); background: var(--warn-bg); }
 .pv-card.lv-crit .pv-status { color: #c92a2a; background: var(--crit-bg); /* §13 axe：对比度 3.29<4.5 */ }
 .pv-card.lv-mute .pv-status { color: var(--mute); background: var(--bg); }
-.pv-desc { margin-top: 3px; font-size: 11.5px; color: var(--mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pv-desc {
+  margin-top: 3px; font-size: 11.5px; color: var(--mute);
+  overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2; line-clamp: 2; white-space: normal;
+}
 .pv-time { font-size: 10px; color: var(--mute); white-space: nowrap; margin-top: 2px; flex: none; }
 
 /* 构成语义色 */
