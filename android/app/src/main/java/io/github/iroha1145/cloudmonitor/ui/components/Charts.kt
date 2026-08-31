@@ -7,7 +7,6 @@ package io.github.iroha1145.cloudmonitor.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,6 +41,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -93,14 +94,9 @@ fun StackedTrendChart(
                     Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .combinedClickable(
-                            onClick = {
-                                tip.show(row.day, listOf("合计" to Format.fmtCompact(row.total)))
-                            },
-                            onLongClick = {
-                                tip.show(row.day, listOf("合计" to Format.fmtCompact(row.total)))
-                            },
-                        ),
+                        .onWindowPress(row.day, row.total) { pos ->
+                            tip.show(row.day, listOf("合计" to Format.fmtCompact(row.total)), pos)
+                        },
                     verticalArrangement = Arrangement.Bottom,
                 ) {
                     val hFrac = (row.total / max).toFloat().coerceIn(0f, 1f) * grow
@@ -181,28 +177,32 @@ fun DonutChart(
 
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(132.dp), contentAlignment = Alignment.Center) {
+            var donutLayout by remember { mutableStateOf<LayoutCoordinates?>(null) }
             Canvas(
                 Modifier
                     .fillMaxSize()
+                    .onGloballyPositioned { donutLayout = it }
                     .pointerInput(slices, grow) {
-                        detectTapGestures(
-                            onLongPress = { offset ->
-                                val cx = size.width / 2f
-                                val cy = size.height / 2f
-                                var deg = Math.toDegrees(
-                                    atan2((offset.y - cy).toDouble(), (offset.x - cx).toDouble()),
-                                )
-                                deg = (deg + 90.0 + 360.0) % 360.0
-                                var start = 0.0
-                                slices.forEach { (name, v) ->
-                                    val sweep = v / sum * 360.0 * grow
-                                    if (deg >= start && deg < start + sweep) {
-                                        tip.show(name, tipRows(name, v))
-                                        return@detectTapGestures
-                                    }
-                                    start += sweep
+                        fun openAt(offset: Offset) {
+                            val cx = size.width / 2f
+                            val cy = size.height / 2f
+                            var deg = Math.toDegrees(
+                                atan2((offset.y - cy).toDouble(), (offset.x - cx).toDouble()),
+                            )
+                            deg = (deg + 90.0 + 360.0) % 360.0
+                            var start = 0.0
+                            slices.forEach { (name, v) ->
+                                val sweep = v / sum * 360.0 * grow
+                                if (deg >= start && deg < start + sweep) {
+                                    tip.show(name, tipRows(name, v), donutLayout.toWindow(offset))
+                                    return
                                 }
-                            },
+                                start += sweep
+                            }
+                        }
+                        detectTapGestures(
+                            onTap = { openAt(it) },
+                            onLongPress = { openAt(it) },
                         )
                     },
             ) {
@@ -319,10 +319,9 @@ fun HeatCells(
                                     .aspectRatio(1f)
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(cm.hm[min(lv, cm.hm.lastIndex)])
-                                    .combinedClickable(
-                                        onClick = { tip.show(label, listOf("tokens" to Format.fmtCompact(v))) },
-                                        onLongClick = { tip.show(label, listOf("tokens" to Format.fmtCompact(v))) },
-                                    ),
+                                    .onWindowPress(label, v) { pos ->
+                                        tip.show(label, listOf("tokens" to Format.fmtCompact(v)), pos)
+                                    },
                                 contentAlignment = Alignment.Center,
                             ) {
                                 if (showLabel) {
@@ -357,10 +356,9 @@ fun SparkBars(values: List<Pair<String, Double>>, modifier: Modifier = Modifier)
                     .fillMaxHeight(h)
                     .clip(RoundedCornerShape(2.dp))
                     .background(if (v <= 0) cm.border else cm.brand)
-                    .combinedClickable(
-                        onClick = { tip.show(day, listOf("tokens" to Format.fmtCompact(v))) },
-                        onLongClick = { tip.show(day, listOf("tokens" to Format.fmtCompact(v))) },
-                    ),
+                    .onWindowPress(day, v) { pos ->
+                        tip.show(day, listOf("tokens" to Format.fmtCompact(v)), pos)
+                    },
             )
         }
     }
@@ -405,20 +403,13 @@ fun MatrixGrid(
                             .aspectRatio(1f)
                             .clip(RoundedCornerShape(6.dp))
                             .background(cm.hm[min(lv, cm.hm.lastIndex)])
-                            .combinedClickable(
-                                onClick = {
-                                    tip.show(
-                                        "$r × $c",
-                                        listOf((if (cost) "费用" else "tokens") to if (cost) Format.fmtUsd(v) else Format.fmtCompact(v)),
-                                    )
-                                },
-                                onLongClick = {
-                                    tip.show(
-                                        "$r × $c",
-                                        listOf((if (cost) "费用" else "tokens") to if (cost) Format.fmtUsd(v) else Format.fmtCompact(v)),
-                                    )
-                                },
-                            ),
+                            .onWindowPress("$r|$c|$v|$cost") { pos ->
+                                tip.show(
+                                    "$r × $c",
+                                    listOf((if (cost) "费用" else "tokens") to if (cost) Format.fmtUsd(v) else Format.fmtCompact(v)),
+                                    pos,
+                                )
+                            },
                     )
                 }
             }
