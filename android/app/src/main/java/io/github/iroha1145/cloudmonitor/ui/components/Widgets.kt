@@ -20,7 +20,6 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -289,14 +288,7 @@ fun EmptyHint(text: String) {
 @Composable
 fun Modifier.tipClick(title: String, rows: List<Pair<String, String>>): Modifier {
     val tip = LocalFloatTip.current
-    val haptic = LocalHapticFeedback.current
-    return combinedClickable(
-        onClick = { tip.show(title, rows) },
-        onLongClick = {
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            tip.show(title, rows)
-        },
-    )
+    return onWindowPress(title, rows) { pos -> tip.show(title, rows, pos) }
 }
 
 @Composable

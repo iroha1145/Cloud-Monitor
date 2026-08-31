@@ -6,11 +6,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "20"
       - name: 安装后端依赖
@@ -27,7 +27,7 @@ jobs:
         env:
           CM_BASELINE: ${{ github.workspace }}          # 后端基线路径（start-e2e-server.sh 会复制为 scratch 夹具）
           CM_E2E_PORT: "18787"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: evidence

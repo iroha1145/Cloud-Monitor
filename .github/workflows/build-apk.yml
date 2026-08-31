@@ -28,9 +28,9 @@ jobs:
       run:
         working-directory: android
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -38,7 +38,7 @@ jobs:
           cache-dependency-path: android/gradle/libs.versions.toml
 
       - name: 安装 Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: 安装 compileSdk 35
         working-directory: .
@@ -102,7 +102,7 @@ jobs:
             | grep -E "SHA256:|SHA1:" || true
 
       - name: 上传 Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           # 注意：GitHub 表达式里空串是 falsy，`&& '' ||` 会恒取回退值，两个分支都必须给非空串
           name: ${{ env.KEYSTORE_SOURCE == 'release' && 'cloud-monitor-apk' || 'cloud-monitor-apk-debug' }}
