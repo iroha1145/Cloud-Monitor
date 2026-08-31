@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -43,6 +44,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -338,6 +340,94 @@ fun HeatCells(
 }
 
 @Composable
+fun HeatWeekGrid(cells: List<Pair<String, Double>>) {
+    require(cells.size == 84)
+    val cm = CmColorsCurrent
+    val max = cells.filter { it.second >= 0 }.maxOfOrNull { it.second }?.coerceAtLeast(1.0) ?: 1.0
+    val tip = LocalFloatTip.current
+    val months = (0 until 12).map { w ->
+        val weekDays = (0 until 7).map { d -> cells[w * 7 + d].first }
+        val firstOfMonth = weekDays.find { it.length >= 10 && it.takeLast(2) == "01" }
+        when {
+            firstOfMonth != null -> "${firstOfMonth.substring(5, 7).toInt()}月"
+            w == 0 && weekDays[0].length >= 7 -> "${weekDays[0].substring(5, 7).toInt()}月"
+            else -> ""
+        }
+    }
+    val gutter = listOf("一", "", "三", "", "五", "", "")
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val gutterW = 14.dp
+        val mainGap = 6.dp
+        val gap = 3.dp
+        val gridW = maxWidth - gutterW - mainGap
+        val cell = ((gridW - gap * 11) / 12).coerceAtLeast(8.dp)
+        Column {
+            Row(Modifier.fillMaxWidth()) {
+                Spacer(Modifier.width(gutterW + mainGap))
+                Row(
+                    Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(gap),
+                ) {
+                    months.forEach { label ->
+                        Text(
+                            label,
+                            color = cm.mute,
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(5.dp))
+            Row(Modifier.fillMaxWidth()) {
+                Column(
+                    Modifier.width(gutterW).height(cell * 7 + gap * 6),
+                    verticalArrangement = Arrangement.spacedBy(gap),
+                ) {
+                    gutter.forEach { label ->
+                        Box(Modifier.fillMaxWidth().height(cell), contentAlignment = Alignment.CenterStart) {
+                            Text(label, color = cm.mute, fontSize = 10.sp)
+                        }
+                    }
+                }
+                Spacer(Modifier.width(mainGap))
+                Row(
+                    Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(gap),
+                ) {
+                    repeat(12) { w ->
+                        Column(
+                            Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(gap),
+                        ) {
+                            repeat(7) { d ->
+                                val (day, v) = cells[w * 7 + d]
+                                val skip = v < 0
+                                val lv = if (skip) 0 else hmLevel(v, max)
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .height(cell)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (skip) Color.Transparent else cm.hm[min(lv, cm.hm.lastIndex)])
+                                        .then(
+                                            if (skip) Modifier
+                                            else Modifier.onWindowPress(day, v) { pos ->
+                                                tip.show(day, listOf("tokens" to Format.fmtCompact(v)), pos)
+                                            },
+                                        ),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun SparkBars(values: List<Pair<String, Double>>, modifier: Modifier = Modifier) {
     val max = values.maxOfOrNull { it.second }?.coerceAtLeast(1.0) ?: 1.0
     val cm = CmColorsCurrent
@@ -373,26 +463,50 @@ fun MatrixGrid(
     valueAt: (String, String) -> Double,
 ) {
     val cm = CmColorsCurrent
+    val compact = LocalConfiguration.current.screenWidthDp < 600
     val max = rows.maxOfOrNull { r -> cols.maxOfOrNull { c -> valueAt(r, c) } ?: 0.0 }?.coerceAtLeast(1.0) ?: 1.0
     val tip = LocalFloatTip.current
+    val labelW = if (compact) 80.dp else 110.dp
     Column(modifier) {
-        Row(Modifier.fillMaxWidth()) {
-            Spacer(Modifier.width(52.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.width(labelW))
             cols.forEach { c ->
-                Text(
-                    c.take(8),
-                    Modifier.weight(1f),
-                    fontSize = 9.sp,
-                    color = cm.mute,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(26.dp)
+                        .tipClick(c, listOf("模型" to c)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (compact) {
+                        ClientLogo(c, size = 16.dp)
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            ClientLogo(c, size = 14.dp)
+                            Text(c, fontSize = 10.sp, color = cm.mute, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
             }
         }
         Spacer(Modifier.height(4.dp))
         rows.forEach { r ->
             Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(r, Modifier.width(52.dp), fontSize = 11.sp, color = cm.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(
+                    Modifier.width(labelW).padding(end = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    ClientLogo(r, size = if (compact) 12.dp else 14.dp)
+                    Text(
+                        r,
+                        color = cm.ink,
+                        fontSize = if (compact) 10.sp else 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
                 cols.forEach { c ->
                     val v = valueAt(r, c)
                     val lv = hmLevel(v, max)

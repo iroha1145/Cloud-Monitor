@@ -32,6 +32,7 @@ import io.github.iroha1145.cloudmonitor.data.OTHER_COLOR
 import io.github.iroha1145.cloudmonitor.data.hourlyBuckets
 import io.github.iroha1145.cloudmonitor.ui.components.EmptyHint
 import io.github.iroha1145.cloudmonitor.ui.components.HeatCells
+import io.github.iroha1145.cloudmonitor.ui.components.HeatWeekGrid
 import io.github.iroha1145.cloudmonitor.ui.components.MixBar
 import io.github.iroha1145.cloudmonitor.ui.components.Panel
 import io.github.iroha1145.cloudmonitor.ui.components.PanelHead
@@ -109,9 +110,9 @@ fun LazyListScope.historyItems(
                     val start = Format.keyAdd(monday, -7 * 11)
                     val cells = (0 until 12 * 7).map { i ->
                         val day = Format.keyAdd(start, i)
-                        day.takeLast(5) to if (day > today) 0.0 else (map[day] ?: 0.0)
+                        day to if (day > today) -1.0 else (map[day] ?: 0.0)
                     }
-                    HeatCells(cells, columns = 7, showLabel = false)
+                    HeatWeekGrid(cells)
                 }
                 else -> MonthSummary(today, ov.dashboardPeriod?.month?.key, map)
             }
