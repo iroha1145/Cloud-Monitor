@@ -900,10 +900,16 @@ function tipHtml(title, rows) {
 /* 横条/格子 hover：tooltip 跟随 + 其余元素降透明度。
  * §10：同一 tooltip 支持 focus/blur（键盘可达）、触摸点击、Escape 与点外部关闭。 */
 function bindHover(el, hotRoot, htmlFn, label) {
-  if (!el.hasAttribute("tabindex") && !/^(A|BUTTON|INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) {
+  const nativeInteractive = /^(A|BUTTON|INPUT|SELECT|TEXTAREA)$/.test(el.tagName);
+  if (!el.hasAttribute("tabindex") && !nativeInteractive) {
     el.setAttribute("tabindex", "0");
   }
   if (label && !el.getAttribute("aria-label")) {
+    /* generic 角色（div/span/i/svg rect）禁用 aria-label（axe aria-prohibited-attr），
+       命名前必须先给个允许命名的角色；li 天然是 listitem，不另设 role */
+    if (!nativeInteractive && !el.getAttribute("role") && el.tagName !== "LI") {
+      el.setAttribute("role", "img");
+    }
     el.setAttribute("aria-label", String(label));
   }
   const open = (x, y) => {
@@ -1791,7 +1797,12 @@ function renderModelDonut(per, animate) {
   const bindHot = (el) => {
     const name = el.dataset.name;
     if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "0");
-    if (name && !el.getAttribute("aria-label")) el.setAttribute("aria-label", name);
+    if (name && !el.getAttribute("aria-label")) {
+      /* generic 角色（svg path 等）命名前先给 role="img"（axe aria-prohibited-attr）；
+         li 的 listitem 角色本就允许命名，加 role 反而破坏列表语义（axe list） */
+      if (!el.getAttribute("role") && el.tagName !== "LI") el.setAttribute("role", "img");
+      el.setAttribute("aria-label", name);
+    }
     const openAt = (x, y) => { hot(name, true); floatTip.trigger = el; floatTip.show(tipOf(name)(), x, y); };
     const close = () => { hot(name, false); floatTip.hide(); };
     el.addEventListener("mouseenter", (e) => openAt(e.clientX, e.clientY));
@@ -2545,7 +2556,7 @@ function renderHmWeek(hm, daily) {
         .map((c) =>
           c.future
             ? `<span class="hm-cell hm-w hm-skip"></span>`
-            : `<span class="hm-cell hm-w hm-${hmLevel(c.v, max)}" data-day="${c.str}" data-v="${c.v}" aria-label="${c.str} · ${fmtInt(c.v)} tokens"></span>`
+            : `<span class="hm-cell hm-w hm-${hmLevel(c.v, max)}" data-day="${c.str}" data-v="${c.v}" role="img" aria-label="${c.str} · ${fmtInt(c.v)} tokens"></span>`
         )
         .join("")}</div>
     </div>
