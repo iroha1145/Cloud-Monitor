@@ -738,6 +738,36 @@ def test_bridge_health_check_variants():
     with pytest.raises(tm.TransientBridgeError):
         tm.check_hub_health(s3, "https://tm.example.com", 5)
 
+    s4 = FakeSession()
+    s4.route("GET", "/api/health", requests.ConnectionError("dns fail"))
+    with pytest.raises(tm.TransientBridgeError):
+        tm.check_hub_health(s4, "https://tm.example.com", 5)
+
+
+def test_start_bridge_thread_network_error_does_not_raise(tmp_path, monkeypatch):
+    """桥接健康检查的网络错误不得冒泡到 main() 把主同步拖垮。"""
+    cfg = tm_config(
+        tmp_path,
+        token_monitor_hub_url="https://tm.example.com",
+        token_monitor_secret="s" * 32,
+    )
+    state = AgentState(cfg.state_path)
+    state.device_id = "dev-x"
+    agent = make_agent(cfg, state, FakeSession())
+    monkeypatch.setattr(
+        tm,
+        "check_hub_health",
+        lambda *a, **k: (_ for _ in ()).throw(requests.ConnectionError("dns fail")),
+    )
+    monkeypatch.setattr(
+        tm,
+        "push_to_token_monitor",
+        lambda *a, **k: {"today": 0, "month": 0, "allTime": 0},
+    )
+    thread = tm.start_bridge_thread(agent)
+    assert thread is not None
+    thread.join(timeout=0.05)
+
 
 def test_bridge_push_4xx_permanent_5xx_transient(tmp_path):
     cfg = tm_config(tmp_path)
@@ -793,6 +823,29 @@ def test_healthcheck_states(tmp_path, monkeypatch, capsys):
     state.data["last_success_at"] = "2020-01-01T00:00:00+00:00"
     state.save()
     assert healthcheck.main() == 1
+
+
+def test_healthcheck_does_not_rename_corrupt_state(tmp_path, monkeypatch, capsys):
+    """健康检查不得把损坏/不支持的状态文件改名移走，否则 agent 可能换新身份。"""
+    import healthcheck
+
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{not json", encoding="utf-8")
+    monkeypatch.setenv("STATE_PATH", str(state_path))
+    monkeypatch.setattr("sys.argv", ["healthcheck.py"])
+    assert healthcheck.main() == 1
+    assert state_path.read_text(encoding="utf-8") == "{not json"
+    assert list(tmp_path.glob("*.corrupt-*")) == []
+
+    state_path.write_text(
+        json.dumps({"schema_version": 99, "device_id": "keep-me"}),
+        encoding="utf-8",
+    )
+    assert healthcheck.main() == 1
+    data = json.loads(state_path.read_text(encoding="utf-8"))
+    assert data["schema_version"] == 99
+    assert data["device_id"] == "keep-me"
+    assert list(tmp_path.glob("*.corrupt-*")) == []
 
 
 # ---------------------------------------------------------------- 2026-08 审计回归
