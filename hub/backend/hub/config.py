@@ -247,7 +247,6 @@ def load_settings() -> Settings:
         github_api_token=(os.environ.get("GITHUB_TOKEN") or "").strip(),
     )
 
-
 def _file_version() -> str:
     for candidate in (Path("/app/VERSION"), _project_root() / "VERSION"):
         try:

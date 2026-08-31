@@ -1,0 +1,110 @@
+# 用 GitHub Actions 云端构建原生安卓 APK（Jetpack Compose），本机无需 JDK / Android SDK。
+#
+# 前置（Settings → Secrets and variables → Actions）：
+#   Secrets（可选，正式签名；不配则 CI 生成临时 keystore，Artifact 名带 -debug）：
+#     ANDROID_KEYSTORE_B64       keystore 的 base64
+#     ANDROID_KEYSTORE_PASSWORD  keystore 密码
+#     ANDROID_KEY_PASSWORD       密钥密码（可省略，默认与 keystore 密码相同）
+#     ANDROID_KEY_ALIAS          密钥别名（默认 cloudmonitor）
+#
+# 产物只上传 Artifact，不创建 GitHub Release，避免干扰面板「检索更新」。
+name: build-apk
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "android/**"
+      - ".github/workflows/build-apk.yml"
+      - "VERSION"
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+          cache-dependency-path: android/gradle/libs.versions.toml
+
+      - name: 安装 Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 安装 compileSdk 35
+        working-directory: .
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager --list | head -n 5 || true
+
+      - name: 准备签名 keystore
+        working-directory: .
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          KS="$RUNNER_TEMP/release.keystore"
+          ALIAS="${ANDROID_KEY_ALIAS:-cloudmonitor}"
+          if [ -n "${KEYSTORE_B64:-}" ]; then
+            if [ -z "${ANDROID_KEYSTORE_PASSWORD:-}" ]; then
+              echo "::error::配置了 ANDROID_KEYSTORE_B64 就必须同时配置 ANDROID_KEYSTORE_PASSWORD"
+              exit 1
+            fi
+            echo "$KEYSTORE_B64" | base64 -d > "$KS"
+            PW="$ANDROID_KEYSTORE_PASSWORD"
+            KEY_PW="${ANDROID_KEY_PASSWORD:-$PW}"
+            echo "KEYSTORE_SOURCE=release" >> "$GITHUB_ENV"
+          else
+            echo "::warning::未配置 ANDROID_KEYSTORE_B64：使用 CI 临时调试 keystore 签名（每次构建指纹都不同，仅供测试安装）。"
+            PW="cloudmonitor-ci"
+            KEY_PW="$PW"
+            keytool -genkeypair -v -keystore "$KS" -storepass "$PW" -keypass "$KEY_PW" \
+              -alias "$ALIAS" -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Cloud Monitor, OU=Cloud-Monitor, O=iroha1145"
+            echo "KEYSTORE_SOURCE=debug" >> "$GITHUB_ENV"
+          fi
+          echo "ANDROID_KEYSTORE_PATH=$KS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$PW" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_PASSWORD=$KEY_PW" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
+
+      - name: 构建 Release APK（64 位）
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ env.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ env.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ env.ANDROID_KEY_ALIAS }}
+        run: |
+          chmod +x gradlew
+          VERSION_NAME=$(tr -d ' \n' < ../VERSION)
+          ./gradlew assembleRelease --no-daemon --stacktrace \
+            -PversionCode="${{ github.run_number }}" \
+            -PversionName="$VERSION_NAME"
+          ls -lh app/build/outputs/apk/release/
+
+      - name: 打印签名指纹
+        working-directory: .
+        run: |
+          keytool -list -v -keystore "$ANDROID_KEYSTORE_PATH" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" \
+            | grep -E "SHA256:|SHA1:" || true
+
+      - name: 上传 Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          # 注意：GitHub 表达式里空串是 falsy，`&& '' ||` 会恒取回退值，两个分支都必须给非空串
+          name: ${{ env.KEYSTORE_SOURCE == 'release' && 'cloud-monitor-apk' || 'cloud-monitor-apk-debug' }}
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error

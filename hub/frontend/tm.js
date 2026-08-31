@@ -352,6 +352,12 @@ const reducedMotion = () =>
 
 /* ================= 常量与状态 ================= */
 const TOKEN_KEY = "cm_access_token";
+/* 安装到主屏（standalone）没有标签页会话，进程被系统回收后
+ * sessionStorage 会丢失，导致每次打开都要重输密钥；这类场景改用 localStorage。
+ * 浏览器标签页里仍用 sessionStorage，保持「关闭标签页即清除」的隐私语义。 */
+const IS_STANDALONE = () =>
+  window.matchMedia && window.matchMedia("(display-mode: standalone)").matches;
+const tokenStore = () => (IS_STANDALONE() ? localStorage : sessionStorage);
 const OVERVIEW_API = "/api/v1/tm/overview";
 const SUBS_API = "/api/v1/tm/subscriptions";
 const PROVIDER_STATUS_API = "/api/v1/tm/provider-status";
@@ -486,12 +492,12 @@ const VIEW_ORDER = Object.keys(VIEWS);
 
 const store = {
   get token() {
-    try { return sessionStorage.getItem(TOKEN_KEY) || ""; } catch (e) { return ""; }
+    try { return tokenStore().getItem(TOKEN_KEY) || ""; } catch (e) { return ""; }
   },
   set token(v) {
     try {
-      if (v) sessionStorage.setItem(TOKEN_KEY, v);
-      else sessionStorage.removeItem(TOKEN_KEY);
+      if (v) tokenStore().setItem(TOKEN_KEY, v);
+      else tokenStore().removeItem(TOKEN_KEY);
     } catch (e) { /* 隐私模式下静默失败 */ }
   },
 };
@@ -981,6 +987,10 @@ function showGate(message) {
   endRefreshSpin($("#refresh"), true);
   $("#shell").hidden = true;
   $("#gate").hidden = false;
+  if (IS_STANDALONE()) {
+    const desc = $("#gate-desc");
+    if (desc) desc.textContent = "已作为应用安装：密钥会保存在本设备，退出登录或卸载应用后清除。";
+  }
   const err = $("#gate-error");
   if (message) {
     err.textContent = message;
