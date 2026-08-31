@@ -34,6 +34,8 @@ function compactParts(v, tight) {
   if (v >= 1e4) {
     const w = v / 1e4;
     const n = (tight && w >= 1000 ? w.toFixed(0) : w.toFixed(1)).replace(/\.0$/, "");
+    // 9995 万 round 成 10000 万时应滚到 1 亿，而不是显示「10000万」
+    if (Number(n) >= 10000) return compactParts(1e8, tight);
     return { n, u: "万" };
   }
   return { n: fmtInt(v), u: "" };
@@ -85,10 +87,27 @@ function fmtUsd(v) {
 const pad2 = (n) => String(n).padStart(2, "0");
 const pct1 = (v, total) => (total > 0 ? ((v / total) * 100).toFixed(1) : "0.0") + "%";
 
-function fmtDateTime(v) {
+function fmtDateTime(v, tz) {
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return String(v ?? "");
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+  const zone = tz || dashTz();
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    });
+    const p = {};
+    for (const part of fmt.formatToParts(d)) p[part.type] = part.value;
+    return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
+  } catch (e) {
+    return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())} ${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())}`;
+  }
 }
 
 function relTime(v) {
@@ -853,10 +872,16 @@ const floatTip = {
     if (!el) return;
     const w = el.offsetWidth;
     const h = el.offsetHeight;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
     let lx = x - w / 2;
-    lx = Math.max(8, Math.min(lx, window.innerWidth - w - 8));
+    lx = Math.max(8, Math.min(lx, vw - w - 8));
     let ly = y - h - 12;
     if (ly < 8) ly = y + 16;
+    if (ly + h > vh - 8) {
+      const above = y - h - 12;
+      ly = above >= 8 ? above : Math.max(8, vh - h - 8);
+    }
     el.style.left = lx + "px";
     el.style.top = ly + "px";
   },
@@ -874,9 +899,18 @@ function tipHtml(title, rows) {
 
 /* 横条/格子 hover：tooltip 跟随 + 其余元素降透明度。
  * §10：同一 tooltip 支持 focus/blur（键盘可达）、触摸点击、Escape 与点外部关闭。 */
-function bindHover(el, hotRoot, htmlFn) {
-  if (!el.hasAttribute("tabindex") && !/^(A|BUTTON|INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) {
+function bindHover(el, hotRoot, htmlFn, label) {
+  const nativeInteractive = /^(A|BUTTON|INPUT|SELECT|TEXTAREA)$/.test(el.tagName);
+  if (!el.hasAttribute("tabindex") && !nativeInteractive) {
     el.setAttribute("tabindex", "0");
+  }
+  if (label && !el.getAttribute("aria-label")) {
+    /* generic 角色（div/span/i/svg rect）禁用 aria-label（axe aria-prohibited-attr），
+       命名前必须先给个允许命名的角色；li 天然是 listitem，不另设 role */
+    if (!nativeInteractive && !el.getAttribute("role") && el.tagName !== "LI") {
+      el.setAttribute("role", "img");
+    }
+    el.setAttribute("aria-label", String(label));
   }
   const open = (x, y) => {
     if (hotRoot) {
@@ -987,7 +1021,7 @@ function updateTopbar() {
   const tz = data.dashboard_time_zone ? " · 时区 " + data.dashboard_time_zone : "";
   $("#view-title").textContent = VIEWS[state.view][0];
   $("#view-sub").textContent =
-    VIEWS[state.view][1] + (data.generated_at ? " · 生成于 " + fmtDateTime(data.generated_at) : "") + tz;
+    VIEWS[state.view][1] + (data.generated_at ? " · 生成于 " + fmtDateTime(data.generated_at, data.dashboard_time_zone) : "") + tz;
 }
 
 function switchView(view) {
@@ -1279,7 +1313,8 @@ function renderKpis(data) {
         tipHtml(seg.dataset.label, [
           ["tokens", fmtCompact(seg.dataset.v)],
           ["占比", Number(seg.dataset.pct).toFixed(1) + "%"],
-        ])
+        ]),
+        `${seg.dataset.label} ${fmtCompact(seg.dataset.v)} tokens`
       );
     });
   }
@@ -1449,7 +1484,7 @@ function renderTrend() {
         class: "trend-bar is-zero" + growCls,
         style: growDelay,
       });
-      bindHover(bar, svg, () => tipHtml(d.day, [["tokens", "0"]]));
+      bindHover(bar, svg, () => tipHtml(d.day, [["tokens", "0"]]), `${d.day} 0 tokens`);
       barsG.appendChild(bar);
       return;
     }
@@ -1486,7 +1521,8 @@ function renderTrend() {
             [m, fmtInt(val)],
             ["占当日", pct1(val, d.v)],
             ["当日合计", fmtCompact(d.total || d.v)],
-          ])
+          ]),
+          `${d.day} ${m} ${fmtInt(val)} tokens`
         );
         col.appendChild(rect);
       });
@@ -1500,7 +1536,7 @@ function renderTrend() {
         class: "trend-bar" + growCls,
         style: growDelay,
       });
-      bindHover(bar, svg, () => tipHtml(d.day, [["tokens", fmtInt(d.v)]]));
+      bindHover(bar, svg, () => tipHtml(d.day, [["tokens", fmtInt(d.v)]]), `${d.day} ${fmtInt(d.v)} tokens`);
       barsG.appendChild(bar);
     }
   });
@@ -1761,6 +1797,12 @@ function renderModelDonut(per, animate) {
   const bindHot = (el) => {
     const name = el.dataset.name;
     if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "0");
+    if (name && !el.getAttribute("aria-label")) {
+      /* generic 角色（svg path 等）命名前先给 role="img"（axe aria-prohibited-attr）；
+         li 的 listitem 角色本就允许命名，加 role 反而破坏列表语义（axe list） */
+      if (!el.getAttribute("role") && el.tagName !== "LI") el.setAttribute("role", "img");
+      el.setAttribute("aria-label", name);
+    }
     const openAt = (x, y) => { hot(name, true); floatTip.trigger = el; floatTip.show(tipOf(name)(), x, y); };
     const close = () => { hot(name, false); floatTip.hide(); };
     el.addEventListener("mouseenter", (e) => openAt(e.clientX, e.clientY));
@@ -1881,7 +1923,8 @@ function renderDist(listSel, emptySel, subSel, per, kind, animate) {
   }).join("");
 
   box.querySelectorAll(".dist-row").forEach((row, i) => {
-    bindHover(row.querySelector(".dist-track"), box, tips[i]);
+    const name = (row.querySelector(".dist-name") || {}).getAttribute?.("title") || "";
+    bindHover(row.querySelector(".dist-track"), box, tips[i], name);
   });
 }
 
@@ -2438,10 +2481,11 @@ const hmLevel = (v, max) => (v > 0 ? Math.min(5, Math.max(1, Math.ceil((v / max)
 
 function bindHmCells(root, titleFn) {
   root.querySelectorAll(".hm-cell[data-v]").forEach((cell) => {
+    const title = titleFn(cell);
     bindHover(cell, null, () => {
       const v = Number(cell.dataset.v) || 0;
       return tipHtml(titleFn(cell), [["tokens", fmtInt(v)]]);
-    });
+    }, `${title} ${fmtInt(cell.dataset.v)} tokens`);
   });
 }
 
@@ -2512,7 +2556,7 @@ function renderHmWeek(hm, daily) {
         .map((c) =>
           c.future
             ? `<span class="hm-cell hm-w hm-skip"></span>`
-            : `<span class="hm-cell hm-w hm-${hmLevel(c.v, max)}" data-day="${c.str}" data-v="${c.v}" aria-label="${c.str} · ${fmtInt(c.v)} tokens"></span>`
+            : `<span class="hm-cell hm-w hm-${hmLevel(c.v, max)}" data-day="${c.str}" data-v="${c.v}" role="img" aria-label="${c.str} · ${fmtInt(c.v)} tokens"></span>`
         )
         .join("")}</div>
     </div>
@@ -2605,7 +2649,7 @@ function renderHmMonth(hm, daily) {
   </div>`;
   bindHmCells(hm, (cell) => `${m + 1}月${cell.dataset.d}日`);
   hm.querySelectorAll(".hm-spark-bars i").forEach((bar) => {
-    bindHover(bar, null, () => tipHtml(bar.dataset.day, [["tokens", fmtInt(bar.dataset.v)]]));
+    bindHover(bar, null, () => tipHtml(bar.dataset.day, [["tokens", fmtInt(bar.dataset.v)]]), `${bar.dataset.day} ${fmtInt(bar.dataset.v)} tokens`);
   });
 }
 
@@ -2795,7 +2839,8 @@ function renderHistoryTable() {
         tipHtml(seg.dataset.label, [
           ["tokens", fmtCompact(seg.dataset.v)],
           ["占比", Number(seg.dataset.pct).toFixed(1) + "%"],
-        ])
+        ]),
+        `${seg.dataset.label} ${fmtCompact(seg.dataset.v)} tokens`
       );
     });
   });
@@ -2937,6 +2982,20 @@ function animateContentSwap(stage, content, dir, renderFn) {
 function initSeg(sel, onChange, attr) {
   attr = attr || "data-p";
   const seg = $(sel);
+  const panelId = seg.dataset.panel;
+  if (panelId) {
+    seg.querySelectorAll(`button[${attr}]`).forEach((b) => {
+      if (!b.getAttribute("aria-controls")) b.setAttribute("aria-controls", panelId);
+    });
+    const panel = document.getElementById(panelId);
+    if (panel && !panel.getAttribute("role")) {
+      panel.setAttribute("role", "tabpanel");
+      if (!panel.getAttribute("aria-label") && !panel.getAttribute("aria-labelledby")) {
+        const labelled = seg.getAttribute("aria-label");
+        if (labelled) panel.setAttribute("aria-label", labelled);
+      }
+    }
+  }
   const activate = (btn) => {
     if (!btn || btn.classList.contains("is-active")) return;
     seg.querySelectorAll("button").forEach((b) => {
@@ -3433,11 +3492,55 @@ function peekUpdateBadge() {
   }).catch(() => {});
 }
 
+const updDialog = { prevFocus: null };
+
 function closeUpdateDialog() {
   const el = $("#upd-overlay");
-  if (el) el.hidden = true;
+  if (!el || el.hidden) return;
+  el.hidden = true;
   const btn = $("#upd-btn");
   if (btn) btn.setAttribute("aria-expanded", "false");
+  document.removeEventListener("keydown", onUpdateDialogKeydown, true);
+  const shell = $("#shell");
+  if (shell) {
+    shell.removeAttribute("aria-hidden");
+    if ("inert" in shell) shell.inert = false;
+  }
+  const prev = updDialog.prevFocus;
+  updDialog.prevFocus = null;
+  if (prev && typeof prev.focus === "function") {
+    try { prev.focus(); } catch (e) { /* 触发按钮可能已卸载 */ }
+  }
+}
+
+function updDialogFocusables() {
+  const card = document.querySelector("#upd-overlay .upd-card");
+  if (!card) return [];
+  return [...card.querySelectorAll(
+    "button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex='-1'])"
+  )].filter((el) => !el.hidden && el.getAttribute("hidden") == null);
+}
+
+function onUpdateDialogKeydown(e) {
+  const overlay = $("#upd-overlay");
+  if (!overlay || overlay.hidden) return;
+  if (e.key !== "Tab") return;
+  const nodes = updDialogFocusables();
+  if (!nodes.length) {
+    e.preventDefault();
+    return;
+  }
+  const first = nodes[0];
+  const last = nodes[nodes.length - 1];
+  const card = overlay.querySelector(".upd-card");
+  const outside = card && !card.contains(document.activeElement);
+  if (e.shiftKey && (document.activeElement === first || outside)) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && (document.activeElement === last || outside)) {
+    e.preventDefault();
+    first.focus();
+  }
 }
 
 /* Release notes 走纯文本进入，再把 GitHub 自动 notes 里常见的 **粗体** 标记剥掉、
@@ -3525,9 +3628,18 @@ function renderUpdateDialog(data, errMsg) {
 async function openUpdateDialog() {
   const overlay = $("#upd-overlay");
   if (!overlay) return;
+  if (overlay.hidden) updDialog.prevFocus = document.activeElement;
   overlay.hidden = false;
   const btn = $("#upd-btn");
   if (btn) btn.setAttribute("aria-expanded", "true");
+  const shell = $("#shell");
+  if (shell) {
+    shell.setAttribute("aria-hidden", "true");
+    if ("inert" in shell) shell.inert = true;
+  }
+  document.addEventListener("keydown", onUpdateDialogKeydown, true);
+  const closeBtn = $("#upd-close");
+  if (closeBtn) closeBtn.focus();
   const body = $("#upd-body");
   if (body) body.innerHTML = `<span class="t-shimmer">正在检索…</span>`;
   try {

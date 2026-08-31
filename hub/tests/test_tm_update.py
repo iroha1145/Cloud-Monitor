@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from hub.main import create_app
-from hub.tm_update import UpdateService, parse_ref, version_key
+from hub.tm_update import UpdateService, parse_ref, version_gt, version_key
 from test_hub import READ, make_settings
 
 RELEASE = {
@@ -33,6 +33,11 @@ def test_version_key_orders():
     assert version_key("v1.0.0") == version_key("1.0.0")
     assert parse_ref("v0.2.0") == "v0.2.0"
     assert parse_ref("main") == "main"
+    # 缺失段视为 0：1.2 不得排在 1.2.0 之前
+    assert version_gt("1.2.0", "1.2") is False
+    assert version_gt("1.2", "1.2.0") is False
+    assert version_gt("1.2.1", "1.2") is True
+    assert version_gt("v0.2.0", "0.1.0") is True
 
 
 def test_parse_ref_rejects_paths():
@@ -55,6 +60,21 @@ def test_check_marks_release_ahead(tmp_path):
     assert out["latest_release"]["tag"] == "v0.2.0"
     assert out["main"]["short_sha"] == "bbbbbbb"
     assert out["apply_enabled"] is False
+
+
+def test_check_padded_equal_versions_not_ahead(tmp_path):
+    settings = make_settings(tmp_path, cm_version="1.2", cm_git_sha="aaa1111")
+
+    def fetch(url: str):
+        if "/releases" in url:
+            return 200, [{**RELEASE, "tag_name": "v1.2.0", "name": "1.2.0"}]
+        return 200, {
+            "sha": "aaa1111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "commit": {"message": "same"},
+        }
+
+    out = UpdateService(settings, fetch=fetch).check(force=True)
+    assert out["release_ahead"] is False
 
 
 def test_http_requires_access_token(tmp_path):

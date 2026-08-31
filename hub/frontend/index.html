@@ -171,14 +171,14 @@
                     <h2>模型分布</h2>
                     <p class="panel-sub" id="model-dist-sub">按 token 占比 · 环形图 + 占比图例</p>
                   </div>
-                  <div class="seg" id="model-seg" role="tablist" aria-label="模型分布周期">
+                  <div class="seg" id="model-seg" role="tablist" aria-label="模型分布周期" data-panel="model-dist">
                     <span class="seg-pill" aria-hidden="true"></span>
                     <button role="tab" aria-selected="true" tabindex="0" type="button" data-p="today" class="is-active">今日</button>
                     <button role="tab" aria-selected="false" tabindex="-1" type="button" data-p="month">本月</button>
                     <button role="tab" aria-selected="false" tabindex="-1" type="button" data-p="allTime">累计</button>
                   </div>
                 </div>
-                <div class="donut-wrap" id="model-dist"></div>
+                <div class="donut-wrap" id="model-dist" role="tabpanel" aria-label="模型分布"></div>
                 <div class="empty" id="model-empty" hidden>
                   <svg class="ic ic-lg" aria-hidden="true"><use href="/static/icons.svg#i-layers"/></svg>
                   <p>该周期暂无模型数据</p>
@@ -190,14 +190,14 @@
                     <h2>客户端分布</h2>
                     <p class="panel-sub" id="client-dist-sub">按 token 占比 · 条内为真实构成分段</p>
                   </div>
-                  <div class="seg" id="client-seg" role="tablist" aria-label="客户端分布周期">
+                  <div class="seg" id="client-seg" role="tablist" aria-label="客户端分布周期" data-panel="client-dist">
                     <span class="seg-pill" aria-hidden="true"></span>
                     <button role="tab" aria-selected="true" tabindex="0" type="button" data-p="today" class="is-active">今日</button>
                     <button role="tab" aria-selected="false" tabindex="-1" type="button" data-p="month">本月</button>
                     <button role="tab" aria-selected="false" tabindex="-1" type="button" data-p="allTime">累计</button>
                   </div>
                 </div>
-                <div class="dist" id="client-dist"></div>
+                <div class="dist" id="client-dist" role="tabpanel" aria-label="客户端分布"></div>
                 <div class="empty" id="client-empty" hidden>
                   <svg class="ic ic-lg" aria-hidden="true"><use href="/static/icons.svg#i-terminal"/></svg>
                   <p>该周期暂无客户端数据</p>
@@ -213,12 +213,12 @@
                   <p class="panel-sub">行 = 客户端 · 列 = 模型 · 色阶 = 数值档位（取前 8 × 8，悬停或点按查看数值）</p>
                 </div>
                 <div class="mx-segs">
-                  <div class="seg" id="mx-metric-seg" role="tablist" aria-label="矩阵指标">
+                  <div class="seg" id="mx-metric-seg" role="tablist" aria-label="矩阵指标" data-panel="mx">
                     <span class="seg-pill" aria-hidden="true"></span>
                     <button role="tab" aria-selected="true" tabindex="0" type="button" data-m="tokens" class="is-active">Tokens</button>
                     <button role="tab" aria-selected="false" tabindex="-1" type="button" data-m="cost">费用</button>
                   </div>
-                  <div class="seg" id="mx-period-seg" role="tablist" aria-label="矩阵周期">
+                  <div class="seg" id="mx-period-seg" role="tablist" aria-label="矩阵周期" data-panel="mx">
                     <span class="seg-pill" aria-hidden="true"></span>
                     <button role="tab" aria-selected="true" tabindex="0" type="button" data-p="today" class="is-active">今日</button>
                     <button role="tab" aria-selected="false" tabindex="-1" type="button" data-p="month">本月</button>
@@ -228,7 +228,7 @@
               </div>
               <p class="scroll-hint" aria-hidden="true">左右滑动查看</p>
               <div class="mx-scroll t-swap-stage">
-                <div class="mx" id="mx"></div>
+                <div class="mx" id="mx" role="tabpanel" aria-label="工具与模型矩阵"></div>
               </div>
             </div>
 
@@ -308,7 +308,7 @@
                   <h2>活动热力图</h2>
                   <p class="panel-sub" id="act-sub">活动时区由后端数据口径决定</p>
                 </div>
-                <div class="seg" id="act-seg" role="tablist" aria-label="活动热力图视图">
+                <div class="seg" id="act-seg" role="tablist" aria-label="活动热力图视图" data-panel="hm">
                   <span class="seg-pill" aria-hidden="true"></span>
                   <button role="tab" aria-selected="false" tabindex="-1" type="button" data-v="day">日</button>
                   <button role="tab" aria-selected="false" tabindex="-1" type="button" data-v="week">周</button>
@@ -316,7 +316,7 @@
                 </div>
               </div>
               <div class="hm-scroll t-swap-stage">
-                <div class="hm" id="hm"></div>
+                <div class="hm" id="hm" role="tabpanel" aria-label="活动热力图"></div>
               </div>
               <p class="hm-coverage" id="hm-coverage" hidden></p>
               <p class="hm-coverage hm-cov-devices" id="hm-cov-devices" hidden></p>

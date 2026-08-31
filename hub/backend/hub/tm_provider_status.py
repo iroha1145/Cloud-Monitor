@@ -839,6 +839,15 @@ class ProviderStatusService:
         self._inflight = loop.create_task(self._do_fetch(client, observed, key))
         self._inflight_key = key
 
+        def _consume(task: asyncio.Task) -> None:
+            if task.cancelled():
+                return
+            exc = task.exception()
+            if exc is not None:
+                log.warning("provider-status 后台刷新异常: %s", exc)
+
+        self._inflight.add_done_callback(_consume)
+
     async def _refresh_wait(
         self,
         client: httpx.AsyncClient,

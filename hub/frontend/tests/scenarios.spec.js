@@ -1064,6 +1064,22 @@ test.describe("系统偏好夜间（demo）", () => {
   });
 });
 
+test.describe("数字压缩与时区格式", () => {
+  test("compactParts 进位到亿；fmtDateTime 按指定时区渲染", async ({ page }) => {
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    const parts = await page.evaluate(() => compactParts(99995000, true));
+    expect(parts).toEqual({ n: "1", u: "亿" });
+    const ts = await page.evaluate(() => fmtDateTime("2026-08-30T16:00:00.000Z", "Asia/Tokyo"));
+    expect(ts).toBe("2026-08-31 01:00:00");
+    const labels = await page.evaluate(() => {
+      const mix = document.querySelector("#kpi-mix i[tabindex]");
+      return mix ? mix.getAttribute("aria-label") : "";
+    });
+    expect(labels).toBeTruthy();
+  });
+});
+
 test.describe("在线更新（demo mock）", () => {
   test("顶栏可检索假 Release，并走一遍应用按钮", async ({ page }) => {
     await page.goto("/demo");
@@ -1086,6 +1102,24 @@ test.describe("在线更新（demo mock）", () => {
     await expect(page.locator("#upd-body")).toContainText("演示模式不会改服务器");
     await page.click("#upd-close");
     await expect(page.locator("#upd-overlay")).toBeHidden();
+  });
+
+  test("打开更新弹窗后焦点进入对话框，Esc 归还焦点", async ({ page }) => {
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    await page.click("#upd-btn");
+    await expect(page.locator("#upd-overlay")).toBeVisible();
+    await expect(page.locator("#upd-close")).toBeFocused();
+    await expect(page.locator("#upd-body")).toContainText("v0.2.0");
+    await page.keyboard.press("Tab");
+    const inDialog = await page.evaluate(() => {
+      const card = document.querySelector("#upd-overlay .upd-card");
+      return !!(card && card.contains(document.activeElement));
+    });
+    expect(inDialog).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#upd-overlay")).toBeHidden();
+    await expect(page.locator("#upd-btn")).toBeFocused();
   });
 });
 

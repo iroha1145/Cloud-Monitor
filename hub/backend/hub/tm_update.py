@@ -76,6 +76,13 @@ def version_key(raw: str) -> tuple[int, ...]:
     return tuple(parts or (0,))
 
 
+def version_gt(left: str, right: str) -> bool:
+    """Semver 比较：缺失段视为 0，因此 1.2 与 1.2.0 相等。"""
+    a, b = version_key(left), version_key(right)
+    n = max(len(a), len(b))
+    return a + (0,) * (n - len(a)) > b + (0,) * (n - len(b))
+
+
 def _norm_sha(raw: str) -> str:
     return (raw or "").strip().lower()[:40]
 
@@ -201,8 +208,7 @@ class UpdateService:
             github_error = _gh_error(main_status, main_body)
 
         cur = self.current()
-        cur_ver = version_key(cur["version"])
-        rel_ahead = bool(latest) and version_key(latest["tag"]) > cur_ver
+        rel_ahead = bool(latest) and version_gt(latest["tag"], cur["version"])
         cur_sha = _norm_sha(cur["git_sha"])
         main_sha = _norm_sha((main or {}).get("sha") or "")
         main_ahead = bool(main_sha and cur_sha and not main_sha.startswith(cur_sha) and not cur_sha.startswith(main_sha[: len(cur_sha)]))

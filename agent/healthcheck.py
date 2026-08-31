@@ -27,7 +27,7 @@ def main() -> int:
         return 1
     state = AgentState(state_path)
     try:
-        state.load()
+        state.load(readonly=True)  # 健康检查不得改名/备份状态文件
     except Exception as exc:  # StateCorruptError 等
         print(f"unhealthy: 状态文件不可用 ({exc})")
         return 1

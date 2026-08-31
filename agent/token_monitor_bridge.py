@@ -182,7 +182,10 @@ def build_ingest_payload(
 
 def check_hub_health(session: requests.Session, hub_url: str, timeout: float) -> dict:
     """启动前健康检查：验证 ok 与 role，记录 hubBuild。"""
-    resp = session.get(f"{hub_url.rstrip('/')}{HEALTH_PATH}", timeout=timeout)
+    try:
+        resp = session.get(f"{hub_url.rstrip('/')}{HEALTH_PATH}", timeout=timeout)
+    except requests.RequestException as exc:
+        raise TransientBridgeError(f"hub health 网络错误: {exc}") from exc
     if resp.status_code >= 500:
         raise TransientBridgeError(f"hub health HTTP {resp.status_code}")
     if resp.status_code >= 400:
@@ -255,7 +258,7 @@ def start_bridge_thread(agent: SyncAgent) -> Optional[threading.Thread]:
     except PermanentBridgeError as exc:
         log.error("token-monitor 桥接未启动（健康检查失败，判定为永久错误）: %s", exc)
         return None
-    except TransientBridgeError as exc:
+    except (TransientBridgeError, requests.RequestException) as exc:
         log.warning("token-monitor hub 暂不可达，桥接稍后随周期重试: %s", exc)
 
     interval = config.token_monitor_interval_seconds

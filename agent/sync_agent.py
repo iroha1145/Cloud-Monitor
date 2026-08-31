@@ -229,16 +229,21 @@ class AgentState:
             "last_permanent_error": None,
         }
 
-    def load(self) -> None:
+    def load(self, *, readonly: bool = False) -> None:
         if not self.path.is_file():
             return
+
+        def backup(reason: str) -> None:
+            if not readonly:
+                self._backup_corrupt(reason)
+
         try:
             loaded = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
-            self._backup_corrupt(f"无法解析: {exc}")
+            backup(f"无法解析: {exc}")
             raise StateCorruptError(str(exc)) from exc
         if not isinstance(loaded, dict):
-            self._backup_corrupt("顶层不是对象")
+            backup("顶层不是对象")
             raise StateCorruptError("state json is not an object")
         version = loaded.get("schema_version")
         if version is None:
@@ -250,15 +255,16 @@ class AgentState:
                     if key in loaded:
                         migrated[key] = loaded[key]
                 self.data = migrated
-                log.warning("检测到 v1 状态文件，已就地迁移为 schema_version=2")
+                if not readonly:
+                    log.warning("检测到 v1 状态文件，已就地迁移为 schema_version=2")
                 return
-            self._backup_corrupt("缺少 schema_version")
+            backup("缺少 schema_version")
             raise StateCorruptError("missing schema_version")
         if not isinstance(version, int) or version != STATE_SCHEMA_VERSION:
-            self._backup_corrupt(f"schema_version={version!r} 不支持")
+            backup(f"schema_version={version!r} 不支持")
             raise StateCorruptError(f"unsupported schema_version {version!r}")
         if "device_id" in loaded and not isinstance(loaded["device_id"], str):
-            self._backup_corrupt("device_id 不是字符串")
+            backup("device_id 不是字符串")
             raise StateCorruptError("device_id must be a string")
         fresh = self._fresh()
         fresh.update(loaded)
@@ -844,6 +850,8 @@ def main() -> int:
         start_bridge_thread(agent)
     except ImportError as exc:
         log.warning("token-monitor 桥接模块不可用: %s", exc)
+    except Exception as exc:  # noqa: BLE001 — 可选桥接不得拖垮主同步
+        log.exception("token-monitor 桥接未启动（不影响主同步）: %s", exc)
     agent.run_forever()
     return 0
 

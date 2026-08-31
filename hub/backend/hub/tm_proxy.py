@@ -37,6 +37,7 @@ from .tm_outbox import (
     record_pending,
     replay_pending,
     set_snapshot_status,
+    is_retryable_http,
 )
 from .tm_snapshots import (
     delete_device_snapshots,
@@ -232,7 +233,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             log.warning("tm-core 不可达（outbox pending 留待重放/重试）: %s", exc)
             return _unavailable_response(exc)
         if resp.status_code != 200:
-            if 400 <= resp.status_code < 500:
+            if 400 <= resp.status_code < 500 and not is_retryable_http(resp.status_code):
                 mark_rejected(db, request_id, f"upstream HTTP {resp.status_code}")
             else:
                 mark_failed(db, request_id, f"upstream HTTP {resp.status_code}")

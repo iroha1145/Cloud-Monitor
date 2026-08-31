@@ -34,6 +34,9 @@ log = logging.getLogger("tm-outbox")
 MAX_PENDING_DEFAULT = 1000
 DONE_RETENTION_HOURS = 2
 REPLAY_BATCH = 100
+# 4xx 里仍应重试的状态：限流 / 请求超时 / Too Early。其余 4xx 视为载荷
+# 确定性拒绝（mark_rejected，不再重放）。
+RETRYABLE_CLIENT_ERRORS = frozenset({408, 425, 429})
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tm_ingest_outbox (
@@ -48,6 +51,11 @@ CREATE TABLE IF NOT EXISTS tm_ingest_outbox (
 CREATE INDEX IF NOT EXISTS idx_outbox_state_time
     ON tm_ingest_outbox(state, received_at);
 """
+
+
+def is_retryable_http(status_code: int) -> bool:
+    """True = 保留 pending 并重试（5xx 与限流类 4xx）。"""
+    return status_code in RETRYABLE_CLIENT_ERRORS or status_code >= 500
 
 
 class OutboxFullError(Exception):
@@ -252,7 +260,7 @@ def replay_pending(db: Database, core, *, max_items: int = REPLAY_BATCH) -> dict
             stats["stopped_by"] = "upstream_unavailable"
             break
         if resp.status_code != 200:
-            if 400 <= resp.status_code < 500:
+            if 400 <= resp.status_code < 500 and not is_retryable_http(resp.status_code):
                 mark_rejected(
                     db, row["request_id"], f"upstream HTTP {resp.status_code}"
                 )
