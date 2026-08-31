@@ -127,7 +127,14 @@ fun LazyListScope.historyItems(state: UiState, onActView: (Int) -> Unit, onMore:
                         append("按日期倒序 · 已加载 ${rows.size} 天 · 保留 ${state.historyRetentionDays} 天")
                         if (state.historyDayBasis == "device-local") append(" · 日口径：设备本地日")
                         if (state.historyMixedTz) append("（设备时区不一致，按各设备本地日聚合）")
-                        if (state.historyPartial) append(" · 部分日期数据不完整")
+                        if (state.historyPartial) {
+                            val codes = state.historyPartialErrors
+                                .map { Format.partialErrorText(it) }
+                                .filter { it.isNotBlank() }
+                                .distinct()
+                            append(" · 部分日期数据不完整")
+                            if (codes.isNotEmpty()) append("（${codes.joinToString("、")}）")
+                        }
                     }
                 }
             }

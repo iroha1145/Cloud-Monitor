@@ -10,23 +10,21 @@ import androidx.security.crypto.MasterKey
 
 class SessionStore(context: Context) {
     private val app = context.applicationContext
-    private val meta: SharedPreferences =
-        app.getSharedPreferences("cm_session_meta", Context.MODE_PRIVATE)
     private val lock = Any()
     private var opened = false
+    private var meta: SharedPreferences? = null
     private var secrets: SharedPreferences? = null
     @Volatile var encryptionAvailable: Boolean = true
         private set
 
-    init {
-        app.getSharedPreferences("cm_session_plain", Context.MODE_PRIVATE).edit().clear().apply()
-    }
-
-    /** 密钥库初始化，须在后台线程调用。 */
+    /** 普通 prefs + 密钥库都在这里打开，须在后台线程调用。构造函数不碰磁盘。 */
     fun ensureSecrets() {
         synchronized(lock) {
             if (opened) return
             opened = true
+            app.getSharedPreferences("cm_session_plain", Context.MODE_PRIVATE).edit().clear().apply()
+            val metaPrefs = app.getSharedPreferences("cm_session_meta", Context.MODE_PRIVATE)
+            meta = metaPrefs
             secrets = try {
                 val master = MasterKey.Builder(app)
                     .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -43,14 +41,14 @@ class SessionStore(context: Context) {
                 null
             }
             encryptionAvailable = secrets != null
-            if (secrets != null && !meta.contains(KEY_URL)) {
-                meta.edit()
+            if (secrets != null && !metaPrefs.contains(KEY_URL)) {
+                metaPrefs.edit()
                     .putString(KEY_URL, secrets!!.getString(KEY_URL, "").orEmpty())
                     .putBoolean(KEY_IN, secrets!!.getBoolean(KEY_IN, false))
                     .putBoolean(KEY_DEMO, secrets!!.getBoolean(KEY_DEMO, false))
                     .apply()
                 val theme = secrets!!.getString(KEY_THEME, null)
-                if (theme != null) meta.edit().putString(KEY_THEME, theme).apply()
+                if (theme != null) metaPrefs.edit().putString(KEY_THEME, theme).apply()
                 secrets!!.edit()
                     .remove(KEY_URL)
                     .remove(KEY_IN)
@@ -59,18 +57,25 @@ class SessionStore(context: Context) {
                     .apply()
             }
             if (secrets == null) {
-                meta.edit().putBoolean(KEY_IN, false).apply()
+                metaPrefs.edit().putBoolean(KEY_IN, false).apply()
             }
         }
     }
 
+    private fun metaPrefs(): SharedPreferences {
+        val cached = meta
+        if (cached != null) return cached
+        ensureSecrets()
+        return meta!!
+    }
+
     var demo: Boolean
-        get() = meta.getBoolean(KEY_DEMO, false)
-        set(value) = meta.edit().putBoolean(KEY_DEMO, value).apply()
+        get() = metaPrefs().getBoolean(KEY_DEMO, false)
+        set(value) = metaPrefs().edit().putBoolean(KEY_DEMO, value).apply()
 
     var hubUrl: String
-        get() = meta.getString(KEY_URL, "").orEmpty()
-        set(value) = meta.edit().putString(KEY_URL, value).apply()
+        get() = metaPrefs().getString(KEY_URL, "").orEmpty()
+        set(value) = metaPrefs().edit().putString(KEY_URL, value).apply()
 
     var token: String
         get() = secrets?.getString(KEY_TOKEN, "").orEmpty()
@@ -79,14 +84,14 @@ class SessionStore(context: Context) {
         }
 
     var signedIn: Boolean
-        get() = meta.getBoolean(KEY_IN, false)
-        set(value) = meta.edit().putBoolean(KEY_IN, value).apply()
+        get() = metaPrefs().getBoolean(KEY_IN, false)
+        set(value) = metaPrefs().edit().putBoolean(KEY_IN, value).apply()
 
     var darkOverride: String?
-        get() = meta.getString(KEY_THEME, null)
+        get() = metaPrefs().getString(KEY_THEME, null)
         set(value) {
-            if (value == null) meta.edit().remove(KEY_THEME).apply()
-            else meta.edit().putString(KEY_THEME, value).apply()
+            if (value == null) metaPrefs().edit().remove(KEY_THEME).apply()
+            else metaPrefs().edit().putString(KEY_THEME, value).apply()
         }
 
     fun persistSession(demoMode: Boolean, accessToken: String) {
@@ -104,7 +109,7 @@ class SessionStore(context: Context) {
     }
 
     fun markSignedOut() {
-        meta.edit()
+        metaPrefs().edit()
             .putBoolean(KEY_IN, false)
             .putBoolean(KEY_DEMO, false)
             .apply()

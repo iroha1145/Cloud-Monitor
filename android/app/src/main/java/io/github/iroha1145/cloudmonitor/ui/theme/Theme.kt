@@ -38,6 +38,7 @@ data class CmColors(
     val brand: Color,
     val brand50: Color,
     val brand25: Color,
+    val glass: Color,
     val shadowAmbient: Color,
     val shadowSpot: Color,
     val hm: List<Color>,
@@ -61,6 +62,7 @@ val LightCm = CmColors(
     brand = Brand,
     brand50 = Brand50,
     brand25 = Color(0xFFF5F5FF),
+    glass = Color(0xEBF8FAFD),
     shadowAmbient = Color(0x29003770),
     shadowSpot = Color(0x1A003B89),
     hm = listOf(
@@ -87,6 +89,7 @@ val DarkCm = CmColors(
     brand = Color(0xFF9B99FF),
     brand50 = Color(0xFF1C2240),
     brand25 = Color(0xFF161B30),
+    glass = Color(0xE00B1220),
     shadowAmbient = Color(0x66000000),
     shadowSpot = Color(0x44000000),
     hm = listOf(

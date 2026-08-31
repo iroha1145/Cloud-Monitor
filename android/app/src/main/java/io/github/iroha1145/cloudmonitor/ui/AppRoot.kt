@@ -1,5 +1,8 @@
 package io.github.iroha1145.cloudmonitor.ui
 
+import android.app.Activity
+import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -20,6 +23,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -38,19 +42,26 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -58,6 +69,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
 import io.github.iroha1145.cloudmonitor.data.Format
 import io.github.iroha1145.cloudmonitor.ui.components.FloatTipController
 import io.github.iroha1145.cloudmonitor.ui.components.FloatTipHost
@@ -70,9 +86,11 @@ import io.github.iroha1145.cloudmonitor.ui.history.historyItems
 import io.github.iroha1145.cloudmonitor.ui.overview.overviewItems
 import io.github.iroha1145.cloudmonitor.ui.quota.quotaItems
 import io.github.iroha1145.cloudmonitor.ui.theme.CloudMonitorTheme
+import io.github.iroha1145.cloudmonitor.ui.theme.CmColors
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
 import io.github.iroha1145.cloudmonitor.ui.theme.LocalReducedMotion
 import io.github.iroha1145.cloudmonitor.ui.theme.Motion
+import io.github.iroha1145.cloudmonitor.ui.theme.pageEnter
 import io.github.iroha1145.cloudmonitor.ui.theme.rememberReducedMotion
 import io.github.iroha1145.cloudmonitor.ui.theme.rememberSpin
 import io.github.iroha1145.cloudmonitor.ui.update.UpdateDialog
@@ -86,6 +104,18 @@ private val TABS = listOf(
     TabSpec(AppTab.Devices, "设备", AppIcons.Computer),
     TabSpec(AppTab.Quota, "配额", AppIcons.AccountBalanceWallet),
     TabSpec(AppTab.History, "历史", AppIcons.History),
+)
+
+/** 最后一张卡的 12.dp 阴影 + 与玻璃底栏之间的空隙（不再把内容顶到 nav）。 */
+private val ListBottomExtra = 32.dp
+private val ListTopExtra = 8.dp
+
+private fun glassStyle(cm: CmColors) = HazeStyle(
+    backgroundColor = cm.canvas,
+    tints = listOf(HazeTint(cm.glass)),
+    blurRadius = 16.dp,
+    noiseFactor = 0f,
+    fallbackTint = HazeTint(cm.glass),
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -117,12 +147,33 @@ fun AppRoot(vm: AppViewModel) {
                 )
             } else {
                 val cm = CmColorsCurrent
+                val activity = LocalContext.current as? Activity
+                val density = LocalDensity.current
+                val navInset = WindowInsets.navigationBars.getBottom(density)
+                val hazeState = remember { HazeState() }
+                val style = remember(cm, reduced) { glassStyle(cm) }
+                var topBarPx by remember { mutableIntStateOf(0) }
+                var bottomBarPx by remember { mutableIntStateOf(0) }
+                val topBarH = if (topBarPx > 0) {
+                    with(density) { topBarPx.toDp() }
+                } else {
+                    statusInset + 92.dp
+                }
+                val bottomBarH = if (bottomBarPx > 0) {
+                    with(density) { bottomBarPx.toDp() }
+                } else {
+                    80.dp + with(density) { navInset.toDp() }
+                }
                 val titles = mapOf(
                     AppTab.Overview to ("概览" to "实时用量全景"),
                     AppTab.Devices to ("设备" to "上报设备与健康度"),
                     AppTab.Quota to ("配额与订阅" to "配额窗口与订阅清单"),
                     AppTab.History to ("历史" to "活动热力与日归档"),
                 )
+                BackHandler {
+                    if (state.tab != AppTab.Overview) vm.selectTab(AppTab.Overview)
+                    else activity?.moveTaskToBack(true)
+                }
                 if (state.showUpdate) {
                     UpdateDialog(
                         demo = state.demo,
@@ -139,11 +190,13 @@ fun AppRoot(vm: AppViewModel) {
                     containerColor = cm.canvas,
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
                     topBar = {
-                        // 背景铺进状态栏；文字/图标用 inset 让开时钟与电量（官方 edge-to-edge）。
                         Column(
                             Modifier
                                 .fillMaxWidth()
-                                .background(cm.canvas.copy(alpha = 0.94f))
+                                .onSizeChanged { topBarPx = it.height }
+                                .hazeEffect(hazeState, style) {
+                                    blurEnabled = !reduced && Build.VERSION.SDK_INT >= 31
+                                }
                                 .padding(top = statusInset)
                                 .padding(horizontal = 16.dp, vertical = 10.dp),
                         ) {
@@ -224,8 +277,13 @@ fun AppRoot(vm: AppViewModel) {
                     },
                     bottomBar = {
                         NavigationBar(
+                            modifier = Modifier
+                                .onSizeChanged { bottomBarPx = it.height }
+                                .hazeEffect(hazeState, style) {
+                                    blurEnabled = !reduced && Build.VERSION.SDK_INT >= 31
+                                },
                             windowInsets = NavigationBarDefaults.windowInsets.only(WindowInsetsSides.Bottom),
-                            containerColor = cm.card,
+                            containerColor = Color.Transparent,
                             contentColor = cm.ink,
                             tonalElevation = 0.dp,
                         ) {
@@ -249,23 +307,42 @@ fun AppRoot(vm: AppViewModel) {
                             }
                         }
                     },
-                ) { padding: PaddingValues ->
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .padding(padding)
-                            .clipToBounds(),
-                    ) {
+                ) { _ ->
+                    val listPad = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = topBarH + ListTopExtra,
+                        bottom = bottomBarH + ListBottomExtra,
+                    )
+                    val ptr = rememberPullToRefreshState()
+                    Box(Modifier.fillMaxSize()) {
                         PullToRefreshBox(
                             isRefreshing = state.refreshing,
                             onRefresh = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 vm.refresh()
                             },
-                            modifier = Modifier.fillMaxSize(),
+                            state = ptr,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .hazeSource(hazeState),
+                            indicator = {
+                                PullToRefreshDefaults.Indicator(
+                                    modifier = Modifier
+                                        .align(Alignment.TopCenter)
+                                        .padding(top = topBarH),
+                                    isRefreshing = state.refreshing,
+                                    state = ptr,
+                                )
+                            },
                         ) {
                             if (state.loading && state.overview == null) {
-                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Column(
+                                    Modifier
+                                        .fillMaxSize()
+                                        .padding(listPad),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
                                     ShimmerPanel(110.dp)
                                     ShimmerPanel(110.dp)
                                     ShimmerPanel(160.dp)
@@ -274,6 +351,7 @@ fun AppRoot(vm: AppViewModel) {
                             } else {
                                 AnimatedContent(
                                     targetState = state.tab,
+                                    modifier = Modifier.fillMaxSize(),
                                     transitionSpec = {
                                         if (reduced) {
                                             EnterTransition.None togetherWith ExitTransition.None
@@ -299,8 +377,10 @@ fun AppRoot(vm: AppViewModel) {
                                     }
                                     LazyColumn(
                                         state = listState,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 28.dp),
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .pageEnter(tab),
+                                        contentPadding = listPad,
                                     ) {
                                         when (tab) {
                                             AppTab.Overview -> overviewItems(
@@ -314,7 +394,7 @@ fun AppRoot(vm: AppViewModel) {
                                             AppTab.Quota -> quotaItems(state)
                                             AppTab.History -> historyItems(state, vm::setActView, vm::loadMoreHistory)
                                         }
-                                        item("bottom-space") { Spacer(Modifier.height(24.dp)) }
+                                        item("bottom-space") { Spacer(Modifier.height(16.dp)) }
                                     }
                                 }
                             }

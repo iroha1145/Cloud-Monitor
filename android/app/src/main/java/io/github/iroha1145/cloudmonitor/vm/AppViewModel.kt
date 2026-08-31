@@ -67,6 +67,7 @@ data class UiState(
     val historyDayBasis: String? = null,
     val historyMixedTz: Boolean = false,
     val historyPartial: Boolean = false,
+    val historyPartialErrors: List<String> = emptyList(),
     val historyRetentionDays: Int = 370,
     val modelPeriod: Period = Period.Today,
     val clientPeriod: Period = Period.Today,
@@ -100,20 +101,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _bootstrapped = MutableStateFlow(false)
     val bootstrapped: StateFlow<Boolean> = _bootstrapped
 
-    private val _state = MutableStateFlow(
-        UiState(
-            signedIn = store.signedIn,
-            demo = store.demo,
-            hubUrl = store.hubUrl,
-            token = "",
-            encryptionAvailable = store.encryptionAvailable,
-            dark = when (store.darkOverride) {
-                "dark" -> true
-                "light" -> false
-                else -> null
-            },
-        ),
-    )
+    private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state
 
     init {
@@ -130,6 +118,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     demo = store.demo,
                     hubUrl = store.hubUrl,
                     encryptionAvailable = store.encryptionAvailable,
+                    dark = when (store.darkOverride) {
+                        "dark" -> true
+                        "light" -> false
+                        else -> null
+                    },
                 )
             }
             _bootstrapped.value = true
@@ -545,6 +538,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 historyDayBasis = page.dayBasis,
                 historyMixedTz = page.mixedTimeZones,
                 historyPartial = page.partial,
+                historyPartialErrors = page.partialErrors,
                 historyRetentionDays = page.retentionDays ?: 370,
             )
         }
@@ -568,6 +562,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 historyDayBasis = null,
                 historyMixedTz = false,
                 historyPartial = false,
+                historyPartialErrors = emptyList(),
             )
         }
     }

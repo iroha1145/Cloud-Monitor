@@ -91,8 +91,9 @@ object ErrorCodesSerializer : KSerializer<List<String>> {
         return arr.mapNotNull { item ->
             when (item) {
                 is JsonPrimitive -> item.contentOrNull?.takeIf { it.isNotBlank() }
-                is JsonObject -> (item["code"] as? JsonPrimitive)?.contentOrNull
-                    ?: (item["error_code"] as? JsonPrimitive)?.contentOrNull
+                is JsonObject -> sequenceOf("code", "error_code", "error")
+                    .mapNotNull { key -> (item[key] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() } }
+                    .firstOrNull()
                 else -> null
             }
         }

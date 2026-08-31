@@ -1,5 +1,7 @@
 package io.github.iroha1145.cloudmonitor.data
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.job
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -9,7 +11,9 @@ import kotlinx.serialization.json.jsonObject
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.coroutineContext
 
 class HubClient(
     private val http: OkHttpClient = defaultClient(),
@@ -21,16 +25,16 @@ class HubClient(
         explicitNulls = false
     }
 
-    fun overview(baseUrl: String, token: String): Overview =
+    suspend fun overview(baseUrl: String, token: String): Overview =
         get(baseUrl, "/api/v1/tm/overview", token)
 
-    fun subscriptions(baseUrl: String, token: String): SubscriptionsPayload =
+    suspend fun subscriptions(baseUrl: String, token: String): SubscriptionsPayload =
         get(baseUrl, "/api/v1/tm/subscriptions", token)
 
-    fun providerStatus(baseUrl: String, token: String): ProviderStatusPayload =
+    suspend fun providerStatus(baseUrl: String, token: String): ProviderStatusPayload =
         get(baseUrl, "/api/v1/tm/provider-status", token)
 
-    fun historyDaily(baseUrl: String, token: String, cursor: String?): HistoryPage {
+    suspend fun historyDaily(baseUrl: String, token: String, cursor: String?): HistoryPage {
         val query = buildMap {
             put("limit", "30")
             if (!cursor.isNullOrBlank()) put("cursor", cursor)
@@ -38,12 +42,12 @@ class HubClient(
         return get(baseUrl, "/api/v1/tm/history/daily", token, query)
     }
 
-    fun systemUpdate(baseUrl: String, token: String, refresh: Boolean = false): SystemUpdate {
+    suspend fun systemUpdate(baseUrl: String, token: String, refresh: Boolean = false): SystemUpdate {
         val query = if (refresh) mapOf("refresh" to "1") else emptyMap()
         return get(baseUrl, "/api/v1/system/update", token, query)
     }
 
-    private inline fun <reified T> get(
+    private suspend inline fun <reified T> get(
         baseUrl: String,
         path: String,
         token: String,
@@ -60,23 +64,38 @@ class HubClient(
             .header("Authorization", "Bearer $token")
             .get()
             .build()
-        val resp = try {
-            http.newCall(req).execute()
-        } catch (e: ApiException) {
-            throw e
-        } catch (_: Exception) {
-            throw ApiException(0, "无法连接服务器")
+        val call = http.newCall(req)
+        val cancelHandle = coroutineContext.job.invokeOnCompletion { cause ->
+            if (cause != null) call.cancel()
         }
-        resp.use { r ->
-            val body = r.body?.string().orEmpty()
-            if (!r.isSuccessful) {
-                throw ApiException(r.code, extractApiError(body) ?: "请求失败 ${r.code}")
-            }
-            return try {
-                json.decodeFromString<T>(body)
+        try {
+            val resp = try {
+                call.execute()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: IOException) {
+                if (call.isCanceled()) throw CancellationException("request cancelled", e)
+                throw ApiException(0, "无法连接服务器")
+            } catch (e: ApiException) {
+                throw e
             } catch (_: Exception) {
-                throw ApiException(r.code, "响应无法解析")
+                throw ApiException(0, "无法连接服务器")
             }
+            resp.use { r ->
+                val body = r.body?.string().orEmpty()
+                if (!r.isSuccessful) {
+                    throw ApiException(r.code, extractApiError(body) ?: "请求失败 ${r.code}")
+                }
+                return try {
+                    json.decodeFromString<T>(body)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    throw ApiException(r.code, "响应无法解析")
+                }
+            }
+        } finally {
+            cancelHandle.dispose()
         }
     }
 

@@ -256,6 +256,15 @@ object Format {
         else -> code.orEmpty()
     }
 
+    fun partialErrorText(code: String?): String = when (code.orEmpty()) {
+        "history_unavailable" -> "官方历史读取失败"
+        "devices_badges_unavailable" -> "设备徽章读取失败"
+        "activity_unavailable" -> "活动计算失败"
+        "clients_json_corrupt" -> "客户端日归档损坏"
+        "models_json_corrupt" -> "模型日归档损坏"
+        else -> pvErrorText(code).ifBlank { code.orEmpty() }
+    }
+
     fun pvNameOverride(provider: String?, fallback: String): String {
         return when (provider.orEmpty().lowercase(Locale.US)) {
             "grok", "xai" -> "SpaceXAI API"

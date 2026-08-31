@@ -1,5 +1,6 @@
 package io.github.iroha1145.cloudmonitor.ui.gate
 
+import android.os.Build
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -42,6 +44,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
@@ -57,6 +60,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -103,6 +107,22 @@ fun GateScreen(
             .fillMaxSize()
             .background(cm.canvas),
     ) {
+        if (!reduced) {
+            GateGlow(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 80.dp, y = (-120).dp),
+                color = Color(0x29533AFD),
+                size = 420.dp,
+            )
+            GateGlow(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .offset(x = (-60).dp, y = 100.dp),
+                color = Color(0x247F7DFC),
+                size = 360.dp,
+            )
+        }
         IconButton(
             onToggleDark,
             Modifier
@@ -258,6 +278,20 @@ fun GateScreen(
         }
         }
     }
+}
+
+@Composable
+private fun GateGlow(modifier: Modifier, color: Color, size: Dp) {
+    val blur = if (Build.VERSION.SDK_INT >= 31) 90.dp else 0.dp
+    Box(
+        modifier
+            .size(size)
+            .blur(blur)
+            .background(
+                Brush.radialGradient(listOf(color, Color.Transparent)),
+                CircleShape,
+            ),
+    )
 }
 
 @Composable

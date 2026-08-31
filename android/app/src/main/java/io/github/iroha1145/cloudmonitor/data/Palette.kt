@@ -133,10 +133,11 @@ fun matrixAxes(map: Map<String, Map<String, Double>>, top: Int = 8): Pair<List<S
 
 fun connBanner(overview: Overview, demo: Boolean, staleData: Boolean): Pair<String, Boolean> {
     if (demo) return "演示模式" to true
+    val codes = overview.partialErrors.map { Format.partialErrorText(it) }.filter { it.isNotBlank() }.distinct()
     var text = when {
         staleData -> "数据可能已过期"
         overview.snapshotDegraded -> "快照历史降级"
-        overview.partial -> "部分数据不可用"
+        overview.partial -> if (codes.isEmpty()) "部分数据不可用" else "部分数据不可用（${codes.joinToString("、")}）"
         else -> "正常"
     }
     val outbox = overview.pendingOutbox

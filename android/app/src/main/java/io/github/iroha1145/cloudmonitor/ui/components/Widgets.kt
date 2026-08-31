@@ -3,6 +3,7 @@
 package io.github.iroha1145.cloudmonitor.ui.components
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -39,6 +40,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -62,13 +64,14 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import coil.decode.SvgDecoder
 import coil.request.ImageRequest
+import io.github.iroha1145.cloudmonitor.EagerSvgDecoderFactory
 import io.github.iroha1145.cloudmonitor.data.Format
 import io.github.iroha1145.cloudmonitor.data.logoAssetPath
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
 import io.github.iroha1145.cloudmonitor.ui.theme.LocalReducedMotion
 import io.github.iroha1145.cloudmonitor.ui.theme.Motion
+import io.github.iroha1145.cloudmonitor.ui.theme.applyEnterBlur
 import io.github.iroha1145.cloudmonitor.ui.theme.rememberGrow
 import io.github.iroha1145.cloudmonitor.vm.Period
 
@@ -139,7 +142,13 @@ fun CompactNumber(value: Double, size: TextUnit = 32.sp, tight: Boolean = false,
                 fadeOut(tween(Motion.Digit / 2))
         },
         label = "num-pop",
-    ) { _ -> body() }
+    ) { _ ->
+        val enter = remember { Animatable(if (reduced) 1f else 0f) }
+        LaunchedEffect(Unit) {
+            if (!reduced) enter.animateTo(1f, tween(Motion.Digit, easing = FastOutSlowInEasing))
+        }
+        Box(Modifier.graphicsLayer { applyEnterBlur(enter.value, 4f) }) { body() }
+    }
 }
 
 @Composable
@@ -188,7 +197,7 @@ fun ClientLogo(name: String?, size: Dp = 16.dp, tint: Color = CmColorsCurrent.in
             ImageRequest.Builder(context)
                 .data(path)
                 .memoryCacheKey("cm-logo:$path")
-                .decoderFactory(SvgDecoder.Factory())
+                .decoderFactory(EagerSvgDecoderFactory())
                 .crossfade(false)
                 .allowHardware(true)
                 .build()
