@@ -1,0 +1,22 @@
+{
+  "name": "Cloud Monitor",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "tm-core",
+      "command": "bash .cursor/run-tm-core.sh",
+      "description": "Vendored 官方 token-monitor hub（协议权威），监听 127.0.0.1:17321"
+    },
+    {
+      "name": "cloud-hub",
+      "command": "bash .cursor/run-hub.sh",
+      "description": "FastAPI 网关 + 用量面板，监听 0.0.0.0:7878（默认演示模式）"
+    }
+  ],
+  "ports": [
+    {
+      "name": "cloud-hub",
+      "port": 7878
+    }
+  ]
+}
