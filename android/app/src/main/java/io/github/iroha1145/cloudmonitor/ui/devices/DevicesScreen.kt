@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,11 +24,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.iroha1145.cloudmonitor.data.Format
 import io.github.iroha1145.cloudmonitor.data.deviceOnline
+import io.github.iroha1145.cloudmonitor.data.healthBarWidth
+import io.github.iroha1145.cloudmonitor.data.healthLabel
+import io.github.iroha1145.cloudmonitor.data.healthTools
+import io.github.iroha1145.cloudmonitor.data.isWindowsPlatform
+import io.github.iroha1145.cloudmonitor.data.shortStatusText
 import io.github.iroha1145.cloudmonitor.ui.components.ClientLogo
-import io.github.iroha1145.cloudmonitor.ui.components.EmptyHint
 import io.github.iroha1145.cloudmonitor.ui.components.Panel
 import io.github.iroha1145.cloudmonitor.ui.components.StatusDot
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
+import io.github.iroha1145.cloudmonitor.ui.theme.riseIn
 import io.github.iroha1145.cloudmonitor.vm.UiState
 
 fun LazyListScope.devicesItems(state: UiState) {
@@ -39,25 +44,51 @@ fun LazyListScope.devicesItems(state: UiState) {
     val todaySum = ov.devices.sumOf { it.today.totalTokens }
 
     item("sum") {
-        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SumPill("在线 $online / ${ov.devices.size}")
-            SumPill("客户端 $clients")
-            SumPill("今日 ${Format.fmtCompact(todaySum)}")
+        Column(Modifier.padding(bottom = 12.dp).riseIn(0), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SumPill("在线 $online / ${ov.devices.size}", Modifier.weight(1f))
+                SumPill("客户端 $clients", Modifier.weight(1f))
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SumPill("今日 ${Format.fmtCompact(todaySum)}", Modifier.weight(1f))
+                SumPill("离线由上传间隔判定", Modifier.weight(1f))
+            }
         }
     }
     if (ov.devices.isEmpty()) {
-        item("empty") { Panel { EmptyHint("还没有设备数据") } }
+        item("empty") {
+            Panel(Modifier.riseIn(1)) {
+                val cm = CmColorsCurrent
+                Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("☁", fontSize = 32.sp)
+                    Spacer(Modifier.height(10.dp))
+                    Text("还没有设备数据", color = cm.ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "在本机 token-monitor 设置里启用多设备同步（Multi-device sync）：",
+                        color = cm.mute,
+                        fontSize = 13.sp,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        StepRow("1", "hub 地址填本服务器地址")
+                        StepRow("2", "密钥填服务端配置的 TOKEN_MONITOR_SECRET")
+                        StepRow("3", "桌面 Widget 按其设置的实时/10/20/30 分钟节奏上传；Headless Agent 通常为 5 分钟。App 每 5 分钟刷新一次。")
+                    }
+                }
+            }
+        }
         return
     }
-    items(ov.devices, key = { it.deviceId }) { d ->
+    itemsIndexed(ov.devices, key = { _, d -> d.deviceId }) { index, d ->
         val cm = CmColorsCurrent
         val on = onlineMap[d.deviceId]
         val tz = ov.periodWindowsByDevice[d.deviceId]?.timeZone
         val diag = ov.diagnostics.find { it.deviceId == d.deviceId }
-        Panel(Modifier.padding(bottom = 12.dp)) {
+        Panel(Modifier.padding(bottom = 12.dp).riseIn(index + 1)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    StatusDot(on)
+                    StatusDot(on, pulse = on == true)
                     Spacer(Modifier.width(6.dp))
                     Text(
                         when (on) { true -> "在线"; false -> "离线"; null -> "状态未知" },
@@ -92,11 +123,63 @@ fun LazyListScope.devicesItems(state: UiState) {
                     }
                 }
             }
-            diag?.clientStatus?.let {
-                Spacer(Modifier.height(6.dp))
-                Text(it, color = cm.mute, fontSize = 12.sp)
+            val badges = buildList {
+                if (d.projectsEnabled) add("项目统计")
+                if (d.historyAvailable) add("历史数据")
             }
-            diag?.wslStatus?.let { Text(it, color = cm.mute, fontSize = 12.sp) }
+            if (badges.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    badges.forEach { b ->
+                        Text(
+                            b,
+                            color = cm.brand,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.clip(RoundedCornerShape(999.dp)).background(cm.brand50).padding(horizontal = 8.dp, vertical = 3.dp),
+                        )
+                    }
+                }
+            }
+            val tools = healthTools(diag)
+            if (tools.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                tools.forEach { t ->
+                    val barColor = when (t.level) {
+                        "ok" -> cm.ok
+                        "warn" -> cm.warn
+                        "crit" -> cm.crit
+                        else -> cm.mute
+                    }
+                    Column(Modifier.padding(vertical = 4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ClientLogo(t.name, size = 12.dp)
+                            Spacer(Modifier.width(6.dp))
+                            Text(t.name + (t.version?.let { " v$it" } ?: ""), color = cm.ink, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            Text(healthLabel(t.level), color = barColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(99.dp)).background(cm.brand25)) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth(healthBarWidth(t.level))
+                                    .height(4.dp)
+                                    .background(barColor, RoundedCornerShape(99.dp)),
+                            )
+                        }
+                    }
+                }
+            }
+            diag?.clientStatus?.let { raw ->
+                val text = shortStatusText(raw)
+                if (text.isNotBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(text, color = cm.mute, fontSize = 12.sp)
+                }
+            }
+            if (isWindowsPlatform(d.platform, d.osName)) {
+                diag?.wslStatus?.let { Text("WSL $it", color = cm.mute, fontSize = 12.sp) }
+            }
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth()) {
                 DevStat("今日", Format.fmtCompact(d.today.totalTokens), Modifier.weight(1f))
@@ -109,9 +192,25 @@ fun LazyListScope.devicesItems(state: UiState) {
 }
 
 @Composable
-private fun SumPill(text: String) {
+private fun StepRow(n: String, text: String) {
     val cm = CmColorsCurrent
-    Box(Modifier.clip(RoundedCornerShape(999.dp)).background(cm.card).padding(horizontal = 10.dp, vertical = 8.dp)) {
+    Row(verticalAlignment = Alignment.Top) {
+        Text(
+            n,
+            color = cm.brand,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.clip(RoundedCornerShape(99.dp)).background(cm.brand50).padding(horizontal = 8.dp, vertical = 2.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(text, color = cm.ink2, fontSize = 13.sp, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun SumPill(text: String, modifier: Modifier = Modifier) {
+    val cm = CmColorsCurrent
+    Box(modifier.clip(RoundedCornerShape(999.dp)).background(cm.card).padding(horizontal = 10.dp, vertical = 8.dp)) {
         Text(text, color = cm.ink, fontSize = 12.sp, fontWeight = FontWeight.Medium)
     }
 }

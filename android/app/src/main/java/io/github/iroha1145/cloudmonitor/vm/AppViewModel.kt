@@ -11,9 +11,11 @@ import io.github.iroha1145.cloudmonitor.data.Overview
 import io.github.iroha1145.cloudmonitor.data.ProviderCard
 import io.github.iroha1145.cloudmonitor.data.SessionStore
 import io.github.iroha1145.cloudmonitor.data.SubscriptionsPayload
+import io.github.iroha1145.cloudmonitor.data.SystemUpdate
 import io.github.iroha1145.cloudmonitor.data.assignColors
 import io.github.iroha1145.cloudmonitor.data.rankedNames
 import io.github.iroha1145.cloudmonitor.data.trendRows
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -31,6 +33,7 @@ enum class Period(val key: String, val label: String) {
     Month("month", "本月"),
     AllTime("allTime", "累计"),
 }
+enum class AuxStatus { Idle, Loading, Ready, Empty, Error, Unsupported }
 
 data class UiState(
     val signedIn: Boolean = false,
@@ -45,48 +48,88 @@ data class UiState(
     val refreshing: Boolean = false,
     val error: String? = null,
     val gateError: String? = null,
+    val toast: String? = null,
+    val staleData: Boolean = false,
     val overview: Overview? = null,
     val providers: List<ProviderCard> = emptyList(),
+    val providersStatus: AuxStatus = AuxStatus.Idle,
+    val providersPartial: Boolean = false,
+    val providersPartialErrors: List<String> = emptyList(),
     val subscriptions: SubscriptionsPayload? = null,
+    val subsStatus: AuxStatus = AuxStatus.Idle,
     val history: List<HistoryDay> = emptyList(),
     val historyCursor: String? = null,
     val historyHasMore: Boolean = false,
     val historyLoading: Boolean = false,
+    val historyStatus: AuxStatus = AuxStatus.Idle,
+    val historyError: String? = null,
+    val historyFallback: Boolean = false,
+    val historyDayBasis: String? = null,
+    val historyMixedTz: Boolean = false,
+    val historyPartial: Boolean = false,
+    val historyPartialErrors: List<String> = emptyList(),
+    val historyRetentionDays: Int = 370,
     val modelPeriod: Period = Period.Today,
     val clientPeriod: Period = Period.Today,
     val mxPeriod: Period = Period.Today,
     val mxCost: Boolean = false,
-    val actView: Int = 2, // 0 day 1 week 2 month
+    val actView: Int = 2,
     val lastUpdated: Long? = null,
-)
+    val showUpdate: Boolean = false,
+    val update: SystemUpdate? = null,
+    val updateLoading: Boolean = false,
+    val updateError: String? = null,
+) {
+    override fun toString(): String {
+        val tokenMark = if (token.isBlank()) "" else "•••"
+        return "UiState(signedIn=$signedIn, demo=$demo, hubUrl=$hubUrl, token=$tokenMark, tab=$tab, loading=$loading)"
+    }
+}
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val store = SessionStore(app)
     private val hub = HubClient()
     private var poll: Job? = null
+    private var dataJob: Job? = null
+    private var historyJob: Job? = null
+    private var updateJob: Job? = null
+    private var toastJob: Job? = null
+    private var sessionGen = 0
     private var demoRng = Random.Default
-    private var sessionToken: String = if (store.signedIn && !store.demo) store.token else ""
+    private var sessionToken: String = ""
 
-    private val _state = MutableStateFlow(
-        UiState(
-            signedIn = store.signedIn,
-            demo = store.demo,
-            hubUrl = store.hubUrl,
-            token = "",
-            encryptionAvailable = store.encryptionAvailable,
-            dark = when (store.darkOverride) {
-                "dark" -> true
-                "light" -> false
-                else -> null
-            },
-        ),
-    )
+    private val _bootstrapped = MutableStateFlow(false)
+    val bootstrapped: StateFlow<Boolean> = _bootstrapped
+
+    private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state
 
     init {
-        if (store.signedIn) {
-            refresh(initial = true)
-            if (!store.demo) startPoll()
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { store.ensureSecrets() }
+            if (sessionGen != 0) {
+                _bootstrapped.value = true
+                return@launch
+            }
+            sessionToken = if (store.signedIn && !store.demo) store.token else ""
+            _state.update {
+                it.copy(
+                    signedIn = store.signedIn,
+                    demo = store.demo,
+                    hubUrl = store.hubUrl,
+                    encryptionAvailable = store.encryptionAvailable,
+                    dark = when (store.darkOverride) {
+                        "dark" -> true
+                        "light" -> false
+                        else -> null
+                    },
+                )
+            }
+            _bootstrapped.value = true
+            if (store.signedIn && sessionGen == 0) {
+                refresh(initial = true)
+                if (!store.demo) startPoll()
+            }
         }
     }
 
@@ -98,6 +141,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setMxPeriod(p: Period) = _state.update { it.copy(mxPeriod = p) }
     fun setMxCost(v: Boolean) = _state.update { it.copy(mxCost = v) }
     fun setActView(v: Int) = _state.update { it.copy(actView = v) }
+    fun dismissToast() = _state.update { it.copy(toast = null) }
+    fun closeUpdate() = _state.update { it.copy(showUpdate = false, updateError = null) }
 
     fun toggleDark(systemDark: Boolean) {
         val cur = _state.value.dark ?: systemDark
@@ -107,9 +152,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun enterDemo() {
+        bumpSession()
         demoRng = Random.Default
         sessionToken = ""
-        store.persistSession(demoMode = true, accessToken = "")
         _state.update {
             it.copy(
                 signedIn = true,
@@ -119,8 +164,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 error = null,
                 sessionWarning = null,
                 tab = AppTab.Overview,
+                staleData = false,
             )
         }
+        viewModelScope.launch(Dispatchers.IO) { store.persistSession(demoMode = true, accessToken = "") }
         refresh(initial = true)
         poll?.cancel()
     }
@@ -136,13 +183,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(gateError = "请填写访问密钥") }
             return
         }
-        viewModelScope.launch {
+        bumpSession()
+        val gen = sessionGen
+        dataJob = viewModelScope.launch {
             _state.update { it.copy(loading = true, gateError = null) }
             try {
+                withContext(Dispatchers.IO) { store.ensureSecrets() }
+                if (!sameSession(gen)) return@launch
                 val ov = withContext(Dispatchers.IO) { hub.overview(url, token) }
+                if (!sameSession(gen)) return@launch
                 sessionToken = token
-                store.hubUrl = HubClient.normalizeBase(url)
-                store.persistSession(demoMode = false, accessToken = token)
+                withContext(Dispatchers.IO) {
+                    store.hubUrl = HubClient.normalizeBase(url)
+                    store.persistSession(demoMode = false, accessToken = token)
+                }
+                if (!sameSession(gen)) return@launch
                 val warn = if (store.encryptionAvailable) null else "系统密钥库不可用，本次不会记住密钥"
                 _state.update {
                     it.copy(
@@ -155,131 +210,369 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         lastUpdated = System.currentTimeMillis(),
                         tab = AppTab.Overview,
                         sessionWarning = warn,
+                        staleData = false,
+                        error = null,
                     )
                 }
-                loadAux(store.hubUrl, token, false)
-                startPoll()
+                loadAux(store.hubUrl, token, ov, gen)
+                if (alive(gen)) startPoll()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: ApiException) {
-                _state.update { it.copy(loading = false, gateError = e.message) }
+                if (!sameSession(gen)) return@launch
+                _state.update { it.copy(loading = false, gateError = gateMessage(e)) }
             } catch (e: Exception) {
+                if (!sameSession(gen)) return@launch
                 _state.update { it.copy(loading = false, gateError = e.message ?: "登录失败") }
             }
         }
     }
 
     fun logout() {
-        poll?.cancel()
-        sessionToken = ""
-        store.clearSecrets()
-        _state.update {
-            UiState(
-                signedIn = false,
-                hubUrl = store.hubUrl,
-                encryptionAvailable = store.encryptionAvailable,
-                dark = it.dark,
-            )
-        }
+        applyLoggedOut()
+        dataJob?.cancel()
+        dataJob = null
     }
 
     fun refresh(initial: Boolean = false) {
         val s = _state.value
         if (!s.signedIn) return
-        viewModelScope.launch {
+        val gen = sessionGen
+        val demo = s.demo
+        val url = s.hubUrl
+        val token = sessionToken
+        dataJob?.cancel()
+        historyJob?.cancel()
+        dataJob = viewModelScope.launch {
             _state.update { it.copy(refreshing = !initial, loading = initial, error = null) }
             try {
-                if (s.demo) {
+                if (demo) {
                     val ov = DemoCatalog.overview(demoRng)
-                    val hist = DemoCatalog.historyPage(null, rng = demoRng)
+                    if (!alive(gen)) return@launch
+                    applyHistoryPage(DemoCatalog.historyPage(null, rng = demoRng), replace = true, fallback = false)
                     _state.update {
                         it.copy(
                             overview = ov,
                             providers = DemoCatalog.providerStatus(ov).providers,
+                            providersStatus = AuxStatus.Ready,
+                            providersPartial = false,
+                            providersPartialErrors = emptyList(),
                             subscriptions = DemoCatalog.subscriptions(demoRng),
-                            history = hist.items,
-                            historyCursor = hist.nextCursor,
-                            historyHasMore = hist.hasMore,
+                            subsStatus = AuxStatus.Ready,
                             loading = false,
                             refreshing = false,
                             lastUpdated = System.currentTimeMillis(),
+                            staleData = false,
                         )
                     }
+                    if (!initial) toast("已重新生成演示数据")
                 } else {
-                    val ov = withContext(Dispatchers.IO) { hub.overview(s.hubUrl, accessToken()) }
+                    val ov = withContext(Dispatchers.IO) { hub.overview(url, token) }
+                    if (!alive(gen)) return@launch
                     _state.update {
                         it.copy(
                             overview = ov,
                             loading = false,
                             refreshing = false,
                             lastUpdated = System.currentTimeMillis(),
+                            staleData = false,
                         )
                     }
-                    loadAux(s.hubUrl, accessToken(), false)
+                    loadAux(url, token, ov, gen)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: ApiException) {
+                if (!alive(gen)) return@launch
                 if (e.status == 401 || e.status == 403) {
-                    logout()
-                    _state.update { it.copy(gateError = e.message) }
+                    applyLoggedOut(gateMessage(e))
                 } else {
-                    _state.update { it.copy(loading = false, refreshing = false, error = e.message) }
+                    _state.update {
+                        it.copy(
+                            loading = false,
+                            refreshing = false,
+                            error = e.message,
+                            staleData = it.overview != null,
+                        )
+                    }
+                    if (_state.value.overview != null) toast("${e.message}，显示上一份数据")
                 }
             } catch (e: Exception) {
-                _state.update { it.copy(loading = false, refreshing = false, error = e.message ?: "刷新失败") }
+                if (!alive(gen)) return@launch
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        refreshing = false,
+                        error = e.message ?: "刷新失败",
+                        staleData = it.overview != null,
+                    )
+                }
             }
         }
     }
 
     fun loadMoreHistory() {
         val s = _state.value
-        if (!s.signedIn || s.historyLoading || !s.historyHasMore) return
-        viewModelScope.launch {
-            _state.update { it.copy(historyLoading = true) }
+        if (!s.signedIn || s.historyLoading || !s.historyHasMore || s.historyFallback) return
+        val gen = sessionGen
+        val demo = s.demo
+        val url = s.hubUrl
+        val token = sessionToken
+        val cursor = s.historyCursor
+        historyJob?.cancel()
+        _state.update { it.copy(historyLoading = true, historyError = null) }
+        historyJob = viewModelScope.launch {
             try {
-                val page = if (s.demo) {
-                    DemoCatalog.historyPage(s.historyCursor, rng = demoRng)
+                val page = if (demo) {
+                    DemoCatalog.historyPage(cursor, rng = demoRng)
                 } else {
-                    withContext(Dispatchers.IO) { hub.historyDaily(s.hubUrl, accessToken(), s.historyCursor) }
+                    withContext(Dispatchers.IO) { hub.historyDaily(url, token, cursor) }
                 }
+                if (!alive(gen)) return@launch
+                applyHistoryPage(page, replace = false, fallback = false)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (!alive(gen)) return@launch
                 _state.update {
                     it.copy(
-                        history = it.history + page.items,
-                        historyCursor = page.nextCursor,
-                        historyHasMore = page.hasMore,
                         historyLoading = false,
+                        historyStatus = AuxStatus.Error,
+                        historyError = e.message ?: "加载更早记录失败",
                     )
                 }
-            } catch (_: Exception) {
-                _state.update { it.copy(historyLoading = false) }
             }
         }
     }
 
-    private fun accessToken(): String = sessionToken.ifBlank { store.token }
+    fun openUpdate() {
+        val s = _state.value
+        if (!s.signedIn) return
+        val gen = sessionGen
+        val demo = s.demo
+        val url = s.hubUrl
+        val token = sessionToken
+        _state.update { it.copy(showUpdate = true, updateLoading = true, updateError = null) }
+        updateJob?.cancel()
+        updateJob = viewModelScope.launch {
+            try {
+                val data = if (demo) {
+                    DemoCatalog.updateCheck()
+                } else {
+                    withContext(Dispatchers.IO) { hub.systemUpdate(url, token, refresh = true) }
+                }
+                if (!alive(gen)) return@launch
+                _state.update { it.copy(update = data, updateLoading = false, updateError = null) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (!alive(gen)) return@launch
+                _state.update {
+                    it.copy(
+                        updateLoading = false,
+                        updateError = e.message ?: "检索失败",
+                    )
+                }
+            }
+        }
+    }
 
-    private suspend fun loadAux(url: String, token: String, demo: Boolean) {
-        if (demo) return
-        try {
-            val pv = withContext(Dispatchers.IO) { hub.providerStatus(url, token) }
-            _state.update { it.copy(providers = pv.providers) }
-        } catch (_: Exception) {
-            _state.update { it.copy(providers = emptyList()) }
+    private fun sameSession(gen: Int): Boolean = gen == sessionGen
+    private fun alive(gen: Int): Boolean = sameSession(gen) && _state.value.signedIn
+
+    private fun bumpSession() {
+        sessionGen++
+        dataJob?.cancel()
+        historyJob?.cancel()
+        updateJob?.cancel()
+        poll?.cancel()
+        dataJob = null
+        historyJob = null
+        updateJob = null
+    }
+
+    private fun applyLoggedOut(gateError: String? = null) {
+        bumpSession()
+        sessionToken = ""
+        store.markSignedOut()
+        viewModelScope.launch(Dispatchers.IO) { store.clearToken() }
+        _state.update {
+            UiState(
+                signedIn = false,
+                hubUrl = store.hubUrl,
+                encryptionAvailable = store.encryptionAvailable,
+                dark = it.dark,
+                gateError = gateError,
+            )
         }
-        try {
-            val sub = withContext(Dispatchers.IO) { hub.subscriptions(url, token) }
-            _state.update { it.copy(subscriptions = sub) }
-        } catch (_: Exception) {
-            _state.update { it.copy(subscriptions = null) }
-        }
-        try {
-            val hist = withContext(Dispatchers.IO) { hub.historyDaily(url, token, null) }
+    }
+
+    private fun gateMessage(e: ApiException): String = when {
+        e.status == 401 -> "密钥不正确，请重新输入。"
+        e.status == 403 -> "没有访问权限。"
+        e.status == 500 && e.message.contains(Regex("密钥|token", RegexOption.IGNORE_CASE)) ->
+            "服务器访问令牌未配置，请先在后端设置 ACCESS_TOKEN。"
+        else -> e.message
+    }
+
+    private suspend fun loadAux(url: String, token: String, ov: Overview, gen: Int) {
+        val failed = mutableListOf<String>()
+        if (!ov.features.providerStatus) {
+            if (!alive(gen)) return
             _state.update {
                 it.copy(
-                    history = hist.items,
-                    historyCursor = hist.nextCursor,
-                    historyHasMore = hist.hasMore,
+                    providers = emptyList(),
+                    providersStatus = AuxStatus.Unsupported,
+                    providersPartial = false,
+                    providersPartialErrors = emptyList(),
                 )
             }
-        } catch (_: Exception) {
-            /* keep empty; history screen falls back to overview activity */
+        } else {
+            try {
+                val pv = withContext(Dispatchers.IO) { hub.providerStatus(url, token) }
+                if (!alive(gen)) return
+                _state.update {
+                    it.copy(
+                        providers = pv.providers,
+                        providersStatus = if (pv.providers.isEmpty()) AuxStatus.Empty else AuxStatus.Ready,
+                        providersPartial = pv.partial,
+                        providersPartialErrors = pv.errors,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                if (!alive(gen)) return
+                if (e.status == 401 || e.status == 403) {
+                    applyLoggedOut(gateMessage(e))
+                    return
+                }
+                val st = if (e.status == 404) AuxStatus.Unsupported else AuxStatus.Error
+                _state.update { it.copy(providers = emptyList(), providersStatus = st) }
+                if (st == AuxStatus.Error) failed += "提供商状态"
+            } catch (_: Exception) {
+                if (!alive(gen)) return
+                _state.update { it.copy(providers = emptyList(), providersStatus = AuxStatus.Error) }
+                failed += "提供商状态"
+            }
+        }
+
+        if (!ov.features.subscriptions) {
+            if (!alive(gen)) return
+            _state.update { it.copy(subscriptions = null, subsStatus = AuxStatus.Unsupported) }
+        } else {
+            try {
+                val sub = withContext(Dispatchers.IO) { hub.subscriptions(url, token) }
+                if (!alive(gen)) return
+                val empty = sub.subscriptions.isEmpty()
+                _state.update {
+                    it.copy(
+                        subscriptions = sub,
+                        subsStatus = if (empty) AuxStatus.Empty else AuxStatus.Ready,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                if (!alive(gen)) return
+                if (e.status == 401 || e.status == 403) {
+                    applyLoggedOut(gateMessage(e))
+                    return
+                }
+                val st = if (e.status == 404) AuxStatus.Unsupported else AuxStatus.Error
+                _state.update { it.copy(subscriptions = null, subsStatus = st) }
+                if (st == AuxStatus.Error) failed += "订阅清单"
+            } catch (_: Exception) {
+                if (!alive(gen)) return
+                _state.update { it.copy(subscriptions = null, subsStatus = AuxStatus.Error) }
+                failed += "订阅清单"
+            }
+        }
+
+        if (!ov.features.historyDaily) {
+            if (!alive(gen)) return
+            applyFallbackHistory(ov, "overview")
+        } else {
+            try {
+                val hist = withContext(Dispatchers.IO) { hub.historyDaily(url, token, null) }
+                if (!alive(gen)) return
+                applyHistoryPage(hist, replace = true, fallback = false)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                if (!alive(gen)) return
+                if (e.status == 401 || e.status == 403) {
+                    applyLoggedOut(gateMessage(e))
+                    return
+                }
+                if (e.status == 404) {
+                    applyFallbackHistory(ov, "unsupported")
+                } else {
+                    applyFallbackHistory(ov, e.message)
+                    failed += "日归档"
+                }
+            } catch (e: Exception) {
+                if (!alive(gen)) return
+                applyFallbackHistory(ov, e.message ?: "日归档加载失败")
+                failed += "日归档"
+            }
+        }
+        if (failed.isNotEmpty() && alive(gen)) toast("部分数据暂不可用（${failed.joinToString("、")}）")
+    }
+
+    private fun applyHistoryPage(
+        page: io.github.iroha1145.cloudmonitor.data.HistoryPage,
+        replace: Boolean,
+        fallback: Boolean,
+    ) {
+        _state.update {
+            val items = mergeHistoryDays(if (replace) emptyList() else it.history, page.items)
+            it.copy(
+                history = items,
+                historyCursor = page.nextCursor,
+                historyHasMore = page.hasMore && !fallback,
+                historyLoading = false,
+                historyStatus = if (items.isEmpty()) AuxStatus.Empty else AuxStatus.Ready,
+                historyError = null,
+                historyFallback = fallback,
+                historyDayBasis = page.dayBasis,
+                historyMixedTz = page.mixedTimeZones,
+                historyPartial = page.partial,
+                historyPartialErrors = page.partialErrors,
+                historyRetentionDays = page.retentionDays ?: 370,
+            )
+        }
+    }
+
+    private fun applyFallbackHistory(ov: Overview, reason: String) {
+        val rows = ov.activity.daily.sortedByDescending { it.day }.map {
+            HistoryDay(it.day, it.total, perModel = it.models)
+        }
+        _state.update {
+            it.copy(
+                history = mergeHistoryDays(emptyList(), rows),
+                historyCursor = null,
+                historyHasMore = false,
+                historyLoading = false,
+                historyStatus = if (reason == "unsupported" || reason == "overview") {
+                    if (rows.isEmpty()) AuxStatus.Empty else AuxStatus.Unsupported
+                } else AuxStatus.Error,
+                historyError = if (reason == "unsupported" || reason == "overview") null else reason,
+                historyFallback = true,
+                historyDayBasis = null,
+                historyMixedTz = false,
+                historyPartial = false,
+                historyPartialErrors = emptyList(),
+            )
+        }
+    }
+
+    private fun toast(msg: String) {
+        toastJob?.cancel()
+        _state.update { it.copy(toast = msg) }
+        toastJob = viewModelScope.launch {
+            delay(2600)
+            _state.update { if (it.toast == msg) it.copy(toast = null) else it }
         }
     }
 
@@ -306,4 +599,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun trend() = _state.value.overview?.let { trendRows(it) }.orEmpty()
+
+    companion object {
+        internal fun mergeHistoryDays(existing: List<HistoryDay>, incoming: List<HistoryDay>): List<HistoryDay> {
+            if (incoming.isEmpty()) return existing
+            val byDay = LinkedHashMap<String, HistoryDay>()
+            existing.forEach { d -> if (d.day.isNotBlank()) byDay.putIfAbsent(d.day, d) }
+            incoming.forEach { d ->
+                if (d.day.isBlank()) return@forEach
+                byDay.putIfAbsent(d.day, d)
+            }
+            return byDay.values.toList()
+        }
+    }
 }

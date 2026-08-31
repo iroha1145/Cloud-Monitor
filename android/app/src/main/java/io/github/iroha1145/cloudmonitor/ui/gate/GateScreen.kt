@@ -1,16 +1,33 @@
 package io.github.iroha1145.cloudmonitor.ui.gate
 
+import android.os.Build
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -23,21 +40,38 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.iroha1145.cloudmonitor.ui.AppIcons
+import io.github.iroha1145.cloudmonitor.ui.statusBarInsetDp
 import io.github.iroha1145.cloudmonitor.ui.theme.Brand
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
+import io.github.iroha1145.cloudmonitor.ui.theme.LocalReducedMotion
+import io.github.iroha1145.cloudmonitor.ui.theme.Motion
 import io.github.iroha1145.cloudmonitor.vm.UiState
+import kotlin.math.roundToInt
 
 @Composable
 fun GateScreen(
@@ -50,14 +84,53 @@ fun GateScreen(
     onToggleDark: () -> Unit,
 ) {
     val cm = CmColorsCurrent
+    val reduced = LocalReducedMotion.current
+    val statusInset = statusBarInsetDp()
+    val haptic = LocalHapticFeedback.current
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val enter = remember { Animatable(if (reduced) 1f else 0f) }
+    LaunchedEffect(Unit) {
+        if (!reduced) enter.animateTo(1f, tween(Motion.Gate, easing = FastOutSlowInEasing))
+    }
+    val shake = remember { Animatable(0f) }
+    LaunchedEffect(state.gateError) {
+        if (state.gateError.isNullOrBlank() || reduced) return@LaunchedEffect
+        shake.snapTo(0f)
+        shake.animateTo(10f, tween(80, easing = LinearEasing))
+        shake.animateTo(-10f, tween(80, easing = LinearEasing))
+        shake.animateTo(6f, tween(80, easing = LinearEasing))
+        shake.animateTo(0f, tween(80, easing = LinearEasing))
+    }
     Box(
         Modifier
             .fillMaxSize()
-            .background(cm.canvas)
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
+            .background(cm.canvas),
     ) {
-        IconButton(onToggleDark, Modifier.align(Alignment.TopEnd)) {
+        if (!reduced) {
+            GateGlow(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 80.dp, y = (-120).dp),
+                color = Color(0x29533AFD),
+                size = 420.dp,
+            )
+            GateGlow(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .offset(x = (-60).dp, y = 100.dp),
+                color = Color(0x247F7DFC),
+                size = 360.dp,
+            )
+        }
+        IconButton(
+            onToggleDark,
+            Modifier
+                .align(Alignment.TopEnd)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                .padding(top = statusInset)
+                .padding(8.dp),
+        ) {
             Icon(
                 if (dark) AppIcons.LightMode else AppIcons.DarkMode,
                 contentDescription = "夜间模式",
@@ -67,12 +140,35 @@ fun GateScreen(
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(top = 72.dp)
-                .clip(RoundedCornerShape(28.dp))
-                .background(cm.card)
-                .padding(24.dp),
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp)
+                .padding(top = statusInset + 48.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        alpha = enter.value
+                        scaleX = 0.96f + 0.04f * enter.value
+                        scaleY = 0.96f + 0.04f * enter.value
+                    }
+                    .offset { IntOffset(shake.value.roundToInt(), 0) }
+                    .shadow(
+                        elevation = 16.dp,
+                        shape = RoundedCornerShape(28.dp),
+                        clip = false,
+                        ambientColor = cm.shadowAmbient,
+                        spotColor = cm.shadowSpot,
+                    )
+                    .border(1.dp, cm.border, RoundedCornerShape(28.dp))
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(cm.card)
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
             Box(
                 Modifier
                     .size(56.dp)
@@ -96,6 +192,7 @@ fun GateScreen(
                 lineHeight = 18.sp,
             )
             Spacer(Modifier.height(20.dp))
+            val err = !state.gateError.isNullOrBlank()
             OutlinedTextField(
                 value = state.hubUrl,
                 onValueChange = onUrl,
@@ -104,7 +201,14 @@ fun GateScreen(
                 placeholder = { Text("https://panel.example.com") },
                 leadingIcon = { Icon(AppIcons.Language, "面板地址") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                isError = err,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Next,
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { focus.moveFocus(FocusDirection.Down) },
+                ),
                 colors = fieldColors(),
                 shape = RoundedCornerShape(14.dp),
             )
@@ -117,21 +221,37 @@ fun GateScreen(
                 placeholder = { Text("ACCESS_TOKEN") },
                 leadingIcon = { Icon(AppIcons.Key, "访问密钥") },
                 singleLine = true,
+                isError = err,
                 visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Go,
+                ),
+                keyboardActions = KeyboardActions(
+                    onGo = {
+                        keyboard?.hide()
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onLogin()
+                    },
+                ),
                 colors = fieldColors(),
                 shape = RoundedCornerShape(14.dp),
             )
-            if (!state.gateError.isNullOrBlank()) {
+            if (err) {
                 Spacer(Modifier.height(8.dp))
-                Text(state.gateError, color = cm.crit, fontSize = 13.sp)
+                Text(state.gateError!!, color = cm.crit, fontSize = 13.sp)
             }
             if (state.hubUrl.trim().startsWith("http://", ignoreCase = true)) {
                 Spacer(Modifier.height(8.dp))
-                Text("当前为 HTTP，局域网内可被中间人读取密钥。公网请用 HTTPS。", color = cm.warnInk, fontSize = 12.sp)
+                Text("当前为 HTTP。明文仅允许本机和局域网；公网请用 HTTPS。", color = cm.warnInk, fontSize = 12.sp)
             }
             Spacer(Modifier.height(16.dp))
             Button(
-                onClick = onLogin,
+                onClick = {
+                    keyboard?.hide()
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onLogin()
+                },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 enabled = !state.loading,
                 shape = RoundedCornerShape(14.dp),
@@ -142,7 +262,10 @@ fun GateScreen(
             }
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
-                onClick = onDemo,
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onDemo()
+                },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(14.dp),
             ) {
@@ -153,13 +276,29 @@ fun GateScreen(
             Spacer(Modifier.height(8.dp))
             Text("演示数据在设备本地生成，不访问任何服务器。", color = cm.mute, fontSize = 11.sp, textAlign = TextAlign.Center)
         }
+        }
     }
+}
+
+@Composable
+private fun GateGlow(modifier: Modifier, color: Color, size: Dp) {
+    val blur = if (Build.VERSION.SDK_INT >= 31) 90.dp else 0.dp
+    Box(
+        modifier
+            .size(size)
+            .blur(blur)
+            .background(
+                Brush.radialGradient(listOf(color, Color.Transparent)),
+                CircleShape,
+            ),
+    )
 }
 
 @Composable
 private fun fieldColors() = OutlinedTextFieldDefaults.colors(
     focusedBorderColor = Brand,
     unfocusedBorderColor = CmColorsCurrent.border,
+    errorBorderColor = CmColorsCurrent.crit,
     focusedContainerColor = CmColorsCurrent.card,
     unfocusedContainerColor = CmColorsCurrent.card,
 )

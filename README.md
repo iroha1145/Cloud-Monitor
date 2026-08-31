@@ -188,11 +188,11 @@ hub 测试覆盖 provider-status（Mock 网络）、history/daily SQL 分页、1
 
 ## 安卓 APK（原生客户端）
 
-仓库里有一份 Jetpack Compose 原生客户端（不是浏览器套壳），直接请求面板的 `/api/v1/tm/*`。最低 Android 9、仅 64 位。构建在 GitHub Actions 云端完成，本机不需要 JDK / Android SDK。Release 开 R8，图标不打包完整 Material 扩展集。
+仓库里有一份 Jetpack Compose 原生客户端（不是浏览器套壳），直接请求面板的 `/api/v1/tm/*`。最低 Android 9、仅 64 位。构建在 GitHub Actions 云端完成，本机不需要 JDK / Android SDK。Release 开 R8，图标不打包完整 Material 扩展集。四 Tab（概览 / 设备 / 配额 / 历史）对齐网页：连接六态、覆盖率诊断、会话列、月摘要、设备空态引导；「检索更新」只读展示版本，不会在服务器上 apply。
 
 1. **Actions → build-apk → Run workflow**（改 `android/` 的 PR 也会自动构建）。
 2. 下载 Artifact `cloud-monitor-apk`（未配置正式签名时为 `cloud-monitor-apk-debug`）。
-3. 安装后可先看内置演示数据，或填写面板地址 + `ACCESS_TOKEN` 连实机。
+3. 安装后可先看内置演示数据，或填写面板地址 + `ACCESS_TOKEN` 连实机。长按图表可看与网页悬停同类的提示。
 
 包名 `io.github.iroha1145.cloudmonitor`。详见 [docs/android/README.md](docs/android/README.md)。
 
