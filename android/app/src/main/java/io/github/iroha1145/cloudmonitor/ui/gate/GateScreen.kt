@@ -176,7 +176,7 @@ fun GateScreen(
                     .background(Brush.linearGradient(listOf(Brand, Color(0xFF7F7DFC)))),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("☁", fontSize = 26.sp)
+                Icon(AppIcons.CloudPulse, null, tint = Color.White, modifier = Modifier.size(30.dp))
             }
             Spacer(Modifier.height(16.dp))
             Text("云端用量面板", color = cm.ink, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)

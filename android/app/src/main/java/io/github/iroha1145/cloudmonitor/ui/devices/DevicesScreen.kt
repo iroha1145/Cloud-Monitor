@@ -9,10 +9,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -29,6 +31,7 @@ import io.github.iroha1145.cloudmonitor.data.healthLabel
 import io.github.iroha1145.cloudmonitor.data.healthTools
 import io.github.iroha1145.cloudmonitor.data.isWindowsPlatform
 import io.github.iroha1145.cloudmonitor.data.shortStatusText
+import io.github.iroha1145.cloudmonitor.ui.AppIcons
 import io.github.iroha1145.cloudmonitor.ui.components.ClientLogo
 import io.github.iroha1145.cloudmonitor.ui.components.Panel
 import io.github.iroha1145.cloudmonitor.ui.components.StatusDot
@@ -60,7 +63,7 @@ fun LazyListScope.devicesItems(state: UiState) {
             Panel(Modifier.riseIn(1)) {
                 val cm = CmColorsCurrent
                 Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("☁", fontSize = 32.sp)
+                    Icon(AppIcons.CloudPulse, null, tint = cm.brand, modifier = Modifier.size(36.dp))
                     Spacer(Modifier.height(10.dp))
                     Text("还没有设备数据", color = cm.ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
