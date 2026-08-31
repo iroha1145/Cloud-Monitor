@@ -94,6 +94,31 @@ def test_terminal_4xx_is_rejected_not_replayed_forever(tmp_path):
     db.close()
 
 
+def test_rate_limit_4xx_stays_pending_for_retry(tmp_path):
+    """429/408 是暂时失败，不得 mark_rejected 把快照点丢掉。"""
+    from hub.tm_outbox import is_retryable_http
+
+    assert is_retryable_http(429) is True
+    assert is_retryable_http(408) is True
+    assert is_retryable_http(400) is False
+    db = db_for(tmp_path, "retry429.sqlite3")
+    record_pending(
+        db,
+        request_id="r-429",
+        device_id="dev",
+        payload={"deviceId": "dev", "today": {"totalTokens": 1}},
+    )
+    result = replay_pending(db, Core(Response(429)))
+    row = db.fetchone(
+        "SELECT state, attempts FROM tm_ingest_outbox WHERE request_id='r-429'"
+    )
+    assert result["rejected"] == 0
+    assert result["failed"] == 1
+    assert row["state"] == "pending"
+    assert row["attempts"] == 1
+    db.close()
+
+
 def test_missing_normalized_device_never_writes_zero_snapshot(tmp_path):
     db = db_for(tmp_path)
     record_pending(
