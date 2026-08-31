@@ -422,7 +422,8 @@ data class Subscription(
     val interval: String? = null,
     val intervalCount: Int = 1,
     val startDate: String? = null,
-    val autoRenew: Boolean = false,
+    // 对齐网页 `autoRenew !== false`：字段缺失视为自动续费
+    val autoRenew: Boolean = true,
     val nextRenewalOverride: String? = null,
     val topUps: List<TopUp> = emptyList(),
 )

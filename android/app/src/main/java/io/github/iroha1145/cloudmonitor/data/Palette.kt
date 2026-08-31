@@ -19,11 +19,30 @@ val SEG_UNCLS = Color(0xFF95A4BA)
 
 private val PALETTE_SPREAD = intArrayOf(0, 1, 3, 4, 6, 2, 8, 12, 10, 9, 5, 13, 7, 14, 15, 11)
 
-fun assignColors(names: List<String>): Map<String, Color> {
-    val counts = IntArray(PALETTE.size)
-    val out = LinkedHashMap<String, Color>()
-    var rank = 0
-    for (name in names) {
+/**
+ * 会话级配色注册表：名字一旦分配颜色就保持稳定（对齐网页 modelColorMap/clientColorMap 语义），
+ * 概览、历史等各卡片共用同一张表，避免同名异色。
+ */
+class ColorRegistry {
+    private val assigned = LinkedHashMap<String, Color>()
+    private val counts = IntArray(PALETTE.size)
+
+    @Synchronized
+    fun seed(names: Collection<String>) {
+        for (name in names) obtain(name)
+    }
+
+    @Synchronized
+    fun snapshot(): Map<String, Color> = LinkedHashMap(assigned)
+
+    @Synchronized
+    fun reset() {
+        assigned.clear()
+        counts.fill(0)
+    }
+
+    private fun obtain(name: String): Color = assigned.getOrPut(name) {
+        val rank = assigned.size
         val idx = if (rank < PALETTE.size) {
             PALETTE_SPREAD[rank]
         } else {
@@ -32,10 +51,8 @@ fun assignColors(names: List<String>): Map<String, Color> {
             best
         }
         counts[idx]++
-        out[name] = PALETTE[idx]
-        rank++
+        PALETTE[idx]
     }
-    return out
 }
 
 data class TokenSeg(val key: String, val label: String, val color: Color, val value: Double)

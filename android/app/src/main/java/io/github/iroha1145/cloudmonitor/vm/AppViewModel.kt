@@ -10,9 +10,9 @@ import io.github.iroha1145.cloudmonitor.data.HubClient
 import io.github.iroha1145.cloudmonitor.data.Overview
 import io.github.iroha1145.cloudmonitor.data.ProviderCard
 import io.github.iroha1145.cloudmonitor.data.SessionStore
+import io.github.iroha1145.cloudmonitor.data.ColorRegistry
 import io.github.iroha1145.cloudmonitor.data.SubscriptionsPayload
 import io.github.iroha1145.cloudmonitor.data.SystemUpdate
-import io.github.iroha1145.cloudmonitor.data.assignColors
 import io.github.iroha1145.cloudmonitor.data.rankedNames
 import io.github.iroha1145.cloudmonitor.data.trendRows
 import kotlinx.coroutines.CancellationException
@@ -21,11 +21,15 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.random.Random
+
+private const val POLL_MS = 5 * 60 * 1000L
+private const val HISTORY_RETRY_MS = 60_000L
 
 enum class AppTab { Overview, Devices, Quota, History }
 enum class Period(val key: String, val label: String) {
@@ -92,11 +96,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var poll: Job? = null
     private var dataJob: Job? = null
     private var historyJob: Job? = null
+    private var historyRetryJob: Job? = null
     private var updateJob: Job? = null
     private var toastJob: Job? = null
     private var sessionGen = 0
     private var demoRng = Random.Default
     private var sessionToken: String = ""
+    private val foreground = MutableStateFlow(true)
+    private val modelPalette = ColorRegistry()
+    private val clientPalette = ColorRegistry()
 
     private val _bootstrapped = MutableStateFlow(false)
     val bootstrapped: StateFlow<Boolean> = _bootstrapped
@@ -143,6 +151,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setActView(v: Int) = _state.update { it.copy(actView = v) }
     fun dismissToast() = _state.update { it.copy(toast = null) }
     fun closeUpdate() = _state.update { it.copy(showUpdate = false, updateError = null) }
+
+    /** 前后台切换（对齐网页 document.hidden：后台暂停轮询，回前台数据过期则立即补一拍）。 */
+    fun setForeground(v: Boolean) {
+        foreground.value = v
+        if (!v) return
+        val s = _state.value
+        val stale = s.lastUpdated == null || System.currentTimeMillis() - s.lastUpdated > POLL_MS
+        if (s.signedIn && !s.demo && stale && !s.loading && !s.refreshing) refresh()
+    }
 
     fun toggleDark(systemDark: Boolean) {
         val cur = _state.value.dark ?: systemDark
@@ -384,11 +401,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         sessionGen++
         dataJob?.cancel()
         historyJob?.cancel()
+        historyRetryJob?.cancel()
         updateJob?.cancel()
         poll?.cancel()
         dataJob = null
         historyJob = null
+        historyRetryJob = null
         updateJob = null
+        modelPalette.reset()
+        clientPalette.reset()
     }
 
     private fun applyLoggedOut(gateError: String? = null) {
@@ -510,11 +531,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 } else {
                     applyFallbackHistory(ov, e.message)
                     failed += "日归档"
+                    scheduleHistoryRetry(url, token, gen)
                 }
             } catch (e: Exception) {
                 if (!alive(gen)) return
                 applyFallbackHistory(ov, e.message ?: "日归档加载失败")
                 failed += "日归档"
+                scheduleHistoryRetry(url, token, gen)
             }
         }
         if (failed.isNotEmpty() && alive(gen)) toast("部分数据暂不可用（${failed.joinToString("、")}）")
@@ -580,22 +603,55 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         poll?.cancel()
         poll = viewModelScope.launch {
             while (isActive) {
-                delay(5 * 60 * 1000L)
-                if (isActive && _state.value.signedIn && !_state.value.demo) refresh()
+                delay(POLL_MS)
+                // 后台时挂起，回前台再补这一拍（省电省流量，对齐网页隐藏页暂停轮询）
+                foreground.first { it }
+                val s = _state.value
+                if (!isActive || !s.signedIn || s.demo) continue
+                // setForeground 的补拍刚刷过就跳过本轮，避免连发两次
+                if (s.lastUpdated != null && System.currentTimeMillis() - s.lastUpdated < 30_000) continue
+                refresh()
             }
         }
     }
 
+    /** 首页日归档加载失败后 60s 自动重试（对齐网页 HISTORY_RETRY_MS），成功即恢复正常分页。 */
+    private fun scheduleHistoryRetry(url: String, token: String, gen: Int) {
+        historyRetryJob?.cancel()
+        historyRetryJob = viewModelScope.launch {
+            delay(HISTORY_RETRY_MS)
+            if (!alive(gen) || _state.value.demo) return@launch
+            if (_state.value.historyStatus != AuxStatus.Error) return@launch
+            try {
+                val hist = withContext(Dispatchers.IO) { hub.historyDaily(url, token, null) }
+                if (!alive(gen)) return@launch
+                applyHistoryPage(hist, replace = true, fallback = false)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                if (alive(gen)) scheduleHistoryRetry(url, token, gen)
+            }
+        }
+    }
+
+    /** 模型配色：先按累计用量排名铺排，再补齐其余来源出现过的名字；同名恒同色。 */
     fun modelColors(): Map<String, androidx.compose.ui.graphics.Color> {
-        val ov = _state.value.overview ?: return emptyMap()
-        val names = rankedNames(ov.totals.allTime.models.ifEmpty { ov.totals.today.models })
-        return assignColors(names)
+        val ov = _state.value.overview ?: return modelPalette.snapshot()
+        modelPalette.seed(rankedNames(ov.totals.allTime.models.ifEmpty { ov.totals.today.models }))
+        modelPalette.seed(ov.totals.today.models.keys)
+        modelPalette.seed(ov.totals.month.models.keys)
+        ov.trendModels.forEach { modelPalette.seed(it.models.keys) }
+        _state.value.history.forEach { modelPalette.seed(it.perModel.keys) }
+        return modelPalette.snapshot()
     }
 
     fun clientColors(): Map<String, androidx.compose.ui.graphics.Color> {
-        val ov = _state.value.overview ?: return emptyMap()
-        val names = rankedNames(ov.totals.allTime.clients.ifEmpty { ov.totals.today.clients })
-        return assignColors(names)
+        val ov = _state.value.overview ?: return clientPalette.snapshot()
+        clientPalette.seed(rankedNames(ov.totals.allTime.clients.ifEmpty { ov.totals.today.clients }))
+        clientPalette.seed(ov.totals.today.clients.keys)
+        clientPalette.seed(ov.totals.month.clients.keys)
+        _state.value.history.forEach { clientPalette.seed(it.perClient.keys) }
+        return clientPalette.snapshot()
     }
 
     fun trend() = _state.value.overview?.let { trendRows(it) }.orEmpty()

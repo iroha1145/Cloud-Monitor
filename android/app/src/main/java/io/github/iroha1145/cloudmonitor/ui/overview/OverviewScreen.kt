@@ -36,10 +36,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.iroha1145.cloudmonitor.data.Format
-import io.github.iroha1145.cloudmonitor.data.OTHER_COLOR
 import io.github.iroha1145.cloudmonitor.data.Overview
 import io.github.iroha1145.cloudmonitor.data.ProviderCard
-import io.github.iroha1145.cloudmonitor.data.assignColors
+import io.github.iroha1145.cloudmonitor.data.SEG_CACHE_READ
 import io.github.iroha1145.cloudmonitor.data.cacheHitRate
 import io.github.iroha1145.cloudmonitor.data.clientBreakdown
 import io.github.iroha1145.cloudmonitor.data.componentBreakdown
@@ -74,14 +73,13 @@ import io.github.iroha1145.cloudmonitor.vm.UiState
 
 fun LazyListScope.overviewItems(
     state: UiState,
+    modelColors: Map<String, Color>,
     onModelPeriod: (Period) -> Unit,
     onClientPeriod: (Period) -> Unit,
     onMxPeriod: (Period) -> Unit,
     onMxCost: (Boolean) -> Unit,
 ) {
     val ov = state.overview ?: return
-    val modelColors = assignColors(rankedNames(ov.totals.allTime.models.ifEmpty { ov.totals.today.models }))
-    val clientColors = assignColors(rankedNames(ov.totals.allTime.clients.ifEmpty { ov.totals.today.clients }))
 
     item("kpi") {
         Column(Modifier.padding(bottom = 12.dp).riseIn(0)) { KpiBlock(ov, state.demo, state.staleData) }
@@ -118,11 +116,12 @@ fun LazyListScope.overviewItems(
                     Text(if (table) "收起数据表" else "查看数据表", fontSize = 12.sp)
                 }
                 if (table) {
+                    // 对齐网页数据表：完整 30 天 · 精确整数
                     Column(Modifier.animateContentSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        rows.takeLast(14).asReversed().forEach { r ->
+                        rows.asReversed().forEach { r ->
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(r.day, color = CmColorsCurrent.mute, fontSize = 12.sp)
-                                Text(Format.fmtCompact(r.total), color = CmColorsCurrent.ink, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                Text(Format.fmtInt(r.total), color = CmColorsCurrent.ink, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                             }
                         }
                     }
@@ -139,7 +138,14 @@ fun LazyListScope.overviewItems(
             if (slices.isEmpty()) EmptyHint("该周期暂无模型数据")
             else {
                 val rates = slices.associate { (name, _) -> name to cacheHitRate(per, name) }
-                DonutChart(slices, modelColors, per.totalTokens, costs = per.modelCosts, cacheRates = rates)
+                DonutChart(
+                    slices,
+                    modelColors,
+                    per.totalTokens,
+                    centerSub = "${state.modelPeriod.label} tokens",
+                    costs = per.modelCosts,
+                    cacheRates = rates,
+                )
             }
         }
     }
@@ -184,8 +190,9 @@ fun LazyListScope.overviewItems(
                             }
                         }
                         Spacer(Modifier.height(6.dp))
+                        // 对齐网页：构成未知的客户端条统一用缓存读紫（seg-cacher），不用客户端调色板色
                         val parts = if (segs.isNotEmpty()) segs.map { it.color to it.value }
-                        else listOf((clientColors[name] ?: OTHER_COLOR) to total)
+                        else listOf(SEG_CACHE_READ to total)
                         Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(999.dp))) {
                             MixBar(
                                 parts,
@@ -273,7 +280,14 @@ fun LazyListScope.overviewItems(
                                 Text(s.client ?: "—", color = cm.ink, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                             }
                             Text((s.sessionId ?: "—").take(12), color = cm.mute, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-                            Text(s.models.keys.firstOrNull() ?: "—", color = cm.ink2, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            // 对齐网页：最多显示 2 个模型，超出以 +N 汇总
+                            val modelNames = s.models.keys.toList()
+                            val modelText = when {
+                                modelNames.isEmpty() -> "—"
+                                modelNames.size <= 2 -> modelNames.joinToString("、")
+                                else -> modelNames.take(2).joinToString("、") + " +${modelNames.size - 2}"
+                            }
+                            Text(modelText, color = cm.ink2, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(Format.fmtCompact(s.tokens), color = cm.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                             Text(Format.fmtUsd(s.costUsd), color = cm.mute, fontSize = 12.sp)
                         }
@@ -431,11 +445,19 @@ private fun ProviderPanel(providers: List<ProviderCard>, partial: Boolean, error
         }
         providers.forEach { p ->
             val unavailable = p.status == "unknown" && !p.errorCode.isNullOrBlank()
-            val ok = p.status == "operational" && p.errorCode == null
+            // 对齐网页 PV_STATUS 四档语义色：operational=ok / outage=crit / 无错误的 unknown=灰 / 其余=warn
+            val level = when {
+                unavailable -> "warn"
+                p.status == "operational" && p.errorCode == null -> "ok"
+                p.status == "outage" || p.status == "partial_outage" || p.status == "major_outage" -> "crit"
+                p.status == "unknown" || p.status.isBlank() -> "mute"
+                else -> "warn"
+            }
             val label = when {
                 unavailable -> "状态页暂不可用"
                 p.status == "degraded" -> "部分降级"
                 p.status == "outage" -> "服务中断"
+                p.status == "unknown" || p.status.isBlank() -> "状态未知"
                 else -> Format.fmtStatusLabel(p.status)
             }
             val desc = when {
@@ -466,13 +488,25 @@ private fun ProviderPanel(providers: List<ProviderCard>, partial: Boolean, error
                     Text(desc, color = cm.mute, fontSize = 12.sp)
                     p.checkedAt?.let { Text("检测于 ${Format.relTime(it)}", color = cm.mute, fontSize = 11.sp) }
                 }
+                val badgeBg = when (level) {
+                    "ok" -> cm.okBg
+                    "crit" -> cm.critBg
+                    "mute" -> cm.canvas
+                    else -> cm.warnBg
+                }
+                val badgeInk = when (level) {
+                    "ok" -> cm.okInk
+                    "crit" -> cm.crit
+                    "mute" -> cm.mute
+                    else -> cm.warnInk
+                }
                 Box(
                     Modifier
                         .clip(RoundedCornerShape(999.dp))
-                        .background(if (ok) cm.okBg else cm.warnBg)
+                        .background(badgeBg)
                         .padding(horizontal = 8.dp, vertical = 3.dp),
                 ) {
-                    Text(label, color = if (ok) cm.okInk else cm.warnInk, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text(label, color = badgeInk, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }

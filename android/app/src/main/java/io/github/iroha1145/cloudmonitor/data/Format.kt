@@ -46,7 +46,10 @@ object Format {
             } else {
                 String.format(Locale.US, "%.1f", w)
             }
-            return Compact(rawN.replace(Regex("""\.0$"""), ""), "万")
+            val n = rawN.replace(Regex("""\.0$"""), "")
+            // 9995 万 round 成 10000 万时应滚到 1 亿（对齐网页 compactParts 同款进位）
+            if ((n.toDoubleOrNull() ?: 0.0) >= 10000) return compactParts(1e8, tight)
+            return Compact(n, "万")
         }
         return Compact(fmtInt(v), "")
     }
@@ -226,9 +229,17 @@ object Format {
         return "%02d:%02d".format(d.hour, d.minute)
     }
 
-    fun fmtDateTime(iso: String?): String {
+    /** 完整时间戳。传入 tz（仪表盘时区）时按其渲染，与网页 fmtDateTime 对齐；否则用系统时区。 */
+    fun fmtDateTime(iso: String?, tz: String? = null): String {
         val t = parseMillis(iso) ?: return iso.orEmpty()
-        val d = Instant.ofEpochMilli(t).atZone(ZoneId.systemDefault())
+        val zone = tz?.let {
+            try {
+                ZoneId.of(it)
+            } catch (_: Exception) {
+                null
+            }
+        } ?: ZoneId.systemDefault()
+        val d = Instant.ofEpochMilli(t).atZone(zone)
         return "%04d-%02d-%02d %02d:%02d".format(d.year, d.monthValue, d.dayOfMonth, d.hour, d.minute)
     }
 

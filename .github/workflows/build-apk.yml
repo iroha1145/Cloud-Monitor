@@ -104,6 +104,7 @@ jobs:
       - name: 上传 Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cloud-monitor-apk${{ env.KEYSTORE_SOURCE == 'release' && '' || '-debug' }}
+          # 注意：GitHub 表达式里空串是 falsy，`&& '' ||` 会恒取回退值，两个分支都必须给非空串
+          name: ${{ env.KEYSTORE_SOURCE == 'release' && 'cloud-monitor-apk' || 'cloud-monitor-apk-debug' }}
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error

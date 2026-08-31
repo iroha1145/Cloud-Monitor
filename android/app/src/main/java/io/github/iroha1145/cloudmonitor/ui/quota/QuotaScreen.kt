@@ -113,7 +113,9 @@ fun LazyListScope.quotaItems(state: UiState) {
         item("subs") {
             val cm = CmColorsCurrent
             Panel(Modifier.riseIn(1)) {
-                PanelHead("订阅清单", state.subscriptions?.updatedAt?.let { "更新于 ${Format.relTime(it)}" } ?: "")
+                // 对齐网页：完整时间戳，按仪表盘时区渲染
+                val tz = ov?.dashboardPeriod?.timeZone ?: ov?.dashboardTimeZone
+                PanelHead("订阅清单", state.subscriptions?.updatedAt?.let { "更新于 ${Format.fmtDateTime(it, tz)}" } ?: "")
                 Spacer(Modifier.height(8.dp))
                 subs.forEach { s ->
                     val kind = if (s.kind.equals("topup", true)) "topup" else "subscription"

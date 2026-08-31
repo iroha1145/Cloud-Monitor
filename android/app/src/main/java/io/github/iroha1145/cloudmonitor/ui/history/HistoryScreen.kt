@@ -25,10 +25,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Color
 import io.github.iroha1145.cloudmonitor.data.Format
 import io.github.iroha1145.cloudmonitor.data.HistoryDay
 import io.github.iroha1145.cloudmonitor.data.OTHER_COLOR
-import io.github.iroha1145.cloudmonitor.data.assignColors
 import io.github.iroha1145.cloudmonitor.data.hourlyBuckets
 import io.github.iroha1145.cloudmonitor.ui.components.EmptyHint
 import io.github.iroha1145.cloudmonitor.ui.components.HeatCells
@@ -47,7 +47,13 @@ import kotlin.math.roundToInt
 private val DOW = listOf("日", "一", "二", "三", "四", "五", "六")
 private val DOW_MON = listOf("一", "二", "三", "四", "五", "六", "日")
 
-fun LazyListScope.historyItems(state: UiState, onActView: (Int) -> Unit, onMore: () -> Unit) {
+fun LazyListScope.historyItems(
+    state: UiState,
+    modelColors: Map<String, Color>,
+    clientColors: Map<String, Color>,
+    onActView: (Int) -> Unit,
+    onMore: () -> Unit,
+) {
     val ov = state.overview ?: return
     val tz = ov.dashboardPeriod?.timeZone ?: ov.dashboardTimeZone
     val today = ov.dashboardPeriod?.today?.key ?: Format.dayKeyTz(System.currentTimeMillis(), tz)
@@ -160,7 +166,8 @@ fun LazyListScope.historyItems(state: UiState, onActView: (Int) -> Unit, onMore:
             val mix = row.perClient.ifEmpty { row.perModel }
             if (mix.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
-                val colors = assignColors(mix.keys.toList())
+                // 全局注册表配色：与概览各卡片同名同色（对齐网页全局色表）
+                val colors = if (row.perClient.isNotEmpty()) clientColors else modelColors
                 MixBar(mix.entries.map { (colors[it.key] ?: OTHER_COLOR) to it.value }, Modifier.fillMaxWidth(), height = 6.dp)
             }
             val notes = buildList {

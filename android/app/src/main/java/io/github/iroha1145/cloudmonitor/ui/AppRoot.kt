@@ -46,6 +46,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -68,6 +69,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
@@ -122,6 +126,19 @@ private fun glassStyle(cm: CmColors) = HazeStyle(
 @Composable
 fun AppRoot(vm: AppViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
+    // 前后台通知 VM：后台暂停 5 分钟轮询、回前台过期即补刷（对齐网页 document.hidden 行为）
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val obs = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> vm.setForeground(true)
+                Lifecycle.Event.ON_STOP -> vm.setForeground(false)
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
     val systemDark = isSystemInDarkTheme()
     val dark = state.dark ?: systemDark
     val reduced = rememberReducedMotion()
@@ -385,6 +402,7 @@ fun AppRoot(vm: AppViewModel) {
                                         when (tab) {
                                             AppTab.Overview -> overviewItems(
                                                 state,
+                                                vm.modelColors(),
                                                 vm::setModelPeriod,
                                                 vm::setClientPeriod,
                                                 vm::setMxPeriod,
@@ -392,7 +410,13 @@ fun AppRoot(vm: AppViewModel) {
                                             )
                                             AppTab.Devices -> devicesItems(state)
                                             AppTab.Quota -> quotaItems(state)
-                                            AppTab.History -> historyItems(state, vm::setActView, vm::loadMoreHistory)
+                                            AppTab.History -> historyItems(
+                                                state,
+                                                vm.modelColors(),
+                                                vm.clientColors(),
+                                                vm::setActView,
+                                                vm::loadMoreHistory,
+                                            )
                                         }
                                         item("bottom-space") { Spacer(Modifier.height(16.dp)) }
                                     }

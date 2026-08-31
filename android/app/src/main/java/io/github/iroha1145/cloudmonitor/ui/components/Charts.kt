@@ -1,4 +1,7 @@
-@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@file:OptIn(
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+)
 
 package io.github.iroha1145.cloudmonitor.ui.components
 
@@ -9,6 +12,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -63,8 +67,13 @@ fun StackedTrendChart(
     val tip = LocalFloatTip.current
     Column(modifier) {
         if (topModels.isNotEmpty()) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                topModels.take(6).forEach { name ->
+            // 对齐网页 trend-legend：完整图例，放不下换行
+            FlowRow(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                topModels.forEach { name ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(8.dp).clip(CircleShape).background(colors[name] ?: OTHER_COLOR))
                         Spacer(Modifier.width(4.dp))
@@ -128,9 +137,15 @@ fun StackedTrendChart(
             }
         }
         Spacer(Modifier.height(6.dp))
+        // 对齐网页 x 轴：首/中/末多点日期标注
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(rows.firstOrNull()?.day.orEmpty().drop(5), fontSize = 10.sp, color = CmColorsCurrent.mute)
-            Text(rows.lastOrNull()?.day.orEmpty().drop(5), fontSize = 10.sp, color = CmColorsCurrent.mute)
+            val marks = buildList {
+                add(rows.firstOrNull()?.day.orEmpty())
+                if (rows.size >= 15) add(rows[rows.size / 3].day)
+                if (rows.size >= 15) add(rows[rows.size * 2 / 3].day)
+                add(rows.lastOrNull()?.day.orEmpty())
+            }
+            marks.forEach { Text(it.drop(5), fontSize = 10.sp, color = CmColorsCurrent.mute) }
         }
     }
 }
@@ -141,6 +156,7 @@ fun DonutChart(
     colors: Map<String, Color>,
     total: Double,
     modifier: Modifier = Modifier,
+    centerSub: String? = null,
     costs: Map<String, Double> = emptyMap(),
     cacheRates: Map<String, Double?> = emptyMap(),
 ) {
@@ -149,7 +165,8 @@ fun DonutChart(
     val grow = rememberGrow(slices.joinToString { it.first } to total)
     val tip = LocalFloatTip.current
     var expanded by remember { mutableStateOf(false) }
-    val visible = if (slices.size > 8 && !expanded) slices.take(8) else slices
+    // 对齐网页：超过 8 个模型时收起，平铺前 6 行
+    val visible = if (slices.size > 8 && !expanded) slices.take(6) else slices
     val hidden = (slices.size - visible.size).coerceAtLeast(0)
 
     fun tipRows(name: String, v: Double): List<Pair<String, String>> {
@@ -207,7 +224,12 @@ fun DonutChart(
                     start += sweep
                 }
             }
-            CompactNumber(total, size = 18.sp, tight = true)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CompactNumber(total, size = 18.sp, tight = true)
+                if (centerSub != null) {
+                    Text(centerSub, fontSize = 10.sp, color = cm.mute)
+                }
+            }
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
