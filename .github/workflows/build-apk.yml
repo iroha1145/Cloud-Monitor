@@ -102,7 +102,7 @@ jobs:
             | grep -E "SHA256:|SHA1:" || true
 
       - name: 上传 Artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           # 注意：GitHub 表达式里空串是 falsy，`&& '' ||` 会恒取回退值，两个分支都必须给非空串
           name: ${{ env.KEYSTORE_SOURCE == 'release' && 'cloud-monitor-apk' || 'cloud-monitor-apk-debug' }}
