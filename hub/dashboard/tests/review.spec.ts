@@ -46,3 +46,33 @@ for (const viewport of [
     await expect(dialog).toBeHidden();
   });
 }
+
+// Motion writes an inline transform during entry and exit. Positioning the toast
+// with a competing CSS translateX used to clip its right side on mobile.
+for (const width of [320, 390, 1440]) {
+  for (const reducedMotion of ["no-preference", "reduce"] as const) {
+    test(`toast stays centered and readable at ${width}px (${reducedMotion})`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await page.emulateMedia({ reducedMotion });
+      await page.goto("/");
+      await page.getByRole("button", { name: "刷新数据", exact: true }).click();
+      const toast = page.locator(".app-toast");
+      await expect(toast).toContainText("示例数据已重新加载");
+      await expect(toast).toHaveCSS("opacity", "1");
+      const bounds = await toast.evaluate(element => {
+        const box = element.getBoundingClientRect();
+        const close = element.querySelector("button")!.getBoundingClientRect();
+        return { left: box.left, right: box.right, center: (box.left + box.right) / 2,
+          width: element.clientWidth, scroll: element.scrollWidth, closeRight: close.right };
+      });
+      expect(Math.abs(bounds.center - width / 2)).toBeLessThanOrEqual(2);
+      expect(bounds.left).toBeGreaterThanOrEqual(12);
+      expect(bounds.right).toBeLessThanOrEqual(width - 12);
+      expect(bounds.scroll).toBeLessThanOrEqual(bounds.width + 1);
+      expect(bounds.closeRight).toBeLessThanOrEqual(bounds.right);
+      await page.screenshot({ path: `evidence/review-toast-${width}-${reducedMotion}.png`, animations: "disabled" });
+      await toast.getByRole("button", { name: "关闭提示" }).click();
+      await expect(toast).toBeHidden();
+    });
+  }
+}
