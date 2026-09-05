@@ -7,7 +7,6 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,6 +25,7 @@ import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
 import io.github.iroha1145.cloudmonitor.vm.AuxStatus
 import io.github.iroha1145.cloudmonitor.vm.Period
 import io.github.iroha1145.cloudmonitor.vm.UiState
+import io.github.iroha1145.cloudmonitor.ui.PageState
 
 @Suppress("UNUSED_PARAMETER")
 fun LazyListScope.overviewItems(
@@ -35,11 +35,12 @@ fun LazyListScope.overviewItems(
     onClientPeriod: (Period) -> Unit,
     onMxPeriod: (Period) -> Unit,
     onMxCost: (Boolean) -> Unit,
+    page: PageState,
 ) {
     val ov = state.overview ?: return
-    item("summary") { SummaryPanel(state) }
+    item("summary") { SummaryPanel(state, page) }
     item("trend") {
-        var days by rememberSaveable { mutableIntStateOf(7) }
+        var days by page.trendDays
         val rows = remember(ov, state.history, days) { analyzeTrend(ov, state.history).takeLast(days) }
         val summary = remember(rows) { summarizeTrend(rows) }
         val cm = CmColorsCurrent
@@ -121,9 +122,9 @@ fun LazyListScope.overviewItems(
 }
 
 @Composable
-private fun SummaryPanel(state: UiState) {
+private fun SummaryPanel(state: UiState, page: PageState) {
     val ov = state.overview ?: return
-    var periodName by rememberSaveable { mutableStateOf(Period.Today.name) }
+    var periodName by page.summaryPeriod
     val selected = Period.valueOf(periodName)
     val per = ov.totals.period(selected.key)
     val components = usageComponents(per)

@@ -6,7 +6,6 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -16,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.iroha1145.cloudmonitor.data.*
 import io.github.iroha1145.cloudmonitor.ui.components.*
+import io.github.iroha1145.cloudmonitor.ui.PageState
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
 import io.github.iroha1145.cloudmonitor.vm.Period
 import io.github.iroha1145.cloudmonitor.vm.UiState
@@ -26,12 +26,13 @@ fun LazyListScope.modelsItems(
     onPeriod: (Period) -> Unit,
     onMatrixPeriod: (Period) -> Unit,
     onMatrixCost: (Boolean) -> Unit,
+    page: PageState,
 ) {
     val ov = state.overview ?: return
     val per = ov.totals.period(state.modelPeriod.key)
     item("model-analysis") {
-        var query by rememberSaveable { mutableStateOf("") }
-        var sortCost by rememberSaveable { mutableStateOf(false) }
+        var query by page.query
+        var sortCost by page.sortCost
         val allModels = remember(per) { modelUsage(per) }
         val visible = remember(allModels, query, sortCost) {
             allModels.filter { it.name.contains(query.trim(), ignoreCase = true) }

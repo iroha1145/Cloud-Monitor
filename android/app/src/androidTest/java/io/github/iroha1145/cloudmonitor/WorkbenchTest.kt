@@ -79,6 +79,54 @@ class WorkbenchTest {
         compose.onNodeWithText("全部词元").assertDoesNotExist()
     }
 
+    @Test fun modelSearchSurvivesKeyboardDismissalRotationAndTabSwitch() {
+        compose.onNodeWithTag("nav-Models").performClick()
+        compose.onNodeWithTag("screen-Models").performScrollToNode(hasTestTag("model-search"))
+        compose.onNodeWithTag("model-search").performTextInput("no-such-model-rotation")
+        compose.onNodeWithText("没有匹配的模型").assertExists()
+        shell("input keyevent 4")
+        compose.onNodeWithTag("nav-Models").assertIsSelected()
+        compose.onNodeWithTag("model-search").assertTextContains("no-such-model-rotation")
+        compose.activityRule.scenario.recreate()
+        compose.onNodeWithTag("screen-Models").performScrollToNode(hasTestTag("model-search"))
+        compose.onNodeWithTag("model-search").assertTextContains("no-such-model-rotation")
+        compose.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        compose.waitUntil(15_000) { compose.onAllNodesWithTag("navigation-rail").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("screen-Models").performScrollToNode(hasTestTag("model-search"))
+        compose.onNodeWithTag("model-search").assertTextContains("no-such-model-rotation")
+        compose.onNodeWithText("没有匹配的模型").assertExists()
+        compose.onNodeWithTag("nav-Overview").performClick()
+        compose.onNodeWithTag("nav-Models").performClick()
+        compose.onNodeWithTag("screen-Models").performScrollToNode(hasTestTag("model-search"))
+        compose.onNodeWithTag("model-search").assertTextContains("no-such-model-rotation")
+        compose.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        compose.waitUntil(15_000) { compose.onAllNodesWithTag("bottom-navigation").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("screen-Models").performScrollToNode(hasTestTag("model-search"))
+        compose.onNodeWithTag("model-search").assertTextContains("no-such-model-rotation")
+    }
+
+    @Test fun deviceSessionAndTrendFiltersSurviveRecreation() {
+        compose.onNodeWithTag("screen-Overview").performScrollToNode(hasTestTag("trend-30"))
+        compose.onNodeWithTag("trend-30").performClick()
+        compose.onNodeWithTag("nav-Devices").performClick()
+        compose.onNodeWithTag("screen-Devices").performScrollToNode(hasTestTag("device-search"))
+        compose.onNodeWithTag("device-search").performTextInput("no-such-device")
+        shell("input keyevent 4")
+        compose.onNodeWithTag("nav-History").performClick()
+        compose.onNodeWithTag("screen-History").performScrollToNode(hasTestTag("session-search"))
+        compose.onNodeWithTag("session-search").performTextInput("no-such-session")
+        shell("input keyevent 4")
+        compose.activityRule.scenario.recreate()
+        compose.onNodeWithTag("screen-History").performScrollToNode(hasTestTag("session-search"))
+        compose.onNodeWithTag("session-search").assertTextContains("no-such-session")
+        compose.onNodeWithTag("nav-Devices").performClick()
+        compose.onNodeWithTag("screen-Devices").performScrollToNode(hasTestTag("device-search"))
+        compose.onNodeWithTag("device-search").assertTextContains("no-such-device")
+        compose.onNodeWithTag("nav-Overview").performClick()
+        compose.onNodeWithTag("screen-Overview").performScrollToNode(hasTestTag("trend-30"))
+        compose.onNodeWithTag("trend-30").assertIsSelected()
+    }
+
     @Test fun darkThemeLargeTextAndLandscapeRetainNavigation() {
         compose.onNodeWithTag("settings").performClick()
         val switch = compose.onAllNodesWithText("切换深色外观").fetchSemanticsNodes()

@@ -15,12 +15,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.iroha1145.cloudmonitor.data.*
+import io.github.iroha1145.cloudmonitor.ui.PageState
 import io.github.iroha1145.cloudmonitor.ui.components.*
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
 import io.github.iroha1145.cloudmonitor.vm.AuxStatus
@@ -38,12 +40,13 @@ fun LazyListScope.historyItems(
     clientColors: Map<String, Color>,
     onActView: (Int) -> Unit,
     onMore: () -> Unit,
+    page: PageState,
 ) {
     val overview = state.overview ?: return
     val zone = overview.dashboardPeriod?.timeZone ?: overview.dashboardTimeZone
     val today = overview.dashboardPeriod?.today?.key ?: Format.dayKeyTz(System.currentTimeMillis(), zone)
     item("activity") { ActivityCard(overview, today, zone, state.actView, onActView) }
-    item("sessions") { SessionsCard(overview, zone, today, modelColors) }
+    item("sessions") { SessionsCard(overview, zone, today, modelColors, page) }
     val rows = (if (state.history.isNotEmpty()) state.history else overview.activity.daily.map {
         HistoryDay(it.day, it.total, perModel = it.models)
     }).sortedByDescending { it.day }
@@ -217,12 +220,12 @@ private fun HistoryBreakdown(title: String, values: Map<String, Double>, colors:
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SessionsCard(overview: Overview, zone: String, today: String, modelColors: Map<String, Color>) {
+private fun SessionsCard(overview: Overview, zone: String, today: String, modelColors: Map<String, Color>, page: PageState) {
     val cm = CmColorsCurrent
-    var query by rememberSaveable { mutableStateOf("") }
-    var client by rememberSaveable { mutableStateOf("") }
-    var onlyToday by rememberSaveable { mutableStateOf(false) }
-    var limit by rememberSaveable { mutableIntStateOf(8) }
+    var query by page.query
+    var client by page.selection
+    var onlyToday by page.todayOnly
+    var limit by page.limit
     var exportStatus by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -252,7 +255,7 @@ private fun SessionsCard(overview: Overview, zone: String, today: String, modelC
         if (overview.sessionsOmitted || overview.sessionsMeta.sessionDetailsIncomplete || overview.sessionsMeta.sessionsOmittedCount > 0) {
             Text("当前快照未包含全部会话明细，统计仅涵盖已上报记录。", color = cm.warnInk, style = MaterialTheme.typography.bodySmall)
         }
-        OutlinedTextField(query, { query = it; limit = 8 }, Modifier.fillMaxWidth(), label = { Text("搜索会话、项目或模型") },
+        OutlinedTextField(query, { query = it; limit = 8 }, Modifier.fillMaxWidth().testTag("session-search"), label = { Text("搜索会话、项目或模型") },
             singleLine = true, shape = RoundedCornerShape(12.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             FilterChip(selected = onlyToday, onClick = { onlyToday = !onlyToday; limit = 8 }, label = { Text("仅今天") }, modifier = Modifier.heightIn(min = 48.dp))

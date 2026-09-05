@@ -41,6 +41,6 @@
 
 ## 验证
 
-构建流程包含安装包编译、静态检查、数据单元测试，以及安卓14和17设备测试。设备测试覆盖五个入口、模型搜索、趋势日期选择与详情、深色、旋转和大字体，并保存模拟器截图供审阅。最终安装包检查64位架构与16KB内存页打包对齐。
+构建流程包含安装包编译、静态检查、数据单元测试，以及安卓14和17设备测试。设备测试覆盖五个入口、模型搜索、设备与会话筛选、趋势日期选择与详情、重建和旋转后的状态恢复、深色和大字体，并保存模拟器截图供审阅。最终安装包检查64位架构与16KB内存页打包对齐。
 
 平台规范依据：[安卓17行为变化](https://developer.android.com/about/versions/17/behavior-changes-17)、[安卓构建插件9.4](https://developer.android.com/build/releases/agp-9-4-0-release-notes)、[触摸区域与辅助功能](https://developer.android.com/develop/ui/compose/accessibility/api-defaults)、[预测性返回手势](https://developer.android.com/guide/navigation/custom-back/predictive-back-gesture)。

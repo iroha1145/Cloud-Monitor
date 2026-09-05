@@ -89,74 +89,78 @@ fun AppRoot(vm: AppViewModel) {
                 LaunchedEffect(state.toast) {
                     state.toast?.let { snackbars.showSnackbar(it); vm.dismissToast() }
                 }
-                BoxWithConstraints(Modifier.fillMaxSize()) {
-                    val rail = maxWidth >= 600.dp
-                    Scaffold(
-                        modifier = Modifier.fillMaxSize(),
-                        containerColor = cm.canvas,
-                        contentWindowInsets = WindowInsets.safeDrawing,
-                        topBar = {
-                            TopAppBar(
-                                title = {
-                                    Column {
-                                        Text(TABS.first { it.tab == state.tab }.label, fontWeight = FontWeight.SemiBold,
-                                            modifier = Modifier.semantics { heading() })
-                                        Text("用量工作台", style = MaterialTheme.typography.labelSmall, color = cm.mute)
-                                    }
-                                },
-                                colors = TopAppBarDefaults.topAppBarColors(containerColor = cm.canvas),
-                                actions = {
-                                    IconButton(onClick = vm::refresh, enabled = !state.refreshing, modifier = Modifier.testTag("refresh")) {
-                                        if (state.refreshing) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-                                        else Icon(AppIcons.Refresh, "刷新数据")
-                                    }
-                                    Box {
-                                        IconButton(onClick = { menu = true }, modifier = Modifier.testTag("settings")) {
-                                            Icon(AppIcons.More, "更多选项")
+                saveable.SaveableStateProvider(state.tab.name) {
+                    val listState = rememberLazyListState()
+                    // Keep page choices outside lazy items, whose saved state may be discarded off screen.
+                    val page = rememberSaveable(saver = PageState.Saver) {
+                        PageState(selection = if (state.tab == AppTab.History) "" else "全部")
+                    }
+                    BoxWithConstraints(Modifier.fillMaxSize()) {
+                        val rail = maxWidth >= 600.dp
+                        Scaffold(
+                            modifier = Modifier.fillMaxSize(),
+                            containerColor = cm.canvas,
+                            contentWindowInsets = WindowInsets.safeDrawing,
+                            topBar = {
+                                TopAppBar(
+                                    title = {
+                                        Column {
+                                            Text(TABS.first { it.tab == state.tab }.label, fontWeight = FontWeight.SemiBold,
+                                                modifier = Modifier.semantics { heading() })
+                                            Text("用量工作台", style = MaterialTheme.typography.labelSmall, color = cm.mute)
                                         }
-                                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                                            DropdownMenuItem(text = { Text(if (dark) "切换浅色外观" else "切换深色外观") },
-                                                leadingIcon = { Icon(if (dark) AppIcons.LightMode else AppIcons.DarkMode, null) },
-                                                onClick = { menu = false; vm.toggleDark(systemDark) })
-                                            DropdownMenuItem(text = { Text("检查服务器更新") }, leadingIcon = { Icon(AppIcons.SystemUpdate, null) },
-                                                onClick = { menu = false; vm.openUpdate() })
-                                            HorizontalDivider()
-                                            DropdownMenuItem(text = { Text(if (state.demo) "退出演示" else "断开连接") },
-                                                leadingIcon = { Icon(AppIcons.Logout, null) }, onClick = { menu = false; logout = true })
-                                            Text("应用 ${BuildConfig.VERSION_NAME}", Modifier.padding(16.dp), color = cm.mute,
-                                                style = MaterialTheme.typography.labelSmall)
+                                    },
+                                    colors = TopAppBarDefaults.topAppBarColors(containerColor = cm.canvas),
+                                    actions = {
+                                        IconButton(onClick = vm::refresh, enabled = !state.refreshing, modifier = Modifier.testTag("refresh")) {
+                                            if (state.refreshing) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                                            else Icon(AppIcons.Refresh, "刷新数据")
                                         }
+                                        Box {
+                                            IconButton(onClick = { menu = true }, modifier = Modifier.testTag("settings")) {
+                                                Icon(AppIcons.More, "更多选项")
+                                            }
+                                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                                DropdownMenuItem(text = { Text(if (dark) "切换浅色外观" else "切换深色外观") },
+                                                    leadingIcon = { Icon(if (dark) AppIcons.LightMode else AppIcons.DarkMode, null) },
+                                                    onClick = { menu = false; vm.toggleDark(systemDark) })
+                                                DropdownMenuItem(text = { Text("检查服务器更新") }, leadingIcon = { Icon(AppIcons.SystemUpdate, null) },
+                                                    onClick = { menu = false; vm.openUpdate() })
+                                                HorizontalDivider()
+                                                DropdownMenuItem(text = { Text(if (state.demo) "退出演示" else "断开连接") },
+                                                    leadingIcon = { Icon(AppIcons.Logout, null) }, onClick = { menu = false; logout = true })
+                                                Text("应用 ${BuildConfig.VERSION_NAME}", Modifier.padding(16.dp), color = cm.mute,
+                                                    style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
+                                    },
+                                )
+                            },
+                            bottomBar = {
+                                if (!rail) NavigationBar(containerColor = cm.card, tonalElevation = 0.dp, modifier = Modifier.testTag("bottom-navigation")) {
+                                    TABS.forEach { spec ->
+                                        NavigationBarItem(selected = state.tab == spec.tab,
+                                            onClick = { vm.selectTab(spec.tab) },
+                                            icon = { Icon(spec.icon, null) }, label = { Text(spec.label) },
+                                            modifier = Modifier.testTag("nav-${spec.tab}"),
+                                            colors = NavigationBarItemDefaults.colors(selectedIconColor = cm.brand,
+                                                selectedTextColor = cm.brand, indicatorColor = cm.brand50))
                                     }
-                                },
-                            )
-                        },
-                        bottomBar = {
-                            if (!rail) NavigationBar(containerColor = cm.card, tonalElevation = 0.dp, modifier = Modifier.testTag("bottom-navigation")) {
-                                TABS.forEach { spec ->
-                                    NavigationBarItem(selected = state.tab == spec.tab,
-                                        onClick = { vm.selectTab(spec.tab) },
-                                        icon = { Icon(spec.icon, null) }, label = { Text(spec.label) },
-                                        modifier = Modifier.testTag("nav-${spec.tab}"),
-                                        colors = NavigationBarItemDefaults.colors(selectedIconColor = cm.brand,
-                                            selectedTextColor = cm.brand, indicatorColor = cm.brand50))
                                 }
-                            }
-                        },
-                        snackbarHost = { SnackbarHost(snackbars) },
-                    ) { padding ->
-                        Row(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
-                            if (rail) NavigationRail(containerColor = cm.canvas, windowInsets = WindowInsets(0,0,0,0),
-                                modifier = Modifier.fillMaxHeight().verticalScroll(rememberScrollState()).testTag("navigation-rail")) {
-                                TABS.forEach { spec ->
-                                    NavigationRailItem(selected = state.tab == spec.tab,
-                                        onClick = { vm.selectTab(spec.tab) }, icon = { Icon(spec.icon, null) },
-                                        label = { Text(spec.label) }, modifier = Modifier.testTag("nav-${spec.tab}"))
+                            },
+                            snackbarHost = { SnackbarHost(snackbars) },
+                        ) { padding ->
+                            Row(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+                                if (rail) NavigationRail(containerColor = cm.canvas, windowInsets = WindowInsets(0,0,0,0),
+                                    modifier = Modifier.fillMaxHeight().verticalScroll(rememberScrollState()).testTag("navigation-rail")) {
+                                    TABS.forEach { spec ->
+                                        NavigationRailItem(selected = state.tab == spec.tab,
+                                            onClick = { vm.selectTab(spec.tab) }, icon = { Icon(spec.icon, null) },
+                                            label = { Text(spec.label) }, modifier = Modifier.testTag("nav-${spec.tab}"))
+                                    }
                                 }
-                            }
-                            PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = vm::refresh, modifier = Modifier.weight(1f)) {
-                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-                                    saveable.SaveableStateProvider(state.tab.name) {
-                                        val listState = rememberLazyListState()
+                                PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = vm::refresh, modifier = Modifier.weight(1f)) {
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                                         val nearEnd by remember {
                                             derivedStateOf {
                                                 val info = listState.layoutInfo
@@ -181,11 +185,11 @@ fun AppRoot(vm: AppViewModel) {
                                             if (state.loading && state.overview == null) {
                                                 items(3) { ShimmerPanel(); Spacer(Modifier.height(12.dp)) }
                                             } else when (state.tab) {
-                                                AppTab.Overview -> overviewItems(state, vm.modelColors(), vm::setModelPeriod, vm::setClientPeriod, vm::setMxPeriod, vm::setMxCost)
-                                                AppTab.Devices -> devicesItems(state)
-                                                AppTab.Models -> modelsItems(state, vm.modelColors(), vm::setModelPeriod, vm::setMxPeriod, vm::setMxCost)
+                                                AppTab.Overview -> overviewItems(state, vm.modelColors(), vm::setModelPeriod, vm::setClientPeriod, vm::setMxPeriod, vm::setMxCost, page)
+                                                AppTab.Devices -> devicesItems(state, page)
+                                                AppTab.Models -> modelsItems(state, vm.modelColors(), vm::setModelPeriod, vm::setMxPeriod, vm::setMxCost, page)
                                                 AppTab.Quota -> quotaItems(state)
-                                                AppTab.History -> historyItems(state, vm.modelColors(), vm.clientColors(), vm::setActView, vm::loadMoreHistory)
+                                                AppTab.History -> historyItems(state, vm.modelColors(), vm.clientColors(), vm::setActView, vm::loadMoreHistory, page)
                                             }
                                             item("end") { Spacer(Modifier.height(24.dp)) }
                                         }

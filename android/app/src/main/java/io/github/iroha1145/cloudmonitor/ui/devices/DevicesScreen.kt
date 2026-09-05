@@ -11,29 +11,31 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.iroha1145.cloudmonitor.data.*
 import io.github.iroha1145.cloudmonitor.ui.AppIcons
+import io.github.iroha1145.cloudmonitor.ui.PageState
 import io.github.iroha1145.cloudmonitor.ui.components.ClientLogo
 import io.github.iroha1145.cloudmonitor.ui.components.Panel
 import io.github.iroha1145.cloudmonitor.ui.components.StatusDot
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
 import io.github.iroha1145.cloudmonitor.vm.UiState
 
-fun LazyListScope.devicesItems(state: UiState) {
+fun LazyListScope.devicesItems(state: UiState, page: PageState) {
     val overview = state.overview ?: return
-    item("devices") { DevicesContent(overview) }
+    item("devices") { DevicesContent(overview, page) }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DevicesContent(overview: Overview) {
+private fun DevicesContent(overview: Overview, page: PageState) {
     val cm = CmColorsCurrent
-    var query by rememberSaveable { mutableStateOf("") }
-    var filter by rememberSaveable { mutableStateOf("全部") }
+    var query by page.query
+    var filter by page.selection
     val onlineMap = overview.devices.associate { it.deviceId to deviceOnline(it, overview) }
     val online = onlineMap.values.count { it == true }
     val clients = overview.devices.flatMap { it.trackedClients }.toSet().size
@@ -64,7 +66,7 @@ private fun DevicesContent(overview: Overview) {
                 Text("在用量监控（Token Monitor）的设置中开启多设备同步，填入面板地址和服务端同步密钥。完成首次上传后，设备会显示在这里。", color = cm.ink2, style = MaterialTheme.typography.bodyMedium)
             }
         } else {
-            OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(),
+            OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().testTag("device-search"),
                 label = { Text("搜索设备") }, placeholder = { Text("名称、系统或客户端") },
                 singleLine = true, shape = RoundedCornerShape(14.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
