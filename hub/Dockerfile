@@ -1,3 +1,10 @@
+FROM node:24-bookworm-slim AS dashboard
+WORKDIR /build/dashboard
+COPY dashboard/package.json dashboard/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY dashboard ./
+RUN npm run build
+
 FROM python:3.12.11-slim
 
 # 非 root 运行；空 named volume 首次挂载时 Docker 会以镜像内 /data 属主
@@ -12,6 +19,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY backend /app/backend
 COPY frontend /app/frontend
+COPY --from=dashboard /build/frontend/app /app/frontend/app
 
 ARG CM_VERSION=dev
 ARG CM_GIT_SHA=unknown

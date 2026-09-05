@@ -33,6 +33,43 @@ jobs:
           name: evidence
           path: hub/frontend/tests/evidence/
 
+  dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: hub/dashboard/package-lock.json
+      - name: 安装后端和前端依赖
+        run: |
+          pip install -r hub/requirements.txt pytest
+          cd hub/dashboard
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: 数据契约、正式版和演示版构建
+        working-directory: hub/dashboard
+        run: |
+          npm test
+          npm run build
+          npm run build:showcase
+      - name: 手机交互和真实后端登录检查
+        working-directory: hub/dashboard
+        run: |
+          npm run test:e2e
+          npm run test:hosted
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dashboard-evidence
+          path: |
+            hub/dashboard/evidence/
+            hub/dashboard/test-results/
+
 # 本地复跑：
 #   cd hub/frontend/tests
 #   npm install --no-bin-links && node node_modules/@playwright/test/cli.js install chromium

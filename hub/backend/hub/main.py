@@ -288,8 +288,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     frontend_dir: Path = settings.frontend_dir
     if frontend_dir.is_dir():
-        live_index = frontend_dir / "index.html"
-        demo_index = frontend_dir / "demo.html"
+        # The built dashboard is used in release images; source checkouts retain
+        # the static fallback until the dashboard has been built.
+        page_dir = frontend_dir / "app" if (frontend_dir / "app" / "index.html").is_file() else frontend_dir
+        live_index = page_dir / "index.html"
+        demo_index = page_dir / "demo.html"
         root_index = demo_index if settings.cm_demo and demo_index.is_file() else live_index
 
         @app.get("/")
