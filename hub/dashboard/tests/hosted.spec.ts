@@ -117,6 +117,8 @@ test("320px hosted interface supports bottom navigation, theme and accessible au
   await page.reload();
   await expect(page.getByText("当前展示真实数据")).toBeAttached();
   await expect(page.locator("html")).toHaveClass(/dark/);
+  // Check settled colors after the requested heading entrance animation.
+  await expect.poll(() => page.locator(".heading-copy > p").evaluate(element => getComputedStyle(element).opacity)).toBe("1");
   await injectAxe(page);
   violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: "tag", values: ["wcag2a","wcag2aa","wcag21aa"] } })).violations);
   expect(violations).toEqual([]);
