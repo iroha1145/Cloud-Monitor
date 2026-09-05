@@ -135,6 +135,8 @@ jobs:
     timeout-minutes: 30
     env:
       ANDROID_SERIAL: emulator-5554
+      ANDROID_AVD_HOME: ${{ runner.temp }}/cloud-monitor-avd
+      ANDROID_USER_HOME: ${{ runner.temp }}/cloud-monitor-android
     strategy:
       fail-fast: false
       matrix:
@@ -169,7 +171,10 @@ jobs:
           IMAGE_TARGET: ${{ matrix.image }}
         run: |
           sdkmanager "platforms;android-37.0" "build-tools;36.0.0" "platform-tools" "emulator" "system-images;android-$TEST_API;$IMAGE_TARGET;x86_64"
-          echo no | avdmanager create avd -n cloud-monitor-ci -k "system-images;android-$TEST_API;$IMAGE_TARGET;x86_64" --device pixel_6 --force
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME"
+          echo no | avdmanager create avd -n cloud-monitor-ci -k "system-images;android-$TEST_API;$IMAGE_TARGET;x86_64" --device pixel_6 --path "$ANDROID_AVD_HOME/cloud-monitor-ci.avd" --force
+          test -f "$ANDROID_AVD_HOME/cloud-monitor-ci.ini"
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx cloud-monitor-ci
       - name: 启动设备并运行界面测试
         id: device_tests
         timeout-minutes: 25
@@ -178,7 +183,6 @@ jobs:
           "$ANDROID_HOME/emulator/emulator" -version
           "$ANDROID_HOME/emulator/emulator" -accel-check
           "$ANDROID_HOME/emulator/emulator" -list-avds
-          ldd "$ANDROID_HOME/emulator/qemu/linux-x86_64/qemu-system-x86_64" || true
           df -h "$RUNNER_TEMP"
           timeout 15 adb start-server
           "$ANDROID_HOME/emulator/emulator" -avd cloud-monitor-ci -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader > "$RUNNER_TEMP/emulator.log" 2>&1 &
