@@ -50,7 +50,7 @@ for (const touch of [false, true]) {
       );
 
       const model = page.locator(".model-table tbody tr").first();
-      const cache = model.locator(".cache-rate");
+      const cache = model.locator(".cache-track");
       if (touch) await cache.tap();
       else await cache.hover();
       await expect(page.getByRole("tooltip")).toContainText("缓存读取");

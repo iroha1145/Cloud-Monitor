@@ -116,6 +116,7 @@ export function MetricTooltip({
   rows,
   note,
   preserveAction = false,
+  strictTouchBounds = false,
 }: {
   children: ReactElement;
   title: string;
@@ -123,6 +124,8 @@ export function MetricTooltip({
   note?: string;
   /** Keep a short tap/keyboard action; suppress click after inspection by drag or hold. */
   preserveAction?: boolean;
+  /** Ignore native touch retargeting beyond a deliberately sized bar trigger. */
+  strictTouchBounds?: boolean;
 }) {
   const id = useId();
   const [anchor, setAnchor] = useState<Anchor | null>(null);
@@ -237,6 +240,21 @@ export function MetricTooltip({
         showFromPointer(event);
     },
     onPointerDown(event) {
+      if (strictTouchBounds && event.pointerType !== "mouse") {
+        const rect = event.currentTarget.getBoundingClientRect();
+        if (
+          event.clientX < rect.left ||
+          event.clientX > rect.right ||
+          event.clientY < rect.top ||
+          event.clientY > rect.bottom
+        ) {
+          // Also prevent the adjusted touch from focusing and reopening the card.
+          event.preventDefault();
+          suppressClick.current = true;
+          close();
+          return;
+        }
+      }
       if (preserveAction) child.props.onPointerDown?.(event);
       if (event.pointerType !== "mouse" || !preserveAction)
         event.preventDefault();
