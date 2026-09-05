@@ -19,8 +19,10 @@ for (const viewport of [
     await page.goto("/");
     if (viewport.width < 760 || viewport.height < 500) {
       await page.getByRole("button", { name: "打开导航" }).click();
+      await page.locator(".mobile-nav-dialog").getByRole("button", { name: "工作区设置", exact: true }).click();
+    } else {
+      await page.getByRole("button", { name: "连接我的数据" }).click();
     }
-    await page.getByRole("button", { name: "连接我的数据" }).click();
     await page.getByLabel("访问密钥", { exact: true }).fill("review-fixture-only");
     await page.getByRole("button", { name: "连接并查看真实用量" }).click();
     await expect(page.getByRole("button", { name: `查看 ${longName} 详情`, exact: true })).toBeVisible();
@@ -39,7 +41,7 @@ for (const viewport of [
     expect(dimensions.top).toBeGreaterThanOrEqual(0);
     expect(dimensions.bottom).toBeLessThanOrEqual(dimensions.height);
     expect(errors).toEqual([]);
-    await testInfo.attach("long-model-dialog", { body: await page.screenshot({ animations: "disabled" }), contentType: "image/png" });
+    await testInfo.attach("long-model-dialog", { body: await page.screenshot({ path: `evidence/review-long-model-${viewport.width}x${viewport.height}.png`, animations: "disabled" }), contentType: "image/png" });
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
   });
