@@ -10,7 +10,8 @@
     "test:scenarios": "node node_modules/@playwright/test/cli.js test scenarios.spec.js",
     "test:axe": "node node_modules/@playwright/test/cli.js test axe.spec.js",
     "test:shots": "node node_modules/@playwright/test/cli.js test screenshots.spec.js",
-    "test": "npm run test:static && node node_modules/@playwright/test/cli.js test"
+    "test": "npm run test:static && npm run test:unit && node node_modules/@playwright/test/cli.js test",
+    "test:unit": "node --test *.test.cjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

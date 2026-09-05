@@ -428,10 +428,10 @@ test.describe("§7 capabilities.tokenComponents=false（demo ?cm-scenario=nocap�
     expect(solid.replace(/\s/g, "")).toMatch(/rgb\(\s*127,\s*125,\s*252\s*\)/);
   });
 
-  test("默认场景（tokenComponents=true）→ 标注真实构成分段", async ({ page }) => {
+  test("默认场景含未分类用量 → 标注已知构成和部分来源未知", async ({ page }) => {
     await page.goto("/demo");
     await expect(page.locator("#shell")).toBeVisible();
-    await expect(page.locator("#client-dist-sub")).toContainText("真实构成分段");
+    await expect(page.locator("#client-dist-sub")).toContainText("已知构成分段，部分来源未知");
   });
 
   test("客户端分布用 token-monitor logo 标识，不用色点", async ({ page }) => {
@@ -810,7 +810,7 @@ test.describe("夜间模式与趋势文案（demo）", () => {
 });
 
 test.describe("模型分布缓存率（demo）", () => {
-  test("无缓存率切换，悬停图例行显示该模型缓存率", async ({ page }) => {
+  test("悬停图例行显示缓存计数、已识别占比和未分类量", async ({ page }) => {
     await page.goto("/demo");
     await expect(page.locator("#shell")).toBeVisible();
     await expect(page.locator("#model-metric-seg")).toHaveCount(0);
@@ -825,8 +825,8 @@ test.describe("模型分布缓存率（demo）", () => {
     await expect(tip).toContainText("占比");
     await expect(tip).toContainText("模型使用费用");
     await expect(tip).toContainText("$");
-    await expect(tip).toContainText("缓存率");
-    await expect(tip.locator(".tip-row")).toHaveCount(4);
+    await expect(tip).toContainText("已识别缓存占比");
+    await expect(tip.locator(".tip-row")).toHaveCount(7);
   });
 });
 
