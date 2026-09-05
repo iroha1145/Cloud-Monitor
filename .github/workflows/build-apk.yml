@@ -135,8 +135,6 @@ jobs:
     timeout-minutes: 30
     env:
       ANDROID_SERIAL: emulator-5554
-      ANDROID_AVD_HOME: ${{ runner.temp }}/cloud-monitor-avd
-      ANDROID_USER_HOME: ${{ runner.temp }}/cloud-monitor-android
     strategy:
       fail-fast: false
       matrix:
@@ -147,6 +145,11 @@ jobs:
             image: google_apis_ps16k
     steps:
       - uses: actions/checkout@v4
+      - name: 设置模拟器目录
+        run: |
+          mkdir -p "$RUNNER_TEMP/cloud-monitor-avd" "$RUNNER_TEMP/cloud-monitor-android"
+          echo "ANDROID_AVD_HOME=$RUNNER_TEMP/cloud-monitor-avd" >> "$GITHUB_ENV"
+          echo "ANDROID_USER_HOME=$RUNNER_TEMP/cloud-monitor-android" >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
