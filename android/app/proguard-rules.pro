@@ -26,6 +26,3 @@
 # Tink (security-crypto)
 -dontwarn com.google.crypto.tink.**
 -keep class androidx.security.crypto.** { *; }
-
-# Haze (backdrop blur)
--dontwarn dev.chrisbanes.haze.**

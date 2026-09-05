@@ -1,0 +1,664 @@
+{
+  "overview_schema_version": 2,
+  "generated_at": "2026-08-25T03:18:15.180Z",
+  "pending_outbox": 0,
+  "last_snapshot_success_at": "2026-08-25T03:18:15+00:00",
+  "last_snapshot_error": null,
+  "snapshot_degraded": false,
+  "staleAfterMs": 600000,
+  "dashboard_time_zone": "Asia/Tokyo",
+  "features": {
+    "trend_models": true,
+    "activity_hourly": true,
+    "subscriptions": true,
+    "provider_status": true,
+    "history_daily": true
+  },
+  "partial": false,
+  "partial_errors": [],
+  "totals": {
+    "today": {
+      "capabilities": {
+        "tokenComponents": false
+      },
+      "totalTokens": 1846320,
+      "costUsd": 4.82,
+      "cacheReadTokens": 986000,
+      "cacheWriteTokens": 120000,
+      "outputTokens": 421000,
+      "unclassifiedTokens": 319320,
+      "timedTokens": 0,
+      "timedOutputTokens": 0,
+      "timedDurationMs": 0,
+      "clients": {
+        "claude": 1200000,
+        "codex": 646320
+      },
+      "clientCosts": {
+        "claude": 3.8,
+        "codex": 1.02
+      },
+      "clientCacheReads": {
+        "claude": 800000,
+        "codex": 186000
+      },
+      "clientCacheWrites": {
+        "claude": 90000,
+        "codex": 30000
+      },
+      "clientOutputs": {
+        "claude": 300000,
+        "codex": 121000
+      },
+      "clientUnclassifiedTokens": {
+        "claude": 10000,
+        "codex": 109320
+      },
+      "models": {
+        "opus-4.5": 1000000,
+        "gpt-5.2": 846320
+      },
+      "modelCosts": {
+        "opus-4.5": 3,
+        "gpt-5.2": 1.82
+      },
+      "modelCacheReads": {
+        "opus-4.5": 700000,
+        "gpt-5.2": 286000
+      },
+      "modelCacheWrites": {
+        "opus-4.5": 80000,
+        "gpt-5.2": 40000
+      },
+      "modelOutputs": {
+        "opus-4.5": 250000,
+        "gpt-5.2": 171000
+      },
+      "modelUnclassifiedTokens": {
+        "gpt-5.2": 149320
+      },
+      "clientModels": {
+        "claude": {
+          "opus-4.5": 1000000
+        },
+        "codex": {
+          "gpt-5.2": 846320
+        }
+      },
+      "clientModelCosts": {},
+      "projects": {},
+      "sessions": {}
+    },
+    "month": {
+      "capabilities": {
+        "tokenComponents": false
+      },
+      "totalTokens": 28463200,
+      "costUsd": 71.4,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "outputTokens": 0,
+      "unclassifiedTokens": 28463200,
+      "timedTokens": 0,
+      "timedOutputTokens": 0,
+      "timedDurationMs": 0,
+      "clients": {
+        "claude": 24000000,
+        "codex": 4463200
+      },
+      "clientCosts": {},
+      "clientCacheReads": {},
+      "clientCacheWrites": {},
+      "clientOutputs": {},
+      "clientUnclassifiedTokens": {
+        "claude": 24000000,
+        "codex": 4463200
+      },
+      "models": {
+        "opus-4.5": 24000000,
+        "gpt-5.2": 4463200
+      },
+      "modelCosts": {},
+      "modelCacheReads": {},
+      "modelCacheWrites": {},
+      "modelOutputs": {},
+      "modelUnclassifiedTokens": {
+        "opus-4.5": 24000000,
+        "gpt-5.2": 4463200
+      },
+      "clientModels": {},
+      "clientModelCosts": {},
+      "projects": {},
+      "sessions": {}
+    },
+    "allTime": {
+      "capabilities": {
+        "tokenComponents": false
+      },
+      "totalTokens": 128463200,
+      "costUsd": 402.1,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "outputTokens": 0,
+      "unclassifiedTokens": 128463200,
+      "timedTokens": 0,
+      "timedOutputTokens": 0,
+      "timedDurationMs": 0,
+      "clients": {
+        "claude": 100000000,
+        "codex": 28463200
+      },
+      "clientCosts": {},
+      "clientCacheReads": {},
+      "clientCacheWrites": {},
+      "clientOutputs": {},
+      "clientUnclassifiedTokens": {
+        "claude": 100000000,
+        "codex": 28463200
+      },
+      "models": {
+        "opus-4.5": 100000000,
+        "gpt-5.2": 28463200
+      },
+      "modelCosts": {},
+      "modelCacheReads": {},
+      "modelCacheWrites": {},
+      "modelOutputs": {},
+      "modelUnclassifiedTokens": {
+        "opus-4.5": 100000000,
+        "gpt-5.2": 28463200
+      },
+      "clientModels": {},
+      "clientModelCosts": {},
+      "projects": {},
+      "sessions": {}
+    }
+  },
+  "devices": [
+    {
+      "deviceId": "dev-fixture",
+      "hostname": "MacBook-Pro",
+      "platform": "darwin",
+      "osName": "macOS",
+      "osVersion": "15.5",
+      "agentVersion": "1.8.2",
+      "agentRuntime": "widget",
+      "receivedAt": "2026-08-25T03:18:15.168Z",
+      "updatedAt": "2026-08-25T03:18:15.164Z",
+      "stale": false,
+      "syncUploadIntervalMs": 0,
+      "trackedClients": [
+        "claude",
+        "codex"
+      ],
+      "today": {
+        "capabilities": {
+          "tokenComponents": false
+        },
+        "totalTokens": 1846320,
+        "costUsd": 4.82,
+        "cacheReadTokens": 986000,
+        "cacheWriteTokens": 120000,
+        "outputTokens": 421000,
+        "unclassifiedTokens": 319320,
+        "timedTokens": 0,
+        "timedOutputTokens": 0,
+        "timedDurationMs": 0,
+        "clients": {
+          "claude": 1200000,
+          "codex": 646320
+        },
+        "clientCosts": {
+          "claude": 3.8,
+          "codex": 1.02
+        },
+        "clientCacheReads": {
+          "claude": 800000,
+          "codex": 186000
+        },
+        "clientCacheWrites": {
+          "claude": 90000,
+          "codex": 30000
+        },
+        "clientOutputs": {
+          "claude": 300000,
+          "codex": 121000
+        },
+        "clientUnclassifiedTokens": {
+          "claude": 10000,
+          "codex": 109320
+        },
+        "models": {
+          "opus-4.5": 1000000,
+          "gpt-5.2": 846320
+        },
+        "modelCosts": {
+          "opus-4.5": 3,
+          "gpt-5.2": 1.82
+        },
+        "modelCacheReads": {
+          "opus-4.5": 700000,
+          "gpt-5.2": 286000
+        },
+        "modelCacheWrites": {
+          "opus-4.5": 80000,
+          "gpt-5.2": 40000
+        },
+        "modelOutputs": {
+          "opus-4.5": 250000,
+          "gpt-5.2": 171000
+        },
+        "modelUnclassifiedTokens": {
+          "gpt-5.2": 149320
+        },
+        "clientModels": {
+          "claude": {
+            "opus-4.5": 1000000
+          },
+          "codex": {
+            "gpt-5.2": 846320
+          }
+        },
+        "clientModelCosts": {},
+        "projects": {},
+        "sessions": {}
+      },
+      "month": {
+        "capabilities": {
+          "tokenComponents": false
+        },
+        "totalTokens": 28463200,
+        "costUsd": 71.4,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "outputTokens": 0,
+        "unclassifiedTokens": 28463200,
+        "timedTokens": 0,
+        "timedOutputTokens": 0,
+        "timedDurationMs": 0,
+        "clients": {
+          "claude": 24000000,
+          "codex": 4463200
+        },
+        "clientCosts": {},
+        "clientCacheReads": {},
+        "clientCacheWrites": {},
+        "clientOutputs": {},
+        "clientUnclassifiedTokens": {
+          "claude": 24000000,
+          "codex": 4463200
+        },
+        "models": {
+          "opus-4.5": 24000000,
+          "gpt-5.2": 4463200
+        },
+        "modelCosts": {},
+        "modelCacheReads": {},
+        "modelCacheWrites": {},
+        "modelOutputs": {},
+        "modelUnclassifiedTokens": {
+          "opus-4.5": 24000000,
+          "gpt-5.2": 4463200
+        },
+        "clientModels": {},
+        "clientModelCosts": {},
+        "projects": {},
+        "sessions": {}
+      },
+      "allTime": {
+        "capabilities": {
+          "tokenComponents": false
+        },
+        "totalTokens": 128463200,
+        "costUsd": 402.1,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "outputTokens": 0,
+        "unclassifiedTokens": 128463200,
+        "timedTokens": 0,
+        "timedOutputTokens": 0,
+        "timedDurationMs": 0,
+        "clients": {
+          "claude": 100000000,
+          "codex": 28463200
+        },
+        "clientCosts": {},
+        "clientCacheReads": {},
+        "clientCacheWrites": {},
+        "clientOutputs": {},
+        "clientUnclassifiedTokens": {
+          "claude": 100000000,
+          "codex": 28463200
+        },
+        "models": {
+          "opus-4.5": 100000000,
+          "gpt-5.2": 28463200
+        },
+        "modelCosts": {},
+        "modelCacheReads": {},
+        "modelCacheWrites": {},
+        "modelOutputs": {},
+        "modelUnclassifiedTokens": {
+          "opus-4.5": 100000000,
+          "gpt-5.2": 28463200
+        },
+        "clientModels": {},
+        "clientModelCosts": {},
+        "projects": {},
+        "sessions": {}
+      },
+      "limits": {
+        "updatedAt": null,
+        "refreshMs": 300000,
+        "providers": []
+      },
+      "projectsEnabled": false,
+      "historyAvailable": true
+    }
+  ],
+  "trend": [
+    {
+      "day": "2026-08-25",
+      "total": 1846320
+    }
+  ],
+  "trend_models": [
+    {
+      "day": "2026-08-25",
+      "total": 1846320,
+      "models": {
+        "opus-4.5": 1000000,
+        "gpt-5.2": 846320
+      }
+    }
+  ],
+  "activity": {
+    "time_zone": "Asia/Tokyo",
+    "hourly": [
+      {
+        "hour": 0,
+        "total": 0
+      },
+      {
+        "hour": 1,
+        "total": 0
+      },
+      {
+        "hour": 2,
+        "total": 0
+      },
+      {
+        "hour": 3,
+        "total": 0
+      },
+      {
+        "hour": 4,
+        "total": 0
+      },
+      {
+        "hour": 5,
+        "total": 0
+      },
+      {
+        "hour": 6,
+        "total": 0
+      },
+      {
+        "hour": 7,
+        "total": 0
+      },
+      {
+        "hour": 8,
+        "total": 0
+      },
+      {
+        "hour": 9,
+        "total": 0
+      },
+      {
+        "hour": 10,
+        "total": 0
+      },
+      {
+        "hour": 11,
+        "total": 0
+      },
+      {
+        "hour": 12,
+        "total": 1846320
+      },
+      {
+        "hour": 13,
+        "total": 0
+      },
+      {
+        "hour": 14,
+        "total": 0
+      },
+      {
+        "hour": 15,
+        "total": 0
+      },
+      {
+        "hour": 16,
+        "total": 0
+      },
+      {
+        "hour": 17,
+        "total": 0
+      },
+      {
+        "hour": 18,
+        "total": 0
+      },
+      {
+        "hour": 19,
+        "total": 0
+      },
+      {
+        "hour": 20,
+        "total": 0
+      },
+      {
+        "hour": 21,
+        "total": 0
+      },
+      {
+        "hour": 22,
+        "total": 0
+      },
+      {
+        "hour": 23,
+        "total": 0
+      }
+    ],
+    "hourly_day": "2026-08-25",
+    "daily_day_basis": "dashboard-time-zone",
+    "daily_mixed_basis": false,
+    "daily_archive_cutover_day": null,
+    "hourly_today": {
+      "day": "2026-08-25",
+      "time_zone": "Asia/Tokyo",
+      "buckets": [
+        {
+          "hour": 0,
+          "total": 0
+        },
+        {
+          "hour": 1,
+          "total": 0
+        },
+        {
+          "hour": 2,
+          "total": 0
+        },
+        {
+          "hour": 3,
+          "total": 0
+        },
+        {
+          "hour": 4,
+          "total": 0
+        },
+        {
+          "hour": 5,
+          "total": 0
+        },
+        {
+          "hour": 6,
+          "total": 0
+        },
+        {
+          "hour": 7,
+          "total": 0
+        },
+        {
+          "hour": 8,
+          "total": 0
+        },
+        {
+          "hour": 9,
+          "total": 0
+        },
+        {
+          "hour": 10,
+          "total": 0
+        },
+        {
+          "hour": 11,
+          "total": 0
+        },
+        {
+          "hour": 12,
+          "total": 1846320
+        },
+        {
+          "hour": 13,
+          "total": 0
+        },
+        {
+          "hour": 14,
+          "total": 0
+        },
+        {
+          "hour": 15,
+          "total": 0
+        },
+        {
+          "hour": 16,
+          "total": 0
+        },
+        {
+          "hour": 17,
+          "total": 0
+        },
+        {
+          "hour": 18,
+          "total": 0
+        },
+        {
+          "hour": 19,
+          "total": 0
+        },
+        {
+          "hour": 20,
+          "total": 0
+        },
+        {
+          "hour": 21,
+          "total": 0
+        },
+        {
+          "hour": 22,
+          "total": 0
+        },
+        {
+          "hour": 23,
+          "total": 0
+        }
+      ]
+    },
+    "daily": [
+      {
+        "day": "2026-08-25",
+        "total": 1846320
+      }
+    ],
+    "coverage": {
+      "first_sample_at": "2026-08-25T03:15:00.000Z",
+      "last_sample_at": "2026-08-25T03:15:00.000Z",
+      "expected_buckets": 1,
+      "observed_buckets": 1,
+      "coverage_percent": 100.0,
+      "attribution_mode": "delta-low-coverage",
+      "devices": [
+        {
+          "device_id": "dev-fixture",
+          "first_sample_at": "2026-08-25T03:15:00.000Z",
+          "last_sample_at": "2026-08-25T03:15:00.000Z",
+          "expected_buckets": 1,
+          "observed_buckets": 1,
+          "gap_count": 0,
+          "reset_count": 0,
+          "expected_interval_ms": 300000
+        }
+      ],
+      "gap_count": 0,
+      "reset_count": 0
+    }
+  },
+  "period_windows": {
+    "today": {
+      "endsAt": "2026-08-25T15:00:00.000Z",
+      "key": "2026-08-25"
+    },
+    "month": {
+      "endsAt": "2026-08-31T15:00:00.000Z",
+      "key": "2026-08"
+    },
+    "timeZone": "Asia/Tokyo"
+  },
+  "period_windows_by_device": {
+    "dev-fixture": {
+      "today": {
+        "endsAt": "2026-08-25T15:00:00.000Z",
+        "key": "2026-08-25"
+      },
+      "month": {
+        "endsAt": "2026-08-31T15:00:00.000Z",
+        "key": "2026-08"
+      },
+      "timeZone": "Asia/Tokyo"
+    }
+  },
+  "dashboard_period": {
+    "time_zone": "Asia/Tokyo",
+    "today": {
+      "key": "2026-08-25",
+      "endsAt": "2026-08-25T15:00:00.000Z"
+    },
+    "month": {
+      "key": "2026-08",
+      "endsAt": "2026-08-31T15:00:00.000Z"
+    }
+  },
+  "limits": [],
+  "sessions": [],
+  "sessions_omitted": false,
+  "sessions_meta": {
+    "sessions_total": 0,
+    "sessions_returned": 0,
+    "sessions_omitted_count": 0,
+    "session_details_incomplete": false
+  },
+  "projects": [],
+  "diagnostics": [
+    {
+      "deviceId": "dev-fixture",
+      "hostname": "MacBook-Pro",
+      "clientHealth": null,
+      "clientStatus": null,
+      "wslStatus": null
+    }
+  ]
+}

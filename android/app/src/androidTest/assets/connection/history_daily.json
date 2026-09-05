@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "day_basis": "device-local",
+  "dashboard_time_zone": "Asia/Tokyo",
+  "retention_days": 370,
+  "mixed_time_zones": false,
+  "device_time_zone": null,
+  "items": [
+    {
+      "day": "2026-08-25",
+      "tokens": 1846320,
+      "costUsd": 4.82,
+      "perClient": {
+        "claude": 1200000,
+        "codex": 646320
+      },
+      "perModel": {
+        "opus-4.5": 1000000,
+        "gpt-5.2": 846320
+      },
+      "deviceCount": 1,
+      "complete": true,
+      "coverage": null,
+      "outputTokens": 421000,
+      "cacheReadTokens": 986000,
+      "cacheWriteTokens": 120000,
+      "unclassifiedTokens": 319320,
+      "tokenComponentsAvailable": false,
+      "componentsPartial": true
+    }
+  ],
+  "next_cursor": null,
+  "has_more": false,
+  "partial": false,
+  "partial_errors": []
+}

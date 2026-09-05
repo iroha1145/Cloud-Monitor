@@ -29,6 +29,12 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.Icon
+import io.github.iroha1145.cloudmonitor.ui.AppIcons
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -82,17 +88,10 @@ fun Panel(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val cm = CmColorsCurrent
-    val shape = RoundedCornerShape(24.dp)
+    val shape = RoundedCornerShape(20.dp)
     Column(
         modifier
             .fillMaxWidth()
-            .shadow(
-                elevation = 12.dp,
-                shape = shape,
-                clip = false,
-                ambientColor = cm.shadowAmbient,
-                spotColor = cm.shadowSpot,
-            )
             .border(1.dp, cm.border, shape)
             .background(cm.card, shape)
             .clip(shape)
@@ -104,13 +103,10 @@ fun Panel(
 @Composable
 fun PanelHead(title: String, sub: String, trailing: @Composable (() -> Unit)? = null) {
     val cm = CmColorsCurrent
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        Column(Modifier.weight(1f)) {
-            Text(title, color = cm.ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            if (sub.isNotEmpty()) {
-                Spacer(Modifier.height(2.dp))
-                Text(sub, color = cm.mute, fontSize = 12.sp)
-            }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column {
+            Text(title, color = cm.ink, style = androidx.compose.material3.MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            if (sub.isNotEmpty()) Text(sub, color = cm.mute, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
         }
         if (trailing != null) trailing()
     }
@@ -118,37 +114,8 @@ fun PanelHead(title: String, sub: String, trailing: @Composable (() -> Unit)? = 
 
 @Composable
 fun CompactNumber(value: Double, size: TextUnit = 32.sp, tight: Boolean = false, color: Color = CmColorsCurrent.ink) {
-    val reduced = LocalReducedMotion.current
-    val p = Format.compactParts(value, tight)
-    val body = @Composable {
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(p.n, color = color, fontSize = size, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp)
-            if (p.u.isNotEmpty()) {
-                Text(
-                    p.u,
-                    color = color.copy(alpha = 0.72f),
-                    fontSize = (size.value * 0.45f).sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(start = 2.dp, bottom = 4.dp),
-                )
-            }
-        }
-    }
-    AnimatedContent(
-        targetState = p.n + p.u,
-        transitionSpec = {
-            if (reduced) EnterTransition.None togetherWith ExitTransition.None
-            else (slideInVertically(tween(Motion.Digit, easing = FastOutSlowInEasing)) { it / 3 } + fadeIn()) togetherWith
-                fadeOut(tween(Motion.Digit / 2))
-        },
-        label = "num-pop",
-    ) { _ ->
-        val enter = remember { Animatable(if (reduced) 1f else 0f) }
-        LaunchedEffect(Unit) {
-            if (!reduced) enter.animateTo(1f, tween(Motion.Digit, easing = FastOutSlowInEasing))
-        }
-        Box(Modifier.graphicsLayer { applyEnterBlur(enter.value, 4f) }) { body() }
-    }
+    val parts = Format.compactParts(value, tight)
+    Text(parts.n + parts.u, color = color, fontSize = size, fontWeight = FontWeight.SemiBold)
 }
 
 @Composable
@@ -159,6 +126,7 @@ fun PeriodSeg(selected: Period, onSelect: (Period) -> Unit) {
         Modifier
             .clip(RoundedCornerShape(999.dp))
             .background(cm.brand25)
+            .horizontalScroll(rememberScrollState())
             .padding(3.dp)
             .selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -181,7 +149,9 @@ fun PeriodSeg(selected: Period, onSelect: (Period) -> Unit) {
                             onSelect(p)
                         },
                     )
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .heightIn(min = 48.dp)
+                    .widthIn(min = 64.dp)
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
             )
         }
     }
@@ -190,7 +160,6 @@ fun PeriodSeg(selected: Period, onSelect: (Period) -> Unit) {
 @Composable
 fun ClientLogo(name: String?, size: Dp = 16.dp, tint: Color = CmColorsCurrent.ink) {
     val path = logoAssetPath(name)
-    val letter = name.orEmpty().trim().take(1).uppercase().ifEmpty { "?" }
     if (path != null) {
         val context = LocalContext.current
         val request = remember(path) {
@@ -217,7 +186,7 @@ fun ClientLogo(name: String?, size: Dp = 16.dp, tint: Color = CmColorsCurrent.in
                 .background(CmColorsCurrent.brand50),
             contentAlignment = Alignment.Center,
         ) {
-            Text(letter, fontSize = (size.value * 0.62f).sp, color = tint, fontWeight = FontWeight.SemiBold)
+            Icon(AppIcons.Terminal, contentDescription = name ?: "客户端", tint = tint, modifier = Modifier.size(size))
         }
     }
 }

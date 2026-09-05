@@ -1,260 +1,108 @@
-@file:OptIn(
-    androidx.compose.foundation.ExperimentalFoundationApi::class,
-    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
-)
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package io.github.iroha1145.cloudmonitor.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import io.github.iroha1145.cloudmonitor.data.Format
-import io.github.iroha1145.cloudmonitor.data.OTHER_COLOR
-import io.github.iroha1145.cloudmonitor.data.TrendRow
-import io.github.iroha1145.cloudmonitor.data.hmLevel
+import io.github.iroha1145.cloudmonitor.data.*
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
-import io.github.iroha1145.cloudmonitor.ui.theme.rememberGrow
-import kotlin.math.atan2
-import kotlin.math.min
+import kotlin.math.roundToInt
 
-@Composable
-fun StackedTrendChart(
-    rows: List<TrendRow>,
-    colors: Map<String, Color>,
-    topModels: List<String>,
-    modifier: Modifier = Modifier,
-) {
-    val max = rows.maxOfOrNull { it.total }?.coerceAtLeast(1.0) ?: 1.0
-    val grow = rememberGrow(rows.size to topModels.joinToString())
-    val tip = LocalFloatTip.current
-    Column(modifier) {
-        if (topModels.isNotEmpty()) {
-            // 对齐网页 trend-legend：完整图例，放不下换行
-            FlowRow(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                topModels.forEach { name ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(8.dp).clip(CircleShape).background(colors[name] ?: OTHER_COLOR))
-                        Spacer(Modifier.width(4.dp))
-                        Text(name, fontSize = 11.sp, color = CmColorsCurrent.mute, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-        }
-        Row(
-            Modifier.fillMaxWidth().height(148.dp),
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalAlignment = Alignment.Bottom,
-        ) {
-            rows.forEach { row ->
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .combinedClickable(
-                            onClick = {
-                                tip.show(row.day, listOf("合计" to Format.fmtCompact(row.total)))
-                            },
-                            onLongClick = {
-                                tip.show(row.day, listOf("合计" to Format.fmtCompact(row.total)))
-                            },
-                        ),
-                    verticalArrangement = Arrangement.Bottom,
-                ) {
-                    val hFrac = (row.total / max).toFloat().coerceIn(0f, 1f) * grow
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .fillMaxHeight(hFrac.coerceAtLeast(0.02f))
-                            .graphicsLayer { transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f) },
-                        verticalArrangement = Arrangement.Bottom,
-                    ) {
-                        val segs = buildList<Pair<Color, Double>> {
-                            var used = 0.0
-                            topModels.forEach { m ->
-                                val v = row.models[m] ?: 0.0
-                                if (v > 0) {
-                                    add(Pair(colors[m] ?: OTHER_COLOR, v))
-                                    used += v
-                                }
-                            }
-                            val rest = row.total - used
-                            if (rest > 1) add(Pair(OTHER_COLOR, rest))
-                        }
-                        val sum = segs.sumOf { it.second }.coerceAtLeast(1.0)
-                        segs.asReversed().forEach { (c, v) ->
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .weight((v / sum).toFloat().coerceAtLeast(0.0001f))
-                                    .background(c, RoundedCornerShape(2.dp)),
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        // 对齐网页 x 轴：首/中/末多点日期标注
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            val marks = buildList {
-                add(rows.firstOrNull()?.day.orEmpty())
-                if (rows.size >= 15) add(rows[rows.size / 3].day)
-                if (rows.size >= 15) add(rows[rows.size * 2 / 3].day)
-                add(rows.lastOrNull()?.day.orEmpty())
-            }
-            marks.forEach { Text(it.drop(5), fontSize = 10.sp, color = CmColorsCurrent.mute) }
-        }
-    }
+private fun dailySegments(row: TrendRow): List<TokenSeg> {
+    val data = row.components
+    if (data == null || !data.known) return listOf(TokenSeg("unclassified", "未分类", SEG_UNCLS, row.total))
+    return listOf(TokenSeg("input", "非缓存输入", SEG_INPUT, data.input), TokenSeg("output", "输出", SEG_OUTPUT, data.output),
+        TokenSeg("cacheRead", "缓存读取", SEG_CACHE_READ, data.cacheRead), TokenSeg("cacheWrite", "缓存写入", SEG_CACHE_WRITE, data.cacheWrite),
+        TokenSeg("unclassified", "未分类", SEG_UNCLS, data.unclassified)).filter { it.value > 0 }
 }
 
+/** A single touch surface lets a finger follow daily values without tiny bar targets. */
+@Suppress("UNUSED_PARAMETER")
 @Composable
-fun DonutChart(
-    slices: List<Pair<String, Double>>,
-    colors: Map<String, Color>,
-    total: Double,
-    modifier: Modifier = Modifier,
-    centerSub: String? = null,
-    costs: Map<String, Double> = emptyMap(),
-    cacheRates: Map<String, Double?> = emptyMap(),
-) {
+fun StackedTrendChart(rows: List<TrendRow>, colors: Map<String, Color>, topModels: List<String>, modifier: Modifier = Modifier) {
+    if (rows.isEmpty()) return
     val cm = CmColorsCurrent
-    val sum = slices.sumOf { it.second }.coerceAtLeast(1.0)
-    val grow = rememberGrow(slices.joinToString { it.first } to total)
+    var selectedDay by rememberSaveable { mutableStateOf(rows.last().day) }
+    val selected = rows.indexOfFirst { it.day == selectedDay }.takeIf { it >= 0 } ?: rows.lastIndex
+    val row = rows[selected]
+    val maximum = rows.maxOf { it.total }.coerceAtLeast(1.0)
     val tip = LocalFloatTip.current
-    var expanded by remember { mutableStateOf(false) }
-    // 对齐网页：超过 8 个模型时收起，平铺前 6 行
-    val visible = if (slices.size > 8 && !expanded) slices.take(6) else slices
-    val hidden = (slices.size - visible.size).coerceAtLeast(0)
-
-    fun tipRows(name: String, v: Double): List<Pair<String, String>> {
-        val rows = mutableListOf(
-            "tokens" to Format.fmtInt(v),
-            "占比" to Format.pct1(v, sum),
-            "模型使用费用" to (costs[name]?.let { Format.fmtUsd(it) } ?: "—"),
-        )
-        cacheRates[name]?.let { rows += "缓存率" to Format.fmtPct(it) }
-        return rows
-    }
-
-    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(132.dp), contentAlignment = Alignment.Center) {
-            Canvas(
-                Modifier
-                    .fillMaxSize()
-                    .pointerInput(slices, grow) {
-                        detectTapGestures(
-                            onLongPress = { offset ->
-                                val cx = size.width / 2f
-                                val cy = size.height / 2f
-                                var deg = Math.toDegrees(
-                                    atan2((offset.y - cy).toDouble(), (offset.x - cx).toDouble()),
-                                )
-                                deg = (deg + 90.0 + 360.0) % 360.0
-                                var start = 0.0
-                                slices.forEach { (name, v) ->
-                                    val sweep = v / sum * 360.0 * grow
-                                    if (deg >= start && deg < start + sweep) {
-                                        tip.show(name, tipRows(name, v))
-                                        return@detectTapGestures
-                                    }
-                                    start += sweep
-                                }
-                            },
-                        )
-                    },
-            ) {
-                val stroke = Stroke(width = size.minDimension * 0.18f, cap = StrokeCap.Butt)
-                val inset = stroke.width / 2
-                val arcSize = Size(size.width - stroke.width, size.height - stroke.width)
-                var start = -90f
-                slices.forEach { (name, v) ->
-                    val sweep = (v / sum * 360.0 * grow).toFloat()
-                    drawArc(
-                        color = colors[name] ?: OTHER_COLOR,
-                        startAngle = start,
-                        sweepAngle = (sweep - 1.2f).coerceAtLeast(0f),
-                        useCenter = false,
-                        topLeft = Offset(inset, inset),
-                        size = arcSize,
-                        style = stroke,
-                    )
-                    start += sweep
+    Column(modifier) {
+        Canvas(Modifier.fillMaxWidth().height(170.dp).testTag("trend-chart")
+            .pointerInput(rows) {
+                detectTapGestures { point -> selectedDay = rows[(point.x / size.width * rows.size).toInt().coerceIn(rows.indices)].day }
+            }.pointerInput(rows) {
+                detectHorizontalDragGestures(onDragStart = { point -> selectedDay = rows[(point.x / size.width * rows.size).toInt().coerceIn(rows.indices)].day }) { change, _ ->
+                    change.consume()
+                    selectedDay = rows[(change.position.x / size.width * rows.size).toInt().coerceIn(rows.indices)].day
+                }
+            }.clearAndSetSemantics { contentDescription = "每日用量堆积图，使用下方日期滑块查看详情" }) {
+            val cell = size.width / rows.size
+            val gap = (cell * 0.25f).coerceAtMost(7.dp.toPx())
+            repeat(4) { line ->
+                val y = size.height * line / 3
+                drawLine(cm.border, Offset(0f, y), Offset(size.width, y), 1.dp.toPx())
+            }
+            rows.forEachIndexed { index, item ->
+                var bottom = size.height
+                dailySegments(item).forEach { segment ->
+                    val height = (segment.value / maximum * size.height).toFloat()
+                    if (height > 0f) drawRect(segment.color, Offset(index * cell + gap / 2, bottom - height), Size(cell - gap, height))
+                    bottom -= height
                 }
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CompactNumber(total, size = 18.sp, tight = true)
-                if (centerSub != null) {
-                    Text(centerSub, fontSize = 10.sp, color = cm.mute)
-                }
-            }
+            val x = (selected + .5f) * cell
+            drawLine(cm.ink.copy(alpha = .65f), Offset(x, 0f), Offset(x, size.height), 1.5.dp.toPx())
         }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            visible.forEach { (name, v) ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.tipClick(name, tipRows(name, v)),
-                ) {
-                    Box(Modifier.size(8.dp).clip(CircleShape).background(colors[name] ?: OTHER_COLOR))
-                    Spacer(Modifier.width(6.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(name, fontSize = 12.sp, color = cm.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${Format.fmtCompact(v)} · ${Format.pct1(v, sum)}", fontSize = 11.sp, color = cm.mute)
-                    }
-                }
-            }
-            if (hidden > 0) {
-                TextButton(onClick = { expanded = true }) {
-                    Text("展开其余 $hidden 个模型", fontSize = 12.sp)
-                }
-            } else if (slices.size > 8 && expanded) {
-                TextButton(onClick = { expanded = false }) {
-                    Text("收起模型列表", fontSize = 12.sp)
-                }
-            }
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(rows.first().day.drop(5), color = cm.mute, style = MaterialTheme.typography.labelSmall)
+            Text(rows.last().day.drop(5), color = cm.mute, style = MaterialTheme.typography.labelSmall)
+        }
+        if (rows.size > 1) Slider(value = selected.toFloat(), onValueChange = { selectedDay = rows[it.roundToInt().coerceIn(rows.indices)].day },
+            valueRange = 0f..rows.lastIndex.toFloat(), steps = (rows.size - 2).coerceAtLeast(0),
+            modifier = Modifier.fillMaxWidth().testTag("trend-slider").semantics {
+                contentDescription = "选择趋势日期"
+                stateDescription = "${row.day}，${Format.fmtCompact(row.total)}词元"
+            })
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(cm.canvas).padding(14.dp).testTag("trend-selection"),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(row.day, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text("${Format.fmtCompact(row.total)} 词元 · ${row.costUsd?.let(Format::fmtUsd) ?: "费用未提供"}", style = MaterialTheme.typography.bodyMedium)
+            Text("${row.components?.cacheLabel ?: "缓存占比"} ${row.components?.cacheRate?.let(Format::fmtPct) ?: "未提供"}",
+                color = cm.okInk, style = MaterialTheme.typography.bodySmall)
+            ComponentLegend(dailySegments(row))
+            TextButton(onClick = {
+                val data = row.components
+                tip.show(row.day, listOf("全部词元" to Format.fmtInt(row.total), "费用" to (row.costUsd?.let(Format::fmtUsd) ?: "未提供"),
+                    "非缓存输入" to if (data?.inputKnown == true) Format.fmtInt(data.input) else "未提供",
+                    "输出" to if (data?.outputKnown == true) Format.fmtInt(data.output) else "未提供",
+                    "缓存读取" to if (data?.cacheReadKnown == true) Format.fmtInt(data.cacheRead) else "未提供",
+                    "缓存写入" to if (data?.cacheWriteKnown == true) Format.fmtInt(data.cacheWrite) else "未提供"))
+            }, contentPadding = PaddingValues(horizontal = 0.dp), modifier = Modifier.heightIn(min = 48.dp)) { Text("查看当日明细") }
         }
     }
 }
@@ -262,73 +110,39 @@ fun DonutChart(
 @Composable
 fun QuotaRing(remainPct: Float, level: String, modifier: Modifier = Modifier) {
     val cm = CmColorsCurrent
-    val color = when (level) {
-        "crit" -> cm.crit
-        "warn" -> cm.warn
-        else -> cm.ok
-    }
-    val grow = rememberGrow(remainPct to level)
-    Box(modifier.size(56.dp), contentAlignment = Alignment.Center) {
+    val color = when (level) { "crit" -> cm.crit; "warn" -> cm.warn; else -> cm.ok }
+    Box(modifier.size(64.dp).semantics { contentDescription = "剩余额度 ${(remainPct * 100).roundToInt()}%" }, contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
-            val stroke = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round)
+            val stroke = Stroke(5.dp.toPx(), cap = StrokeCap.Round)
             val inset = stroke.width / 2
-            val arcSize = Size(size.width - stroke.width, size.height - stroke.width)
-            drawArc(cm.border, -90f, 360f, false, Offset(inset, inset), arcSize, style = stroke)
-            drawArc(
-                color,
-                -90f,
-                360f * remainPct.coerceIn(0f, 1f) * grow,
-                false,
-                Offset(inset, inset),
-                arcSize,
-                style = stroke,
-            )
+            val arc = Size(size.width - stroke.width, size.height - stroke.width)
+            drawArc(cm.border, -90f, 360f, false, Offset(inset, inset), arc, style = stroke)
+            drawArc(color, -90f, 360f * remainPct.coerceIn(0f, 1f), false, Offset(inset, inset), arc, style = stroke)
         }
-        Text("${(remainPct * 100).toInt()}%", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = cm.ink)
+        // The adjacent text carries the value at large font scales without squeezing it inside the ring.
     }
 }
 
 @Composable
-fun HeatCells(
-    values: List<Pair<String, Double>>,
-    columns: Int,
-    showLabel: Boolean,
-    leading: Int = 0,
-) {
+fun HeatCells(values: List<Pair<String, Double>>, columns: Int, showLabel: Boolean, leading: Int = 0) {
     val cm = CmColorsCurrent
     val max = values.maxOfOrNull { it.second }?.coerceAtLeast(1.0) ?: 1.0
-    val padded = List(leading) { "" to -1.0 } + values
-    val rows = (padded.size + columns - 1) / columns
+    val padded = List(leading.coerceAtLeast(0)) { "" to -1.0 } + values
     val tip = LocalFloatTip.current
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        repeat(rows) { r ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                repeat(columns) { c ->
-                    val i = r * columns + c
-                    if (i >= padded.size) {
-                        Spacer(Modifier.weight(1f).aspectRatio(1f))
-                    } else {
-                        val (label, v) = padded[i]
-                        if (v < 0) {
-                            Spacer(Modifier.weight(1f).aspectRatio(1f))
-                        } else {
-                            val lv = hmLevel(v, max)
-                            Box(
-                                Modifier
-                                    .weight(1f)
-                                    .aspectRatio(1f)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(cm.hm[min(lv, cm.hm.lastIndex)])
-                                    .combinedClickable(
-                                        onClick = { tip.show(label, listOf("tokens" to Format.fmtCompact(v))) },
-                                        onLongClick = { tip.show(label, listOf("tokens" to Format.fmtCompact(v))) },
-                                    ),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                if (showLabel) {
-                                    val fg = if (lv >= 4) Color.White else cm.ink
-                                    Text(label, fontSize = 10.sp, color = fg)
-                                }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val cellSize = ((maxWidth - 4.dp * (columns - 1)) / columns).coerceAtLeast(48.dp)
+        Column(Modifier.horizontalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            padded.chunked(columns).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    row.forEach { (label, value) ->
+                        if (value < 0) Spacer(Modifier.size(cellSize))
+                        else {
+                            val level = hmLevel(value, max).coerceIn(cm.hm.indices)
+                            Box(Modifier.size(cellSize).clip(RoundedCornerShape(8.dp)).background(cm.hm[level])
+                                .clickable(role = Role.Button, onClickLabel = "查看用量") { tip.show(label, listOf("词元用量" to Format.fmtInt(value))) }
+                                .semantics { contentDescription = "$label，${Format.fmtCompact(value)}词元" }, contentAlignment = Alignment.Center) {
+                                if (showLabel) Text(label, color = if (cm.hm[level].luminance() > 0.179f) Color.Black else Color.White,
+                                    style = MaterialTheme.typography.labelSmall, modifier = Modifier.clearAndSetSemantics {})
                             }
                         }
                     }
@@ -343,83 +157,44 @@ fun SparkBars(values: List<Pair<String, Double>>, modifier: Modifier = Modifier)
     val max = values.maxOfOrNull { it.second }?.coerceAtLeast(1.0) ?: 1.0
     val cm = CmColorsCurrent
     val tip = LocalFloatTip.current
-    val grow = rememberGrow(values.joinToString { it.first })
-    Row(
-        modifier.fillMaxWidth().height(36.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
-        verticalAlignment = Alignment.Bottom,
-    ) {
-        values.forEach { (day, v) ->
-            val h = ((v / max).toFloat() * grow).coerceIn(if (v <= 0) 0.08f else 0.12f, 1f)
-            Box(
-                Modifier
-                    .weight(1f)
-                    .fillMaxHeight(h)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(if (v <= 0) cm.border else cm.brand)
-                    .combinedClickable(
-                        onClick = { tip.show(day, listOf("tokens" to Format.fmtCompact(v))) },
-                        onLongClick = { tip.show(day, listOf("tokens" to Format.fmtCompact(v))) },
-                    ),
-            )
+    Row(modifier.fillMaxWidth().heightIn(min = 48.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        values.forEach { (day, value) ->
+            Box(Modifier.width(48.dp).height(48.dp).clickable(role = Role.Button) { tip.show(day, listOf("词元用量" to Format.fmtInt(value))) }
+                .semantics { contentDescription = "$day，${Format.fmtCompact(value)}词元" }, contentAlignment = Alignment.BottomCenter) {
+                Box(Modifier.fillMaxWidth().fillMaxHeight((value / max).toFloat().coerceIn(.02f, 1f)).clip(RoundedCornerShape(4.dp))
+                    .background(if (value <= 0) cm.border else cm.brand))
+            }
         }
     }
 }
 
 @Composable
-fun MatrixGrid(
-    rows: List<String>,
-    cols: List<String>,
-    modifier: Modifier = Modifier,
-    cost: Boolean = false,
-    valueAt: (String, String) -> Double,
-) {
+fun MatrixGrid(rows: List<String>, cols: List<String>, modifier: Modifier = Modifier, cost: Boolean = false, valueAt: (String, String) -> Double) {
     val cm = CmColorsCurrent
-    val max = rows.maxOfOrNull { r -> cols.maxOfOrNull { c -> valueAt(r, c) } ?: 0.0 }?.coerceAtLeast(1.0) ?: 1.0
     val tip = LocalFloatTip.current
+    val max = rows.maxOfOrNull { row -> cols.maxOfOrNull { valueAt(row, it) } ?: 0.0 }?.coerceAtLeast(1.0) ?: 1.0
     Column(modifier) {
-        Row(Modifier.fillMaxWidth()) {
-            Spacer(Modifier.width(52.dp))
-            cols.forEach { c ->
-                Text(
-                    c.take(8),
-                    Modifier.weight(1f),
-                    fontSize = 9.sp,
-                    color = cm.mute,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+        Text("横向滑动查看全部模型，轻触色块查看详情。", color = cm.mute, style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(12.dp))
+        Column(Modifier.horizontalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
+                Text("客户端", Modifier.width(110.dp), style = MaterialTheme.typography.labelMedium, color = cm.mute)
+                cols.forEach { Text(it, Modifier.width(112.dp), style = MaterialTheme.typography.labelMedium, color = cm.mute) }
             }
-        }
-        Spacer(Modifier.height(4.dp))
-        rows.forEach { r ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(r, Modifier.width(52.dp), fontSize = 11.sp, color = cm.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                cols.forEach { c ->
-                    val v = valueAt(r, c)
-                    val lv = hmLevel(v, max)
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .padding(2.dp)
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(cm.hm[min(lv, cm.hm.lastIndex)])
-                            .combinedClickable(
-                                onClick = {
-                                    tip.show(
-                                        "$r × $c",
-                                        listOf((if (cost) "费用" else "tokens") to if (cost) Format.fmtUsd(v) else Format.fmtCompact(v)),
-                                    )
-                                },
-                                onLongClick = {
-                                    tip.show(
-                                        "$r × $c",
-                                        listOf((if (cost) "费用" else "tokens") to if (cost) Format.fmtUsd(v) else Format.fmtCompact(v)),
-                                    )
-                                },
-                            ),
-                    )
+            rows.forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(row, Modifier.width(110.dp), style = MaterialTheme.typography.bodySmall)
+                    cols.forEach { column ->
+                        val value = valueAt(row, column)
+                        val level = hmLevel(value, max).coerceIn(cm.hm.indices)
+                        val formatted = if (cost) Format.fmtUsd(value) else Format.fmtCompact(value)
+                        Box(Modifier.width(112.dp).heightIn(min = 56.dp).clip(RoundedCornerShape(10.dp)).background(cm.hm[level])
+                            .clickable(role = Role.Button) { tip.show("$row · $column", listOf((if (cost) "费用" else "词元用量") to if (cost) Format.fmtUsd(value) else Format.fmtInt(value))) }
+                            .semantics { contentDescription = "$row，$column，$formatted" }.padding(10.dp), contentAlignment = Alignment.Center) {
+                            Text(formatted, color = if (cm.hm[level].luminance() > 0.179f) Color.Black else Color.White, style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.clearAndSetSemantics {})
+                        }
+                    }
                 }
             }
         }

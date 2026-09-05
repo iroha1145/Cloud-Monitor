@@ -19,7 +19,7 @@ object Format {
         }
     }
 
-    fun fmtInt(v: Double): String = nfLocal.get().format(v.roundToLong())
+    fun fmtInt(v: Double): String = if (v.isFinite()) nfLocal.get().format(v.roundToLong()) else "未提供"
 
     data class Compact(val n: String, val u: String)
 
@@ -73,6 +73,15 @@ object Format {
         val s = String.format(Locale.US, "%.1f", n).replace(Regex("""\.0$"""), "")
         return "$s%"
     }
+
+    fun fmtCountOrUnknown(value: Double?): String =
+        value?.takeIf { it.isFinite() && it >= 0 }?.let { fmtCompact(it) } ?: "未提供"
+
+    fun fmtUsdOrUnknown(value: Double?): String =
+        value?.takeIf { it.isFinite() }?.let { fmtUsd(it) } ?: "未提供"
+
+    fun fmtPctOrUnknown(value: Double?): String =
+        value?.takeIf { it.isFinite() && it in 0.0..1.0 }?.let { fmtPct(it) } ?: "未提供"
 
     fun pct1(v: Double, total: Double): String =
         if (total > 0) String.format(Locale.US, "%.1f%%", v / total * 100) else "0.0%"

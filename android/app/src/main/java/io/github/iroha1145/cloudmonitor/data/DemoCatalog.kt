@@ -62,7 +62,7 @@ object DemoCatalog {
             val weekday = if (weekend) rng.rand(0.34, 0.58) else rng.rand(0.86, 1.18)
             val growth = 0.55 + (1 - i / 370.0) * 0.75
             val spike = if (rng.nextDouble() < 0.06) rng.rand(1.5, 2.1) else 1.0
-            val tokens = clamp0(3_200_000 * weekday * growth * spike * rng.rand(0.82, 1.18))
+            val tokens = if (i % 17 == 0) 0.0 else clamp0(3_200_000 * weekday * growth * spike * rng.rand(0.82, 1.18))
             val cs = CLIENTS.associateWith { c -> (CLIENT_SHARE[c] ?: 0.0) * rng.rand(0.8, 1.2) }
             val csSum = cs.values.sum()
             val perClient = CLIENTS.associateWith { c -> clamp0(tokens * (cs[c] ?: 0.0) / csSum) }
@@ -83,6 +83,34 @@ object DemoCatalog {
         }
         return out
     }
+
+    /** Synthetic daily snapshots vary by date, independently of today's component mix. */
+    private fun dailySample(h: Hist): HistoryDay {
+        val sample = HistoryDay(h.day, h.tokens, h.costUsd, h.perClient, h.perModel, 2)
+        // A calendar cycle guarantees every 30-day window contains each example.
+        // A date-string hash can cluster by month and omit explicit cache-zero days.
+        val index = Math.floorMod(java.time.LocalDate.parse(h.day).toEpochDay(), 14L).toInt()
+        // Retain some older days with no component evidence, and genuine unused days.
+        if (index == 0 || index == 7 || h.tokens == 0.0) return sample
+        // A recorded cache zero remains useful even with otherwise unclassified usage.
+        if (index == 4 || index == 11) return sample.copy(
+            cacheReadTokens = 0.0, unclassifiedTokens = h.tokens,
+            tokenComponentsAvailable = false, componentsPartial = true,
+        )
+        val partial = index % 5 == 0
+        return sample.copy(
+            outputTokens = clamp0(h.tokens * 0.16),
+            cacheReadTokens = clamp0(h.tokens * (0.12 + (index % 7) * 0.06)),
+            cacheWriteTokens = clamp0(h.tokens * 0.04),
+            unclassifiedTokens = if (partial) clamp0(h.tokens * 0.12) else 0.0,
+            tokenComponentsAvailable = !partial, componentsPartial = partial,
+        )
+    }
+
+    private fun HistoryDay.asTrendPoint(): TrendPoint = TrendPoint(
+        day, tokens, costUsd, outputTokens, cacheReadTokens, cacheWriteTokens,
+        unclassifiedTokens, tokenComponentsAvailable, componentsPartial,
+    )
 
     private fun periodFrom(rng: Random, totalTokens: Double, modelTokens: Map<String, Double>, clientTokens: Map<String, Double>): PeriodTotals {
         val output = clamp0(totalTokens * rng.rand(0.16, 0.2))
@@ -215,10 +243,15 @@ object DemoCatalog {
         val trendModels = mutableListOf<TrendModelsPoint>()
         for (i in 29 downTo 1) {
             val h = history[history.size - i]
-            trend += TrendPoint(h.day, h.tokens)
+            trend += dailySample(h).asTrendPoint()
             trendModels += TrendModelsPoint(h.day, h.tokens, h.perModel)
         }
-        trend += TrendPoint(cnDay(0, now), todayTokens)
+        trend += TrendPoint(
+            cnDay(0, now), todayTokens, today.costUsd, today.outputTokens, today.cacheReadTokens,
+            today.cacheWriteTokens, today.unclassifiedTokens,
+            tokenComponentsAvailable = today.capabilities.tokenComponents,
+            componentsPartial = today.unclassifiedTokens > 0,
+        )
         trendModels += TrendModelsPoint(cnDay(0, now), todayTokens, todayModels)
 
         val daily = history.takeLast(89).map { DailyPoint(it.day, it.tokens, it.perModel) } +
@@ -432,7 +465,7 @@ object DemoCatalog {
         val page = desc.drop(start).take(limit)
         val more = start + page.size < desc.size
         val items = page.mapIndexed { idx, h ->
-            HistoryDay(h.day, h.tokens, h.costUsd, h.perClient, h.perModel, 2, complete = !(start + idx == 2), coverage = if (start + idx == 2) 41.7 else null)
+            dailySample(h).copy(complete = !(start + idx == 2), coverage = if (start + idx == 2) 41.7 else null)
         }
         return HistoryPage(
             items = items,

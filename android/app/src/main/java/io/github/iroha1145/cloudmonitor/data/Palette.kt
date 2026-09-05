@@ -3,21 +3,21 @@ package io.github.iroha1145.cloudmonitor.data
 import androidx.compose.ui.graphics.Color
 
 val PALETTE = listOf(
-    Color(0xFF533AFD), Color(0xFFF59E0B), Color(0xFF0EA5E9), Color(0xFF7F7DFC),
-    Color(0xFF00B261), Color(0xFFD8351E), Color(0xFFEC4899), Color(0xFF14B8A6),
-    Color(0xFFF97316), Color(0xFF64748D), Color(0xFF84CC16), Color(0xFF0E7490),
-    Color(0xFFA21CAF), Color(0xFF854D0E), Color(0xFF4032C8), Color(0xFF006F3A),
+    Color(0xFF608AC5), Color(0xFF338B87), Color(0xFFC49462), Color(0xFF9C85B4),
+    Color(0xFF7A9AAA), Color(0xFF9AA5B2), Color(0xFF467EA9), Color(0xFF5C9878),
+    Color(0xFFD09A70), Color(0xFF8C83B8), Color(0xFF588DA0), Color(0xFFB68790),
+    Color(0xFF879B69), Color(0xFF9E8973), Color(0xFF6982A6), Color(0xFF6B9A92),
 )
 
-val OTHER_COLOR = Color(0xFF95A4BA)
+val OTHER_COLOR = Color(0xFF9AA5B2)
 
-val SEG_INPUT = Color(0xFF64748D)
-val SEG_OUTPUT = Color(0xFF533AFD)
-val SEG_CACHE_READ = Color(0xFF7F7DFC)
-val SEG_CACHE_WRITE = Color(0xFFB9B9F9)
-val SEG_UNCLS = Color(0xFF95A4BA)
+val SEG_INPUT = Color(0xFF2672C0)
+val SEG_OUTPUT = Color(0xFFF09A2F)
+val SEG_CACHE_READ = Color(0xFF16765E)
+val SEG_CACHE_WRITE = Color(0xFFB393C5)
+val SEG_UNCLS = Color(0xFFB4BECF)
 
-private val PALETTE_SPREAD = intArrayOf(0, 1, 3, 4, 6, 2, 8, 12, 10, 9, 5, 13, 7, 14, 15, 11)
+private val PALETTE_SPREAD = intArrayOf(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
 
 /**
  * 会话级配色注册表：名字一旦分配颜色就保持稳定（对齐网页 modelColorMap/clientColorMap 语义），
@@ -57,75 +57,33 @@ class ColorRegistry {
 
 data class TokenSeg(val key: String, val label: String, val color: Color, val value: Double)
 
+/** The numeric analysis stays independent of Compose; this is its chart adapter. */
+fun componentSegments(parts: UsageComponents): List<TokenSeg> = listOf(
+    TokenSeg("input", "非缓存输入", SEG_INPUT, parts.input),
+    TokenSeg("cacheRead", "缓存读取", SEG_CACHE_READ, parts.cacheRead),
+    TokenSeg("output", "输出", SEG_OUTPUT, parts.output),
+    TokenSeg("cacheWrite", "缓存写入", SEG_CACHE_WRITE, parts.cacheWrite),
+    TokenSeg("unclassified", if (parts.known) "未分类" else "组成未知", SEG_UNCLS, parts.unclassified),
+).filter { it.value.isFinite() && it.value > 0 }
+
 fun componentBreakdown(period: PeriodTotals): Pair<Boolean, List<TokenSeg>> {
-    val total = period.totalTokens
-    val capable = period.capabilities.tokenComponents
-    val hasAny = listOf(
-        period.outputTokens, period.cacheReadTokens,
-        period.cacheWriteTokens, period.unclassifiedTokens,
-    ).any { it > 0 }
-    if (!capable || !hasAny || total <= 0) {
-        return false to if (total > 0) {
-            listOf(TokenSeg("unknown", "组成未知", SEG_UNCLS, total))
-        } else emptyList()
-    }
-    val output = period.outputTokens
-    val cacheRead = period.cacheReadTokens
-    val cacheWrite = period.cacheWriteTokens
-    val unclassified = period.unclassifiedTokens
-    val input = maxOf(0.0, total - output - cacheRead - cacheWrite - unclassified)
-    val segs = listOf(
-        TokenSeg("input", "非缓存输入", SEG_INPUT, input),
-        TokenSeg("output", "输出", SEG_OUTPUT, output),
-        TokenSeg("cacheRead", "缓存读", SEG_CACHE_READ, cacheRead),
-        TokenSeg("cacheWrite", "缓存写", SEG_CACHE_WRITE, cacheWrite),
-        TokenSeg("unclassified", "未分类", SEG_UNCLS, unclassified),
-    ).filter { it.value > 0 }
-    return true to segs
+    val parts = usageComponents(period)
+    return parts.known to componentSegments(parts)
 }
 
 fun clientBreakdown(period: PeriodTotals, name: String): List<TokenSeg> {
-    val total = period.clients[name] ?: 0.0
-    if (!period.capabilities.tokenComponents || total <= 0) return emptyList()
-    val output = period.clientOutputs[name] ?: 0.0
-    val cacheRead = period.clientCacheReads[name] ?: 0.0
-    val cacheWrite = period.clientCacheWrites[name] ?: 0.0
-    val unclassified = period.clientUnclassifiedTokens[name] ?: 0.0
-    val input = maxOf(0.0, total - output - cacheRead - cacheWrite - unclassified)
-    return listOf(
-        TokenSeg("input", "非缓存输入", SEG_INPUT, input),
-        TokenSeg("output", "输出", SEG_OUTPUT, output),
-        TokenSeg("cacheRead", "缓存读", SEG_CACHE_READ, cacheRead),
-        TokenSeg("cacheWrite", "缓存写", SEG_CACHE_WRITE, cacheWrite),
-        TokenSeg("unclassified", "未分类", SEG_UNCLS, unclassified),
-    ).filter { it.value > 0 }
+    val parts = usageComponents(period, "client", name)
+    return if (parts.known) componentSegments(parts) else emptyList()
 }
 
 fun modelBreakdown(period: PeriodTotals, name: String): List<TokenSeg> {
-    val total = period.models[name] ?: 0.0
-    if (!period.capabilities.tokenComponents || total <= 0) return emptyList()
-    val output = period.modelOutputs[name] ?: 0.0
-    val cacheRead = period.modelCacheReads[name] ?: 0.0
-    val cacheWrite = period.modelCacheWrites[name] ?: 0.0
-    val unclassified = period.modelUnclassifiedTokens[name] ?: 0.0
-    val input = maxOf(0.0, total - output - cacheRead - cacheWrite - unclassified)
-    return listOf(
-        TokenSeg("input", "非缓存输入", SEG_INPUT, input),
-        TokenSeg("output", "输出", SEG_OUTPUT, output),
-        TokenSeg("cacheRead", "缓存读", SEG_CACHE_READ, cacheRead),
-        TokenSeg("cacheWrite", "缓存写", SEG_CACHE_WRITE, cacheWrite),
-        TokenSeg("unclassified", "未分类", SEG_UNCLS, unclassified),
-    ).filter { it.value > 0 }
+    val parts = usageComponents(period, "model", name)
+    return if (parts.known) componentSegments(parts) else emptyList()
 }
 
-fun cacheHitRate(period: PeriodTotals, name: String): Double? {
-    val segs = modelBreakdown(period, name)
-    if (segs.isEmpty()) return null
-    val total = period.models[name] ?: 0.0
-    if (total <= 0) return null
-    val read = segs.find { it.key == "cacheRead" }?.value ?: 0.0
-    return read / total
-}
+/** For partial data the caller should use UsageComponents.cacheLabel. */
+fun cacheHitRate(period: PeriodTotals, name: String): Double? =
+    usageComponents(period, "model", name).cacheRate
 
 fun componentsComplete(period: PeriodTotals, segs: List<TokenSeg>): Boolean {
     val total = period.totalTokens
@@ -177,37 +135,18 @@ fun hmLevel(v: Double, max: Double): Int {
 }
 
 val HM_COLORS_LIGHT = listOf(
-    Color(0xFFE5EDF5), Color(0xFFE8E9FF), Color(0xFFD6D9FC),
-    Color(0xFFB9B9F9), Color(0xFF533AFD), Color(0xFF2E2B8C),
+    Color(0xFFEDF0F2), Color(0xFFE3F0E8), Color(0xFFB9DCCB),
+    Color(0xFF7EBB9D), Color(0xFF338B6B), Color(0xFF16765E),
 )
 val HM_COLORS_DARK = listOf(
-    Color(0xFF1A2333), Color(0xFF1E2547), Color(0xFF2E2B8C),
-    Color(0xFF4032C8), Color(0xFF7F7DFC), Color(0xFFC5C4FF),
+    Color(0xFF292D34), Color(0xFF203C34), Color(0xFF285C49),
+    Color(0xFF3F8767), Color(0xFF66AE8A), Color(0xFF9AD4B4),
 )
 
-data class TrendRow(val day: String, val total: Double, val models: Map<String, Double>)
-
-fun trendRows(overview: Overview, now: Long = System.currentTimeMillis()): List<TrendRow> {
-    val byDay = LinkedHashMap<String, TrendRow>()
-    fun take(dayRaw: String?, total: Double, models: Map<String, Double>?) {
-        val day = dayRaw.orEmpty().take(10)
-        if (day.isEmpty()) return
-        val prev = byDay[day] ?: TrendRow(day, 0.0, emptyMap())
-        val nextTotal = if (total > prev.total) total else prev.total
-        val nextModels = prev.models.toMutableMap()
-        models?.forEach { (k, v) -> if (v > (nextModels[k] ?: 0.0)) nextModels[k] = v }
-        byDay[day] = TrendRow(day, nextTotal, nextModels)
-    }
-    overview.activity.daily.forEach { take(it.day, it.total, it.models) }
-    overview.trend.forEach { take(it.day, it.total, null) }
-    overview.trendModels.forEach { take(it.day, it.total, it.models) }
-    val tz = overview.dashboardPeriod?.timeZone ?: overview.dashboardTimeZone
-    val end = overview.dashboardPeriod?.today?.key ?: Format.dayKeyTz(now, tz)
-    return (29 downTo 0).map { i ->
-        val day = Format.keyAdd(end, -i)
-        byDay[day] ?: TrendRow(day, 0.0, emptyMap())
-    }
-}
+/** Keep the old chart entry point without inventing days or mixing activity totals. */
+@Suppress("UNUSED_PARAMETER")
+fun trendRows(overview: Overview, now: Long = System.currentTimeMillis()): List<TrendRow> =
+    analyzeTrend(overview).takeLast(30)
 
 fun deviceOnline(device: Device, overview: Overview, now: Long = System.currentTimeMillis()): Boolean? {
     device.stale?.let { return !it }

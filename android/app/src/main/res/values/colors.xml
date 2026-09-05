@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="brand">#533AFD</color>
-    <color name="canvas">#F8FAFD</color>
-    <color name="canvas_dark">#0B1220</color>
-    <color name="ic_launcher_background">#533AFD</color>
+    <color name="brand">#2672C0</color>
+    <color name="canvas">#FAFAFB</color>
+    <color name="canvas_dark">#191B20</color>
+    <color name="ic_launcher_background">#2672C0</color>
 </resources>

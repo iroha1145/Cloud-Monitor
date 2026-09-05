@@ -1,77 +1,35 @@
 package io.github.iroha1145.cloudmonitor.ui.gate
 
-import android.os.Build
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import io.github.iroha1145.cloudmonitor.ui.AppIcons
-import io.github.iroha1145.cloudmonitor.ui.statusBarInsetDp
-import io.github.iroha1145.cloudmonitor.ui.theme.Brand
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
-import io.github.iroha1145.cloudmonitor.ui.theme.LocalReducedMotion
-import io.github.iroha1145.cloudmonitor.ui.theme.Motion
 import io.github.iroha1145.cloudmonitor.vm.UiState
-import kotlin.math.roundToInt
 
 @Composable
 fun GateScreen(
@@ -84,221 +42,114 @@ fun GateScreen(
     onToggleDark: () -> Unit,
 ) {
     val cm = CmColorsCurrent
-    val reduced = LocalReducedMotion.current
-    val statusInset = statusBarInsetDp()
-    val haptic = LocalHapticFeedback.current
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
-    val enter = remember { Animatable(if (reduced) 1f else 0f) }
-    LaunchedEffect(Unit) {
-        if (!reduced) enter.animateTo(1f, tween(Motion.Gate, easing = FastOutSlowInEasing))
-    }
-    val shake = remember { Animatable(0f) }
-    LaunchedEffect(state.gateError) {
-        if (state.gateError.isNullOrBlank() || reduced) return@LaunchedEffect
-        shake.snapTo(0f)
-        shake.animateTo(10f, tween(80, easing = LinearEasing))
-        shake.animateTo(-10f, tween(80, easing = LinearEasing))
-        shake.animateTo(6f, tween(80, easing = LinearEasing))
-        shake.animateTo(0f, tween(80, easing = LinearEasing))
+    var revealKey by rememberSaveable { mutableStateOf(false) }
+    val hasError = !state.gateError.isNullOrBlank()
+    val connect = {
+        if (!state.loading) {
+            keyboard?.hide()
+            focus.clearFocus()
+            revealKey = false
+            onLogin()
+        }
     }
     Box(
-        Modifier
-            .fillMaxSize()
-            .background(cm.canvas),
+        Modifier.fillMaxSize().background(cm.canvas)
+            .windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.ime)),
+        contentAlignment = Alignment.TopCenter,
     ) {
-        if (!reduced) {
-            GateGlow(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(x = 80.dp, y = (-120).dp),
-                color = Color(0x29533AFD),
-                size = 420.dp,
-            )
-            GateGlow(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .offset(x = (-60).dp, y = 100.dp),
-                color = Color(0x247F7DFC),
-                size = 360.dp,
-            )
-        }
-        IconButton(
-            onToggleDark,
-            Modifier
-                .align(Alignment.TopEnd)
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                .padding(top = statusInset)
-                .padding(8.dp),
-        ) {
-            Icon(
-                if (dark) AppIcons.LightMode else AppIcons.DarkMode,
-                contentDescription = "夜间模式",
-                tint = cm.ink2,
-            )
-        }
         Column(
-            Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
-                .verticalScroll(rememberScrollState())
-                .padding(24.dp)
-                .padding(top = statusInset + 48.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+            Modifier.widthIn(max = 560.dp).fillMaxSize()
+                .verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.Center,
         ) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .graphicsLayer {
-                        alpha = enter.value
-                        scaleX = 0.96f + 0.04f * enter.value
-                        scaleY = 0.96f + 0.04f * enter.value
-                    }
-                    .offset { IntOffset(shake.value.roundToInt(), 0) }
-                    .shadow(
-                        elevation = 16.dp,
-                        shape = RoundedCornerShape(28.dp),
-                        clip = false,
-                        ambientColor = cm.shadowAmbient,
-                        spotColor = cm.shadowSpot,
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Cloud Monitor", style = MaterialTheme.typography.titleMedium, color = cm.ink, modifier = Modifier.weight(1f))
+                IconButton(onClick = onToggleDark, modifier = Modifier.size(48.dp)) {
+                    Icon(
+                        if (dark) AppIcons.LightMode else AppIcons.DarkMode,
+                        contentDescription = if (dark) "切换为浅色外观" else "切换为深色外观",
+                        tint = cm.ink2,
                     )
-                    .border(1.dp, cm.border, RoundedCornerShape(28.dp))
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(cm.card)
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-            Box(
-                Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Brush.linearGradient(listOf(Brand, Color(0xFF7F7DFC)))),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(AppIcons.CloudPulse, null, tint = Color.White, modifier = Modifier.size(30.dp))
+                }
             }
-            Spacer(Modifier.height(16.dp))
-            Text("云端用量面板", color = cm.ink, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                if (state.encryptionAvailable)
-                    "原生客户端直连你的 Cloud Monitor 面板。访问密钥用系统密钥库加密后只存在本机。"
-                else
-                    "原生客户端直连你的 Cloud Monitor 面板。当前设备无法启用系统密钥库，登录后不会记住密钥。",
-                color = cm.mute,
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center,
-                lineHeight = 18.sp,
-            )
+            Spacer(Modifier.height(28.dp))
+            Box(Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(cm.brand50), contentAlignment = Alignment.Center) {
+                Icon(AppIcons.CloudPulse, null, tint = cm.brand, modifier = Modifier.size(32.dp))
+            }
             Spacer(Modifier.height(20.dp))
-            val err = !state.gateError.isNullOrBlank()
-            OutlinedTextField(
-                value = state.hubUrl,
-                onValueChange = onUrl,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("面板地址") },
-                placeholder = { Text("https://panel.example.com") },
-                leadingIcon = { Icon(AppIcons.Language, "面板地址") },
-                singleLine = true,
-                isError = err,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Uri,
-                    imeAction = ImeAction.Next,
-                ),
-                keyboardActions = KeyboardActions(
-                    onNext = { focus.moveFocus(FocusDirection.Down) },
-                ),
-                colors = fieldColors(),
-                shape = RoundedCornerShape(14.dp),
-            )
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = state.token,
-                onValueChange = onToken,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("访问密钥") },
-                placeholder = { Text("ACCESS_TOKEN") },
-                leadingIcon = { Icon(AppIcons.Key, "访问密钥") },
-                singleLine = true,
-                isError = err,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    imeAction = ImeAction.Go,
-                ),
-                keyboardActions = KeyboardActions(
-                    onGo = {
-                        keyboard?.hide()
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onLogin()
+            Text("连接你的用量面板", color = cm.ink, style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
+            Spacer(Modifier.height(8.dp))
+            Text("设备、模型与配额，随时查看。", color = cm.ink2, style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.height(28.dp))
+            Column(
+                Modifier.fillMaxWidth().border(1.dp, cm.border, RoundedCornerShape(24.dp))
+                    .clip(RoundedCornerShape(24.dp)).background(cm.card).padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                OutlinedTextField(
+                    value = state.hubUrl, onValueChange = onUrl, modifier = Modifier.fillMaxWidth(),
+                    label = { Text("面板地址") }, placeholder = { Text("https://panel.example.com") },
+                    leadingIcon = { Icon(AppIcons.Language, null) },
+                    singleLine = true, isError = hasError, enabled = !state.loading,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { focus.moveFocus(FocusDirection.Down) }),
+                    shape = RoundedCornerShape(12.dp),
+                )
+                OutlinedTextField(
+                    value = state.token, onValueChange = onToken, modifier = Modifier.fillMaxWidth(),
+                    label = { Text("访问密钥") },
+                    leadingIcon = { Icon(AppIcons.Key, null) },
+                    trailingIcon = {
+                        TextButton(onClick = { revealKey = !revealKey }, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text(if (revealKey) "隐藏" else "显示")
+                        }
                     },
-                ),
-                colors = fieldColors(),
-                shape = RoundedCornerShape(14.dp),
-            )
-            if (err) {
-                Spacer(Modifier.height(8.dp))
-                Text(state.gateError!!, color = cm.crit, fontSize = 13.sp)
-            }
-            if (state.hubUrl.trim().startsWith("http://", ignoreCase = true)) {
-                Spacer(Modifier.height(8.dp))
-                Text("当前为 HTTP。明文仅允许本机和局域网；公网请用 HTTPS。", color = cm.warnInk, fontSize = 12.sp)
+                    singleLine = true, isError = hasError, enabled = !state.loading,
+                    visualTransformation = if (revealKey) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
+                    keyboardActions = KeyboardActions(onGo = { connect() }),
+                    shape = RoundedCornerShape(12.dp),
+                )
+                if (hasError) {
+                    Text(state.gateError.orEmpty(), color = cm.crit, style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                }
+                if (state.hubUrl.trim().startsWith("http://", ignoreCase = true)) {
+                    Text("未加密连接仅支持本机和局域网。公网地址请使用 HTTPS。", color = cm.warnInk, style = MaterialTheme.typography.bodySmall)
+                }
+                Button(
+                    onClick = connect, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                    enabled = !state.loading, shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+                ) {
+                    if (state.loading) {
+                        CircularProgressIndicator(Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                        Spacer(Modifier.width(10.dp))
+                    }
+                    Text(if (state.loading) "正在连接…" else "连接面板", style = MaterialTheme.typography.labelLarge)
+                }
+                Text(
+                    if (state.encryptionAvailable) "连接成功后保存地址，密钥经系统密钥库加密后保存在此设备。"
+                    else "此设备暂不支持密钥加密，连接后不会保存访问密钥。",
+                    color = cm.ink2, style = MaterialTheme.typography.bodySmall,
+                )
             }
             Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = {
-                    keyboard?.hide()
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    onLogin()
-                },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                enabled = !state.loading,
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Brand, contentColor = Color.White),
+            OutlinedButton(
+                onClick = { keyboard?.hide(); focus.clearFocus(); onDemo() },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = !state.loading,
+                shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(14.dp),
             ) {
-                if (state.loading) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
-                else Text("进入面板", fontWeight = FontWeight.SemiBold)
+                Icon(AppIcons.PlayArrow, null, Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("体验演示", style = MaterialTheme.typography.labelLarge)
             }
             Spacer(Modifier.height(10.dp))
-            OutlinedButton(
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    onDemo()
-                },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(14.dp),
-            ) {
-                Icon(AppIcons.PlayArrow, "演示", Modifier.size(18.dp))
-                Spacer(Modifier.size(6.dp))
-                Text("先看演示数据")
-            }
-            Spacer(Modifier.height(8.dp))
-            Text("演示数据在设备本地生成，不访问任何服务器。", color = cm.mute, fontSize = 11.sp, textAlign = TextAlign.Center)
-        }
+            Text("演示数据仅供体验，在本机生成。", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(24.dp))
         }
     }
 }
-
-@Composable
-private fun GateGlow(modifier: Modifier, color: Color, size: Dp) {
-    val blur = if (Build.VERSION.SDK_INT >= 31) 90.dp else 0.dp
-    Box(
-        modifier
-            .size(size)
-            .blur(blur)
-            .background(
-                Brush.radialGradient(listOf(color, Color.Transparent)),
-                CircleShape,
-            ),
-    )
-}
-
-@Composable
-private fun fieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = Brand,
-    unfocusedBorderColor = CmColorsCurrent.border,
-    errorBorderColor = CmColorsCurrent.crit,
-    focusedContainerColor = CmColorsCurrent.card,
-    unfocusedContainerColor = CmColorsCurrent.card,
-)
