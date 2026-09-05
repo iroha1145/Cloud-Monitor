@@ -625,7 +625,8 @@ def test_body_limit_all_write_paths_configured(sync_app):
         if m.cls is TmBodyLimitMiddleware:
             found = m.kwargs.get("limits") or m.options.get("limits")
     assert found is not None
-    assert set(found) == {"/api/ingest", "/api/subscriptions", "/api/v1/sync/push"}
+    assert set(found) == {"/api/ingest", "/api/subscriptions", "/api/v1/sync/push", "/api/v1/system/update"}
+    assert found["/api/v1/system/update"] == 4096
 
 
 # ================================================================ P1-2 查询计划/乱序/规模

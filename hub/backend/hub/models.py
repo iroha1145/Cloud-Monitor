@@ -42,11 +42,12 @@ class RecordIn(BaseModel):
         raw = value.strip().replace("Z", "+00:00")
         try:
             dt = datetime.fromisoformat(raw)
-        except ValueError as exc:
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.astimezone(timezone.utc)
+        except (ValueError, OverflowError) as exc:
+            # A syntactically valid offset may push UTC outside years 1..9999.
             raise ValueError("created_at 不是合法的 ISO 8601 时间") from exc
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        dt = dt.astimezone(timezone.utc)
         if dt > datetime.now(timezone.utc) + MAX_FUTURE_SKEW:
             raise ValueError("created_at 超前服务器时间过多（上限 48 小时）")
         return dt.replace(microsecond=0).isoformat()

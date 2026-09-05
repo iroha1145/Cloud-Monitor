@@ -4,7 +4,8 @@
  * Liveline stroke, compact metric header, pointer cursor and floating details.
  * Daily values in the tooltip are always source records, never curve samples.
  */
-import { Liveline, type LivelinePoint } from "liveline";
+import { Liveline } from "liveline";
+import { smoothTrendPoints as smoothPoints } from "./trend-math";
 import {
   useEffect,
   useId,
@@ -53,32 +54,6 @@ function useDarkMode() {
   return dark;
 }
 
-/** The original primitive's Catmull-Rom smoothing; labels use raw daily rows. */
-function smoothPoints(points: LivelinePoint[]): LivelinePoint[] {
-  if (points.length < 3) return points;
-  const result: LivelinePoint[] = [];
-  for (let i = 0; i < points.length - 1; i += 1) {
-    const p0 = points[Math.max(0, i - 1)].value;
-    const p1 = points[i].value;
-    const p2 = points[i + 1].value;
-    const p3 = points[Math.min(points.length - 1, i + 2)].value;
-    for (let sample = 0; sample < 9; sample += 1) {
-      const t = sample / 9;
-      const value =
-        0.5 *
-        (2 * p1 +
-          (-p0 + p2) * t +
-          (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t +
-          (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t);
-      result.push({
-        time: points[i].time + (points[i + 1].time - points[i].time) * t,
-        value: Math.max(0, value),
-      });
-    }
-  }
-  result.push(points[points.length - 1]);
-  return result;
-}
 
 function DayDetails({ point }: { point: TrendPoint }) {
   const parts = point.components;

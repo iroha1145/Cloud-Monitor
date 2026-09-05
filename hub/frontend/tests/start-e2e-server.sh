@@ -29,7 +29,7 @@ cp -R "$FRONTEND_DIR/../backend/." "$E2E_ROOT/hub/backend/"
 
 cd "$E2E_ROOT/hub/backend"
 export API_KEY="${CM_E2E_API_KEY:-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855}"
-export ACCESS_TOKEN="${CM_E2E_TOKEN:-test-token}"
+export ACCESS_TOKEN="${CM_E2E_TOKEN:-e2e-read-token-0123456789abcdef0123456789}"
 export DATABASE_PATH="$E2E_ROOT/data/e2e.sqlite3"
 export TM_BACKGROUND_ENABLED=false
 export CM_DEMO=false

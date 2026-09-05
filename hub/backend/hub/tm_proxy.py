@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import threading
 from typing import Optional
+from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -301,11 +302,13 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
         tm_auth(request)
         return _proxied(request, "GET", "/api/history")
 
-    @router.delete("/api/devices/{device_id}")
+    @router.delete("/api/devices/{device_id:path}")
     def tm_delete_device(device_id: str, request: Request) -> JSONResponse:
         tm_auth(request)
         try:
-            resp = core_of(request).request("DELETE", f"/api/devices/{device_id}")
+            resp = core_of(request).request(
+                "DELETE", f"/api/devices/{quote(device_id, safe='')}"
+            )
         except UpstreamUnavailable as exc:
             return _unavailable_response(exc)
         if resp.status_code == 200:
@@ -405,25 +408,38 @@ class TmBackground:
         self._stop.set()
         thread = self._thread
         if thread is not None and thread.is_alive():
-            thread.join(timeout=5.0)
+            # The lifespan closes HTTP/SQLite immediately after stop(). An
+            # in-flight request can exceed 5s; never close underneath it.
+            thread.join()
 
     def _loop(self) -> None:
-        bootstrapped = self._bootstrap()
+        bootstrapped = False
+        try:
+            bootstrapped = self._bootstrap()
+        except Exception as exc:  # Retry transient startup failures next cycle.
+            log.warning("tm-core 后台初始化异常: %s", exc)
         while not self._stop.wait(self.settings.tm_background_interval):
             try:
-                replay_pending(self.db, self.core)
+                replay_pending(self.db, self.core, should_stop=self._stop.is_set)
             except Exception as exc:  # noqa: BLE001 — 后台任务不得崩溃进程
                 log.warning("outbox 后台重放异常: %s", exc)
-            if not bootstrapped:
-                bootstrapped = self._bootstrap()
+            if not bootstrapped and not self._stop.is_set():
+                try:
+                    bootstrapped = self._bootstrap()
+                except Exception as exc:
+                    log.warning("tm-core 后台初始化异常: %s", exc)
 
     def _bootstrap(self) -> bool:
         """tm-core 延迟就绪时自动重试初始化与 v2 旧数据回填（幂等标记）。"""
+        if self._stop.is_set():
+            return False
         if not self.settings.tm_ingest_secret:
             return True
         if self.core.health() is None:
             return False
         for payload in legacy_device_payloads(self.db):
+            if self._stop.is_set():
+                return False
             try:
                 resp = self.core.request("POST", "/api/ingest", json_body=payload)
             except (UpstreamUnavailable, httpx.HTTPError) as exc:
@@ -452,10 +468,12 @@ class TmBackground:
                     resp.text[:200],
                 )
                 return False
+        if self._stop.is_set():
+            return False
         # 只有全部 payload 成功提交后才写幂等标记；失败时下一轮仍能重试。
         mark_legacy_reingested(self.db)
         try:
-            replay_pending(self.db, self.core)
+            replay_pending(self.db, self.core, should_stop=self._stop.is_set)
         except Exception as exc:  # noqa: BLE001
             log.warning("启动重放异常: %s", exc)
         return True

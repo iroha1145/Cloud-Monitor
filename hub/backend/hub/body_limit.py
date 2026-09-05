@@ -8,6 +8,7 @@
 路径限额（P1-6 统一中间件）：
 - /api/ingest、/api/subscriptions：1 MiB（与官方 hub 一致）
 - /api/v1/sync/push：可配置（MAX_SYNC_BODY_BYTES，默认 2 MiB）
+- /api/v1/system/update：4 KiB（在 main.py 配置，只接收目标 ref）
 """
 
 from __future__ import annotations
@@ -43,10 +44,11 @@ class TmBodyLimitMiddleware:
             message = await receive()
             mtype = message.get("type")
             if mtype == "http.request":
-                body += message.get("body", b"") or b""
-                if len(body) > limit:
+                chunk = message.get("body", b"") or b""
+                if len(body) + len(chunk) > limit:
                     exceeded = True
                     break
+                body += chunk
                 if not message.get("more_body"):
                     break
             elif mtype == "http.disconnect":
@@ -78,6 +80,7 @@ class TmBodyLimitMiddleware:
         async def replay_receive():
             if pending:
                 return pending.pop(0)
-            return {"type": "http.request", "body": b"", "more_body": False}
+            # Preserve disconnects and blocking receive semantics after replay.
+            return await receive()
 
         await self.app(scope, replay_receive, send)

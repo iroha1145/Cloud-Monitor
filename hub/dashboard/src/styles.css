@@ -1408,6 +1408,8 @@ h2 {
   animation: overlay-in 0.15s ease-out;
 }
 [data-slot="dialog-content"] {
+  /* Long user-defined model names must not enlarge the grid track. */
+  grid-template-columns: minmax(0, 1fr);
   font-family: var(--font-sans);
   border-color: var(--line);
   border-radius: 14px !important;
@@ -1422,6 +1424,13 @@ h2 {
   backdrop-filter: blur(28px) saturate(150%);
   border: 1px solid color-mix(in srgb, var(--surface) 68%, var(--line));
   color: var(--ink);
+}
+[data-slot="dialog-content"] > * {
+  min-width: 0;
+}
+[data-slot="dialog-title"],
+[data-slot="dialog-description"] {
+  overflow-wrap: anywhere;
 }
 [data-slot="dialog-title"] {
   font-size: 20px !important;
@@ -1778,8 +1787,10 @@ h2 {
 .app-toast {
   position: fixed;
   bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  /* Motion owns transform; layout must not depend on its translate/scale. */
   z-index: 100;
   display: flex;
   align-items: center;
@@ -1798,7 +1809,12 @@ h2 {
   color: var(--green);
   flex-shrink: 0;
 }
+.app-toast > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .app-toast button {
+  flex-shrink: 0;
   display: grid;
   place-items: center;
   color: var(--ink-3);

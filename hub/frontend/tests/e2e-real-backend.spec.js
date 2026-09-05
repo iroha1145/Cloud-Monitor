@@ -5,7 +5,7 @@ const { test, expect } = require("@playwright/test");
 const { watchConsole, loginWithToken, sampleOverview, stubOverview } = require("./helpers");
 
 const ORIGIN = `http://127.0.0.1:${process.env.CM_E2E_PORT || 18787}`;
-const TOKEN = process.env.CM_E2E_TOKEN || "test-token";
+const TOKEN = process.env.CM_E2E_TOKEN || "e2e-read-token-0123456789abcdef0123456789";
 
 test.describe("真实 FastAPI 后端（零拦截）", () => {
   test("GET / 与 /static 核心资源全部 200", async ({ request }) => {
@@ -71,7 +71,7 @@ test.describe("真实 FastAPI 后端（零拦截）", () => {
     expect(bad.status()).toBe(401);
     // 正确密钥：夹具未配置 TOKEN_MONITOR_SECRET，后端按契约返回业务错误而非 401
     const good = await request.get("/api/v1/tm/overview", {
-      headers: { Authorization: `Bearer ${process.env.CM_E2E_TOKEN || "test-token"}` },
+      headers: { Authorization: `Bearer ${process.env.CM_E2E_TOKEN || "e2e-read-token-0123456789abcdef0123456789"}` },
     });
     expect(good.status()).not.toBe(401);
   });

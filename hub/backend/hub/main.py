@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -102,6 +101,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "/api/ingest": 1024 * 1024,
             "/api/subscriptions": 1024 * 1024,
             "/api/v1/sync/push": settings.max_sync_body_bytes,
+            "/api/v1/system/update": 4096,
         },
     )
 
@@ -111,7 +111,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             allow_origins=list(settings.cors_origins),
             # 与路由能力对齐：tm 路由含 PUT /api/subscriptions、DELETE /api/devices/{id}
             allow_methods=["GET", "POST", "PUT", "DELETE"],
-            allow_headers=["Authorization", "Content-Type"],
+            allow_headers=["Authorization", "Content-Type", "X-Token-Monitor-Secret"],
         )
 
     # 安全响应头（P1-8）：所有响应统一附加，不影响静态 UI 加载
@@ -130,9 +130,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request: Request, exc: RequestValidationError):
+        # Pydantic errors may retain NaN/Infinity or entire submitted objects in
+        # input/ctx. Return only diagnostic metadata, never re-serialize input.
+        details = [
+            {key: error[key] for key in ("type", "loc", "msg") if key in error}
+            for error in exc.errors()
+        ]
         return JSONResponse(
             status_code=400,
-            content={"error": "请求体校验失败", "details": jsonable_encoder(exc.errors())},
+            content={"error": "请求体校验失败", "details": details},
         )
 
     def settings_dep() -> Settings:
@@ -190,8 +196,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
         from .tm_outbox import snapshot_health
 
-        components["snapshot"] = {"ok": True, **snapshot_health(app.state.db)}
-        components["snapshot"]["ok"] = not components["snapshot"]["snapshot_degraded"]
+        try:
+            components["snapshot"] = {"ok": True, **snapshot_health(app.state.db)}
+            components["snapshot"]["ok"] = not components["snapshot"]["snapshot_degraded"]
+        except Exception:  # Database failure must remain a structured 503.
+            components["snapshot"] = {"ok": False, "error": "snapshot_unavailable"}
 
         if settings.tm_ingest_secret:
             core = app.state.tm_core

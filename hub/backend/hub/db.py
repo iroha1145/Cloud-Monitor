@@ -83,6 +83,8 @@ def record_fingerprint(
     output_tokens: int,
     created_at: str,
 ) -> str:
+    # Legacy on-disk checksum, retained for upgrade/rollback compatibility.
+    # Delimiters can occur in names: compare immutable fields for idempotency.
     raw = "|".join(
         (
             str(user_id),

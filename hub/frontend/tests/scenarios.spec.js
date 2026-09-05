@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
 const {
-  deferred, loginWithToken, sampleOverview, stubOverview, todayKeyInTz,
+  ACCESS_TOKEN, deferred, loginWithToken, sampleOverview, stubOverview, todayKeyInTz,
 } = require("./helpers");
 
 /* 后端官方前端契约夹具（金标准，只读） */
@@ -45,11 +45,11 @@ test.describe("§3 慢请求竞态 / 退出 / 换密钥（真实后端 + [拦截
     await page.goto("/"); // 无 token → 登录门
     await expect(page.locator("#gate")).toBeVisible();
     // 第一次提交 → 慢请求 n=1
-    await page.fill("#gate-token", "test-token");
+    await page.fill("#gate-token", ACCESS_TOKEN);
     await page.click("#gate-form button[type=submit]");
     await page.waitForTimeout(150);
     // 第二次提交 → n=2（新请求中止旧请求）
-    await page.fill("#gate-token", "test-token");
+    await page.fill("#gate-token", ACCESS_TOKEN);
     await page.click("#gate-form button[type=submit]");
     await expect(page.locator("#updated")).toContainText("更新于");
     await page.click('[data-view="devices"].nav-item');
@@ -102,7 +102,7 @@ test.describe("§3 慢请求竞态 / 退出 / 换密钥（真实后端 + [拦截
     await page.click("#refresh"); // n=2 慢
     await page.waitForTimeout(150);
     await page.click("#logout"); // 退出到门
-    await page.fill("#gate-token", "test-token");
+    await page.fill("#gate-token", ACCESS_TOKEN);
     await page.click("#gate-form button[type=submit]"); // n=3 新密钥会话
     await expect(page.locator("#updated")).toContainText("更新于");
     await page.click('[data-view="devices"].nav-item');

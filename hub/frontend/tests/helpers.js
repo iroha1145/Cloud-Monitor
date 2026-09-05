@@ -1,5 +1,5 @@
 // 共享测试工具：契约数据取自 mock.js（与真实 API 同契约），路由拦截仅在标注处使用。
-const ACCESS_TOKEN = process.env.CM_E2E_TOKEN || "test-token";
+const ACCESS_TOKEN = process.env.CM_E2E_TOKEN || "e2e-read-token-0123456789abcdef0123456789";
 
 function deferred() {
   let resolve, reject;

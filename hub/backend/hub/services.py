@@ -26,10 +26,13 @@ def parse_time(value: Optional[str], *, end_of_day: bool = False) -> Optional[da
     if len(raw) == 10 and raw[4] == "-" and raw[7] == "-":
         raw = raw + ("T23:59:59+00:00" if end_of_day else "T00:00:00+00:00")
     raw = raw.replace("Z", "+00:00")
-    dt = datetime.fromisoformat(raw)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt
+    try:
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except (ValueError, OverflowError) as exc:
+        raise ValueError("时间不是合法或可表示的 ISO 8601 时间") from exc
 
 
 def _iso(dt: datetime) -> str:
@@ -109,10 +112,16 @@ def apply_sync_push(
             local_ids = [r.local_id for r in records]
             placeholders = ",".join("?" * len(local_ids))
             existing = {
-                row["local_id"]: row["fingerprint"]
+                # A legacy pipe-delimited hash can match distinct records.
+                # Compare fields, retaining the stored hash format for rollback.
+                row["local_id"]: tuple(row[key] for key in (
+                    "user_id", "nickname", "model_name",
+                    "input_tokens", "output_tokens", "created_at",
+                ))
                 for row in db.fetchall(
                     f"""
-                    SELECT local_id, fingerprint FROM usage_records
+                    SELECT local_id, user_id, nickname, model_name,
+                           input_tokens, output_tokens, created_at FROM usage_records
                     WHERE device_id = ? AND source_instance_id = ?
                       AND local_id IN ({placeholders})
                     """,
@@ -120,8 +129,10 @@ def apply_sync_push(
                 )
             }
             to_insert: list[tuple[Any, ...]] = []
-            seen_batch: dict[int, str] = {}
+            seen_batch: dict[int, tuple[Any, ...]] = {}
             for record in records:
+                content = (record.user_id, record.nickname, record.model_name,
+                           record.input_tokens, record.output_tokens, record.created_at)
                 fingerprint = record_fingerprint(
                     user_id=record.user_id,
                     nickname=record.nickname,
@@ -131,7 +142,7 @@ def apply_sync_push(
                     created_at=record.created_at,
                 )
                 if record.local_id in existing:
-                    if existing[record.local_id] == fingerprint:
+                    if existing[record.local_id] == content:
                         duplicates += 1
                     else:
                         conflicts += 1
@@ -140,12 +151,12 @@ def apply_sync_push(
                 # 抛未捕获 IntegrityError → 整批 500 → agent 重试同批死循环），
                 # 分类语义与数据库侧去重一致
                 if record.local_id in seen_batch:
-                    if seen_batch[record.local_id] == fingerprint:
+                    if seen_batch[record.local_id] == content:
                         duplicates += 1
                     else:
                         conflicts += 1
                     continue
-                seen_batch[record.local_id] = fingerprint
+                seen_batch[record.local_id] = content
                 to_insert.append(
                     (
                         payload.device.id,
@@ -267,7 +278,9 @@ def list_usage_page(
         db.fetchone(f"SELECT COUNT(*) AS n FROM usage_records {where}", params)["n"]
     )
     offset = (page - 1) * page_size
-    rows = db.fetchall(
+    # Out-of-range pages are empty. Do not bind an unbounded Python offset
+    # to SQLite's signed 64-bit INTEGER (which would raise OverflowError).
+    rows = [] if offset >= total else db.fetchall(
         f"""
         SELECT * FROM usage_records {where}
         ORDER BY created_at DESC, id DESC

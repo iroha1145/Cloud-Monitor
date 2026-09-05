@@ -886,7 +886,7 @@ export function normalizeOverview(
           : null,
       };
     })
-    .filter((point) => point.day)
+    .filter((point) => sourceDate(point.day) !== null)
     .sort((a, b) => a.day.localeCompare(b.day));
   const devices: Device[] = list(root.devices).map((value, index) => {
     const item = record(value);

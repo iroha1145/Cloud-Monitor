@@ -7,20 +7,37 @@ export class ApiError extends Error {
 export const isAuthFailure = (error: unknown): boolean => error instanceof ApiError && (error.status === 401 || error.status === 403);
 
 export async function requestJSON(path: string, token: string, signal?: AbortSignal): Promise<unknown> {
-  const deadline = AbortSignal.timeout(15000);
-  const combined = signal ? AbortSignal.any([signal, deadline]) : deadline;
-  let response: Response;
+  // Avoid optional AbortSignal.any/timeout helpers and release timer/listener
+  // after *body consumption*, not merely after response headers arrive.
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort(signal?.reason);
+  if (signal?.aborted) {
+    abortFromCaller();
+    throw controller.signal.reason;
+  }
+  signal?.addEventListener("abort", abortFromCaller, { once: true });
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort(new DOMException("Request timed out", "TimeoutError"));
+  }, 15000);
   try {
-    response = await fetch(path, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: combined });
+    const response = await fetch(path, {
+      headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: controller.signal,
+    });
+    if (!response.ok) throw new ApiError(response.status,
+      response.status === 401 || response.status === 403 ? "访问密钥不正确，或没有读取权限。" :
+      response.status === 404 ? "服务尚未启用该数据接口。" : `暂时无法获取数据（${response.status}），请稍后重试。`);
+    return await response.json();
   } catch (error) {
-    if (combined.reason?.name === "TimeoutError") throw new Error("服务响应超时，请稍后重试。");
+    if (timedOut) throw new Error("服务响应超时，请稍后重试。");
+    if (controller.signal.aborted) throw controller.signal.reason;
     if (error instanceof TypeError) throw new Error("网络连接失败，请检查服务是否可用。");
     throw error;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", abortFromCaller);
   }
-  if (!response.ok) throw new ApiError(response.status,
-    response.status === 401 || response.status === 403 ? "访问密钥不正确，或没有读取权限。" :
-    response.status === 404 ? "服务尚未启用该数据接口。" : `暂时无法获取数据（${response.status}），请稍后重试。`);
-  return response.json();
 }
 
 export async function loadOverview(token: string, signal?: AbortSignal): Promise<DashboardData> {
