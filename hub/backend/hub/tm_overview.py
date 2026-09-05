@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from typing import Any, Optional
 
 import httpx
@@ -131,8 +132,31 @@ def trend_models_by_day(db: Database, days: int = TREND_DAYS) -> list[dict]:
     ]
 
 
+def _trend_details(entry: dict) -> dict:
+    """保留同一日记录的费用与组成；字段缺失不补零，也不跨来源拼接。"""
+    details: dict[str, Any] = {}
+    for key in (
+        "outputTokens", "cacheReadTokens", "cacheWriteTokens", "unclassifiedTokens"
+    ):
+        value = entry.get(key)
+        if key in entry and value is None:
+            details[key] = None
+        elif type(value) is int and value >= 0:
+            details[key] = value
+        elif type(value) is float and math.isfinite(value) and value >= 0 and value.is_integer():
+            details[key] = int(value)
+    for key in ("tokenComponentsAvailable", "componentsPartial"):
+        if type(entry.get(key)) is bool:
+            details[key] = entry[key]
+    cost_key = "costUsd" if "costUsd" in entry else "cost"
+    cost = entry.get(cost_key)
+    if type(cost) in (int, float) and math.isfinite(cost):
+        details["costUsd"] = cost
+    return details
+
+
 def _history_trend_row(entry: dict) -> Optional[dict]:
-    """把官方 /api/history daily 行收成 trend_models 同形。"""
+    """把官方 /api/history daily 行收成趋势行，保留当天缓存与费用。"""
     if not isinstance(entry, dict):
         return None
     day = str(entry.get("date") or entry.get("day") or "")[:10]
@@ -150,6 +174,7 @@ def _history_trend_row(entry: dict) -> Optional[dict]:
         "day": day,
         "total": _int(entry.get("tokens") or entry.get("totalTokens")),
         "models": models,
+        **_trend_details(entry),
     }
 
 
@@ -169,9 +194,9 @@ def merge_trend_with_history(
                 row = _history_trend_row(entry)
                 if not row:
                     continue
-                by_day[row["day"]] = (
-                    row if with_models else {"day": row["day"], "total": row["total"]}
-                )
+                if not with_models:
+                    row.pop("models", None)
+                by_day[row["day"]] = row
     for row in sqlite_rows or []:
         day = str((row or {}).get("day") or "")[:10]
         if not day:
@@ -182,9 +207,12 @@ def merge_trend_with_history(
                 "day": day,
                 "total": _int(row.get("total")),
                 "models": dict(models),
+                **_trend_details(row),
             }
         else:
-            by_day[day] = {"day": day, "total": _int(row.get("total"))}
+            by_day[day] = {
+                "day": day, "total": _int(row.get("total")), **_trend_details(row)
+            }
     days_sorted = sorted(by_day)[-days:]
     return [by_day[d] for d in days_sorted]
 

@@ -26,6 +26,8 @@ export interface UsageComponents {
   /** Arithmetic closure, independent of whether classification is partial. */
   complete: boolean;
   partial: boolean;
+  inputKnown: boolean;
+  outputKnown: boolean;
   cacheReadKnown: boolean;
   cacheWriteKnown: boolean;
   /** 0..1; null means unavailable. Label partial values as 已识别缓存占比. */
@@ -56,10 +58,22 @@ export interface PeriodUsage {
 export interface TrendPoint {
   day: string;
   totalTokens: number;
+  /** Raw total is exactly zero with no contradictory component counters. */
+  zeroUsageConfirmed?: boolean;
   costUsd: number | null;
   models: Record<string, number>;
   /** Daily components only. Never borrow today's or a whole period's cache mix. */
   components: UsageComponents | null;
+}
+
+export interface TrendSummary {
+  tokenTotal: number;
+  hasCost: boolean;
+  allCosts: boolean;
+  costTotal: number | null;
+  cacheTotal: number | null;
+  cacheRate: number | null;
+  partialCache: boolean;
 }
 
 export interface Device {
@@ -401,10 +415,12 @@ export function normalizeComponents(
   const period = record(source);
   const id = entityId || "";
   const base = entityType || "";
-  const total = entityType
-    ? count(record(period[base + "s"])[id])
-    : count(period.totalTokens);
-  const capable = record(period.capabilities).tokenComponents === true;
+  const rawTotal = entityType
+    ? record(period[base + "s"])[id]
+    : period.totalTokens;
+  const total = count(rawTotal);
+  const capable = record(period.capabilities).tokenComponents === true ||
+    (!entityType && period.tokenComponentsAvailable === true);
   const raw = entityType
     ? {
         output: record(period[base + "Outputs"])[id],
@@ -427,10 +443,26 @@ export function normalizeComponents(
     known: false,
     complete: false,
     partial: total > 0,
+    inputKnown: false,
+    outputKnown: false,
     cacheReadKnown: false,
     cacheWriteKnown: false,
     cacheRate: null,
   };
+  // An explicit zero day has known counts, but its 0/0 rate is undefined.
+  // Missing totals/components must not acquire that zero-day evidence.
+  if (rawTotal === 0 && Object.values(raw).every((value) => value === 0)) {
+    return {
+      ...unknown,
+      known: true,
+      complete: true,
+      partial: !entityType && period.componentsPartial === true,
+      inputKnown: true,
+      outputKnown: true,
+      cacheReadKnown: true,
+      cacheWriteKnown: true,
+    };
+  }
   if (total <= 0 || !Object.values(raw).some(validCounter)) return unknown;
   const coverageKnown = entityType
     ? isRecord(period[base + "UnclassifiedTokens"]) &&
@@ -450,7 +482,14 @@ export function normalizeComponents(
   const complete =
     Math.abs(input + classified + unclassified - total) <=
     Math.max(1, total * 0.01);
-  const partial = unclassified > 0 || !canInferInput || !complete;
+  const partial = unclassified > 0 || !canInferInput || !complete ||
+    (!entityType && period.componentsPartial === true);
+  const outputKnown = validCounter(raw.output) || Boolean(
+    entityType && !partial && isRecord(period[base + "Outputs"]) && raw.output === undefined,
+  );
+  // A positive remainder is an identified input count. With unknown components,
+  // a zero remainder does not establish that the source had no uncached input.
+  const inputKnown = canInferInput && (input > 0 || !partial);
   const cacheReadKnown =
     validCounter(raw.cacheRead) ||
     Boolean(
@@ -476,12 +515,57 @@ export function normalizeComponents(
     known: true,
     complete,
     partial,
+    inputKnown,
+    outputKnown,
     cacheReadKnown,
     cacheWriteKnown,
     cacheRate:
       cacheReadKnown && complete && cacheRead <= total
         ? cacheRead / total
         : null,
+  };
+}
+
+/** Range metrics use only their own daily records. A partial sum of cached
+ * days must not be divided by the tokens from additional unknown days. */
+export function summarizeTrend(series: readonly TrendPoint[]): TrendSummary {
+  const tokenTotal = series.reduce((sum, point) => sum + point.totalTokens, 0);
+  const hasCost = series.some((point) => optionalNumber(point.costUsd) !== null);
+  const allCosts = series.length > 0 &&
+    series.every((point) => optionalNumber(point.costUsd) !== null);
+  const costTotal = hasCost
+    ? optionalNumber(series.reduce((sum, point) => sum + (optionalNumber(point.costUsd) ?? 0), 0))
+    : null;
+  const cacheAvailable = series.length > 0 && validCounter(tokenTotal) &&
+    series.every((point) => {
+      // A proven zero total contributes nothing even when legacy component
+      // fields were not recorded. Keep that day's detail availability intact.
+      if (point.totalTokens === 0 && point.zeroUsageConfirmed === true) return true;
+      const parts = point.components;
+      if (!validCounter(point.totalTokens) || !parts?.known ||
+          !parts.cacheReadKnown || !parts.complete ||
+          !validCounter(parts.cacheRead) || parts.cacheRead > point.totalTokens)
+        return false;
+      if (point.totalTokens === 0)
+        return [parts.input, parts.output, parts.cacheRead, parts.cacheWrite, parts.unclassified]
+          .every((value) => value === 0);
+      // Daily validation can reject a ratio even when arithmetic closure is
+      // within its tolerance. Do not bypass that decision for the range.
+      return parts.cacheRate !== null && Number.isFinite(parts.cacheRate) &&
+        parts.cacheRate >= 0 && parts.cacheRate <= 1;
+    });
+  const sum = cacheAvailable
+    ? series.reduce((total, point) => total + (point.totalTokens === 0 ? 0 : point.components!.cacheRead), 0)
+    : null;
+  const cacheTotal = sum !== null && validCounter(sum) && sum <= tokenTotal ? sum : null;
+  return {
+    tokenTotal,
+    hasCost,
+    allCosts,
+    costTotal,
+    cacheTotal,
+    cacheRate: cacheTotal !== null && tokenTotal > 0 ? cacheTotal / tokenTotal : null,
+    partialCache: series.some((point) => point.components?.partial),
   };
 }
 
@@ -708,6 +792,7 @@ export function normalizeOverview(
       // request may land after a new upload and must not alter overview totals.
       const matchingArchive =
         archive &&
+        validCounter(item.total) &&
         validCounter(archive.tokens) &&
         archive.tokens === totalTokens
           ? archive
@@ -717,16 +802,22 @@ export function normalizeOverview(
           trendModels.get(text(item.day)) || record(matchingArchive.perModel),
         ).filter(([, amount]) => validCounter(amount)),
       ) as Record<string, number>;
-      const daily: JsonRecord = { ...matchingArchive, ...item, totalTokens };
-      const hasDailyComponents = [
+      const daily: JsonRecord = { ...matchingArchive, ...item, totalTokens: item.total };
+      const dailyCounters = [
         daily.outputTokens,
         daily.cacheReadTokens,
         daily.cacheWriteTokens,
         daily.unclassifiedTokens,
-      ].some(validCounter);
+      ];
+      const hasDailyComponents = dailyCounters.some(validCounter);
       return {
         day: text(item.day),
         totalTokens,
+        // count() also maps invalid/missing totals to zero, so retain evidence
+        // from the source before normalization can erase the distinction.
+        zeroUsageConfirmed: item.total === 0 && dailyCounters.every(
+          (value) => value === 0 || value === null || value === undefined,
+        ),
         costUsd:
           optionalNumber(item.costUsd) ??
           optionalNumber(matchingArchive.costUsd),

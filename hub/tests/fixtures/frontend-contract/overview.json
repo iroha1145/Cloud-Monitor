@@ -359,7 +359,14 @@
   "trend": [
     {
       "day": "2026-08-25",
-      "total": 1846320
+      "total": 1846320,
+      "costUsd": 4.82,
+      "outputTokens": 421000,
+      "cacheReadTokens": 986000,
+      "cacheWriteTokens": 120000,
+      "unclassifiedTokens": 319320,
+      "tokenComponentsAvailable": false,
+      "componentsPartial": true
     }
   ],
   "trend_models": [

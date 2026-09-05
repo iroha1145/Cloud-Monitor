@@ -459,7 +459,9 @@ export default function App({ initialData, initialToken = "", hosted = false, is
               <DialogDescription className="sr-only">
                 切换页面和工作区设置
               </DialogDescription>
-              <nav>{nav}</nav>
+              <nav className="mobile-nav-content" aria-label="侧边导航">
+                {nav}
+              </nav>
             </DialogContent>
           </Dialog>
           <div className="workspace-main">

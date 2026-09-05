@@ -17,7 +17,7 @@ import type { KeyboardEvent, PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, MoveHorizontal } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
-import type { DashboardData, TrendPoint } from "./data";
+import { summarizeTrend, type DashboardData, type TrendPoint } from "./data";
 import "./insight-trend.css";
 
 const DAY = 86_400;
@@ -90,12 +90,12 @@ function DayDetails({ point }: { point: TrendPoint }) {
     },
     {
       label: "非缓存输入",
-      value: parts?.known ? exact(parts.input) : "未提供",
+      value: parts?.inputKnown ? exact(parts.input) : "未提供",
       color: "#3d9aff",
     },
     {
       label: "输出",
-      value: parts?.known ? exact(parts.output) : "未提供",
+      value: parts?.outputKnown ? exact(parts.output) : "未提供",
       color: "#f09a2f",
     },
     {
@@ -125,7 +125,11 @@ function DayDetails({ point }: { point: TrendPoint }) {
           <b>{money(point.costUsd)}</b>
         </span>
         <span>
-          <small>{parts?.partial ? "已识别缓存占比" : "缓存占比"}</small>
+          <small>
+            {parts?.partial && parts.cacheRate !== null
+              ? "已识别缓存占比"
+              : "缓存占比"}
+          </small>
           <b>{percent(parts?.cacheRate ?? null)}</b>
         </span>
       </div>
@@ -141,8 +145,14 @@ function DayDetails({ point }: { point: TrendPoint }) {
         ))}
       </dl>
       {!parts && <p>当天缓存与用量细项未提供。</p>}
+      {parts && !parts.known && (
+        <p>当天用量尚未分类，缓存与输入输出细项未提供。</p>
+      )}
       {parts?.known && !parts.complete && (
         <p>细项与总量不一致，缓存占比暂不显示。</p>
+      )}
+      {parts?.known && parts.complete && parts.partial && (
+        <p>仅显示已识别的用量，未分类部分未计作缓存。</p>
       )}
     </div>
   );
@@ -241,24 +251,8 @@ export function InsightTrend({ data }: { data: DashboardData }) {
     const floor = utcDay(last.day) - (Number(days) - 1) * DAY;
     return data.trend.filter((point) => utcDay(point.day) >= floor);
   }, [data.trend, days]);
-  const tokenTotal = series.reduce((sum, point) => sum + point.totalTokens, 0);
-  const hasCost = series.some((point) => point.costUsd !== null);
-  const allCosts =
-    series.length > 0 && series.every((point) => point.costUsd !== null);
-  const costTotal = hasCost
-    ? series.reduce((sum, point) => sum + (point.costUsd ?? 0), 0)
-    : null;
-  const cacheAvailable =
-    series.length > 0 &&
-    series.every(
-      (point) => point.components?.cacheReadKnown && point.components.complete,
-    );
-  const cacheTotal = cacheAvailable
-    ? series.reduce((sum, point) => sum + (point.components?.cacheRead ?? 0), 0)
-    : null;
-  const cacheRate =
-    cacheTotal !== null && tokenTotal > 0 ? cacheTotal / tokenTotal : null;
-  const partialCache = series.some((point) => point.components?.partial);
+  const { tokenTotal, hasCost, allCosts, costTotal, cacheRate, partialCache } =
+    summarizeTrend(series);
   const pointIndex = Math.min(selected ?? series.length - 1, series.length - 1);
   const point = series[pointIndex];
   const firstDay = series[0]?.day;
@@ -441,7 +435,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
         <div>
           <span>
             <i style={{ background: "#25a878" }} />
-            {partialCache ? "已识别缓存占比" : "缓存占比"}
+            {partialCache && cacheRate !== null ? "已识别缓存占比" : "缓存占比"}
           </span>
           <strong>{percent(cacheRate)}</strong>
           <small>缓存读取 ÷ 总词元</small>
@@ -495,7 +489,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
               aria-valuenow={Math.max(0, pointIndex)}
               aria-valuetext={
                 point
-                  ? `${point.day}，${exact(point.totalTokens)} 词元，当天花费 ${money(point.costUsd)}，缓存占比 ${percent(point.components?.cacheRate ?? null)}`
+                  ? `${point.day}，${exact(point.totalTokens)} 词元，当天花费 ${money(point.costUsd)}，${point.components?.partial && point.components.cacheRate !== null ? "已识别缓存占比" : "缓存占比"} ${percent(point.components?.cacheRate ?? null)}`
                   : "暂无记录"
               }
               aria-describedby={`${uid}-hint${tooltipVisible ? ` ${uid}-details` : ""}`}

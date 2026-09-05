@@ -41,7 +41,10 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
   "devices": [ /* 官方 devices + 面板徽章（projectsEnabled/historyAvailable）*/ ],
 
   // —— 时间序列（SQLite 快照，官方不提供）——
-  "trend":        [ { "day": "2026-08-23", "total": 123 } ],      // 近30天，设备本地日
+  "trend":        [ { "day": "2026-08-23", "total": 123, "costUsd": 1.23,
+                      "outputTokens": 10, "cacheReadTokens": 80,
+                      "cacheWriteTokens": 5, "unclassifiedTokens": 0,
+                      "tokenComponentsAvailable": true, "componentsPartial": false } ], // 近30天，设备本地日
   "trend_models": [ { "day": "…", "total": 1, "models": {"m": 1} } ], // 同口径+模型分布
   "activity": {
     "time_zone": "Asia/Tokyo",
@@ -119,6 +122,25 @@ Overview **不得**把 370 天日归档塞进每 5 分钟刷新的 payload。长
 缓存读取量 / 模型总量的口径；仍有未知组成时标注“已识别缓存占比”，
 不将其当作完整命中率。缓存缺失和全量未分类不能显示为 0% 缓存；
 组件合计超过总量时保留不一致提示，并停止显示无法成立的缓存率。
+
+`trend` 与 `history/daily.items` 也携带当天的 `outputTokens`、
+`cacheReadTokens`、`cacheWriteTokens`、`unclassifiedTokens`。每台设备
+先选当天最后一条快照，再合计同一组快照的总量、费用与组成，不能将当天
+累计值相加，也不能借用当前周期的缓存比例。`trend` 的缺失日期由官方
+`history.daily` 整行补入；同日仍以 SQLite 整行优先，不跨来源拼接缓存。
+
+前三个组成计数为数值或 `null`；全无记录时为 `null`，部分设备提供时
+只合计已识别的计数，其余量列入 `unclassifiedTokens`。
+`tokenComponentsAvailable` 表示该日组成完整，`componentsPartial`
+标明仍不完整。旧快照的非零计数可以恢复；无法区分缺失与默认零的旧字段
+继续保留未知。新增可空列 `today_components_recorded` 只标记新快照中
+明确记录且自洽的四个组成字段，不回填旧记录；字段齐全也可能仍有未分类量。
+
+趋势区间缓存占比按该区间缓存读取量之和除以总用量之和计算。原始总量
+明确为零、且组成仅为零或缺失的日期不影响其他日期的比例，但其缺失日明细
+仍保留未知；缺失总量或与零总量矛盾的组成不能跳过。空区间和全零区间
+没有比例。任一有用量日
+缺少缓存数据时，区间比例显示未提供；部分可识别时保留相应说明。
 
 ## 会话主键（P1-1）
 
@@ -214,7 +236,8 @@ ORDER BY bucket_start DESC, server_received_at DESC, id DESC
 
 然后跨设备按 day 聚合（`today_total→tokens`，`today_cost→costUsd`，
 `clients_json→perClient`，`models_json→perModel`，`deviceCount`，
-`complete`/`coverage`）。
+`complete`/`coverage`，以及上述当天组成字段）。`complete` 继续表示
+归档记录完整性，与组成是否完整分开。
 
 SQL 分页，不加载 370 天全表再在 Python 切片。使用组合索引
 `(device_id, local_day, bucket_start)` / `local_day`。游标稳定；重试同一
@@ -233,6 +256,12 @@ cursor 不得把同一天再返回一遍。JSON 损坏标 `partial`，不 500。
       "day": "2026-08-22",
       "tokens": 123456,
       "costUsd": 12.34,
+      "outputTokens": 10000,
+      "cacheReadTokens": 80000,
+      "cacheWriteTokens": 5000,
+      "unclassifiedTokens": 0,
+      "tokenComponentsAvailable": true,
+      "componentsPartial": false,
       "perClient": { "claude": 100000, "codex": 23456 },
       "perModel": { "claude-sonnet": 100000, "gpt-5": 23456 },
       "deviceCount": 2,

@@ -287,49 +287,43 @@ export function CompositionCard({
               : "该来源未上报缓存组成"}
           </span>
         </div>
-        <MetricTooltip
-          title="用量组成"
-          rows={usageDetails(per)}
-          note={usageNote(per)}
+        <svg
+          viewBox="0 0 110 110"
+          className="composition-ring"
+          role="img"
+          aria-label="用量组成环形图"
         >
-          <svg
-            viewBox="0 0 110 110"
-            className="composition-ring"
-            role="img"
-            aria-label="用量组成环形图"
-          >
-            <circle
-              cx="55"
-              cy="55"
-              r="43"
-              stroke="var(--border)"
-              strokeWidth="10"
-              fill="none"
-            />
-            {values
-              .filter((v) => v.value > 0)
-              .map((v) => {
-                const len = (v.value / sum) * 270.18,
-                  start = offset;
-                offset += len;
-                return (
-                  <circle
-                    key={v.key}
-                    cx="55"
-                    cy="55"
-                    r="43"
-                    fill="none"
-                    stroke={v.color}
-                    strokeWidth="10"
-                    strokeDasharray={`${Math.max(0, len - 2.8)} ${270.18}`}
-                    strokeDashoffset={-start}
-                    transform="rotate(-90 55 55)"
-                  />
-                );
-              })}
-            <path d="m59 38-14 20h10l-4 15 16-22H57z" fill="var(--primary)" />
-          </svg>
-        </MetricTooltip>
+          <circle
+            cx="55"
+            cy="55"
+            r="43"
+            stroke="var(--border)"
+            strokeWidth="10"
+            fill="none"
+          />
+          {values
+            .filter((v) => v.value > 0)
+            .map((v) => {
+              const len = (v.value / sum) * 270.18,
+                start = offset;
+              offset += len;
+              return (
+                <circle
+                  key={v.key}
+                  cx="55"
+                  cy="55"
+                  r="43"
+                  fill="none"
+                  stroke={v.color}
+                  strokeWidth="10"
+                  strokeDasharray={`${Math.max(0, len - 2.8)} ${270.18}`}
+                  strokeDashoffset={-start}
+                  transform="rotate(-90 55 55)"
+                />
+              );
+            })}
+          <path d="m59 38-14 20h10l-4 15 16-22H57z" fill="var(--primary)" />
+        </svg>
       </div>
       <div className="composition-legend">
         {values.map((v) => (
@@ -338,26 +332,13 @@ export function CompositionCard({
               <i className="legend-dot" style={{ background: v.color }} />
               {v.label}
             </span>
-            <MetricTooltip
-              title={v.label}
-              rows={[
-                {
-                  label: "完整用量",
-                  value:
-                    usageDetails(per).find((row) => row.label === v.label)
-                      ?.value ?? "未提供",
-                  color: v.color,
-                },
-              ]}
-            >
-              <strong role="img">
-                {(!per.components.known && v.key !== "unclassified") ||
-                (v.key === "cacheRead" && !per.components.cacheReadKnown) ||
-                (v.key === "cacheWrite" && !per.components.cacheWriteKnown)
-                  ? "—"
-                  : compact(v.value)}
-              </strong>
-            </MetricTooltip>
+            <strong>
+              {(!per.components.known && v.key !== "unclassified") ||
+              (v.key === "cacheRead" && !per.components.cacheReadKnown) ||
+              (v.key === "cacheWrite" && !per.components.cacheWriteKnown)
+                ? "—"
+                : compact(v.value)}
+            </strong>
             <span>
               {(!per.components.known && v.key !== "unclassified") ||
               (v.key === "cacheRead" && !per.components.cacheReadKnown) ||

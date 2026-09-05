@@ -61,6 +61,22 @@ test("network failures retain data and expired authorization clears both stores"
   await expect(page.getByText("当前展示真实数据")).toHaveCount(0);
 });
 
+test("real daily cache reaches range and day details independently of the selected period", async ({ page }) => {
+  await login(page);
+  const trend = page.getByRole("region", { name: "用量趋势" });
+  const metric = trend.locator(".insight-trend-metrics > div").last();
+  await expect(metric).toContainText("已识别缓存占比");
+  await expect(metric.locator("strong")).toHaveText("53.4%");
+  const slider = trend.getByRole("slider");
+  await slider.focus();
+  await slider.press("End");
+  await expect(page.locator(".insight-trend-tooltip")).toContainText("986,000");
+  await expect(page.locator(".insight-trend-tooltip")).toContainText("53.4%");
+  await slider.press("Escape");
+  await page.getByRole("tablist", { name: "统计周期" }).getByRole("tab").nth(1).click();
+  await expect(metric.locator("strong")).toHaveText("53.4%");
+});
+
 test("invalid restored keys return to the gate without showing demo data", async ({ page }) => {
   await page.addInitScript(() => { sessionStorage.setItem("cm_access_token", "invalid-fixture-key"); localStorage.setItem("cm_access_token", "stale-fixture-key"); });
   await page.goto("/");
