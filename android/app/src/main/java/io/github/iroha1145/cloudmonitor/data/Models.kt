@@ -134,7 +134,7 @@ data class Capabilities(
     val tokenComponents: Boolean = false,
 )
 
-@Serializable
+@Serializable(with = PeriodTotalsSerializer::class)
 data class PeriodTotals(
     val capabilities: Capabilities = Capabilities(),
     val totalTokens: Double = 0.0,
@@ -174,6 +174,8 @@ data class PeriodTotals(
     val clientModels: Map<String, Map<String, Double>> = emptyMap(),
     @Serializable(with = NestedTokenMapSerializer::class)
     val clientModelCosts: Map<String, Map<String, Double>> = emptyMap(),
+    /** Original field presence distinguishes missing values from reported zero. */
+    val rawUsage: JsonObject? = null,
 )
 
 @Serializable
@@ -211,10 +213,18 @@ data class Device(
     val historyAvailable: Boolean = false,
 )
 
-@Serializable
+@Serializable(with = TrendPointSerializer::class)
 data class TrendPoint(
     val day: String = "",
     val total: Double = 0.0,
+    val costUsd: Double? = null,
+    val outputTokens: Double? = null,
+    val cacheReadTokens: Double? = null,
+    val cacheWriteTokens: Double? = null,
+    val unclassifiedTokens: Double? = null,
+    val tokenComponentsAvailable: Boolean? = null,
+    val componentsPartial: Boolean? = null,
+    val rawUsage: JsonObject? = null,
 )
 
 @Serializable
@@ -223,6 +233,13 @@ data class TrendModelsPoint(
     val total: Double = 0.0,
     @Serializable(with = TokenMapSerializer::class)
     val models: Map<String, Double> = emptyMap(),
+    val costUsd: Double? = null,
+    val outputTokens: Double? = null,
+    val cacheReadTokens: Double? = null,
+    val cacheWriteTokens: Double? = null,
+    val unclassifiedTokens: Double? = null,
+    val tokenComponentsAvailable: Boolean? = null,
+    val componentsPartial: Boolean? = null,
 )
 
 @Serializable
@@ -310,6 +327,14 @@ data class LimitWindow(
     val limit: Double? = null,
     val resetsAt: String? = null,
     val showMeter: Boolean = true,
+    val name: String? = null,
+    val window: String? = null,
+    val currency: String? = null,
+    val sourceStatus: String? = null,
+    val sourceMessage: String? = null,
+    val sourceLabel: String? = null,
+    val updatedAt: String? = null,
+    val stale: Boolean = false,
 )
 
 @Serializable
@@ -322,6 +347,16 @@ data class LimitProvider(
     val balanceUsd: Double? = null,
     val windows: List<LimitWindow> = emptyList(),
     val device: String? = null,
+    val id: String? = null,
+    val accountKey: String? = null,
+    val status: String? = null,
+    val sourceStatus: String? = null,
+    val sourceMessage: String? = null,
+    val sourceLabel: String? = null,
+    val sourceDeviceId: String? = null,
+    val updatedAt: String? = null,
+    val stale: Boolean = false,
+    val balance: JsonElement? = null,
 )
 
 @Serializable
@@ -426,6 +461,9 @@ data class Subscription(
     val autoRenew: Boolean = true,
     val nextRenewalOverride: String? = null,
     val topUps: List<TopUp> = emptyList(),
+    val id: String? = null,
+    val endDate: String? = null,
+    val note: String? = null,
 )
 
 @Serializable
@@ -456,7 +494,7 @@ data class ProviderStatusPayload(
     val errors: List<String> = emptyList(),
 )
 
-@Serializable
+@Serializable(with = HistoryDaySerializer::class)
 data class HistoryDay(
     val day: String = "",
     val tokens: Double = 0.0,
@@ -468,6 +506,13 @@ data class HistoryDay(
     val deviceCount: Int = 0,
     val complete: Boolean = true,
     val coverage: Double? = null,
+    val outputTokens: Double? = null,
+    val cacheReadTokens: Double? = null,
+    val cacheWriteTokens: Double? = null,
+    val unclassifiedTokens: Double? = null,
+    val tokenComponentsAvailable: Boolean? = null,
+    val componentsPartial: Boolean? = null,
+    val rawUsage: JsonObject? = null,
 )
 
 @Serializable

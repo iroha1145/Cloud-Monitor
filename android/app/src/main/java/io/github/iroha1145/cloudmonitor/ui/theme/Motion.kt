@@ -2,7 +2,6 @@ package io.github.iroha1145.cloudmonitor.ui.theme
 
 import android.graphics.RenderEffect as AndroidRenderEffect
 import android.graphics.Shader
-import android.os.Build
 import android.provider.Settings
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -60,9 +59,9 @@ fun rememberReducedMotion(): Boolean {
     }
 }
 
-/** 网页 `.page-enter` / `.digit-enter` 的 blur→0；API 31+ 才有 RenderEffect。 */
+/** 网页 `.page-enter` / `.digit-enter` 的 blur→0；使用系统 RenderEffect。 */
 fun GraphicsLayerScope.applyEnterBlur(progress: Float, maxSigmaPx: Float) {
-    if (Build.VERSION.SDK_INT < 31 || maxSigmaPx <= 0f) {
+    if (maxSigmaPx <= 0f) {
         renderEffect = null
         return
     }

@@ -3,6 +3,7 @@ package io.github.iroha1145.cloudmonitor.vm
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.iroha1145.cloudmonitor.platform.LocalNetworkAccess
 import io.github.iroha1145.cloudmonitor.data.ApiException
 import io.github.iroha1145.cloudmonitor.data.DemoCatalog
 import io.github.iroha1145.cloudmonitor.data.HistoryDay
@@ -31,7 +32,7 @@ import kotlin.random.Random
 private const val POLL_MS = 5 * 60 * 1000L
 private const val HISTORY_RETRY_MS = 60_000L
 
-enum class AppTab { Overview, Devices, Quota, History }
+enum class AppTab { Overview, Devices, Models, Quota, History }
 enum class Period(val key: String, val label: String) {
     Today("today", "今日"),
     Month("month", "本月"),
@@ -92,7 +93,7 @@ data class UiState(
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val store = SessionStore(app)
-    private val hub = HubClient()
+    private val hub = HubClient(beforeRequest = { url -> LocalNetworkAccess.ensureAccess(app, url) })
     private var poll: Job? = null
     private var dataJob: Job? = null
     private var historyJob: Job? = null

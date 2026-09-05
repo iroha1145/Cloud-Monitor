@@ -17,6 +17,7 @@ import kotlin.coroutines.coroutineContext
 
 class HubClient(
     private val http: OkHttpClient = defaultClient(),
+    private val beforeRequest: suspend (String) -> Unit = {},
 ) {
     val json = Json {
         ignoreUnknownKeys = true
@@ -55,6 +56,7 @@ class HubClient(
     ): T {
         val root = normalizeBase(baseUrl).toHttpUrlOrNull()
             ?: throw ApiException(0, "面板地址无效")
+        beforeRequest(root.toString())
         val builder = root.newBuilder()
         path.trim('/').split('/').filter { it.isNotEmpty() }.forEach { builder.addPathSegment(it) }
         query.forEach { (k, v) -> builder.addQueryParameter(k, v) }
