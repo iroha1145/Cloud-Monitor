@@ -185,6 +185,8 @@ jobs:
         id: device_tests
         timeout-minutes: 25
         working-directory: android
+        env:
+          TEST_API: ${{ matrix.api }}
         run: |
           "$ANDROID_HOME/emulator/emulator" -version
           "$ANDROID_HOME/emulator/emulator" -accel-check
@@ -192,11 +194,18 @@ jobs:
           df -h "$RUNNER_TEMP"
           free -h
           timeout 15 adb start-server
-          "$ANDROID_HOME/emulator/emulator" -avd cloud-monitor-ci -port 5554 -memory 4096 -partition-size 6144 -wipe-data -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          CI_GRAPHICS_FEATURES=()
+          if [ "$TEST_API" = "37.0" ]; then
+            # Android 17's mapper requires ReadColorBufferDMA, advertised only with both features.
+            CI_GRAPHICS_FEATURES=(-feature GLDirectMem -feature HasSharedSlotsHostMemoryAllocator)
+          fi
+          "$ANDROID_HOME/emulator/emulator" -avd cloud-monitor-ci -port 5554 -memory 4096 -partition-size 6144 -wipe-data -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader "${CI_GRAPHICS_FEATURES[@]}" > "$RUNNER_TEMP/emulator.log" 2>&1 &
           CI_EMULATOR_PID=$!
           echo "$CI_EMULATOR_PID" > "$RUNNER_TEMP/emulator.pid"
           CI_BOOT_DEADLINE=$((SECONDS + 180))
           CI_BOOT_COMPLETE=false
+          CI_READY_PIDS=""
+          CI_READY_SINCE=$SECONDS
           until [ "$SECONDS" -ge "$CI_BOOT_DEADLINE" ]; do
             if ! kill -0 "$CI_EMULATOR_PID" 2>/dev/null; then
               echo "::error::模拟器进程在设备连接前退出"
@@ -204,13 +213,33 @@ jobs:
               exit 1
             fi
             if [ "$(timeout 5 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then
-              CI_BOOT_COMPLETE=true
-              break
+              if [ "$TEST_API" != "37.0" ]; then
+                CI_BOOT_COMPLETE=true
+                break
+              fi
+              CI_USER_STATE="$(timeout 5 adb shell am get-started-user-state 0 2>/dev/null | tr -d '\r' || true)"
+              CI_CURRENT_PIDS="$(timeout 5 adb shell pidof system_server surfaceflinger 2>/dev/null | tr -d '\r' || true)"
+              if [ "$CI_USER_STATE" = "RUNNING_UNLOCKED" ] && [[ "$CI_CURRENT_PIDS" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]]; then
+                if [ "$CI_CURRENT_PIDS" != "$CI_READY_PIDS" ]; then
+                  CI_READY_PIDS="$CI_CURRENT_PIDS"
+                  CI_READY_SINCE=$SECONDS
+                elif [ $((SECONDS - CI_READY_SINCE)) -ge 60 ]; then
+                  echo "安卓 17 用户已解锁，系统及显示服务已连续稳定 60 秒：$CI_READY_PIDS"
+                  CI_BOOT_COMPLETE=true
+                  break
+                fi
+              else
+                CI_READY_PIDS=""
+                CI_READY_SINCE=$SECONDS
+              fi
+            else
+              CI_READY_PIDS=""
+              CI_READY_SINCE=$SECONDS
             fi
             sleep 2
           done
           if [ "$CI_BOOT_COMPLETE" != true ]; then
-            echo "::error::模拟器未在 180 秒内完成启动"
+            echo "::error::模拟器未在 180 秒内达到可测试状态"
             cat "$RUNNER_TEMP/emulator.log"
             exit 1
           fi
