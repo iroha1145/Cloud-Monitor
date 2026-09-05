@@ -1,40 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Splash 图标：与启动图标同源的云 + 用量柱；内容占画布约 53%，
-     留足 core-splashscreen 圆形底（windowSplashScreenIconBackgroundColor）的安全边距。 -->
+<!-- 启动画面使用完整网页品牌符号；圆角底与云形均留在圆形安全区内。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <path android:pathData="M42.97,26H65.03A16.97,16.97 0 0 1 82,42.97V65.03A16.97,16.97 0 0 1 65.03,82H42.97A16.97,16.97 0 0 1 26,65.03V42.97A16.97,16.97 0 0 1 42.97,26Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="28.644"
+                android:startY="23.781"
+                android:endX="79.356"
+                android:endY="84.219"
+                android:startColor="@color/ic_launcher_background"
+                android:endColor="#18596E" />
+        </aapt:attr>
+    </path>
     <group
-        android:translateX="25.2"
-        android:translateY="25.2"
-        android:scaleX="2.4"
-        android:scaleY="2.4">
+        android:translateX="34.4848"
+        android:translateY="34.4848"
+        android:scaleX="1.6263"
+        android:scaleY="1.6263">
         <path
             android:pathData="M17.5,19H9a7,7 0 1 1 6.71,-9h1.79a4.5,4.5 0 1 1 0,9Z"
-            android:strokeWidth="2.1"
+            android:strokeWidth="2"
             android:strokeColor="#FFFFFF"
             android:fillColor="#00000000"
             android:strokeLineCap="round"
             android:strokeLineJoin="round" />
-        <path
-            android:pathData="M8.75,16v-1.6"
-            android:strokeWidth="2.1"
-            android:strokeColor="#FFFFFF"
-            android:fillColor="#00000000"
-            android:strokeLineCap="round" />
-        <path
-            android:pathData="M12,16v-3.4"
-            android:strokeWidth="2.1"
-            android:strokeColor="#FFFFFF"
-            android:fillColor="#00000000"
-            android:strokeLineCap="round" />
-        <path
-            android:pathData="M15.25,16v-5.2"
-            android:strokeWidth="2.1"
-            android:strokeColor="#FFFFFF"
-            android:fillColor="#00000000"
-            android:strokeLineCap="round" />
     </group>
+    <path
+        android:pathData="M71.818,67.576a4.242,4.242 0 1 1 -8.484,0a4.242,4.242 0 1 1 8.484,0Z"
+        android:fillColor="#A8E4DE" />
 </vector>

@@ -13,6 +13,10 @@ import androidx.compose.ui.unit.dp
  * 不依赖 material-icons-extended；Icon() 的 tint 经 ColorFilter 作用于描边。
  */
 object AppIcons {
+    val ChevronLeft by lazy { icon("ChevronLeft", "M15,18l-6,-6 6,-6") }
+    val ChevronRight by lazy { icon("ChevronRight", "M9,18l6,-6 -6,-6") }
+    val Bolt by lazy { icon("Bolt", "M13,2L4,14h7l-1,8 10,-12h-7z") }
+    val Database by lazy { icon("Database", "M3,6a9,3 0 1 0 18,0 9,3 0 1 0 -18,0", "M3,6v12a9,3 0 0 0 18,0V6", "M3,12a9,3 0 0 0 18,0") }
     val More: ImageVector by lazy { icon("More", "M5,12h0.01", "M12,12h0.01", "M19,12h0.01") }
     val Models: ImageVector by lazy { icon("Models", "M12,3l9,5-9,5-9-5z", "M3,12l9,5 9-5", "M3,16l9,5 9-5") }
     val Close: ImageVector by lazy { icon("Close", "M6,6l12,12", "M18,6L6,18") }

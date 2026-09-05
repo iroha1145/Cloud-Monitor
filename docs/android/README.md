@@ -1,6 +1,6 @@
 # 原生安卓客户端（Jetpack Compose）
 
-APK 由 `.github/workflows/build-apk.yml` 在 GitHub Actions 云端构建，本机无需 JDK / Android SDK。这是原生 Material 客户端，直接请求 `/api/v1/tm/*`，不是 WebView / TWA 套壳。
+APK 由 `.github/workflows/build-apk.yml` 在 GitHub Actions 云端构建，本机无需 JDK / Android SDK。客户端使用原生界面框架，对标手机版网页的设计，并直接请求 `/api/v1/tm/*`。
 
 Release 会开 R8 压缩与资源收缩；图标只用到的十来个矢量路径，不打包 `material-icons-extended`。
 
@@ -17,7 +17,7 @@ Release 会开 R8 压缩与资源收缩；图标只用到的十来个矢量路�
 
 访问密钥写入系统密钥库加密存储；若设备无法启用密钥库，本次登录不会把密钥写进磁盘。
 
-顶栏更多菜单可检查服务器更新（只读）：展示当前版本、最新 Release 与 notes，**不会**向服务器 `POST` 应用更新。趋势图可横向拖动或使用日期滑块，详情用原生底部面板展示。手机采用底部导航，宽屏采用侧边导航。系统「关闭动画」时入场/生长动效会短路。
+顶栏更多菜单可检查服务器更新（只读）：展示当前版本、最新 Release 与 notes，**不会**向服务器 `POST` 应用更新。折线图支持7／30天、词元／费用切换，可横向拖动或用前后日期按钮查看记录；点按曲线或日期打开原生明细面板。手机采用底部导航，宽屏采用侧边导航。系统「关闭动画」时入场/生长动效会短路。
 
 ## 签名
 

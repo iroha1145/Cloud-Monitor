@@ -366,3 +366,10 @@ object HistoryDaySerializer : UsageJsonSerializer<HistoryDay>("HistoryDay") {
     )
     override fun write(value: HistoryDay) = historySource(value)
 }
+
+/** Calendar range, not the last N records: missing dates are never backfilled. */
+fun trendWindow(rows: List<TrendRow>, days: Int): List<TrendRow> {
+    val end = rows.lastOrNull()?.day?.let(java.time.LocalDate::parse) ?: return emptyList()
+    val floor = end.minusDays(days.coerceAtLeast(1).toLong() - 1).toString()
+    return rows.filter { it.day >= floor && it.day <= end.toString() }
+}
