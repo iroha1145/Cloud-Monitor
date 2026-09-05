@@ -190,8 +190,9 @@ jobs:
           "$ANDROID_HOME/emulator/emulator" -accel-check
           "$ANDROID_HOME/emulator/emulator" -list-avds
           df -h "$RUNNER_TEMP"
+          free -h
           timeout 15 adb start-server
-          "$ANDROID_HOME/emulator/emulator" -avd cloud-monitor-ci -port 5554 -partition-size 6144 -wipe-data -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -avd cloud-monitor-ci -port 5554 -memory 4096 -partition-size 6144 -wipe-data -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader > "$RUNNER_TEMP/emulator.log" 2>&1 &
           CI_EMULATOR_PID=$!
           echo "$CI_EMULATOR_PID" > "$RUNNER_TEMP/emulator.pid"
           CI_BOOT_DEADLINE=$((SECONDS + 180))
@@ -218,6 +219,7 @@ jobs:
           timeout 10 adb shell settings put global animator_duration_scale 0
           timeout 10 adb shell getconf PAGE_SIZE
           timeout 10 adb shell df -h /data
+          timeout 10 adb shell head -n 5 /proc/meminfo
           ./gradlew connectedDebugAndroidTest --no-daemon --stacktrace \
             -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
           # AGP can exit successfully after an APK installation failure with no tests run.
