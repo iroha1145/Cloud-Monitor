@@ -8,15 +8,24 @@ permissions:
 jobs:
   source:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Archive tracked source for isolated review
-        run: git archive --format=tar HEAD > /tmp/cloud-monitor-source.tar
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install and verify locked frontend
+        working-directory: hub/dashboard
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+          npm run build
+      - name: Archive dependencies and compiled UI for local browser review
+        run: tar -cf /tmp/cloud-monitor-review-deps.tar hub/dashboard/node_modules hub/frontend/app
       - uses: actions/upload-artifact@v4
         with:
-          name: cloud-monitor-review-source
-          path: /tmp/cloud-monitor-source.tar
+          name: cloud-monitor-review-deps
+          path: /tmp/cloud-monitor-review-deps.tar
           retention-days: 1
