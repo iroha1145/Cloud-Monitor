@@ -144,6 +144,7 @@ def load_settings() -> Settings:
         )
     if not access_token:
         access_token = api_key
+    validate_secret("ACCESS_TOKEN", access_token)
 
     raw_db = os.environ.get("DATABASE_PATH")
     database_path = Path(raw_db).expanduser() if raw_db else _default_database_path()

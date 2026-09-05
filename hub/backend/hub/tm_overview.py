@@ -926,29 +926,45 @@ class OverviewCache:
     JSON dict——命中时零 HTTP + 零 SQLite + 零 CPU 组装。
     """
 
-    __slots__ = ("_ttl", "_data", "_expires_at")
+    __slots__ = ("_ttl", "_data", "_expires_at", "_generation", "_lock")
 
     def __init__(self, ttl_seconds: float = 30.0):
         self._ttl = ttl_seconds
         self._data: Optional[dict] = None
         self._expires_at: float = 0.0
+        self._generation = 0
+        from threading import Lock
+
+        self._lock = Lock()
+
+    @property
+    def generation(self) -> int:
+        with self._lock:
+            return self._generation
 
     def get(self) -> Optional[dict]:
         import time as _time
 
-        if self._data is not None and _time.monotonic() < self._expires_at:
-            return self._data
-        return None
+        with self._lock:
+            if self._data is not None and _time.monotonic() < self._expires_at:
+                return self._data
+            return None
 
-    def put(self, data: dict) -> None:
+    def put(self, data: dict, *, generation: int | None = None) -> None:
         import time as _time
 
-        self._data = data
-        self._expires_at = _time.monotonic() + self._ttl
+        with self._lock:
+            # A write/delete completed while this overview was being assembled.
+            if generation is not None and generation != self._generation:
+                return
+            self._data = data
+            self._expires_at = _time.monotonic() + self._ttl
 
     def invalidate(self) -> None:
-        self._data = None
-        self._expires_at = 0.0
+        with self._lock:
+            self._generation += 1
+            self._data = None
+            self._expires_at = 0.0
 
 
 def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRouter, OverviewCache]:
@@ -1025,6 +1041,7 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         require_access_token(request, settings)
         _require_core()
 
+        generation = overview_cache.generation
         cached = overview_cache.get()
         if cached is not None:
             return cached
@@ -1062,7 +1079,7 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         overview = _assemble_overview(
             stats, history, history_error, raw_devices, devices_error
         )
-        overview_cache.put(overview)
+        overview_cache.put(overview, generation=generation)
         return overview
 
     @router.get("/api/v1/tm/subscriptions")

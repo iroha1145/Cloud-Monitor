@@ -109,10 +109,16 @@ def apply_sync_push(
             local_ids = [r.local_id for r in records]
             placeholders = ",".join("?" * len(local_ids))
             existing = {
-                row["local_id"]: row["fingerprint"]
+                # A legacy pipe-delimited hash can match distinct records.
+                # Compare fields, retaining the stored hash format for rollback.
+                row["local_id"]: tuple(row[key] for key in (
+                    "user_id", "nickname", "model_name",
+                    "input_tokens", "output_tokens", "created_at",
+                ))
                 for row in db.fetchall(
                     f"""
-                    SELECT local_id, fingerprint FROM usage_records
+                    SELECT local_id, user_id, nickname, model_name,
+                           input_tokens, output_tokens, created_at FROM usage_records
                     WHERE device_id = ? AND source_instance_id = ?
                       AND local_id IN ({placeholders})
                     """,
@@ -120,8 +126,10 @@ def apply_sync_push(
                 )
             }
             to_insert: list[tuple[Any, ...]] = []
-            seen_batch: dict[int, str] = {}
+            seen_batch: dict[int, tuple[Any, ...]] = {}
             for record in records:
+                content = (record.user_id, record.nickname, record.model_name,
+                           record.input_tokens, record.output_tokens, record.created_at)
                 fingerprint = record_fingerprint(
                     user_id=record.user_id,
                     nickname=record.nickname,
@@ -131,7 +139,7 @@ def apply_sync_push(
                     created_at=record.created_at,
                 )
                 if record.local_id in existing:
-                    if existing[record.local_id] == fingerprint:
+                    if existing[record.local_id] == content:
                         duplicates += 1
                     else:
                         conflicts += 1
@@ -140,12 +148,12 @@ def apply_sync_push(
                 # 抛未捕获 IntegrityError → 整批 500 → agent 重试同批死循环），
                 # 分类语义与数据库侧去重一致
                 if record.local_id in seen_batch:
-                    if seen_batch[record.local_id] == fingerprint:
+                    if seen_batch[record.local_id] == content:
                         duplicates += 1
                     else:
                         conflicts += 1
                     continue
-                seen_batch[record.local_id] = fingerprint
+                seen_batch[record.local_id] = content
                 to_insert.append(
                     (
                         payload.device.id,

@@ -102,6 +102,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "/api/ingest": 1024 * 1024,
             "/api/subscriptions": 1024 * 1024,
             "/api/v1/sync/push": settings.max_sync_body_bytes,
+            "/api/v1/system/update": 4096,
         },
     )
 
@@ -111,7 +112,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             allow_origins=list(settings.cors_origins),
             # 与路由能力对齐：tm 路由含 PUT /api/subscriptions、DELETE /api/devices/{id}
             allow_methods=["GET", "POST", "PUT", "DELETE"],
-            allow_headers=["Authorization", "Content-Type"],
+            allow_headers=["Authorization", "Content-Type", "X-Token-Monitor-Secret"],
         )
 
     # 安全响应头（P1-8）：所有响应统一附加，不影响静态 UI 加载
@@ -190,8 +191,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
         from .tm_outbox import snapshot_health
 
-        components["snapshot"] = {"ok": True, **snapshot_health(app.state.db)}
-        components["snapshot"]["ok"] = not components["snapshot"]["snapshot_degraded"]
+        try:
+            components["snapshot"] = {"ok": True, **snapshot_health(app.state.db)}
+            components["snapshot"]["ok"] = not components["snapshot"]["snapshot_degraded"]
+        except Exception:  # Database failure must remain a structured 503.
+            components["snapshot"] = {"ok": False, "error": "snapshot_unavailable"}
 
         if settings.tm_ingest_secret:
             core = app.state.tm_core

@@ -23,7 +23,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Callable, Optional
 
 from .db import Database
 from .services import utc_now
@@ -221,7 +221,10 @@ def _superseded(db: Database, device_id: str, received_at: str) -> bool:
     return row is not None
 
 
-def replay_pending(db: Database, core, *, max_items: int = REPLAY_BATCH) -> dict:
+def replay_pending(
+    db: Database, core, *, max_items: int = REPLAY_BATCH,
+    should_stop: Callable[[], bool] | None = None,
+) -> dict:
     """重放未完成项。core 为 TmCore；返回统计。返回值含 stopped_by 表示
     因上游不可达提前中止（下轮继续）。"""
     from .tm_snapshots import write_snapshot
@@ -243,6 +246,10 @@ def replay_pending(db: Database, core, *, max_items: int = REPLAY_BATCH) -> dict
         "failed": 0,
     }
     for row in rows:
+        # Finish the current request/snapshot, then leave untouched items pending.
+        if should_stop is not None and should_stop():
+            stats["stopped_by"] = "shutdown"
+            break
         try:
             payload = json.loads(row["payload_json"])
         except ValueError:

@@ -16,6 +16,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Lock
 from typing import Any, Callable
 from urllib.parse import quote
 
@@ -112,6 +113,7 @@ class UpdateService:
         self.settings = settings
         self._fetch = fetch
         self._cache = _Cache()
+        self._apply_lock = Lock()
 
     @property
     def update_dir(self) -> Path | None:
@@ -234,6 +236,11 @@ class UpdateService:
         return out
 
     def apply(self, ref: str) -> dict[str, Any]:
+        # FastAPI runs sync endpoints in multiple threads even with one worker.
+        with self._apply_lock:
+            return self._enqueue(ref)
+
+    def _enqueue(self, ref: str) -> dict[str, Any]:
         target = parse_ref(ref)
         d = self.update_dir
         if d is None:
@@ -242,7 +249,7 @@ class UpdateService:
                 detail="未启用在线更新：请用 install.sh 安装，宿主机才会挂载更新目录并启动监视器",
             )
         job = self.read_job()
-        if job.get("state") in {"queued", "running"}:
+        if job.get("state") in {"queued", "running"} or (d / "request.json").exists():
             raise HTTPException(status_code=409, detail="已有更新在进行")
         req_id = uuid.uuid4().hex[:16]
         request = {
@@ -250,17 +257,23 @@ class UpdateService:
             "ref": target,
             "requested_at": _iso_now(),
         }
-        _atomic_write(d / "request.json", request)
-        _atomic_write(
-            d / "status.json",
-            {
-                "id": req_id,
-                "state": "queued",
-                "ref": target,
-                "message": "已写入请求，等待宿主机监视器",
-                "updated_at": _iso_now(),
-            },
-        )
+        queued = {
+            "id": req_id, "state": "queued", "ref": target,
+            "message": "已写入请求，等待宿主机监视器", "updated_at": _iso_now(),
+        }
+        try:
+            # The watcher can act as soon as request.json appears. Publishing
+            # it last prevents its running/finished status being overwritten.
+            _atomic_write(d / "status.json", queued)
+            _atomic_write(d / "request.json", request)
+        except OSError as exc:
+            try:
+                _atomic_write(d / "status.json", {
+                    **queued, "state": "error", "message": "更新请求写入失败",
+                })
+            except OSError:
+                pass
+            raise HTTPException(status_code=503, detail="更新请求写入失败，请检查更新目录") from exc
         return self.read_job()
 
     def _get(self, url: str) -> tuple[int, Any]:
@@ -315,9 +328,12 @@ def _gh_error(status: int, body: Any) -> str:
 
 
 def _atomic_write(path: Path, data: dict[str, Any]) -> None:
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False) + "\n", encoding="utf-8")
-    tmp.replace(path)
+    tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        tmp.write_text(json.dumps(data, ensure_ascii=False) + "\n", encoding="utf-8")
+        tmp.replace(path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def build_update_router(settings: Settings, service: UpdateService) -> APIRouter:
