@@ -26,10 +26,13 @@ def parse_time(value: Optional[str], *, end_of_day: bool = False) -> Optional[da
     if len(raw) == 10 and raw[4] == "-" and raw[7] == "-":
         raw = raw + ("T23:59:59+00:00" if end_of_day else "T00:00:00+00:00")
     raw = raw.replace("Z", "+00:00")
-    dt = datetime.fromisoformat(raw)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt
+    try:
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except (ValueError, OverflowError) as exc:
+        raise ValueError("时间不是合法或可表示的 ISO 8601 时间") from exc
 
 
 def _iso(dt: datetime) -> str:
@@ -275,7 +278,9 @@ def list_usage_page(
         db.fetchone(f"SELECT COUNT(*) AS n FROM usage_records {where}", params)["n"]
     )
     offset = (page - 1) * page_size
-    rows = db.fetchall(
+    # Out-of-range pages are empty. Do not bind an unbounded Python offset
+    # to SQLite's signed 64-bit INTEGER (which would raise OverflowError).
+    rows = [] if offset >= total else db.fetchall(
         f"""
         SELECT * FROM usage_records {where}
         ORDER BY created_at DESC, id DESC

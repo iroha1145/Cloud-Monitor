@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -131,9 +130,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request: Request, exc: RequestValidationError):
+        # Pydantic errors may retain NaN/Infinity or entire submitted objects in
+        # input/ctx. Return only diagnostic metadata, never re-serialize input.
+        details = [
+            {key: error[key] for key in ("type", "loc", "msg") if key in error}
+            for error in exc.errors()
+        ]
         return JSONResponse(
             status_code=400,
-            content={"error": "请求体校验失败", "details": jsonable_encoder(exc.errors())},
+            content={"error": "请求体校验失败", "details": details},
         )
 
     def settings_dep() -> Settings:
