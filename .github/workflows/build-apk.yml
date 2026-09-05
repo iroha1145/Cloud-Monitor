@@ -176,6 +176,9 @@ jobs:
           sdkmanager "platforms;android-37.0" "build-tools;36.0.0" "platform-tools" "emulator" "system-images;android-$TEST_API;$IMAGE_TARGET;x86_64"
           mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME"
           echo no | avdmanager create avd -n cloud-monitor-ci -k "system-images;android-$TEST_API;$IMAGE_TARGET;x86_64" --device pixel_6 --path "$ANDROID_AVD_HOME/cloud-monitor-ci.avd" --force
+          # Android 17's 16 KB image needs more writable space than the AVD default.
+          sed -i '/^disk\.dataPartition\.size[[:space:]]*=/d' "$ANDROID_AVD_HOME/cloud-monitor-ci.avd/config.ini"
+          echo 'disk.dataPartition.size=6G' >> "$ANDROID_AVD_HOME/cloud-monitor-ci.avd/config.ini"
           test -f "$ANDROID_AVD_HOME/cloud-monitor-ci.ini"
           "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx cloud-monitor-ci
       - name: 启动设备并运行界面测试
@@ -188,7 +191,7 @@ jobs:
           "$ANDROID_HOME/emulator/emulator" -list-avds
           df -h "$RUNNER_TEMP"
           timeout 15 adb start-server
-          "$ANDROID_HOME/emulator/emulator" -avd cloud-monitor-ci -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -avd cloud-monitor-ci -port 5554 -partition-size 6144 -wipe-data -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader > "$RUNNER_TEMP/emulator.log" 2>&1 &
           CI_EMULATOR_PID=$!
           echo "$CI_EMULATOR_PID" > "$RUNNER_TEMP/emulator.pid"
           CI_BOOT_DEADLINE=$((SECONDS + 180))
@@ -214,8 +217,33 @@ jobs:
           timeout 10 adb shell settings put global transition_animation_scale 0
           timeout 10 adb shell settings put global animator_duration_scale 0
           timeout 10 adb shell getconf PAGE_SIZE
+          timeout 10 adb shell df -h /data
           ./gradlew connectedDebugAndroidTest --no-daemon --stacktrace \
             -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
+          # AGP can exit successfully after an APK installation failure with no tests run.
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          reports = sorted(Path("app/build/outputs/androidTest-results/connected/debug").glob("TEST-*.xml"))
+          if not reports:
+              raise SystemExit("::error::没有设备测试 XML 报告，测试可能未实际执行")
+          test_cases = set()
+          for report in reports:
+              root = ET.parse(report).getroot()
+              test_cases.update((case.get("classname"), case.get("name")) for case in root.iter("testcase"))
+              for suite in root.iter():
+                  if suite.tag in {"testsuites", "testsuite"}:
+                      for key in ("failures", "errors", "skipped"):
+                          if int(suite.get(key, "0")) != 0:
+                              raise SystemExit(f"::error::{report.name}: {key}={suite.get(key)}")
+              for tag in ("failure", "error", "skipped"):
+                  if next(root.iter(tag), None) is not None:
+                      raise SystemExit(f"::error::{report.name}: 存在 {tag} 用例")
+          if len(test_cases) < 6:
+              raise SystemExit(f"::error::设备测试实际执行 {len(test_cases)} 项，少于要求的 6 项")
+          print(f"设备测试报告验证通过：{len(test_cases)} 项，失败、错误及跳过均为 0")
+          PY
       - name: 收集设备日志
         if: always()
         timeout-minutes: 2
