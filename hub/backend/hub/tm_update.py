@@ -134,18 +134,35 @@ class UpdateService:
         d = self.update_dir
         if d is None:
             return {"state": "unavailable", "message": "未挂载更新目录"}
-        status_path = d / "status.json"
-        if not status_path.is_file():
-            req = d / "request.json"
-            if req.is_file():
-                return {"state": "queued", "message": "已提交，等待宿主机监视器"}
-            return {"state": "idle", "message": ""}
+        # request.json is the enqueue commit point. The watcher retains it
+        # until it has published a terminal status for the same request ID.
         try:
-            data = json.loads(status_path.read_text(encoding="utf-8"))
+            pending = json.loads((d / "request.json").read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            pending = None
         except (OSError, ValueError):
-            return {"state": "error", "message": "状态文件无法读取"}
+            return {"state": "error", "message": "请求文件无法读取"}
+        if pending is not None and not isinstance(pending, dict):
+            return {"state": "error", "message": "请求文件格式错误"}
+        try:
+            data = json.loads((d / "status.json").read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            data = {"state": "idle", "message": ""}
+        except (OSError, ValueError):
+            data = {"state": "error", "message": "状态文件无法读取"}
         if not isinstance(data, dict):
-            return {"state": "error", "message": "状态文件格式错误"}
+            data = {"state": "error", "message": "状态文件格式错误"}
+        if pending is not None and (
+            not data.get("id") or data.get("id") != pending.get("id")
+        ):
+            data = {
+                "id": pending.get("id"), "state": "queued", "ref": pending.get("ref"),
+                "message": "已提交，等待宿主机监视器",
+                "updated_at": pending.get("requested_at"),
+            }
+        elif pending is None and data.get("state") == "queued":
+            # Recover leftovers from the former status-then-request protocol.
+            data = {**data, "state": "error", "message": "上次更新请求未完成提交，请重新提交"}
         state = str(data.get("state") or "idle")
         return {
             "id": str(data.get("id") or ""),
@@ -257,19 +274,15 @@ class UpdateService:
             "ref": target,
             "requested_at": _iso_now(),
         }
-        queued = {
-            "id": req_id, "state": "queued", "ref": target,
-            "message": "已写入请求，等待宿主机监视器", "updated_at": _iso_now(),
-        }
         try:
-            # The watcher can act as soon as request.json appears. Publishing
-            # it last prevents its running/finished status being overwritten.
-            _atomic_write(d / "status.json", queued)
+            # Publish once. read_job derives queued from this durable request,
+            # leaving the watcher's running/finished status untouched.
             _atomic_write(d / "request.json", request)
         except OSError as exc:
             try:
                 _atomic_write(d / "status.json", {
-                    **queued, "state": "error", "message": "更新请求写入失败",
+                    "id": req_id, "state": "error", "ref": target,
+                    "message": "更新请求写入失败", "updated_at": _iso_now(),
                 })
             except OSError:
                 pass
