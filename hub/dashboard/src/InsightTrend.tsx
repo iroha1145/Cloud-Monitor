@@ -251,8 +251,10 @@ export function InsightTrend({ data }: { data: DashboardData }) {
     const floor = utcDay(last.day) - (Number(days) - 1) * DAY;
     return data.trend.filter((point) => utcDay(point.day) >= floor);
   }, [data.trend, days]);
-  const { tokenTotal, hasCost, allCosts, costTotal, cacheRate, partialCache } =
-    summarizeTrend(series);
+  const {
+    tokenTotal, hasCost, allCosts, costTotal, cacheRate, partialCache,
+    cacheDays, cacheSkippedDays,
+  } = summarizeTrend(series);
   const pointIndex = Math.min(selected ?? series.length - 1, series.length - 1);
   const point = series[pointIndex];
   const firstDay = series[0]?.day;
@@ -438,7 +440,13 @@ export function InsightTrend({ data }: { data: DashboardData }) {
             {partialCache && cacheRate !== null ? "已识别缓存占比" : "缓存占比"}
           </span>
           <strong>{percent(cacheRate)}</strong>
-          <small>缓存读取 ÷ 总词元</small>
+          <small>
+            {cacheSkippedDays > 0
+              ? cacheDays > 0
+                ? `仅统计 ${cacheDays}/${series.length} 天`
+                : "暂无缓存明细"
+              : "缓存读取 ÷ 总词元"}
+          </small>
         </div>
       </div>
 

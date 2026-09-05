@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from conftest import READ_KEY, TM_SECRET, requires_node, widget_style_payload
 from hub.db import Database
 from hub import tm_snapshots as snapshots
 
@@ -120,6 +121,7 @@ def write(db, today, *, received="2026-09-05T03:02:00.000Z"):
             "periodWindows": {"today": {"key": "2026-09-05"}, "timeZone": "Asia/Tokyo"},
             "updatedAt": "2026-09-05T03:01:00.000Z", "receivedAt": received,
         },
+        incoming={"today": today},
     )
 
 
@@ -157,6 +159,86 @@ def test_recorded_components_can_still_include_unclassified_usage(db, monkeypatc
     assert item["unclassifiedTokens"] == 30
     assert item["componentsPartial"] is True
     assert item["tokenComponentsAvailable"] is False
+
+
+@pytest.mark.parametrize("incoming", [None, {}, {"periods": {}}, {"today": {}}])
+def test_normalized_zeros_without_original_counters_remain_unknown(db, monkeypatch, incoming):
+    monkeypatch.setattr(snapshots, "_prune_if_due", lambda _: None)
+    snapshots.write_snapshot(
+        db, device_id="no-source", limits_only=False, incoming=incoming,
+        record={
+            "periods": {"today": {
+                "totalTokens": 100, "outputTokens": 0, "cacheReadTokens": 0,
+                "cacheWriteTokens": 0, "unclassifiedTokens": 100,
+                "capabilities": {"tokenComponents": False},
+            }},
+            "updatedAt": "2026-09-05T03:01:00.000Z",
+        },
+    )
+    assert db.fetchone("SELECT today_components_recorded AS recorded FROM tm_snapshot_buckets")["recorded"] == 0
+    assert only_day(db)["cacheReadTokens"] is None
+
+
+@pytest.mark.parametrize("changed", ["totalTokens", *snapshots.COMPONENT_COLUMNS])
+def test_original_counters_must_match_the_merged_snapshot(db, monkeypatch, changed):
+    monkeypatch.setattr(snapshots, "_prune_if_due", lambda _: None)
+    original = {"totalTokens": 100, "outputTokens": 10, "cacheReadTokens": 60,
+                "cacheWriteTokens": 0, "unclassifiedTokens": 20}
+    merged = {**original, changed: original[changed] + 1}
+    snapshots.write_snapshot(
+        db, device_id="merged-source", limits_only=False,
+        incoming={"today": original},
+        record={"periods": {"today": merged}, "updatedAt": "2026-09-05T03:01:00.000Z"},
+    )
+    assert db.fetchone("SELECT today_components_recorded AS recorded FROM tm_snapshot_buckets")["recorded"] == 0
+
+
+@requires_node
+@pytest.mark.parametrize("nested", [False, True], ids=["top-level", "periods"])
+@pytest.mark.parametrize("period, recorded, cache, unclassified", [
+    pytest.param({"totalTokens": 100}, 0, None, 100, id="missing"),
+    pytest.param({"totalTokens": 100, "outputTokens": 0, "cacheReadTokens": 0,
+                  "cacheWriteTokens": 0, "unclassifiedTokens": 100,
+                  "capabilities": {"tokenComponents": False}},
+                 1, 0, 100, id="explicit-zero"),
+    pytest.param({"totalTokens": 100, "cacheReadTokens": 60},
+                 0, 60, 40, id="positive-partial"),
+])
+def test_ingest_normalized_snapshot_preserves_actual_cache_provenance(
+    cloud, nested, period, recorded, cache, unclassified,
+):
+    payload = widget_style_payload("cache-source", tz="UTC")
+    payload.update({"today": period, "month": period, "allTime": period})
+    if nested:
+        payload["periods"] = {name: payload.pop(name) for name in ("today", "month", "allTime")}
+    response = cloud.post("/api/ingest", headers={"X-Token-Monitor-Secret": TM_SECRET}, json=payload)
+    assert response.status_code == 200, response.text
+    normalized = next(device for device in response.json()["stats"]["devices"]
+                      if device["deviceId"] == "cache-source")["periods"]["today"]
+    assert all(key in normalized for key in snapshots.COMPONENT_COLUMNS)
+    assert normalized["cacheReadTokens"] == (cache or 0)
+    if cache is None:
+        assert normalized["capabilities"]["tokenComponents"] is False
+    row = cloud.app.state.db.fetchone(
+        "SELECT today_components_recorded AS recorded FROM tm_snapshot_buckets WHERE device_id = ?",
+        ("cache-source",),
+    )
+    assert row["recorded"] == recorded
+    auth = {"Authorization": f"Bearer {READ_KEY}"}
+    archive = cloud.get("/api/v1/tm/history/daily", headers=auth)
+    overview = cloud.get("/api/v1/tm/overview", headers=auth)
+    assert archive.status_code == overview.status_code == 200
+    day = payload["periodWindows"]["today"]["key"]
+    daily = next(row for row in archive.json()["items"] if row["day"] == day)
+    trend = next(row for row in overview.json()["trend"] if row["day"] == day)
+    assert daily["tokens"] == trend["total"] == 100
+    for result in (daily, trend):
+        assert result["cacheReadTokens"] == cache
+        assert result["unclassifiedTokens"] == unclassified
+        assert result["componentsPartial"] is True
+        assert result["tokenComponentsAvailable"] is False
+        assert result["cacheWriteTokens"] == (0 if recorded else None)
+        assert result["outputTokens"] == (0 if recorded else None)
 
 
 @pytest.mark.parametrize("bad", [None, -1, True, 1.5, "10", float("inf")])
