@@ -5,3 +5,9 @@ __pycache__/
 *.sqlite3*
 data/
 tests/
+
+**/node_modules
+dashboard/evidence
+dashboard/test-results
+dashboard/dist-showcase
+frontend/app

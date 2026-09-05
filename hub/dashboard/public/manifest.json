@@ -1,0 +1,31 @@
+{
+  "name": "Cloud Monitor · 云端用量面板",
+  "short_name": "CloudMonitor",
+  "id": "../../",
+  "description": "token-monitor 设备用量云端面板",
+  "lang": "zh-CN",
+  "start_url": "../../",
+  "scope": "../../",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#fafafb",
+  "theme_color": "#fafafb",
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "./icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

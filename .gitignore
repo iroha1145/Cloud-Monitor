@@ -17,7 +17,7 @@ hub/update-control/*.lock
 !hub/update-control/.gitkeep
 
 # 前端测试工具链（hub/frontend/tests）
-node_modules/
+node_modules
 playwright-report/
 test-results/
 .mimosa/
@@ -28,3 +28,10 @@ test-results/
 android/.gradle/
 android/**/build/
 android/local.properties
+
+# Built responsive dashboard and local review artifacts
+hub/frontend/app/
+hub/dashboard/dist-showcase/
+hub/dashboard/evidence/
+*.tsbuildinfo
+hub/dashboard/dist/

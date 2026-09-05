@@ -1,0 +1,78 @@
+[data-metric-trigger] {
+  cursor: help;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+[data-metric-trigger]:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
+}
+[data-slot="tooltip-content"].metric-tooltip-card {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 160;
+  width: 274px;
+  max-width: calc(100vw - 24px);
+  padding: 13px 15px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-overlay);
+  text-wrap: initial;
+  visibility: hidden;
+  pointer-events: none;
+  transform-origin: top left;
+  will-change: transform;
+  animation: none;
+  transition: none;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.metric-tooltip-title {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.metric-tooltip-card dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  font-size: 11px;
+}
+.metric-tooltip-card dl > div {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  justify-content: space-between;
+}
+.metric-tooltip-card dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+}
+.metric-tooltip-card dt i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.metric-tooltip-card dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  max-width: 65%;
+}
+.metric-tooltip-card p {
+  border-top: 1px solid var(--line);
+  margin: 10px 0 0;
+  padding-top: 9px;
+  font-size: 10px;
+  color: var(--ink-2);
+  line-height: 1.6;
+}

@@ -1,0 +1,2 @@
+Client logos vendored from token-monitor (MIT):
+https://github.com/Javis603/token-monitor/tree/main/assets/icons

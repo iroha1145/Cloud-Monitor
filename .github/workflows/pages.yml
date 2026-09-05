@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "hub/frontend/**"
+      - "hub/dashboard/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -26,27 +27,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: 组装静态演示目录
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: hub/dashboard/package-lock.json
+      - name: 构建独立演示页面
+        working-directory: hub/dashboard
         run: |
-          mkdir -p _site
-          # theme-boot.js 必须在列：漏拷时演示站 404，夜间模式偏好每次刷新被重置
-          cp hub/frontend/tm.css hub/frontend/tm.js hub/frontend/mock.js hub/frontend/icons.svg hub/frontend/theme-boot.js _site/
-          cp -R hub/frontend/client-logos _site/client-logos
-          cp -R hub/frontend/icons _site/icons
-          python3 - <<'PY'
-          from pathlib import Path
-          html = Path("hub/frontend/demo.html").read_text(encoding="utf-8")
-          html = html.replace('href="/static/', 'href="./').replace('src="/static/', 'src="./')
-          Path("_site/index.html").write_text(html, encoding="utf-8")
-          # 演示站同步带上 PWA manifest（路径改相对），自托管 TWA 请勿指向 Pages
-          manifest = Path("hub/frontend/manifest.json").read_text(encoding="utf-8")
-          manifest = manifest.replace('"/static/icons/', '"./icons/')
-          manifest = manifest.replace('"start_url": "/"', '"start_url": "./"')
-          Path("_site/manifest.json").write_text(manifest, encoding="utf-8")
-          PY
+          npm ci --no-audit --no-fund
+          npm run build:showcase
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: hub/dashboard/dist-showcase
       - id: deployment
         uses: actions/deploy-pages@v4

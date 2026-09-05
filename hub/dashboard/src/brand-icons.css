@@ -1,0 +1,37 @@
+:root {
+  --brand-ink: #17212d;
+}
+.dark {
+  --brand-ink: #f1f4f7;
+}
+.brand-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--brand-size, 34px);
+  height: var(--brand-size, 34px);
+  min-width: var(--brand-size, 34px);
+  flex: 0 0 var(--brand-size, 34px);
+  line-height: 1;
+  color: var(--brand-ink);
+  vertical-align: middle;
+}
+.brand-icon-mark {
+  display: block;
+  width: 60%;
+  height: 60%;
+  background-color: currentColor;
+  -webkit-mask-image: var(--brand-image);
+  mask-image: var(--brand-image);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+.brand-icon .brand-icon-fallback {
+  width: 60%;
+  height: 60%;
+  color: currentColor;
+}
