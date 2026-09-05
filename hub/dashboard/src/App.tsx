@@ -454,7 +454,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
             {nav}
           </aside>
           <Dialog open={mobile} onOpenChange={setMobile}>
-            <DialogContent className="mobile-nav-dialog">
+            <DialogContent className="mobile-nav-dialog" placement="left">
               <DialogTitle className="sr-only">导航</DialogTitle>
               <DialogDescription className="sr-only">
                 切换页面和工作区设置

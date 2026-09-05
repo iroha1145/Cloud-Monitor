@@ -77,6 +77,39 @@ test("real daily cache reaches range and day details independently of the select
   await expect(metric.locator("strong")).toHaveText("53.4%");
 });
 
+test("built production and Pages menus stay at the viewport edge without changing centered settings", async ({ browser }) => {
+  for (const url of ["http://127.0.0.1:18888/", "http://127.0.0.1:18900/"]) {
+    const page = await browser.newPage({ baseURL: "http://127.0.0.1:18888", viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true });
+    try {
+      if (url.includes("18888")) await login(page);
+      else await page.goto(url);
+      await page.getByRole("button", { name: "打开导航", exact: true }).tap();
+      const drawer = page.getByRole("dialog", { name: "导航", exact: true });
+      await expect(drawer).toBeVisible();
+      // The production CSS compiler can lower individual transforms into
+      // transform, so this must run against built assets as well as Vite dev.
+      for (const viewport of [{ width: 844, height: 390 }, { width: 390, height: 844 }]) {
+        await page.setViewportSize(viewport);
+        await expect.poll(async () => {
+          const box = await drawer.boundingBox();
+          return Boolean(box && Math.abs(box.x) < 1 && Math.abs(box.y) < 1 && Math.abs(box.height - viewport.height) < 1);
+        }).toBe(true);
+        await expect(drawer.getByRole("button", { name: "关闭", exact: true })).toBeInViewport();
+      }
+      await drawer.getByRole("button", { name: "关闭", exact: true }).tap();
+      await expect(drawer).toBeHidden();
+      await page.setViewportSize({ width: 1512, height: 1080 });
+      await page.getByRole("button", { name: "打开工作区设置", exact: true }).click();
+      const settings = page.getByRole("dialog");
+      await expect(settings).toBeVisible();
+      await expect.poll(async () => {
+        const box = await settings.boundingBox();
+        return Boolean(box && Math.abs(box.x + box.width / 2 - 756) < 1 && Math.abs(box.y + box.height / 2 - 540) < 1);
+      }).toBe(true);
+    } finally { await page.close(); }
+  }
+});
+
 test("invalid restored keys return to the gate without showing demo data", async ({ page }) => {
   await page.addInitScript(() => { sessionStorage.setItem("cm_access_token", "invalid-fixture-key"); localStorage.setItem("cm_access_token", "stale-fixture-key"); });
   await page.goto("/");
