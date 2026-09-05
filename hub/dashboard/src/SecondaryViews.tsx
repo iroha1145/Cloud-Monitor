@@ -29,6 +29,7 @@ import "./secondary.css";
 import { BrandIcon } from "./BrandIcon";
 import { MetricTooltip } from "./MetricTooltip";
 import { ActivityPanel } from "./ActivityPanel";
+import { compact as compactNumber } from "./Overview";
 
 export interface SecondaryProps {
   data: DashboardData;
@@ -37,12 +38,6 @@ export interface SecondaryProps {
 
 const fullNumber = (value: number) =>
   new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
-const compactNumber = (value: number) =>
-  value >= 1_000_000
-    ? `${(value / 1_000_000).toFixed(value >= 100_000_000 ? 0 : 2)}M`
-    : value >= 10_000
-      ? `${(value / 1_000).toFixed(1)}K`
-      : fullNumber(value);
 const usd = (value: number | null) =>
   value === null
     ? "未提供"

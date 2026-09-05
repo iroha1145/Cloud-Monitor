@@ -513,43 +513,46 @@ export function ModelTable({
                   </MetricTooltip>
                 </td>
                 <td data-label="缓存占比" className="model-cache-cell">
-                  <MetricTooltip
-                    title={`${m.name} · 用量明细`}
-                    rows={usageDetails(m)}
-                    note={usageNote(m)}
-                  >
-                    <div
-                      className="cache-rate"
-                      role="img"
-                      aria-label={
-                        m.components.complete
-                          ? composition
-                              .map(
-                                (part) =>
-                                  `${part.label} ${count(m.components[part.key])}`,
-                              )
-                              .join("，")
-                          : "组成记录不足，无法绘制准确比例"
-                      }
+                  <div className="cache-rate">
+                    <MetricTooltip
+                      title={`${m.name} · 用量明细`}
+                      rows={usageDetails(m)}
+                      note={usageNote(m)}
+                      strictTouchBounds
                     >
                       <span
-                        className={`cache-track ${!m.components.complete ? "is-incomplete" : ""}`}
-                        aria-hidden="true"
+                        className="metric-bar-trigger"
+                        role="img"
+                        aria-label={
+                          m.components.complete
+                            ? composition
+                                .map(
+                                  (part) =>
+                                    `${part.label} ${count(m.components[part.key])}`,
+                                )
+                                .join("，")
+                            : "组成记录不足，无法绘制准确比例"
+                        }
                       >
-                        {m.components.complete &&
-                          composition.map((part) => (
-                            <span
-                              key={part.key}
-                              style={{
-                                width: `${m.totalTokens ? (m.components[part.key] / m.totalTokens) * 100 : 0}%`,
-                                background: part.color,
-                              }}
-                            />
-                          ))}
+                        <span
+                          className={`cache-track ${!m.components.complete ? "is-incomplete" : ""}`}
+                          aria-hidden="true"
+                        >
+                          {m.components.complete &&
+                            composition.map((part) => (
+                              <span
+                                key={part.key}
+                                style={{
+                                  width: `${m.totalTokens ? (m.components[part.key] / m.totalTokens) * 100 : 0}%`,
+                                  background: part.color,
+                                }}
+                              />
+                            ))}
+                        </span>
                       </span>
-                      <span>{pct(m.components.cacheRate)}</span>
-                    </div>
-                  </MetricTooltip>
+                    </MetricTooltip>
+                    <span>{pct(m.components.cacheRate)}</span>
+                  </div>
                   {m.components.partial && (
                     <small className="partial-label">
                       {m.components.cacheReadKnown ? "已识别部分" : "组成未知"}
@@ -628,21 +631,24 @@ function Clients({ per }: { per: PeriodUsage }) {
                 ...usageDetails(c),
               ]}
               note={usageNote(c)}
+              strictTouchBounds
             >
-              <div
-                className={`client-track ${!c.components.complete ? "is-incomplete" : ""}`}
-                role="img"
-              >
-                {c.components.complete &&
-                  composition.map((s) => (
-                    <span
-                      key={s.key}
-                      style={{
-                        background: s.color,
-                        width: `${per.totalTokens ? (c.components[s.key] / per.totalTokens) * 100 : 0}%`,
-                      }}
-                    />
-                  ))}
+              <div className="metric-bar-trigger" role="img">
+                <div
+                  className={`client-track ${!c.components.complete ? "is-incomplete" : ""}`}
+                  aria-hidden="true"
+                >
+                  {c.components.complete &&
+                    composition.map((s) => (
+                      <span
+                        key={s.key}
+                        style={{
+                          background: s.color,
+                          width: `${per.totalTokens ? (c.components[s.key] / per.totalTokens) * 100 : 0}%`,
+                        }}
+                      />
+                    ))}
+                </div>
               </div>
             </MetricTooltip>
             <div className="client-foot">

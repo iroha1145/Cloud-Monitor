@@ -91,7 +91,7 @@ test.describe("mobile reading and actions", () => {
       .fill("unmatched-model");
     await expect(page.getByText("没有找到匹配的模型")).toBeVisible();
     await page.getByRole("textbox", { name: "搜索模型", exact: true }).fill("");
-    await first.locator(".cache-rate").tap();
+    await first.locator(".cache-track").tap();
     const tooltip = page.locator(".metric-tooltip-card");
     await expect(tooltip).toContainText("36,351,746");
     const popup = await tooltip.boundingBox();

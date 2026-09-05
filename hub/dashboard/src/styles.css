@@ -1118,6 +1118,13 @@ h2 {
   gap: 7px;
   font-size: 10px;
 }
+.metric-bar-trigger {
+  display: block;
+  flex-shrink: 0;
+}
+.client-row > .metric-bar-trigger {
+  margin: 13px 0 8px;
+}
 .cache-track {
   display: block;
   width: 37px;
@@ -1201,7 +1208,6 @@ h2 {
   height: 7px;
   background: var(--hover);
   border-radius: 2px;
-  margin: 13px 0 8px;
   overflow: hidden;
 }
 .client-track > span {
