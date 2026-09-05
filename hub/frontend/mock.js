@@ -119,8 +119,8 @@
     const cacheWrite = clamp0(totalTokens * rand(0.06, 0.09));
     const unclassified = clamp0(totalTokens * rand(0.004, 0.012));
     const p = {
-      /* tokenComponents=true 表示本周期逐客户端/逐模型拆分字段为真实上报构成（§7）；
-         false 时前端不得标「真实构成」 */
+      /* 演示载荷含已知组件和少量未分类量；前端仍须逐实体检查完整性，
+         不能只凭周期能力标志隐藏已知字段或省略未分类提示。 */
       capabilities: { tokenComponents: true },
       totalTokens,
       outputTokens: output,
@@ -664,7 +664,7 @@
    * partial : partial_errors + snapshot_degraded + pending_outbox 示例
    * lowcov  : 低采样覆盖率（attribution_mode=delta-low-coverage）
    * reset   : 日内累计值回退（attribution_mode=delta-with-reset）
-   * nocap   : totals.<period>.capabilities.tokenComponents=false（不得标「真实构成」）
+   * nocap   : 只有总量、没有组件字段（不得猜测缓存或非缓存输入）
    * pvdown  : 一家提供商状态页抓取失败（status=unknown + error_code=timeout，顶层 partial） */
   const scenario = (() => {
     try { return new URLSearchParams(location.search).get("cm-scenario") || ""; }
@@ -717,9 +717,13 @@
       o.activity.coverage.devices[0].reset_count = 1;
     } else if (scenario === "nocap") {
       for (const key of ["today", "month", "allTime"]) {
-        o.totals[key].capabilities = { tokenComponents: false };
-        const d = o.devices[0] && o.devices[0][key];
-        if (d) d.capabilities = { tokenComponents: false };
+        const periods = [o.totals[key], ...o.devices.map((device) => device[key])].filter(Boolean);
+        for (const period of periods) {
+          period.capabilities = { tokenComponents: false };
+          for (const field of ["outputTokens", "cacheReadTokens", "cacheWriteTokens", "unclassifiedTokens",
+            "clientOutputs", "clientCacheReads", "clientCacheWrites", "clientUnclassifiedTokens",
+            "modelOutputs", "modelCacheReads", "modelCacheWrites", "modelUnclassifiedTokens"]) delete period[field];
+        }
       }
     }
     return o;

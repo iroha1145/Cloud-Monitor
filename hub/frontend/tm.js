@@ -1156,25 +1156,23 @@ function rebuildColorMaps(data) {
 }
 
 /* ---------- §7：Token 组成统一判定 ----------
- * componentBreakdown(period, entityType, entityName)
- * - entityType: "client" | "model" | null（null=周期整体）
- * 规则：
- * 1. 费用字段不代表 Token 组件（本函数不读任何 cost 字段）。
- * 2. 每个模型/客户端单独判断完整性（逐实体读拆分字段）。
- * 3. 来源未知（无任何拆分字段或 tokenComponents 不可用）→ known=false，调用方画单色总量条。
- * 4. 未知部分一律标「未分类」，绝不猜成非缓存输入（unclassified 独立分段）。
- * 5. 禁止按周期比例估算实体组成（本函数不做任何比例估算）。
- * 6. 组件和 ≠ 总量 → complete=false（调用方显示完整性警告）。
- * 7. capabilities.tokenComponents !== true → capable=false，不得标「真实构成」。
+ * capabilities 描述整个周期是否完整，不是已知组件的显示开关。
+ * 逐模型/客户端保留已上报值；官方 unclassified 映射允许缺失条目表示 0，
+ * 但只有该实体本身存在拆分字段时才能使用，不能从空映射猜出纯输入。
+ * 旧载荷没有未分类字段且未声明完整时，残差只能列为未分类。
+ * complete 仅表示数值闭合；partial 单独表示仍有无法分类的用量。
  */
 function componentBreakdown(period, entityType, entityName) {
   period = period || {};
-  /* 契约：capabilities 按周期嵌套（totals.<period>.capabilities.tokenComponents）；
-     顶层 state.data.capabilities 仅作旧载荷回退 */
   const caps = period.capabilities || (state.data && state.data.capabilities) || {};
   const capable = caps.tokenComponents === true;
+  const counter = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0;
+  const isMap = (value) => value && typeof value === "object" && !Array.isArray(value);
   let total;
   let raw;
+  let coverageKnown;
+  let cacheMapKnown = false;
+  let cacheWriteMapKnown = false;
   if (!entityType) {
     total = Number(period.totalTokens) || 0;
     raw = {
@@ -1183,36 +1181,46 @@ function componentBreakdown(period, entityType, entityName) {
       cacheWrite: period.cacheWriteTokens,
       unclassified: period.unclassifiedTokens,
     };
+    coverageKnown = counter(raw.unclassified);
   } else {
     const base = entityType; // "client" | "model"
-    const tokensMap = period[base + "s"] || {};
-    total = Number(tokensMap[entityName]) || 0;
+    total = Number((period[base + "s"] || {})[entityName]) || 0;
     raw = {
       output: (period[base + "Outputs"] || {})[entityName],
       cacheRead: (period[base + "CacheReads"] || {})[entityName],
       cacheWrite: (period[base + "CacheWrites"] || {})[entityName],
       unclassified: (period[base + "UnclassifiedTokens"] || {})[entityName],
     };
+    coverageKnown = !!isMap(period[base + "UnclassifiedTokens"])
+      && (raw.unclassified === undefined || counter(raw.unclassified));
+    cacheMapKnown = !!isMap(period[base + "CacheReads"]);
+    cacheWriteMapKnown = !!isMap(period[base + "CacheWrites"]);
   }
-  const hasAny = Object.values(raw).some((v) => v != null && Number.isFinite(Number(v)));
-  if (!capable || !hasAny || total <= 0) {
-    return { total, known: false, complete: false, capable, segs: [] };
-  }
-  const knownVals = {
-    output: Number(raw.output) || 0,
-    cacheRead: Number(raw.cacheRead) || 0,
-    cacheWrite: Number(raw.cacheWrite) || 0,
-    unclassified: Number(raw.unclassified) || 0,
-  };
-  // 非缓存输入 = 总量减去全部已知组件（含未分类），钳 0
-  const input = Math.max(0, total - knownVals.output - knownVals.cacheRead - knownVals.cacheWrite - knownVals.unclassified);
+  const hasAny = Object.values(raw).some(counter);
+  const unknown = { total, known: false, complete: false, capable, partial: true, cacheReadKnown: false, cacheWriteKnown: false, segs: [] };
+  if (!hasAny || !Number.isFinite(total) || total <= 0) return unknown;
+
+  const knownVals = Object.fromEntries(Object.entries(raw).map(([key, value]) => [key, counter(value) ? value : 0]));
+  const classified = knownVals.output + knownVals.cacheRead + knownVals.cacheWrite;
+  const remainder = Math.max(0, total - classified);
+  const canInferInput = capable || coverageKnown;
+  const input = canInferInput ? Math.max(0, remainder - knownVals.unclassified) : 0;
+  if (!canInferInput) knownVals.unclassified = Math.max(knownVals.unclassified, remainder);
+  // 全量未知仍显示总量，不把规范化生成的空缓存映射当成 0% 命中率。
+  if (classified + input <= 0) return unknown;
+
   const segs = SEGS.map(([key, label, cls]) => ({
     key, label, cls,
     value: key === "input" ? input : knownVals[key],
   })).filter((s) => s.value > 0);
   const sum = segs.reduce((a, s) => a + s.value, 0);
   const complete = Math.abs(sum - total) <= Math.max(1, total * 0.01);
-  return { total, known: true, complete, capable: true, segs };
+  const partial = knownVals.unclassified > 0 || !canInferInput || !complete;
+  const cacheReadKnown = counter(raw.cacheRead)
+    || (!partial && cacheMapKnown && raw.cacheRead === undefined);
+  const cacheWriteKnown = counter(raw.cacheWrite)
+    || (!partial && cacheWriteMapKnown && raw.cacheWrite === undefined);
+  return { total, known: true, complete, capable, partial, cacheReadKnown, cacheWriteKnown, segs };
 }
 
 function segValue(bd, key) {
@@ -1222,8 +1230,9 @@ function segValue(bd, key) {
 }
 
 function cacheHitRate(bd) {
-  if (!bd || !bd.known || bd.total <= 0) return null;
-  return segValue(bd, "cacheRead") / bd.total;
+  if (!bd || !bd.known || !bd.cacheReadKnown || !bd.complete || bd.total <= 0) return null;
+  const cached = segValue(bd, "cacheRead");
+  return cached <= bd.total ? cached / bd.total : null;
 }
 
 /* ================= 渲染层 · 概览 ================= */
@@ -1254,7 +1263,9 @@ function renderKpis(data) {
     ? '<p class="kpi-mix-note comp-warn">后端未提供精确 Token 组成，未将剩余量猜作非缓存输入。</p>'
     : breakdown.known && !breakdown.complete
       ? '<p class="kpi-mix-note comp-warn">Token 组件之和与总量不一致，请以总量为准。</p>'
-      : "";
+      : breakdown.known && breakdown.partial
+        ? '<p class="kpi-mix-note">已显示已知构成，其余用量标为未分类。</p>'
+        : "";
   const timedTokens = Number(today.timedTokens) || 0;
   const timedMs = Number(today.timedDurationMs) || 0;
   const timed = timedTokens > 0
@@ -1656,8 +1667,9 @@ function renderModelDonut(per, animate) {
 
   const cacheMeta = new Map();
   entries.forEach(([name]) => {
-    const rate = cacheHitRate(componentBreakdown(per, "model", name));
-    if (rate != null) cacheMeta.set(name, rate);
+    const breakdown = componentBreakdown(per, "model", name);
+    const rate = cacheHitRate(breakdown);
+    cacheMeta.set(name, { rate, breakdown });
   });
   const costs = per.modelCosts || {};
 
@@ -1675,7 +1687,14 @@ function renderModelDonut(per, animate) {
       ["占比", pct1(e ? e[1] : 0, sliceTotal)],
       ["模型使用费用", cost != null ? fmtUsd(cost) : "—"],
     ];
-    if (cacheMeta.has(name)) rows.push(["缓存率", fmtPct(cacheMeta.get(name))]);
+    if (cacheMeta.has(name)) {
+      const cache = cacheMeta.get(name);
+      if (cache.breakdown.cacheReadKnown) rows.push(["缓存读取", fmtInt(segValue(cache.breakdown, "cacheRead"))]);
+      if (cache.breakdown.cacheWriteKnown) rows.push(["缓存写入", fmtInt(segValue(cache.breakdown, "cacheWrite"))]);
+      if (cache.rate != null) rows.push([cache.breakdown.partial ? "已识别缓存占比" : "缓存率", fmtPct(cache.rate)]);
+      const unclassified = segValue(cache.breakdown, "unclassified");
+      if (unclassified > 0) rows.push(["未分类", fmtInt(unclassified)]);
+    }
     return tipHtml(name, rows);
   };
 
@@ -1861,14 +1880,15 @@ function renderDist(listSel, emptySel, subSel, per, kind, animate) {
     .map(([name, v]) => [name, Number(v) || 0])
     .filter(([, v]) => v > 0)
     .sort((a, b) => b[1] - a[1]);
-  /* §7：逐实体经 componentBreakdown 判定；tokenComponents 不可用不得标「真实构成」 */
+  /* 逐实体保留已知分段；仅所有实体均完整时标注真实构成。 */
   const breakdowns = new Map(entries.map(([name]) => [name, componentBreakdown(per, base, name)]));
   const anyKnown = [...breakdowns.values()].some((b) => b.known);
   const capable = ((per.capabilities || (state.data || {}).capabilities || {}).tokenComponents) === true;
   const sub = subSel ? $(subSel) : null;
   if (sub) {
+    const allKnown = entries.length > 0 && [...breakdowns.values()].every((b) => b.known && !b.partial);
     sub.textContent = anyKnown
-      ? "按 token 占比 · 条内为真实构成分段"
+      ? allKnown ? "按 token 占比 · 条内为真实构成分段" : "按 token 占比 · 已知构成分段，部分来源未知"
       : capable
         ? "按 token 占比 · 构成来源未知，显示总量"
         : "按 token 占比 · 后端未提供真实构成";
@@ -1904,12 +1924,13 @@ function renderDist(listSel, emptySel, subSel, per, kind, animate) {
         : `<i class="dist-part" style="width:100%;background:${solid}"></i>`;
       const tipRows = bd.segs.map((s) => [s.label, `${fmtCompact(s.value)}（${pct1(s.value, v)}）`]);
       if (!bd.complete) tipRows.push(["完整性警告", "构成合计与总量不一致"]);
+      else if (bd.partial) tipRows.push(["构成", "已知分段已显示，其余为未分类"]);
       if (costs[name] != null) {
         tipRows.push(["费用", fmtUsd(costs[name])]);
         costHtml = `<i class="dist-cost">${fmtUsd(costs[name])}</i>`;
       }
       tipRows.push(["合计", fmtInt(v)]);
-      tip = () => tipHtml(name + (bd.complete ? "" : "（构成不完整）"), tipRows);
+      tip = () => tipHtml(name + (bd.partial ? "（构成不完整）" : ""), tipRows);
     } else {
       // §7-3/5：来源未知显示单色总量条，不做任何比例估算
       barInner = `<i class="dist-part" style="width:100%;background:${solid}"></i>`;

@@ -3,7 +3,7 @@ const { defineConfig } = require("@playwright/test");
 
 module.exports = defineConfig({
   testDir: __dirname,
-  testMatch: ["e2e-real-backend.spec.js", "scenarios.spec.js", "axe.spec.js", "screenshots.spec.js"],
+  testMatch: ["cache-components.spec.js", "e2e-real-backend.spec.js", "scenarios.spec.js", "axe.spec.js", "screenshots.spec.js"],
   timeout: 30000,
   expect: { timeout: 8000 },
   retries: 0,
