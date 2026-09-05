@@ -20,7 +20,13 @@
       },
       "deviceCount": 1,
       "complete": true,
-      "coverage": null
+      "coverage": null,
+      "outputTokens": 421000,
+      "cacheReadTokens": 986000,
+      "cacheWriteTokens": 120000,
+      "unclassifiedTokens": 319320,
+      "tokenComponentsAvailable": false,
+      "componentsPartial": true
     }
   ],
   "next_cursor": null,

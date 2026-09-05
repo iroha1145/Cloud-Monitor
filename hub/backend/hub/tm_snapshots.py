@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS tm_snapshot_buckets (
     today_cache_read INTEGER NOT NULL DEFAULT 0,
     today_cache_write INTEGER NOT NULL DEFAULT 0,
     today_unclassified INTEGER NOT NULL DEFAULT 0,
+    today_components_recorded INTEGER,
     today_cost REAL NOT NULL DEFAULT 0,
     month_total INTEGER NOT NULL DEFAULT 0,
     month_cost REAL NOT NULL DEFAULT 0,
@@ -71,6 +73,10 @@ CREATE TABLE IF NOT EXISTS tm_meta (
 def ensure_schema(db: Database) -> None:
     with db._lock:
         db._conn.executescript(SCHEMA)
+        columns = {row["name"] for row in db._conn.execute("PRAGMA table_info(tm_snapshot_buckets)")}
+        if "today_components_recorded" not in columns:
+            # NULL preserves old rows' missing provenance; do not backfill their zeros.
+            db._conn.execute("ALTER TABLE tm_snapshot_buckets ADD COLUMN today_components_recorded INTEGER")
     _migrate_timestamp_format(db)
 
 
@@ -210,6 +216,37 @@ def bucket_start_of(producer: Optional[datetime]) -> str:
 # ---------------------------------------------------------------- 写入
 
 
+COMPONENT_COLUMNS = {
+    "outputTokens": "today_output",
+    "cacheReadTokens": "today_cache_read",
+    "cacheWriteTokens": "today_cache_write",
+    "unclassifiedTokens": "today_unclassified",
+}
+
+
+def _component_counter(value: Any) -> Optional[int]:
+    """A recorded zero differs from a missing or invalid component counter."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if not math.isfinite(value) or value < 0 or int(value) != value:
+        return None
+    return int(value)
+
+
+def _components_recorded(period: Any) -> int:
+    """The official normalized snapshot supplied all counters, including zero.
+
+    This records field provenance, not full classification: a valid snapshot
+    may still contain unclassifiedTokens > 0.
+    """
+    if not isinstance(period, dict):
+        return 0
+    total = _component_counter(period.get("totalTokens"))
+    values = [_component_counter(period.get(key)) for key in COMPONENT_COLUMNS]
+    return int(total is not None and all(value is not None for value in values)
+               and sum(value for value in values if value is not None) <= total)
+
+
 def _period_field(period: Any, key: str) -> int:
     if not isinstance(period, dict):
         return 0
@@ -290,17 +327,18 @@ def write_snapshot(
             INSERT INTO tm_snapshot_buckets (
                 device_id, local_day, bucket_start,
                 today_total, today_output, today_cache_read, today_cache_write,
-                today_unclassified, today_cost,
+                today_unclassified, today_components_recorded, today_cost,
                 month_total, month_cost, all_time_total, all_time_cost,
                 clients_json, models_json,
                 device_time_zone, producer_updated_at, server_received_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(device_id, local_day, bucket_start) DO UPDATE SET
                 today_total = excluded.today_total,
                 today_output = excluded.today_output,
                 today_cache_read = excluded.today_cache_read,
                 today_cache_write = excluded.today_cache_write,
                 today_unclassified = excluded.today_unclassified,
+                today_components_recorded = excluded.today_components_recorded,
                 today_cost = excluded.today_cost,
                 month_total = excluded.month_total,
                 month_cost = excluded.month_cost,
@@ -320,6 +358,7 @@ def write_snapshot(
                 _period_field(today, "cacheReadTokens"),
                 _period_field(today, "cacheWriteTokens"),
                 _period_field(today, "unclassifiedTokens"),
+                _components_recorded(today),
                 _period_cost(today),
                 _period_field(month, "totalTokens"), _period_cost(month),
                 _period_field(all_time, "totalTokens"), _period_cost(all_time),
@@ -420,10 +459,14 @@ LIMIT ?
 
 LAST_ROWS_FOR_DAYS_SQL = """
 SELECT device_id, local_day, today_total, today_cost,
+       today_output, today_cache_read, today_cache_write,
+       today_unclassified, today_components_recorded,
        clients_json, models_json, device_time_zone,
        bucket_start, server_received_at, id
 FROM (
     SELECT device_id, local_day, today_total, today_cost,
+           today_output, today_cache_read, today_cache_write,
+           today_unclassified, today_components_recorded,
            clients_json, models_json, device_time_zone,
            bucket_start, server_received_at, id,
            {window} AS rn
@@ -433,6 +476,70 @@ FROM (
 )
 WHERE rn = 1
 """
+
+
+def _last_rows_for_days(db: Database, days: list[str], device: Optional[str] = None) -> list[dict]:
+    if not days:
+        return []
+    sql = LAST_ROWS_FOR_DAYS_SQL.format(
+        window=LAST_ROW_WINDOW.strip(),
+        days=",".join("?" * len(days)),
+        device_clause="AND device_id = ?" if device else "",
+    )
+    return db.fetchall(sql, [*days, device] if device else days)
+
+
+def _empty_daily_components() -> dict[str, Any]:
+    return {
+        "outputTokens": None,
+        "cacheReadTokens": None,
+        "cacheWriteTokens": None,
+        "unclassifiedTokens": 0,
+        "tokenComponentsAvailable": True,
+        "componentsPartial": False,
+    }
+
+
+def _snapshot_components(row: dict) -> dict[str, Any]:
+    """Recover one cumulative device/local-day row without borrowing another row.
+
+    New snapshots preserve explicit zeros. Legacy default zeros have no field
+    provenance, so only positive counters are evidence; their whole remaining
+    total stays unclassified instead of being inferred as ordinary input.
+    """
+    total = _component_counter(row.get("today_total")) or 0
+    raw = {key: _component_counter(row.get(column)) for key, column in COMPONENT_COLUMNS.items()}
+    recorded = row.get("today_components_recorded") == 1 and all(value is not None for value in raw.values())
+    observed_sum = sum(value for value in raw.values() if value is not None)
+    if observed_sum > total:
+        return {
+            **_empty_daily_components(), "unclassifiedTokens": total,
+            "tokenComponentsAvailable": False, "componentsPartial": True,
+        }
+    known = {
+        key: value if value is not None and (recorded or value > 0) else None
+        for key, value in raw.items() if key != "unclassifiedTokens"
+    }
+    classified = sum(value for value in known.values() if value is not None)
+    unclassified = raw["unclassifiedTokens"] if recorded else total - classified
+    available = recorded and unclassified == 0
+    return {
+        **known,
+        "unclassifiedTokens": unclassified,
+        "tokenComponentsAvailable": available,
+        "componentsPartial": not available,
+    }
+
+
+def _merge_daily_components(item: dict, row: dict) -> None:
+    components = _snapshot_components(row)
+    for key in ("outputTokens", "cacheReadTokens", "cacheWriteTokens"):
+        value = components[key]
+        if value is not None:
+            item[key] = (item[key] or 0) + value
+    item["unclassifiedTokens"] += components["unclassifiedTokens"]
+    item["tokenComponentsAvailable"] = item["tokenComponentsAvailable"] and components["tokenComponentsAvailable"]
+    item["componentsPartial"] = item["componentsPartial"] or components["componentsPartial"]
 
 
 def valid_day_key(key: Any) -> Optional[str]:
@@ -526,17 +633,7 @@ def query_daily_archive(
             "retention_days": HARD_RETENTION_DAYS,
         }
 
-    placeholders = ",".join("?" * len(days))
-    device_clause = "AND device_id = ?" if device else ""
-    last_sql = LAST_ROWS_FOR_DAYS_SQL.format(
-        window=LAST_ROW_WINDOW.strip(),
-        days=placeholders,
-        device_clause=device_clause,
-    )
-    last_params: list[Any] = list(days)
-    if device:
-        last_params.append(device)
-    last_rows = db.fetchall(last_sql, last_params)
+    last_rows = _last_rows_for_days(db, days, device)
 
     grouped: dict[str, dict[str, Any]] = {
         day: {
@@ -549,6 +646,7 @@ def query_daily_archive(
             "complete": True,
             "coverage": None,
             "time_zones": [],
+            **_empty_daily_components(),
         }
         for day in days
     }
@@ -563,6 +661,7 @@ def query_daily_archive(
         if item is None:
             continue
         item["tokens"] += int(row["today_total"] or 0)
+        _merge_daily_components(item, row)
         try:
             item["costUsd"] += max(float(row["today_cost"] or 0), 0.0)
         except (TypeError, ValueError):
@@ -608,27 +707,35 @@ def query_daily_archive(
 
 
 def trend_by_day(db: Database, days: int = 30) -> list[dict]:
-    """每设备每天取最后一个桶的 today_total，按 local_day 汇总。
+    """每设备每天取同一个最后桶的总量、费用和组成，按 local_day 汇总。
 
-    日期范围在窗口函数之前以 local_day >= ? 收敛（配合
-    idx_tm_buckets_day 索引），不整表开窗。
+    先用日期索引选出所需日期，再只对这些日期开窗。与日归档共享最后行
+    的排序和组件判定，不从稀疏 allTime 锚点差分或借用当前周期组成。
     """
+    days = max(0, int(days))
+    if not days:
+        return []
     day_floor = (datetime.now(timezone.utc) - timedelta(days=days + 1)).date().isoformat()
-    rows = db.fetchall(
-        """
-        SELECT local_day, SUM(today_total) AS total FROM (
-            SELECT local_day, today_total,
-                   ROW_NUMBER() OVER (
-                       PARTITION BY device_id, local_day
-                       ORDER BY bucket_start DESC, server_received_at DESC, id DESC
-                   ) AS rn
-            FROM tm_snapshot_buckets
-            WHERE local_day >= ?
-        ) WHERE rn = 1 GROUP BY local_day ORDER BY local_day DESC LIMIT ?
-        """,
+    day_rows = db.fetchall(
+        DISTINCT_DAYS_SQL.format(where="local_day >= ?"),
         (day_floor, days),
     )
-    return [{"day": r["local_day"], "total": int(r["total"] or 0)} for r in reversed(rows)]
+    selected_days = [row["day"] for row in day_rows]
+    grouped = {
+        day: {"day": day, "total": 0, "costUsd": 0.0, **_empty_daily_components()}
+        for day in selected_days
+    }
+    for row in _last_rows_for_days(db, selected_days):
+        item = grouped[row["local_day"]]
+        item["total"] += int(row["today_total"] or 0)
+        try:
+            item["costUsd"] += max(float(row["today_cost"] or 0), 0.0)
+        except (TypeError, ValueError):
+            pass
+        _merge_daily_components(item, row)
+    for item in grouped.values():
+        item["costUsd"] = round(item["costUsd"], 6)
+    return [grouped[day] for day in reversed(selected_days)]
 
 
 def delete_device_snapshots(db: Database, device_id: str) -> int:
