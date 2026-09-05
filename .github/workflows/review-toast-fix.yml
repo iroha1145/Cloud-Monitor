@@ -1,0 +1,73 @@
+name: Apply reviewed toast fix
+on:
+  push:
+    branches: [fix/deep-review-20260906]
+    paths: [.github/workflows/review-toast-fix.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.repository == 'iroha1145/Cloud-Monitor' && github.ref == 'refs/heads/fix/deep-review-20260906'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply exact reviewed replacements
+        run: |
+          set -euo pipefail
+          git diff --quiet 909fe91951e29418a976dd77117353dac4b50e6b HEAD -- . ':!.github/workflows/review-toast-fix.yml'
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('hub/dashboard/src/styles.css')
+          s = p.read_text()
+          old = '  left: 50%;\n  transform: translateX(-50%);\n  z-index: 100;'
+          new = '  left: 0;\n  right: 0;\n  margin-inline: auto;\n  /* Motion owns transform; layout must not depend on its translate/scale. */\n  z-index: 100;'
+          assert s.count(old) == 1
+          s = s.replace(old, new)
+          old = '.app-toast button {\n  display: grid;'
+          new = '.app-toast > span {\n  min-width: 0;\n  overflow-wrap: anywhere;\n}\n.app-toast button {\n  flex-shrink: 0;\n  display: grid;'
+          assert s.count(old) == 1
+          p.write_text(s.replace(old, new))
+          p = Path('hub/dashboard/tests/review.spec.ts')
+          assert 'toast stays centered' not in p.read_text()
+          p.write_text(p.read_text() + '''
+          // Motion writes an inline transform during entry and exit. Positioning the toast
+          // with a competing CSS translateX used to clip its right side on mobile.
+          for (const width of [320, 390, 1440]) {
+            for (const reducedMotion of ["no-preference", "reduce"] as const) {
+              test(`toast stays centered and readable at ${width}px (${reducedMotion})`, async ({ page }) => {
+                await page.setViewportSize({ width, height: 844 });
+                await page.emulateMedia({ reducedMotion });
+                await page.goto("/");
+                await page.getByRole("button", { name: "刷新数据", exact: true }).click();
+                const toast = page.locator(".app-toast");
+                await expect(toast).toContainText("示例数据已重新加载");
+                await expect(toast).toHaveCSS("opacity", "1");
+                const bounds = await toast.evaluate(element => {
+                  const box = element.getBoundingClientRect();
+                  const close = element.querySelector("button")!.getBoundingClientRect();
+                  return { left: box.left, right: box.right, center: (box.left + box.right) / 2,
+                    width: element.clientWidth, scroll: element.scrollWidth, closeRight: close.right };
+                });
+                expect(Math.abs(bounds.center - width / 2)).toBeLessThanOrEqual(2);
+                expect(bounds.left).toBeGreaterThanOrEqual(12);
+                expect(bounds.right).toBeLessThanOrEqual(width - 12);
+                expect(bounds.scroll).toBeLessThanOrEqual(bounds.width + 1);
+                expect(bounds.closeRight).toBeLessThanOrEqual(bounds.right);
+                await page.screenshot({ path: `evidence/review-toast-${width}-${reducedMotion}.png`, animations: "disabled" });
+                await toast.getByRole("button", { name: "关闭提示" }).click();
+                await expect(toast).toBeHidden();
+              });
+            }
+          }
+          ''')
+          PY
+          git add hub/dashboard/src/styles.css hub/dashboard/tests/review.spec.ts
+          git rm .github/workflows/review-toast-fix.yml
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: keep animated toasts centered and within the viewport'
+          git push origin HEAD:fix/deep-review-20260906
