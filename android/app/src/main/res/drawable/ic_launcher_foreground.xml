@@ -1,40 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 品牌符号：云 + 上升用量柱。24 网格经 group 放入 108 自适应画布，
-     内容落在 Ø66 安全区内（最远点约 r=30.5）。同一 drawable 复用为 monochrome 层。 -->
+<!-- 与网页 33px 品牌符号等比：23px 云形、5px 状态点，右/下边距 6px。
+     云与状态点均处于自适应图标的直径 66dp 安全区。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <group
-        android:translateX="19.2"
-        android:translateY="19.2"
-        android:scaleX="2.9"
-        android:scaleY="2.9">
+        android:translateX="28.9091"
+        android:translateY="28.9091"
+        android:scaleX="2.0909"
+        android:scaleY="2.0909">
         <path
             android:pathData="M17.5,19H9a7,7 0 1 1 6.71,-9h1.79a4.5,4.5 0 1 1 0,9Z"
-            android:strokeWidth="2.1"
+            android:strokeWidth="2"
             android:strokeColor="#FFFFFF"
             android:fillColor="#00000000"
             android:strokeLineCap="round"
             android:strokeLineJoin="round" />
-        <path
-            android:pathData="M8.75,16v-1.6"
-            android:strokeWidth="2.1"
-            android:strokeColor="#FFFFFF"
-            android:fillColor="#00000000"
-            android:strokeLineCap="round" />
-        <path
-            android:pathData="M12,16v-3.4"
-            android:strokeWidth="2.1"
-            android:strokeColor="#FFFFFF"
-            android:fillColor="#00000000"
-            android:strokeLineCap="round" />
-        <path
-            android:pathData="M15.25,16v-5.2"
-            android:strokeWidth="2.1"
-            android:strokeColor="#FFFFFF"
-            android:fillColor="#00000000"
-            android:strokeLineCap="round" />
     </group>
+    <path
+        android:pathData="M76.909,71.455a5.455,5.455 0 1 1 -10.91,0a5.455,5.455 0 1 1 10.91,0Z"
+        android:fillColor="#A8E4DE" />
 </vector>

@@ -13,6 +13,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalFocusManager
@@ -75,8 +77,10 @@ fun GateScreen(
                 }
             }
             Spacer(Modifier.height(28.dp))
-            Box(Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(cm.brand50), contentAlignment = Alignment.Center) {
-                Icon(AppIcons.CloudPulse, null, tint = cm.brand, modifier = Modifier.size(32.dp))
+            Box(Modifier.size(56.dp).clip(RoundedCornerShape(17.dp)).background(Brush.linearGradient(listOf(Color(0xFF4495A3), Color(0xFF18596E)))), contentAlignment = Alignment.Center) {
+                Icon(AppIcons.Cloud, null, tint = Color.White, modifier = Modifier.size(39.dp))
+                Box(Modifier.align(Alignment.BottomEnd).padding(end = 10.dp, bottom = 10.dp).size(8.5.dp)
+                    .clip(RoundedCornerShape(5.dp)).background(Color(0xFFA8E4DE)))
             }
             Spacer(Modifier.height(20.dp))
             Text("连接你的用量面板", color = cm.ink, style = MaterialTheme.typography.headlineMedium,
@@ -85,8 +89,8 @@ fun GateScreen(
             Text("设备、模型与配额，随时查看。", color = cm.ink2, style = MaterialTheme.typography.bodyLarge)
             Spacer(Modifier.height(28.dp))
             Column(
-                Modifier.fillMaxWidth().border(1.dp, cm.border, RoundedCornerShape(24.dp))
-                    .clip(RoundedCornerShape(24.dp)).background(cm.card).padding(20.dp),
+                Modifier.fillMaxWidth().border(1.dp, cm.border, RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(10.dp)).background(cm.card).padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 OutlinedTextField(
@@ -122,7 +126,7 @@ fun GateScreen(
                 }
                 Button(
                     onClick = connect, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-                    enabled = !state.loading, shape = RoundedCornerShape(14.dp),
+                    enabled = !state.loading, shape = RoundedCornerShape(7.dp),
                     contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
                 ) {
                     if (state.loading) {
@@ -141,7 +145,7 @@ fun GateScreen(
             OutlinedButton(
                 onClick = { keyboard?.hide(); focus.clearFocus(); onDemo() },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = !state.loading,
-                shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(14.dp),
+                shape = RoundedCornerShape(7.dp), contentPadding = PaddingValues(14.dp),
             ) {
                 Icon(AppIcons.PlayArrow, null, Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))

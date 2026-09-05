@@ -63,20 +63,38 @@ class WorkbenchTest {
 
     @Test fun dailyTrendSelectionAndPersistentDetails() {
         compose.onNodeWithTag("screen-Overview").performScrollToNode(hasTestTag("trend-30"))
+        compose.onNodeWithTag("trend-30").assertIsSelected()
+        compose.onNodeWithTag("trend-7").performClick().assertIsSelected()
         compose.onNodeWithTag("trend-30").performClick().assertIsSelected()
-        compose.onNodeWithTag("screen-Overview").performScrollToNode(hasTestTag("trend-slider"))
-        val before = compose.onNodeWithTag("trend-slider").fetchSemanticsNode().config.toString()
-        compose.onNodeWithTag("trend-slider").performSemanticsAction(SemanticsActions.SetProgress) { it(0f) }
-        val after = compose.onNodeWithTag("trend-slider").fetchSemanticsNode().config.toString()
+        compose.onNodeWithTag("screen-Overview").performScrollToNode(hasTestTag("trend-chart"))
+        shot("trend-line-tokens")
+        val before = compose.onNodeWithTag("trend-chart").fetchSemanticsNode().config.toString()
+        compose.onNodeWithTag("trend-chart").performSemanticsAction(SemanticsActions.SetProgress) { it(0f) }
+        val after = compose.onNodeWithTag("trend-chart").fetchSemanticsNode().config.toString()
         assertNotEquals("Date selection must change the displayed day", before, after)
-        compose.onNodeWithTag("screen-Overview").performScrollToNode(hasText("查看当日明细"))
-        compose.onNodeWithText("查看当日明细").performClick()
+        compose.onNodeWithTag("screen-Overview").performScrollToNode(hasTestTag("trend-next"))
+        compose.onNodeWithTag("trend-previous").assertIsNotEnabled()
+        compose.onNodeWithTag("trend-next").performClick()
+        compose.onNodeWithTag("trend-previous").assertIsEnabled().performClick()
+        compose.onNodeWithTag("trend-details").performClick()
         compose.onNodeWithText("全部词元").assertIsDisplayed()
         compose.mainClock.advanceTimeBy(4_000)
         compose.onNodeWithText("关闭详情").assertExists()
         shot("trend-detail")
         compose.onNodeWithText("关闭详情").performScrollTo().performClick()
         compose.onNodeWithText("全部词元").assertDoesNotExist()
+        compose.onNodeWithTag("screen-Overview").performScrollToNode(hasTestTag("trend-cost"))
+        compose.onNodeWithTag("trend-cost").performClick().assertIsSelected()
+        shot("trend-line-cost")
+        compose.activityRule.scenario.recreate()
+        compose.onNodeWithTag("screen-Overview").performScrollToNode(hasTestTag("trend-cost"))
+        compose.onNodeWithTag("trend-cost").assertIsSelected()
+        compose.onNodeWithTag("screen-Overview").performScrollToNode(hasTestTag("trend-previous"))
+        compose.onNodeWithTag("trend-previous").assertIsNotEnabled()
+        compose.onNodeWithTag("screen-Overview").performScrollToNode(hasTestTag("trend-chart"))
+        compose.onNodeWithTag("trend-chart").performTouchInput { swipeRight() }
+        compose.onNodeWithTag("screen-Overview").performScrollToNode(hasTestTag("trend-previous"))
+        compose.onNodeWithTag("trend-previous").assertIsEnabled()
     }
 
     @Test fun modelSearchSurvivesKeyboardDismissalRotationAndTabSwitch() {
@@ -91,7 +109,7 @@ class WorkbenchTest {
         compose.onNodeWithTag("screen-Models").performScrollToNode(hasTestTag("model-search"))
         compose.onNodeWithTag("model-search").assertTextContains("no-such-model-rotation")
         compose.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        compose.waitUntil(15_000) { compose.onAllNodesWithTag("navigation-rail").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(15_000) { compose.activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE }
         compose.onNodeWithTag("screen-Models").performScrollToNode(hasTestTag("model-search"))
         compose.onNodeWithTag("model-search").assertTextContains("no-such-model-rotation")
         compose.onNodeWithText("没有匹配的模型").assertExists()
@@ -106,8 +124,8 @@ class WorkbenchTest {
     }
 
     @Test fun deviceSessionAndTrendFiltersSurviveRecreation() {
-        compose.onNodeWithTag("screen-Overview").performScrollToNode(hasTestTag("trend-30"))
-        compose.onNodeWithTag("trend-30").performClick()
+        compose.onNodeWithTag("screen-Overview").performScrollToNode(hasTestTag("trend-7"))
+        compose.onNodeWithTag("trend-7").performClick()
         compose.onNodeWithTag("nav-Devices").performClick()
         compose.onNodeWithTag("screen-Devices").performScrollToNode(hasTestTag("device-search"))
         compose.onNodeWithTag("device-search").performTextInput("no-such-device")
@@ -123,8 +141,8 @@ class WorkbenchTest {
         compose.onNodeWithTag("screen-Devices").performScrollToNode(hasTestTag("device-search"))
         compose.onNodeWithTag("device-search").assertTextContains("no-such-device")
         compose.onNodeWithTag("nav-Overview").performClick()
-        compose.onNodeWithTag("screen-Overview").performScrollToNode(hasTestTag("trend-30"))
-        compose.onNodeWithTag("trend-30").assertIsSelected()
+        compose.onNodeWithTag("screen-Overview").performScrollToNode(hasTestTag("trend-7"))
+        compose.onNodeWithTag("trend-7").assertIsSelected()
     }
 
     @Test fun darkThemeLargeTextAndLandscapeRetainNavigation() {
@@ -135,7 +153,7 @@ class WorkbenchTest {
         shot("overview-dark")
         compose.onNodeWithTag("nav-Models").performClick()
         compose.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        compose.waitUntil(15_000) { compose.onAllNodesWithTag("navigation-rail").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(15_000) { compose.activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE }
         compose.onNodeWithTag("nav-Models").assertIsSelected()
         compose.onNodeWithTag("screen-Models").assertIsDisplayed()
         shot("landscape-models")

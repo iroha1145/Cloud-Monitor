@@ -14,7 +14,7 @@
     <style name="Theme.CloudMonitor.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/canvas</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash</item>
-        <item name="windowSplashScreenIconBackgroundColor">@color/brand</item>
+        <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
         <item name="postSplashScreenTheme">@style/Theme.CloudMonitor</item>
     </style>
 </resources>

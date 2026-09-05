@@ -1,5 +1,9 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package io.github.iroha1145.cloudmonitor.ui.overview
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -41,36 +45,68 @@ fun LazyListScope.overviewItems(
     item("summary") { SummaryPanel(state, page) }
     item("trend") {
         var days by page.trendDays
-        val rows = remember(ov, state.history, days) { analyzeTrend(ov, state.history).takeLast(days) }
+        val rows = remember(ov, state.history, days) { trendWindow(analyzeTrend(ov, state.history), days) }
         val summary = remember(rows) { summarizeTrend(rows) }
-        val cm = CmColorsCurrent
         Panel(Modifier.padding(bottom = 16.dp)) {
-            PanelHead("每日趋势", "每日实际用量与费用")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(7, 30).forEach { n ->
-                    FilterChip(selected = days == n, onClick = { days = n }, label = { Text("近 $n 天") },
-                        modifier = Modifier.heightIn(min = 48.dp).testTag("trend-$n"))
+            PanelHead("用量趋势", "沿着曲线，查看每一天的花费与缓存", trailing = {
+                WebSegments(listOf("7 天", "30 天"), if (days == 7) 0 else 1,
+                    { days = if (it == 0) 7 else 30 }, tags = listOf("trend-7", "trend-30"))
+            })
+            Spacer(Modifier.height(16.dp))
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val columns = if (LocalDensity.current.fontScale > 1.4f || maxWidth < 280.dp) 2 else 3
+                val metrics: List<@Composable (Modifier) -> Unit> = listOf(
+                    { m -> TrendMetric("区间词元", Format.fmtCompact(summary.tokenTotal), "${rows.size} 天已记录", SEG_INPUT, m) },
+                    { m -> TrendMetric(if (summary.hasCost && !summary.allCosts) "已知花费" else "区间花费", summary.costTotal?.let(Format::fmtUsd) ?: "未提供", "美元（USD）", SEG_OUTPUT, m) },
+                    { m -> TrendMetric(summary.cacheLabel, summary.cacheRate?.let(Format::fmtPct) ?: "未提供",
+                        if (summary.cacheSkippedDays > 0) { if (summary.cacheDays > 0) "仅统计 ${summary.cacheDays}/${rows.size} 天" else "暂无缓存明细" } else "缓存读取 ÷ 总词元", SEG_CACHE_READ, m) },
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    metrics.chunked(columns).forEach { group -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        group.forEach { it(Modifier.weight(1f)) }
+                        repeat(columns - group.size) { Spacer(Modifier.weight(1f)) }
+                    } }
                 }
             }
-            AdaptiveMetrics {
-                Metric("词元用量", Format.fmtCompact(summary.tokenTotal), Modifier.weight(1f))
-                Metric("${if (summary.partialCache) "已识别" else ""}缓存占比", summary.cacheRate?.let { Format.fmtPct(it) } ?: "未提供", Modifier.weight(1f),
-                    note = if (summary.cacheSkippedDays > 0) {
-                        if (summary.cacheDays > 0) "仅统计 ${summary.cacheDays}/${rows.size} 天" else "暂无缓存明细"
-                    } else "缓存读取 ÷ 总词元", color = cm.okInk)
+            Spacer(Modifier.height(16.dp))
+            if (rows.isEmpty()) EmptyHint("暂无每日趋势数据") else DailyTrendChart(rows, page)
+        }
+    }
+    item("composition") { CompositionPanel(ov.totals.period(Period.valueOf(page.summaryPeriod.value).key)) }
+    item("overview-models") {
+        val per = ov.totals.period(Period.valueOf(page.summaryPeriod.value).key)
+        val entries = modelUsage(per).take(5)
+        Panel(Modifier.padding(bottom = 16.dp)) {
+            PanelHead("模型用量", "用量、缓存与费用，在同一处比较")
+            entries.forEachIndexed { index, entry ->
+                if (index > 0) HorizontalDivider(color = CmColorsCurrent.border)
+                Column(Modifier.fillMaxWidth().tipClick(entry.name, listOf("总用量" to Format.fmtInt(entry.totalTokens),
+                    "费用" to (entry.costUsd?.let(Format::fmtUsd) ?: "未提供"), entry.components.cacheLabel to (entry.components.cacheRate?.let(Format::fmtPct) ?: "未提供")))
+                    .padding(vertical = 16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ClientLogo(entry.provider, 22.dp)
+                        Text(entry.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Icon(AppIcons.ChevronRight, null, tint = CmColorsCurrent.mute, modifier = Modifier.size(16.dp))
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TrendMetric("总用量", Format.fmtCompact(entry.totalTokens), "词元（Tokens）", null, Modifier.weight(1f))
+                        TrendMetric("费用", entry.costUsd?.let(Format::fmtUsd) ?: "未提供", "美元（USD）", null, Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    MixBar(modelBreakdown(per, entry.id).map { it.color to it.value }, Modifier.fillMaxWidth(), height = 6.dp)
+                    Text("${entry.components.cacheLabel} ${entry.components.cacheRate?.let(Format::fmtPct) ?: "未提供"}", fontSize = 11.sp,
+                        color = CmColorsCurrent.mute, modifier = Modifier.padding(top = 8.dp))
+                }
             }
-            Spacer(Modifier.height(18.dp))
-            if (rows.isEmpty()) EmptyHint("暂无每日趋势数据")
-            else StackedTrendChart(rows, modelColors, emptyList())
-            if (summary.cacheSkippedDays > 0) Text("缺少缓存明细的日期不参与缓存占比计算。", color = cm.mute,
-                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+            if (entries.isEmpty()) EmptyHint("该周期暂无模型数据")
         }
     }
     item("clients") {
         val per = ov.totals.period(state.clientPeriod.key)
         val clients = clientUsage(per)
         Panel(Modifier.padding(bottom = 16.dp)) {
-            PanelHead("客户端用量", "按用量排序", trailing = { PeriodSeg(state.clientPeriod, onClientPeriod) })
+            PanelHead("客户端分布", "了解用量从哪里来", trailing = { PeriodSeg(state.clientPeriod, onClientPeriod) })
             Spacer(Modifier.height(8.dp))
             if (clients.isEmpty()) EmptyHint("该周期暂无客户端数据")
             clients.forEach { entry ->
@@ -128,37 +164,128 @@ private fun SummaryPanel(state: UiState, page: PageState) {
     val selected = Period.valueOf(periodName)
     val per = ov.totals.period(selected.key)
     val components = usageComponents(per)
-    val segments = componentBreakdown(per).second
     val cm = CmColorsCurrent
-    val (connection, healthy) = connBanner(ov, state.demo, state.staleData)
-    Panel(Modifier.padding(bottom = 16.dp).testTag("usage-summary")) {
-        PanelHead("用量概览", "掌握每一次调用", trailing = { PeriodSeg(selected) { periodName = it.name } })
-        Spacer(Modifier.height(16.dp))
-        AdaptiveMetrics {
-            Metric("${selected.label}词元", Format.fmtCompact(per.totalTokens), Modifier.weight(1f), "计量单位：词元（Token）")
-            Metric("${selected.label}费用", periodCost(per)?.let(Format::fmtUsd) ?: "未提供", Modifier.weight(1f))
+    Column(Modifier.padding(bottom = 16.dp).testTag("usage-summary")) {
+        FlowRow(Modifier.fillMaxWidth().padding(bottom = 12.dp), itemVerticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            PeriodSeg(selected) { periodName = it.name }
+            Text(java.time.LocalDate.now().let { when (selected) {
+                Period.Today -> "${it.monthValue}月${it.dayOfMonth}日"
+                Period.Month -> "${it.year}年${it.monthValue}月"
+                else -> "全部历史记录"
+            } }, fontSize = 11.sp, color = cm.mute)
         }
-        Spacer(Modifier.height(20.dp))
-        MixBar(segments.map { it.color to it.value }, Modifier.fillMaxWidth(), height = 10.dp)
-        Spacer(Modifier.height(12.dp))
-        ComponentLegend(segments)
-        if (components.partial && per.totalTokens > 0) Text("部分用量缺少构成明细，已保留在未分类用量中。", color = cm.mute,
-            style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 10.dp))
-        HorizontalDivider(Modifier.padding(vertical = 16.dp), color = cm.border)
-        AdaptiveMetrics {
-            Metric(components.cacheLabel, components.cacheRate?.let(Format::fmtPct) ?: "未提供", Modifier.weight(1f), color = cm.okInk)
-            Metric("在线设备", "${ov.devices.count { deviceOnline(it, ov) == true }} / ${ov.devices.size}", Modifier.weight(1f))
+        val shape = RoundedCornerShape(10.dp)
+        Column(Modifier.fillMaxWidth().clip(shape).background(cm.card).border(1.dp, cm.border, shape)) {
+            val stats: List<@Composable (Modifier) -> Unit> = listOf(
+                { m -> StatCell("总用量", Format.fmtCompact(per.totalTokens), "所有模型与客户端", AppIcons.Bolt, SEG_INPUT,
+                    analyzeTrend(ov, state.history).takeLast(14).map { it.total }, m) },
+                { m -> StatCell("使用费用", periodCost(per)?.let(Format::fmtUsd) ?: "未提供", "按上报价格统计", AppIcons.AccountBalanceWallet, SEG_OUTPUT,
+                    analyzeTrend(ov, state.history).takeLast(14).takeIf { it.all { row -> row.costUsd != null } }?.map { it.costUsd!! }.orEmpty(), m) },
+                { m -> StatCell(components.cacheLabel, components.cacheRate?.let(Format::fmtPct) ?: "未提供",
+                    if (components.cacheReadKnown) "${Format.fmtCompact(components.cacheRead)} 缓存读取" else "等待来源提供缓存数据", AppIcons.Database, SEG_CACHE_READ, emptyList(), m) },
+                { m -> StatCell("在线设备", "${ov.devices.count { deviceOnline(it, ov) == true }} / ${ov.devices.size}",
+                    connBanner(ov, state.demo, state.staleData).first, AppIcons.Computer, SEG_CACHE_WRITE, emptyList(), m) },
+            )
+            val oneColumn = LocalDensity.current.fontScale > 1.6f
+            stats.chunked(if (oneColumn) 1 else 2).forEachIndexed { index, group ->
+                if (index > 0) HorizontalDivider(color = cm.border)
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+                    group.forEachIndexed { col, stat ->
+                        if (col > 0) VerticalDivider(color = cm.border)
+                        stat(Modifier.weight(1f))
+                    }
+                }
+            }
         }
-        Text(connection, color = if (healthy) cm.okInk else cm.warnInk, style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(top = 12.dp))
     }
 }
 
 @Composable
-private fun AdaptiveMetrics(content: @Composable RowScope.() -> Unit) {
-    // Metrics may wrap their values; no fixed card height or clipped scalable text.
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), content = content)
+private fun StatCell(label: String, value: String, note: String, icon: androidx.compose.ui.graphics.vector.ImageVector,
+    color: Color, spark: List<Double>, modifier: Modifier) {
+    val cm = CmColorsCurrent
+    Column(modifier.padding(horizontal = 13.dp).padding(bottom = 14.dp)) {
+        Box(Modifier.width(26.dp).height(2.dp).background(color))
+        Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Icon(icon, null, tint = color, modifier = Modifier.size(14.dp))
+            Text(label, color = cm.ink2, fontSize = 11.sp)
+        }
+        Text(value, fontSize = 29.sp, lineHeight = 36.sp, letterSpacing = (-.7).sp, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 8.dp, bottom = 10.dp), color = cm.ink)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(note, color = if (label.contains("缓存")) cm.okInk else cm.mute, fontSize = 10.sp, lineHeight = 16.sp, modifier = Modifier.weight(1f))
+            if (spark.size >= 2 && LocalDensity.current.fontScale < 1.5f) Canvas(Modifier.width(52.dp).height(20.dp)) {
+                val low = spark.minOrNull() ?: 0.0
+                val range = ((spark.maxOrNull() ?: 1.0) - low).coerceAtLeast(1.0)
+                val path = androidx.compose.ui.graphics.Path()
+                spark.forEachIndexed { i, v ->
+                    val x = i.toFloat() / spark.lastIndex * size.width
+                    val y = size.height - 3.dp.toPx() - ((v - low) / range * (size.height - 6.dp.toPx())).toFloat()
+                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                drawPath(path, color.copy(alpha = .7f), style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+            }
+        }
+    }
 }
+
+@Composable
+private fun TrendMetric(label: String, value: String, note: String, dot: Color?, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (dot != null) Box(Modifier.size(6.dp).clip(RoundedCornerShape(3.dp)).background(dot))
+            Text(label, color = CmColorsCurrent.mute, fontSize = 11.sp, lineHeight = 16.sp)
+        }
+        Text(value, color = CmColorsCurrent.ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-.5).sp,
+            modifier = Modifier.padding(top = 5.dp, bottom = 4.dp))
+        Text(note, color = CmColorsCurrent.mute, fontSize = 10.sp, lineHeight = 15.sp)
+    }
+}
+
+@Composable
+private fun CompositionPanel(per: PeriodTotals) {
+    val cm = CmColorsCurrent
+    val data = usageComponents(per)
+    val segments = componentBreakdown(per).second.sortedBy {
+        listOf("cacheRead", "input", "output", "cacheWrite", "unclassified").indexOf(it.key)
+    }
+    Panel(Modifier.padding(bottom = 16.dp)) {
+        PanelHead("用量组成", "缓存，让每次调用更轻盈")
+        Row(Modifier.fillMaxWidth().padding(vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(data.cacheLabel, color = cm.mute, fontSize = 11.sp)
+                Text(data.cacheRate?.let(Format::fmtPct) ?: "未提供", fontSize = 32.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(vertical = 8.dp))
+                Text(if (data.cacheReadKnown) "${Format.fmtCompact(data.cacheRead)} 缓存读取" else "来源未提供缓存明细", fontSize = 10.sp, color = cm.mute)
+            }
+            if (LocalDensity.current.fontScale < 1.8f) Box(Modifier.size(94.dp), contentAlignment = Alignment.Center) {
+                Canvas(Modifier.fillMaxSize().padding(6.dp)) {
+                    val width = 9.dp.toPx()
+                    val total = segments.sumOf { it.value }.coerceAtLeast(1.0)
+                    var angle = -90f
+                    if (segments.isEmpty()) drawArc(cm.border, angle, 360f, false, style = androidx.compose.ui.graphics.drawscope.Stroke(width))
+                    segments.forEach { part ->
+                        val sweep = (part.value / total * 360).toFloat()
+                        drawArc(part.color, angle, (sweep - 1.4f).coerceAtLeast(0f), false, style = androidx.compose.ui.graphics.drawscope.Stroke(width))
+                        angle += sweep
+                    }
+                }
+                Icon(AppIcons.Bolt, null, tint = cm.brand, modifier = Modifier.size(28.dp))
+            }
+        }
+        segments.forEach { part -> Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+            .tipClick(part.label, listOf("词元用量" to Format.fmtInt(part.value))), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.size(6.dp).clip(RoundedCornerShape(3.dp)).background(part.color))
+            Text(part.label, Modifier.weight(1f), fontSize = 12.sp, color = cm.ink2)
+            Text(Format.fmtCompact(part.value), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text(if (data.complete && per.totalTokens > 0) Format.fmtPct(part.value / per.totalTokens) else "—", fontSize = 10.sp, color = cm.mute, modifier = Modifier.widthIn(min = 40.dp))
+        } }
+        if (data.partial) Text("保留已知缓存，未识别用量单独列出。", color = cm.mute, fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
+    }
+}
+
 @Composable
 private fun ProviderPanel(providers: List<ProviderCard>, partial: Boolean, errors: List<String>) {
     val cm = CmColorsCurrent

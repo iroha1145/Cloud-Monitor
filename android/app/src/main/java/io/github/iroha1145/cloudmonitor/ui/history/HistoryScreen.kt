@@ -3,6 +3,7 @@ package io.github.iroha1145.cloudmonitor.ui.history
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -21,6 +22,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.iroha1145.cloudmonitor.data.*
 import io.github.iroha1145.cloudmonitor.ui.PageState
 import io.github.iroha1145.cloudmonitor.ui.components.*
@@ -83,11 +85,7 @@ private fun ActivityCard(overview: Overview, today: String, zone: String, view: 
     val daily = overview.activity.daily.associate { it.day to it.total }
     Panel(Modifier.padding(bottom = 16.dp)) {
         PanelHead("活动日历", "时间按 $zone 显示")
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("今日", "近 12 周", "本月").forEachIndexed { index, label ->
-                FilterChip(selected = view == index, onClick = { onView(index) }, label = { Text(label) }, modifier = Modifier.heightIn(min = 48.dp))
-            }
-        }
+        WebSegmentedControl(listOf("今日", "近 12 周", "本月"), view, onView)
         Spacer(Modifier.height(12.dp))
         when (view) {
             0 -> {
@@ -145,13 +143,13 @@ private fun ActivityTiles(values: List<Pair<String, Double?>>) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     row.forEach { (label, value) ->
                         val strength = if (value == null || value <= 0) 0f else (value / max).toFloat().coerceIn(0.15f, 1f)
-                        Column(Modifier.weight(1f).heightIn(min = 64.dp).clip(RoundedCornerShape(10.dp))
+                        Column(Modifier.weight(1f).heightIn(min = 56.dp).clip(RoundedCornerShape(5.dp))
                             .background(if (value == null) cm.canvas else cm.brand.copy(alpha = 0.06f + strength * 0.14f))
                             .semantics(mergeDescendants = true) { contentDescription = "$label，${value?.let { "${Format.fmtInt(it)} 词元" } ?: "数据未提供"}" }
-                            .padding(horizontal = 7.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(label, color = cm.ink2, style = MaterialTheme.typography.labelSmall)
+                            .padding(horizontal = 7.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(label, color = cm.ink2, fontSize = 11.sp, lineHeight = 15.sp)
                             Text(value?.let { Format.fmtCompact(it, tight = true) } ?: "—", color = cm.ink,
-                                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                                fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                     repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
@@ -169,7 +167,7 @@ private fun DayCard(day: HistoryDay, today: String, clientColors: Map<String, Co
     val weekday = Format.dowOfKey(day.day)?.let { listOf("日", "一", "二", "三", "四", "五", "六")[it] }.orEmpty()
     Panel(Modifier.padding(bottom = 12.dp)) {
         Text("${day.day} · 周$weekday${if (day.day == today) " · 今天" else ""}", color = if (day.day == today) cm.brand else cm.ink,
-            style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+            fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
         Spacer(Modifier.height(12.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             HistoryMetric("词元用量", Format.fmtCompact(day.tokens))
@@ -193,8 +191,10 @@ private fun DayCard(day: HistoryDay, today: String, clientColors: Map<String, Co
             Spacer(Modifier.height(16.dp))
             HistoryBreakdown("模型用量", day.perModel, modelColors)
         }
-        TextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-            Text(if (expanded) "收起当天详情" else "查看当天详情")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = { expanded = !expanded }, modifier = Modifier.heightIn(min = 48.dp), shape = RoundedCornerShape(6.dp)) {
+                Text(if (expanded) "收起当天详情" else "查看当天详情", fontSize = 12.sp)
+            }
         }
     }
 }
@@ -206,14 +206,14 @@ private fun HistoryBreakdown(title: String, values: Map<String, Double>, colors:
     if (values.isEmpty()) Text("明细未提供", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
     val largeText = LocalDensity.current.fontScale > 1.3f
     values.entries.sortedByDescending { it.value }.forEach { (name, value) ->
-        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (logos) ClientLogo(name, size = 20.dp)
             else Box(Modifier.padding(top = 5.dp).size(10.dp).clip(RoundedCornerShape(3.dp)).background(colors[name] ?: OTHER_COLOR))
             Column(Modifier.weight(1f)) {
-                Text(name, color = cm.ink, style = MaterialTheme.typography.bodyMedium)
-                if (largeText) Text(Format.fmtCompact(value), color = cm.ink, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                Text(name, color = cm.ink, fontSize = 13.sp, lineHeight = 19.sp)
+                if (largeText) Text(Format.fmtCompact(value), color = cm.ink, fontSize = 13.sp, lineHeight = 19.sp, fontWeight = FontWeight.Medium)
             }
-            if (!largeText) Text(Format.fmtCompact(value), color = cm.ink, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+            if (!largeText) Text(Format.fmtCompact(value), color = cm.ink, fontSize = 13.sp, lineHeight = 19.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -255,15 +255,11 @@ private fun SessionsCard(overview: Overview, zone: String, today: String, modelC
         if (overview.sessionsOmitted || overview.sessionsMeta.sessionDetailsIncomplete || overview.sessionsMeta.sessionsOmittedCount > 0) {
             Text("当前快照未包含全部会话明细，统计仅涵盖已上报记录。", color = cm.warnInk, style = MaterialTheme.typography.bodySmall)
         }
-        OutlinedTextField(query, { query = it; limit = 8 }, Modifier.fillMaxWidth().testTag("session-search"), label = { Text("搜索会话、项目或模型") },
-            singleLine = true, shape = RoundedCornerShape(12.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            FilterChip(selected = onlyToday, onClick = { onlyToday = !onlyToday; limit = 8 }, label = { Text("仅今天") }, modifier = Modifier.heightIn(min = 48.dp))
-            FilterChip(selected = client.isBlank(), onClick = { client = ""; limit = 8 }, label = { Text("所有客户端") }, modifier = Modifier.heightIn(min = 48.dp))
-            overview.sessions.mapNotNull { it.client }.distinct().sorted().forEach { name ->
-                FilterChip(selected = client == name, onClick = { client = name; limit = 8 }, label = { Text(name) }, modifier = Modifier.heightIn(min = 48.dp))
-            }
-        }
+        WebSearchField(query, { query = it; limit = 8 }, label = "搜索会话、项目或模型", placeholder = "搜索会话、项目或模型…",
+            modifier = Modifier.fillMaxWidth().testTag("session-search"))
+        val clients = listOf("") + overview.sessions.mapNotNull { it.client }.distinct().sorted()
+        WebSegmentedControl(clients.map { it.ifBlank { "所有客户端" } }, clients.indexOf(client).coerceAtLeast(0), { client = clients[it]; limit = 8 })
+        WebPill("仅今天", selected = onlyToday, onClick = { onlyToday = !onlyToday; limit = 8 })
         if (filtered.isEmpty()) EmptyHint(if (overview.sessions.isEmpty()) "尚未上报会话明细" else "没有符合条件的会话")
         else filtered.take(limit).groupBy { sessionDay(it) }.forEach { (day, sessions) ->
             Spacer(Modifier.height(16.dp))
@@ -271,9 +267,10 @@ private fun SessionsCard(overview: Overview, zone: String, today: String, modelC
                 style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
             sessions.forEach { session -> key(session.key) { SessionDetail(session, zone, modelColors) } }
         }
-        if (filtered.size > limit) TextButton(onClick = { limit += 8 }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("再显示 8 条会话") }
+        if (filtered.size > limit) TextButton(onClick = { limit += 8 }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(6.dp)) { Text("再显示 8 条会话", fontSize = 12.sp) }
         OutlinedButton(onClick = { export.launch("cloud-monitor-sessions-${if (onlyToday) today else "all"}.csv") }, enabled = filtered.isNotEmpty(),
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), contentPadding = PaddingValues(12.dp)) { Text("导出筛选结果（${filtered.size} 条）") }
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(6.dp), border = BorderStroke(1.dp, cm.border),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) { Text("导出筛选结果（${filtered.size} 条）", fontSize = 12.sp) }
         if (exportStatus.isNotEmpty()) Text(exportStatus, color = cm.ink2, style = MaterialTheme.typography.bodySmall)
     }
 }
@@ -285,16 +282,24 @@ private fun SessionDetail(session: SessionRow, zone: String, modelColors: Map<St
     var expanded by rememberSaveable(session.key) { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ClientLogo(session.client, size = 24.dp)
+            ClientLogo(session.client, size = 20.dp)
             Column(Modifier.weight(1f)) {
-                Text(session.project?.takeIf { it.isNotBlank() } ?: session.sessionId?.take(24) ?: "未命名会话", color = cm.ink, style = MaterialTheme.typography.titleSmall)
-                Text(session.client ?: "客户端未提供", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+                Text(session.project?.takeIf { it.isNotBlank() } ?: session.sessionId?.take(24) ?: "未命名会话", color = cm.ink, fontSize = 14.sp,
+                    lineHeight = 20.sp, fontWeight = FontWeight.SemiBold)
+                Text(session.client ?: "客户端未提供", color = cm.ink2, fontSize = 11.sp, lineHeight = 16.sp)
             }
         }
-        Text("最后活动 ${Format.fmtDateTime(session.lastUsedAt, zone).ifBlank { "未提供" }}", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            HistoryMetric("词元用量", Format.fmtCompact(session.tokens))
-            HistoryMetric("估算费用", Format.fmtUsd(session.costUsd))
+        Text("最后活动 ${Format.fmtDateTime(session.lastUsedAt, zone).ifBlank { "未提供" }}", color = cm.ink2, fontSize = 11.sp, lineHeight = 16.sp)
+        if (LocalDensity.current.fontScale > 1.5f) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                HistoryMetric("词元用量", Format.fmtCompact(session.tokens))
+                HistoryMetric("估算费用", Format.fmtUsd(session.costUsd))
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                HistoryMetric("词元用量", Format.fmtCompact(session.tokens), Modifier.weight(1f))
+                HistoryMetric("估算费用", Format.fmtUsd(session.costUsd), Modifier.weight(1f))
+            }
         }
         if (expanded) {
             Text("来源设备 · ${session.device ?: session.deviceId ?: "未提供"}", color = cm.ink2, style = MaterialTheme.typography.bodyMedium)
@@ -302,17 +307,21 @@ private fun SessionDetail(session: SessionRow, zone: String, modelColors: Map<St
             Text("开始于 ${Format.fmtDateTime(session.startedAt, zone).ifBlank { "未提供" }}", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
             HistoryBreakdown("使用模型", session.models, modelColors)
         }
-        TextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(if (expanded) "收起会话详情" else "查看会话详情") }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = { expanded = !expanded }, modifier = Modifier.heightIn(min = 48.dp), shape = RoundedCornerShape(6.dp)) {
+                Text(if (expanded) "收起会话详情" else "查看会话详情", fontSize = 12.sp)
+            }
+        }
         HorizontalDivider(color = cm.border)
     }
 }
 
 @Composable
-private fun HistoryMetric(label: String, value: String) {
+private fun HistoryMetric(label: String, value: String, modifier: Modifier = Modifier) {
     val cm = CmColorsCurrent
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, color = cm.ink2, style = MaterialTheme.typography.bodySmall)
-        Text(value, color = cm.ink, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, color = cm.ink2, fontSize = 11.sp, lineHeight = 15.sp)
+        Text(value, color = cm.ink, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -329,7 +338,7 @@ private fun CoverageBlock(overview: Overview) {
     if (overview.activity.dailyMixedBasis) Text("长期日归档包含设备本地日期；跨时区设备的日期范围可能不同。", color = cm.warnInk, style = MaterialTheme.typography.bodySmall)
     var expanded by rememberSaveable { mutableStateOf(false) }
     if (coverage.devices.isNotEmpty()) {
-        TextButton(onClick = { expanded = !expanded }, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (expanded) "收起采样详情" else "查看采样详情") }
+        TextButton(onClick = { expanded = !expanded }, modifier = Modifier.heightIn(min = 48.dp), shape = RoundedCornerShape(6.dp)) { Text(if (expanded) "收起采样详情" else "查看采样详情", fontSize = 12.sp) }
         if (expanded) coverage.devices.forEach { device ->
             val name = overview.devices.find { it.deviceId == device.deviceId }?.hostname ?: device.deviceId
             Text("$name：实到 ${device.observedBuckets} / 期望 ${device.expectedBuckets}，缺口 ${device.gapCount}，计数重置 ${device.resetCount}", color = cm.ink2, style = MaterialTheme.typography.bodySmall)

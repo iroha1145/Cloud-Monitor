@@ -12,9 +12,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.iroha1145.cloudmonitor.data.*
 import io.github.iroha1145.cloudmonitor.ui.components.ClientLogo
 import io.github.iroha1145.cloudmonitor.ui.components.EmptyHint
@@ -47,14 +50,19 @@ private fun QuotaContent(state: UiState) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Panel {
             PanelHead("额度与账单", "服务商配额和手动登记的账单分别展示")
-            Spacer(Modifier.height(16.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                QuotaMetric("配额账户", "${limits.size} 个")
-                QuotaMetric("配额周期", "${limits.sumOf { it.windows.size }} 个")
-                QuotaMetric("订阅与充值", "${subscriptions.size} 项")
+            Spacer(Modifier.height(14.dp))
+            val summary = listOf("配额账户" to "${limits.size} 个", "配额周期" to "${limits.sumOf { it.windows.size }} 个", "订阅与充值" to "${subscriptions.size} 项")
+            if (fontScale > 1.5f) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    summary.forEach { (label, value) -> QuotaMetric(label, value) }
+                }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    summary.forEach { (label, value) -> QuotaMetric(label, value, Modifier.weight(1f)) }
+                }
             }
         }
-        Text("服务商配额", color = cm.ink, style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
+        Text("服务商配额", color = cm.ink, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
         if (limits.isEmpty()) Panel { EmptyHint("尚未上报服务商配额") }
         else BoxWithConstraints(Modifier.fillMaxWidth()) {
             val columns = if (maxWidth >= 740.dp && fontScale <= 1.35f) 2 else 1
@@ -68,8 +76,8 @@ private fun QuotaContent(state: UiState) {
             }
         }
         if (showSubscriptions) {
-            Text("订阅与账单", color = cm.ink, style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
-            Text("来自已登记的订阅和充值记录。金额不代表实时余额。", color = cm.ink2, style = MaterialTheme.typography.bodyMedium)
+            Text("订阅与账单", color = cm.ink, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
+            Text("来自已登记的订阅和充值记录。金额不代表实时余额。", color = cm.ink2, fontSize = 12.sp, lineHeight = 18.sp)
             state.subscriptions?.updatedAt?.let { Text("更新于 ${Format.fmtDateTime(it, zone)}", color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
             when {
                 state.subsStatus == AuxStatus.Error -> Panel { Text("订阅清单读取失败，稍后刷新重试。", color = cm.crit, style = MaterialTheme.typography.bodyMedium) }
@@ -109,17 +117,20 @@ private fun ProviderQuota(provider: LimitProvider, overview: Overview?, zone: St
         else -> null
     }?.takeIf { it.isFinite() }
     Panel {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            ClientLogo(provider.provider, size = 32.dp)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)).background(cm.inset), contentAlignment = Alignment.Center) {
+                ClientLogo(provider.provider, size = 24.dp)
+            }
             Column(Modifier.weight(1f)) {
-                Text(Format.fmtProvider(provider.provider), color = cm.ink, style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
-                provider.planLabel?.takeIf { it.isNotBlank() }?.let { Text(it, color = cm.ink2, style = MaterialTheme.typography.bodyMedium) }
+                Text(Format.fmtProvider(provider.provider), color = cm.ink, fontSize = 16.sp, lineHeight = 22.sp,
+                    fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
+                provider.planLabel?.takeIf { it.isNotBlank() }?.let { Text(it, color = cm.ink2, fontSize = 11.sp, lineHeight = 16.sp) }
             }
         }
         Spacer(Modifier.height(12.dp))
-        Text(statusText, color = if (status == "ok" && !stale) cm.okInk else cm.warnInk, style = MaterialTheme.typography.labelLarge)
+        Text(statusText, color = if (status == "ok" && !stale) cm.okInk else cm.warnInk, fontSize = 11.sp, lineHeight = 16.sp)
         val account = listOfNotNull(provider.accountLabel, provider.accountName, provider.accountEmail?.let(Format::maskEmail)).filter { it.isNotBlank() }.distinct().joinToString(" · ")
-        Text(account.ifBlank { "账户名称未提供" }, color = cm.ink2, style = MaterialTheme.typography.bodyMedium)
+        Text(account.ifBlank { "账户名称未提供" }, color = cm.ink2, fontSize = 11.sp, lineHeight = 16.sp)
         provider.sourceMessage?.takeIf { it.isNotBlank() }?.let { Text(it, color = cm.warnInk, style = MaterialTheme.typography.bodySmall) }
         if (provider.balanceUsd != null || balance != null) {
             Spacer(Modifier.height(16.dp))
@@ -129,8 +140,12 @@ private fun ProviderQuota(provider: LimitProvider, overview: Overview?, zone: St
             Spacer(Modifier.height(16.dp))
             Text("额度数据未提供", color = cm.ink, style = MaterialTheme.typography.bodyMedium)
         }
-        provider.windows.forEach { window ->
-            Spacer(Modifier.height(16.dp))
+        provider.windows.forEachIndexed { index, window ->
+            Spacer(Modifier.height(13.dp))
+            if (index > 0) {
+                HorizontalDivider(color = cm.border)
+                Spacer(Modifier.height(13.dp))
+            }
             QuotaWindow(window, overview?.generatedAt, zone)
         }
         Spacer(Modifier.height(16.dp))
@@ -139,9 +154,9 @@ private fun ProviderQuota(provider: LimitProvider, overview: Overview?, zone: St
         val device = provider.device?.takeIf { it.isNotBlank() }
             ?: overview?.devices?.find { it.deviceId == provider.sourceDeviceId }?.hostname
             ?: provider.sourceDeviceId?.takeIf { it.isNotBlank() }
-        Text("来源设备 · ${device ?: "未提供"}", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
-        provider.sourceLabel?.takeIf { it.isNotBlank() }?.let { Text("数据来源 · $it", color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
-        Text("数据时间 · ${Format.fmtDateTime(provider.updatedAt ?: overview?.generatedAt, zone).ifBlank { "未提供" }}", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+        Text("来源设备 · ${device ?: "未提供"}", color = cm.ink2, fontSize = 10.sp, lineHeight = 15.sp)
+        provider.sourceLabel?.takeIf { it.isNotBlank() }?.let { Text("数据来源 · $it", color = cm.ink2, fontSize = 10.sp, lineHeight = 15.sp) }
+        Text("数据时间 · ${Format.fmtDateTime(provider.updatedAt ?: overview?.generatedAt, zone).ifBlank { "未提供" }}", color = cm.ink2, fontSize = 10.sp, lineHeight = 15.sp)
     }
 }
 
@@ -165,12 +180,17 @@ private fun QuotaWindow(window: LimitWindow, generatedAt: String?, zone: String?
         used != null -> "已用 ${quotaAmount(used, currency)}"
         else -> "用量未提供"
     }
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(cm.canvas).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(label, color = cm.ink2, style = MaterialTheme.typography.labelLarge)
-        Text(headline, color = cm.ink, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    Column(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(label, color = cm.ink2, fontSize = 12.sp, lineHeight = 18.sp)
+            Text(headline, color = cm.ink, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold)
+        }
         if (window.showMeter && percent != null && metric != "balance") {
-            LinearProgressIndicator(progress = { (percent / 100).toFloat() }, modifier = Modifier.fillMaxWidth().height(6.dp),
-                color = color, trackColor = cm.border)
+            val progress = (percent / 100).toFloat()
+            Box(Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(4.dp)).background(cm.inset)
+                .semantics { progressBarRangeInfo = ProgressBarRangeInfo(progress, 0f..1f) }) {
+                Box(Modifier.fillMaxWidth(progress).fillMaxHeight().clip(RoundedCornerShape(4.dp)).background(color))
+            }
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (explicitPercent != null) Text("剩余 ${percentText(100.0 - explicitPercent.coerceIn(0.0, 100.0))}", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
@@ -200,12 +220,12 @@ private fun SubscriptionCard(subscription: Subscription) {
     var expanded by rememberSaveable(subscription.id, subscription.planName) { mutableStateOf(false) }
     Panel {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            ClientLogo(subscription.provider, size = 28.dp)
-            Text(Format.fmtProvider(subscription.provider), color = cm.ink2, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            ClientLogo(subscription.provider, size = 24.dp)
+            Text(Format.fmtProvider(subscription.provider), color = cm.ink2, fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.weight(1f))
         }
         Spacer(Modifier.height(12.dp))
-        Text(subscription.planName ?: "未命名订阅", color = cm.ink, style = MaterialTheme.typography.titleLarge)
-        Text(if (topup) "充值台账" else if (subscription.autoRenew) "自动续费" else "手动续费", color = if (!topup && subscription.autoRenew) cm.okInk else cm.ink2, style = MaterialTheme.typography.labelLarge)
+        Text(subscription.planName ?: "未命名订阅", color = cm.ink, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold)
+        Text(if (topup) "充值台账" else if (subscription.autoRenew) "自动续费" else "手动续费", color = if (!topup && subscription.autoRenew) cm.okInk else cm.ink2, fontSize = 11.sp, lineHeight = 16.sp)
         Spacer(Modifier.height(16.dp))
         val knownTopups = subscription.topUps.mapNotNull { it.amountMinor }
         val allTopupsKnown = knownTopups.size == subscription.topUps.size
@@ -228,7 +248,11 @@ private fun SubscriptionCard(subscription: Subscription) {
         if (binding.isNotBlank()) Text("绑定账户 · $binding", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
         subscription.note?.takeIf { it.isNotBlank() }?.let { Text("备注 · $it", color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
         if (subscription.topUps.isNotEmpty()) {
-            TextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(if (expanded) "收起充值明细" else "查看充值明细") }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { expanded = !expanded }, modifier = Modifier.heightIn(min = 48.dp), shape = RoundedCornerShape(6.dp)) {
+                    Text(if (expanded) "收起充值明细" else "查看充值明细", fontSize = 12.sp)
+                }
+            }
             if (expanded) subscription.topUps.forEach { record ->
                 HorizontalDivider(color = cm.border)
                 Column(Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -242,11 +266,11 @@ private fun SubscriptionCard(subscription: Subscription) {
 }
 
 @Composable
-private fun QuotaMetric(label: String, value: String) {
+private fun QuotaMetric(label: String, value: String, modifier: Modifier = Modifier) {
     val cm = CmColorsCurrent
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, color = cm.ink2, style = MaterialTheme.typography.bodySmall)
-        Text(value, color = cm.ink, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, color = cm.ink2, fontSize = 11.sp, lineHeight = 15.sp)
+        Text(value, color = cm.ink, fontSize = 21.sp, lineHeight = 27.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 

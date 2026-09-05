@@ -25,6 +25,13 @@ class UsageAnalysisTest {
         "Missing checked-in contract fixture $name"
     }.bufferedReader().use { it.readText() }
 
+    @Test fun trendDateRangeDoesNotPullOldRecordsAcrossMissingDays() {
+        val records = listOf("2026-08-29", "2026-08-30", "2026-09-02", "2026-09-05").map { TrendRow(it, 1.0) }
+        assertEquals(listOf("2026-08-30", "2026-09-02", "2026-09-05"), trendWindow(records, 7).map { it.day })
+        assertEquals(records, trendWindow(records, 30))
+        assertEquals(emptyList<TrendRow>(), trendWindow(emptyList(), 7))
+    }
+
     @Test fun mixedMissingDaysUseTheSameNumeratorAndDenominator() {
         val result = summarizeTrend(rows(
             complete("2026-09-04", 100, 80),
