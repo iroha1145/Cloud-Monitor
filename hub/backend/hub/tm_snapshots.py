@@ -234,7 +234,7 @@ def _component_counter(value: Any) -> Optional[int]:
 
 
 def _components_recorded(period: Any) -> int:
-    """The official normalized snapshot supplied all counters, including zero.
+    """The source period explicitly supplied all counters, including zero.
 
     This records field provenance, not full classification: a valid snapshot
     may still contain unclassifiedTokens > 0.
@@ -302,6 +302,20 @@ def write_snapshot(
     month = periods.get("month") or {}
     all_time = periods.get("allTime") or {}
 
+    source_today = None
+    if isinstance(incoming, dict):
+        source_periods = incoming.get("periods")
+        source_today = incoming.get("today")
+        if not isinstance(source_today, dict):
+            source_today = source_periods.get("today") if isinstance(source_periods, dict) else None
+    # Official normalization fills absent counters with zeros. Only the raw
+    # report can prove those zeros, and only while its counters still match the
+    # merged record; retained usage from another report has separate provenance.
+    components_recorded = int(
+        _components_recorded(source_today) and _components_recorded(today)
+        and all(source_today[key] == today[key] for key in ("totalTokens", *COMPONENT_COLUMNS))
+    )
+
     candidate_windows = None
     if isinstance(incoming, dict):
         candidate_windows = incoming.get("periodWindows")
@@ -358,7 +372,7 @@ def write_snapshot(
                 _period_field(today, "cacheReadTokens"),
                 _period_field(today, "cacheWriteTokens"),
                 _period_field(today, "unclassifiedTokens"),
-                _components_recorded(today),
+                components_recorded,
                 _period_cost(today),
                 _period_field(month, "totalTokens"), _period_cost(month),
                 _period_field(all_time, "totalTokens"), _period_cost(all_time),

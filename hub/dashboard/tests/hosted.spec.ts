@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const READ_TOKEN = "b".repeat(32);
 const WRITE_TOKEN = "a".repeat(32);
+const overviewFixture = require("./fixtures/overview.json");
 const injectAxe = async (page: import("@playwright/test").Page) => {
   await page.route("**/static/app/__test-axe.js", route => route.fulfill({ contentType: "text/javascript", path: require.resolve("axe-core/axe.min.js") }));
   await page.addScriptTag({ url: "/static/app/__test-axe.js" });
@@ -75,6 +76,61 @@ test("real daily cache reaches range and day details independently of the select
   await slider.press("Escape");
   await page.getByRole("tablist", { name: "统计周期" }).getByRole("tab").nth(1).click();
   await expect(metric.locator("strong")).toHaveText("53.4%");
+});
+
+test("built 30-day cache skips missing days, weights participating usage and keeps zero-use days harmless", async ({ page }) => {
+  const payload = structuredClone(overviewFixture);
+  payload.features = { subscriptions: false, provider_status: false, history_daily: false };
+  payload.trend = Array.from({ length: 30 }, (_, index) => {
+    const day = new Date(Date.UTC(2026, 7, 7 + index)).toISOString().slice(0, 10);
+    return index < 15
+      ? { day, total: 1000, costUsd: 1, outputTokens: null, cacheReadTokens: null, cacheWriteTokens: null, unclassifiedTokens: 1000 }
+      : { day, total: index < 22 ? 100 : 300, costUsd: 1, outputTokens: 0, cacheReadTokens: index < 22 ? 90 : 30, cacheWriteTokens: 0, unclassifiedTokens: 0 };
+  });
+  await page.route("**/api/v1/tm/overview", route => route.fulfill({ status: 200, json: payload }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await login(page);
+  const trend = page.getByRole("region", { name: "用量趋势" });
+  const metric = trend.locator(".insight-trend-metrics > div").last();
+  await trend.getByRole("tab", { name: "30 天", exact: true }).click();
+  await expect(metric.locator("strong")).toHaveText("28.1%");
+  await expect(metric).toContainText("仅统计 15/30 天");
+  // Interval tokens retain the complete range, while the cache denominator
+  // uses only the same 15 days as its numerator: (7*90 + 8*30)/(7*100 + 8*300).
+  await expect(trend.locator(".insight-trend-metrics > div").first()).toContainText("1.8 万");
+  const slider = trend.getByRole("slider");
+  await slider.focus();
+  await slider.press("Home");
+  await expect(slider).toHaveAttribute("aria-valuetext", /2026-08-07.*缓存占比 未提供/);
+  await slider.press("Escape");
+  await trend.getByRole("tab", { name: "7 天", exact: true }).click();
+  await expect(metric.locator("strong")).toHaveText("10.0%");
+  await expect(metric).not.toContainText("仅统计");
+  await trend.getByRole("tab", { name: "30 天", exact: true }).click();
+  payload.trend[0].outputTokens = 0;
+  payload.trend[0].cacheReadTokens = 0;
+  payload.trend[0].cacheWriteTokens = 0;
+  delete payload.trend[0].unclassifiedTokens;
+  await page.getByRole("button", { name: "刷新数据", exact: true }).click();
+  await expect(metric).toContainText("仅统计 16/30 天");
+  await expect(metric).toContainText("已识别缓存占比");
+  await expect(metric.locator("strong")).toHaveText("21.2%");
+  await page.setViewportSize({ width: 320, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(await metric.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+  await trend.screenshot({ path: "evidence/cache-skipped-days-320.png", animations: "disabled" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  payload.trend[0].total = 0;
+  payload.trend[0].unclassifiedTokens = 0;
+  await page.getByRole("button", { name: "刷新数据", exact: true }).click();
+  await expect(metric).toContainText("仅统计 16/30 天");
+  await expect(metric.locator("strong")).toHaveText("28.1%");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await trend.screenshot({ path: "evidence/cache-skipped-days-mobile.png", animations: "disabled" });
+  payload.trend = payload.trend.slice(1, 15);
+  await page.getByRole("button", { name: "刷新数据", exact: true }).click();
+  await expect(metric.locator("strong")).toHaveText("未提供");
+  await expect(metric).toContainText("暂无缓存明细");
 });
 
 test("built production and Pages menus stay at the viewport edge without changing centered settings", async ({ browser }) => {

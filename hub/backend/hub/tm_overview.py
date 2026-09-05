@@ -170,11 +170,24 @@ def _history_trend_row(entry: dict) -> Optional[dict]:
                 models[str(name)] = _int(value.get("tokens") or value.get("totalTokens"))
             else:
                 models[str(name)] = _int(value)
+    details = _trend_details(entry)
+    if entry.get("tokenComponentsAvailable") is not True:
+        # Official history aggregation fills absent component counters with
+        # zeros. Without an exact-components marker those zeros have no field
+        # provenance; positive counts remain useful as recognized partial data.
+        # SQLite rows bypass this fallback and keep their recorded-zero rules.
+        for key in ("outputTokens", "cacheReadTokens", "cacheWriteTokens"):
+            if details.get(key) == 0:
+                details[key] = None
+        if any(key in details for key in (
+            "outputTokens", "cacheReadTokens", "cacheWriteTokens", "unclassifiedTokens"
+        )):
+            details["componentsPartial"] = True
     return {
         "day": day,
         "total": _int(entry.get("tokens") or entry.get("totalTokens")),
         "models": models,
-        **_trend_details(entry),
+        **details,
     }
 
 

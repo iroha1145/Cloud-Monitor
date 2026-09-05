@@ -312,6 +312,9 @@
   .insight-trend-footer {
     flex-wrap: wrap;
   }
+  .insight-trend-metrics {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(90px, 1fr);
+  }
   .insight-trend-metrics span {
     font-size: 11px;
   }
