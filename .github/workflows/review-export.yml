@@ -1,0 +1,27 @@
+name: Export review patch
+on:
+  push:
+    branches: [fix/deep-review-20260906]
+    paths: [.github/workflows/review-export.yml]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export pinned review and net patch
+        run: |
+          mkdir -p /tmp/review-export
+          git archive --format=tar 4f65b79dd927e432aeffd75732ca530fa0afca48 > /tmp/review-export/review-source.tar
+          git diff --binary ef3daa6f405cbd6b68eb59c8f1b9fe5f56914dbf 4f65b79dd927e432aeffd75732ca530fa0afca48 > /tmp/review-export/review.patch
+          sha256sum /tmp/review-export/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: review-export
+          path: /tmp/review-export/
+          retention-days: 1
