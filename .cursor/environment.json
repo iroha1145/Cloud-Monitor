@@ -10,7 +10,7 @@
     {
       "name": "cloud-hub",
       "command": "bash .cursor/run-hub.sh",
-      "description": "FastAPI 网关 + 用量面板，监听 0.0.0.0:7878（默认演示模式）"
+      "description": "FastAPI 网关 + 新版用量面板（需 install 构建 hub/dashboard），监听 0.0.0.0:7878（默认演示模式）"
     }
   ],
   "ports": [
