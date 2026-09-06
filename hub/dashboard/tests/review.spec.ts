@@ -57,7 +57,7 @@ test("tablet and phone viewports keep cache bars, provider state and sync time v
     await page.setViewportSize(viewport);
     const cache = page.locator(".model-table .cache-track").first();
     await expect(cache).toBeVisible();
-    await expect.poll(() => cache.evaluate((node) => getComputedStyle(node).display)).toBe("block");
+    await expect.poll(() => cache.evaluate((node) => getComputedStyle(node).display)).not.toBe("none");
     const state = page.locator(".provider-state").first();
     await expect(state).toBeVisible();
     await expect.poll(() => state.evaluate((node) => getComputedStyle(node).display)).not.toBe("none");

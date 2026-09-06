@@ -165,7 +165,7 @@ test("archive refresh aborts an in-flight page and reloads from the first day", 
   await page.goto("/tests/restoration-harness.html");
   await expect(page.getByRole("button", { name: "刷新" })).toBeEnabled();
   await page.getByRole("button", { name: "刷新" }).click();
-  await expect(page.getByText("2026-09-05", { exact: true })).toBeVisible();
+  await expect(page.locator(".archive-panel").locator('time[datetime="2026-09-05"]')).toBeVisible();
   expect(laterLoads).toBe(0);
 });
 
