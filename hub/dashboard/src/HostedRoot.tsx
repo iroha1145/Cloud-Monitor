@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, Cloud, LoaderCircle, LockKeyhole } from "lucide-react";
 import App from "./App";
-import { loadOverview, isAuthFailure } from "./api";
+import { loadDashboard, isAuthFailure } from "./api";
 import { clearAccessToken, readAccessToken, saveAccessToken } from "./auth";
 import type { DashboardData } from "./data";
 import "./hosted.css";
@@ -31,7 +31,7 @@ export default function HostedRoot() {
     pending.current = controller;
     setBusy(true); setError("");
     try {
-      const data = await loadOverview(value, controller.signal);
+      const data = await loadDashboard(value, controller.signal);
       if (controller.signal.aborted) return;
       saveAccessToken(value);
       setSecret("");

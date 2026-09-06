@@ -137,6 +137,38 @@ test("mobile archive pages preserve unknowns, negative fees, composition and loa
   });
 });
 
+test("archive refresh aborts an in-flight page and reloads from the first day", async ({
+  page,
+}) => {
+  let laterLoads = 0;
+  let firstPage = 0;
+  await page.route("**/api/**", async (route) => {
+    if (route.request().url().includes("system/update"))
+      return route.fulfill({ json: update() });
+    if (route.request().url().includes("cursor=")) {
+      laterLoads += 1;
+      return route.fulfill({
+        json: archive({
+          items: [{ day: "2026-09-04", tokens: 7, costUsd: null, complete: false }],
+          has_more: false,
+          next_cursor: null,
+        }),
+      });
+    }
+    firstPage += 1;
+    if (firstPage === 1) {
+      await new Promise(() => {});
+      return;
+    }
+    return route.fulfill({ json: archive({ has_more: true, next_cursor: "2026-09-05" }) });
+  });
+  await page.goto("/tests/restoration-harness.html");
+  await expect(page.getByRole("button", { name: "刷新" })).toBeEnabled();
+  await page.getByRole("button", { name: "刷新" }).click();
+  await expect(page.getByText("2026-09-05", { exact: true })).toBeVisible();
+  expect(laterLoads).toBe(0);
+});
+
 test("missing archive is an explicit overview fallback and demo makes no API requests", async ({
   page,
 }) => {

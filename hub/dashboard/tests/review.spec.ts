@@ -47,6 +47,27 @@ for (const viewport of [
   });
 }
 
+test("tablet and phone viewports keep cache bars, provider state and sync time visible", async ({ page }) => {
+  await page.goto("/demo.html#overview");
+  for (const viewport of [
+    { width: 1100, height: 800 },
+    { width: 900, height: 900 },
+    { width: 360, height: 740 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const cache = page.locator(".model-table .cache-track").first();
+    await expect(cache).toBeVisible();
+    await expect.poll(() => cache.evaluate((node) => getComputedStyle(node).display)).toBe("block");
+    const state = page.locator(".provider-state").first();
+    await expect(state).toBeVisible();
+    await expect.poll(() => state.evaluate((node) => getComputedStyle(node).display)).not.toBe("none");
+    const sync = page.locator(".sync-status");
+    await expect(sync).toBeVisible();
+    await expect.poll(() => sync.evaluate((node) => getComputedStyle(node).display)).not.toBe("none");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  }
+});
+
 // Motion writes an inline transform during entry and exit. Positioning the toast
 // with a competing CSS translateX used to clip its right side on mobile.
 for (const width of [320, 390, 1440]) {

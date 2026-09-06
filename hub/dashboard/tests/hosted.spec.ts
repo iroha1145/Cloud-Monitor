@@ -36,6 +36,8 @@ test("production gate, real auth and static resources work under the server CSP"
   await page.getByLabel("访问密钥", { exact: true }).fill(READ_TOKEN);
   await page.getByRole("button", { name: "进入工作台" }).click();
   await expect(page.getByText("当前展示真实数据")).toBeAttached();
+  await expect(page.getByText("未载入订阅清单")).toHaveCount(0);
+  await expect(page.getByText("未载入服务商状态")).toHaveCount(0);
   await page.getByRole("button", { name: "查看 gpt-5.2 详情" }).click();
   await expect(page.getByRole("dialog").getByText("28.6 万", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");

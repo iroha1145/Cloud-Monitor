@@ -2000,9 +2000,6 @@ h2 {
   .model-open strong {
     font-size: 10px;
   }
-  .cache-track {
-    display: none;
-  }
   .client-rows {
     padding-left: 19px;
     padding-right: 19px;
@@ -2064,9 +2061,6 @@ h2 {
   .model-open strong {
     font-size: 12px;
   }
-  .cache-track {
-    display: block;
-  }
   .stats-row {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -2095,14 +2089,8 @@ h2 {
   .heading-actions {
     gap: 8px;
   }
-  .sync-status {
-    display: none;
-  }
   .provider-strip {
     row-gap: 13px;
-  }
-  .provider-state {
-    display: none;
   }
   .page-footer {
     align-items: flex-start;
@@ -2517,9 +2505,6 @@ h2 {
     max-width: 180px;
   }
   .date-label {
-    display: none;
-  }
-  .provider-state {
     display: none;
   }
 }

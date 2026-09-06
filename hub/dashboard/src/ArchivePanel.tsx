@@ -233,10 +233,14 @@ export function ArchivePanel({
         {dataMode === "live" && historyAvailable !== false && (
           <button
             className="archive-button"
-            disabled={loading || !accessToken}
+            disabled={!accessToken}
+            aria-busy={loading}
             onClick={() => {
               setFallback(false);
-              void load(null, []);
+              activeRequest.current?.abort();
+              const revision = ++context.current;
+              busy.current = false;
+              void load(null, [], revision);
             }}
           >
             <RefreshCw size={15} aria-hidden="true" />
