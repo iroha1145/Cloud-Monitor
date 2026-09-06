@@ -51,4 +51,10 @@ fi
 # 4) 运行期数据目录
 mkdir -p data
 
-echo "安装完成：hub + agent 依赖就绪，hub/.env 已配置。"
+# 5) 新版用量面板：构建到 hub/frontend/app/，后端优先提供该目录
+#    未构建时会回退到旧静态页。npm ci 可重复执行。
+if [ -f hub/dashboard/package-lock.json ]; then
+  (cd hub/dashboard && npm ci --no-audit --no-fund && npm run build)
+fi
+
+echo "安装完成：hub + agent 依赖就绪，新版面板已构建，hub/.env 已配置。"
