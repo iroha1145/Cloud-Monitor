@@ -16,6 +16,56 @@ const login = async (page: import("@playwright/test").Page) => {
   await expect(page.getByRole("button", { name: "查看 gpt-5.2 详情" })).toBeVisible();
 };
 
+for (const authentication of ["manual", "restored"] as const) {
+  test(`hosted ${authentication} login loads one complete batch and keeps scheduled refreshes`, async ({ page }) => {
+    const counts = { overview: 0, subscriptions: 0, "provider-status": 0, daily: 0 };
+    const overview = {
+      ...overviewFixture,
+      features: { ...overviewFixture.features, subscriptions: true, provider_status: true, history_daily: true },
+    };
+    let allowRefresh = false;
+    let release!: () => void;
+    const blocked = new Promise<void>(resolve => { release = resolve; });
+    await page.clock.install();
+    await page.route("**/api/v1/tm/**", async route => {
+      const endpoint = new URL(route.request().url()).pathname.split("/").at(-1)! as keyof typeof counts;
+      if (!(endpoint in counts)) return route.continue();
+      counts[endpoint] += 1;
+      // Hold an unexpected second batch so a partial overview cannot hide
+      // behind fast ancillary responses, as it could in the original test.
+      if (endpoint !== "overview" && counts[endpoint] > 1 && !allowRefresh) await blocked;
+      const json = endpoint === "overview" ? overview :
+        endpoint === "subscriptions" ? { subscriptions: [] } :
+        endpoint === "provider-status" ? require("./fixtures/provider-status.json") : { items: [] };
+      await route.fulfill({ json }).catch(() => {});
+    });
+    try {
+      if (authentication === "restored") {
+        await page.addInitScript(token => sessionStorage.setItem("cm_access_token", token), READ_TOKEN);
+        await page.goto("/");
+      } else {
+        await login(page);
+      }
+      await expect(page.getByText("当前展示真实数据")).toBeAttached();
+      await page.clock.runFor(100);
+      expect(counts).toEqual({ overview: 1, subscriptions: 1, "provider-status": 1, daily: 1 });
+      await expect(page.getByText(/未载入订阅清单|未载入服务商状态/)).toHaveCount(0);
+
+      allowRefresh = true;
+      release();
+      await page.clock.fastForward(300000);
+      await expect.poll(() => counts).toEqual({ overview: 2, subscriptions: 2, "provider-status": 2, daily: 2 });
+      await expect(page.getByText(/未载入订阅清单|未载入服务商状态/)).toHaveCount(0);
+
+      await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+      await expect.poll(() => counts).toEqual({ overview: 3, subscriptions: 3, "provider-status": 3, daily: 3 });
+      await expect(page.getByText(/未载入订阅清单|未载入服务商状态/)).toHaveCount(0);
+    } finally {
+      release();
+    }
+  });
+}
+
 test("production gate, real auth and static resources work under the server CSP", async ({ page, request }) => {
   const failures: string[] = [];
   page.on("pageerror", error => failures.push(error.message));

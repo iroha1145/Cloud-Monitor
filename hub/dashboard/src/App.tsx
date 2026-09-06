@@ -228,7 +228,9 @@ export default function App({ initialData, initialToken = "", hosted = false, is
         setRefreshWarning("自动刷新未完成，已保留上次数据。请检查连接或重新刷新。");
       }
     };
-    if (hosted) void update();
+    // HostedRoot has already loaded every enabled endpoint before mounting us.
+    // Keep that complete first screen until a scheduled or explicit refresh.
+    if (hosted && !initialData) void update();
     const timer = setInterval(() => void update(), 300000);
     const visible = () => { if (document.hidden) cancel(); else void update(); };
     const restored = (event: PageTransitionEvent) => { if (event.persisted) void update(); };
@@ -236,7 +238,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     window.addEventListener("pageshow", restored);
     window.addEventListener("pagehide", cancel);
     return () => { clearInterval(timer); document.removeEventListener("visibilitychange", visible); window.removeEventListener("pagehide", cancel); window.removeEventListener("pageshow", restored); cancel(); };
-  }, [data.mode, hosted, onSignOut]);
+  }, [data.mode, hosted, initialData, onSignOut]);
   useEffect(() => () => { ++requestVersion.current; inFlight.current?.abort(); }, []);
   const go = (id: PageId) => {
     location.hash = id;
