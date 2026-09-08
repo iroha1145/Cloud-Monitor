@@ -50,7 +50,7 @@ fun modelVendorId(name: String?): String {
     if ("hunyuan" in s) return "hunyuan"
     if ("command-r" in s || "cohere" in s || "aya-" in s) return "cohere"
     if (s == "pi" || s.startsWith("pi-") || "inflection" in s) return "pi"
-    if ("cursor" in s) return "cursor"
+    if ("cursor" in s || "composer" in s) return "cursor"
     if ("copilot" in s) return "copilot"
     return ""
 }

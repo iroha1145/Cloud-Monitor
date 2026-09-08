@@ -5,6 +5,8 @@ import {
   normalizeComponents,
   normalizeOverview,
   normalizePeriod,
+  providerFor,
+  providerName,
 } from "../src/data.ts";
 
 const componentKeys = [
@@ -658,4 +660,18 @@ test("account and subscription detail survives adaptation without exposing full 
   assert.equal(source.limits[0].accountEmail, "reviewer@example.invalid");
   assert.ok(!JSON.stringify(data).includes("account-1234567890"));
   assert.ok(!JSON.stringify(data).includes("reviewer@example.invalid"));
+});
+
+test("providerFor maps composer to Cursor, K3 to Kimi, and glm-5.3-flash to GLM", () => {
+  assert.equal(providerFor("composer"), "cursor");
+  assert.equal(providerFor("composer-2"), "cursor");
+  assert.equal(providerFor("Composer-1.5"), "cursor");
+  assert.equal(providerFor("k3"), "kimi");
+  assert.equal(providerFor("k3-256k"), "kimi");
+  assert.equal(providerFor("K3-256K"), "kimi");
+  assert.equal(providerFor("glm-5.3-flash"), "glm");
+  assert.equal(providerFor("GLM-5.3-Flash"), "glm");
+  assert.equal(providerName("cursor"), "Cursor");
+  assert.equal(providerName("kimi"), "Kimi");
+  assert.equal(providerName("glm"), "GLM");
 });

@@ -321,6 +321,7 @@ val PROVIDER_NAMES = mapOf(
     "zhipu" to "智谱",
     "moonshot" to "Moonshot",
     "kimi" to "Kimi",
+    "glm" to "GLM",
     "deepseek" to "DeepSeek",
     "grok" to "SpaceXAI",
     "xai" to "SpaceXAI",

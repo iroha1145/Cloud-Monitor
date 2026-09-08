@@ -166,13 +166,18 @@ def test_aliases_map_claude_codex_cursor():
     assert canonical_provider("kimi-k2") == "kimi"
     assert canonical_provider("k3") == "kimi"
     assert canonical_provider("k3-256k") == "kimi"
+    assert canonical_provider("K3-256K") == "kimi"
     assert canonical_provider("kimi-k3") == "kimi"
+    assert canonical_provider("composer") == "cursor"
+    assert canonical_provider("composer-2") == "cursor"
+    assert canonical_provider("composer-1.5") == "cursor"
     assert canonical_provider("grok") == "grok"
     assert canonical_provider("xai") == "grok"
     assert canonical_provider("grok-4.6") == "grok"
     assert canonical_provider("cursor-grok-4.6-xhigh-fast") == "grok"
     assert canonical_provider("glm") is None  # 无官方 Statuspage，不出卡
     assert canonical_provider("glm-4.6") is None
+    assert canonical_provider("glm-5.3-flash") is None
 
 
 def test_discover_from_today_clients_when_limits_off():

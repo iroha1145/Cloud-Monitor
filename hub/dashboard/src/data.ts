@@ -387,12 +387,15 @@ const colors = [
 ];
 
 export function providerFor(name: string): string {
-  if (/claude|anthropic|sonnet|opus|haiku/i.test(name)) return "anthropic";
-  if (/codex|gpt|openai/i.test(name)) return "openai";
-  if (/cursor/i.test(name)) return "cursor";
-  if (/gemini|google/i.test(name)) return "google";
-  if (/grok|xai/i.test(name)) return "xai";
-  if (/deepseek/i.test(name)) return "deepseek";
+  const key = name.toLowerCase();
+  if (/claude|anthropic|sonnet|opus|haiku/.test(key)) return "anthropic";
+  if (/codex|gpt|openai/.test(key)) return "openai";
+  if (/cursor|composer/.test(key)) return "cursor";
+  if (/gemini|google/.test(key)) return "google";
+  if (/grok|xai/.test(key)) return "xai";
+  if (/deepseek/.test(key)) return "deepseek";
+  if (/kimi|moonshot|(?:^|[^a-z0-9])k3(?:[-._]|$)/.test(key)) return "kimi";
+  if (/glm|zhipu|\bzai\b/.test(key)) return "glm";
   return "other";
 }
 
@@ -406,6 +409,8 @@ export function providerName(provider: string): string {
         google: "Google",
         xai: "xAI",
         deepseek: "DeepSeek",
+        kimi: "Kimi",
+        glm: "GLM",
       } as Record<string, string>
     )[provider] || provider
   );

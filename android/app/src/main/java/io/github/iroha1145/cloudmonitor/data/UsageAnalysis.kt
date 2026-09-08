@@ -159,11 +159,12 @@ private fun usageProvider(id: String): String {
     return when {
         listOf("claude", "opus", "sonnet", "haiku", "anthropic").any { it in name } -> "anthropic"
         listOf("gpt", "codex", "openai").any { it in name } -> "openai"
-        "cursor" in name -> "cursor"
+        "cursor" in name || "composer" in name -> "cursor"
         "gemini" in name || "google" in name -> "google"
         "deepseek" in name -> "deepseek"
         "grok" in name || "xai" in name -> "xai"
-        "kimi" in name || "moonshot" in name -> "kimi"
+        "kimi" in name || "moonshot" in name || Regex("""(?:^|[^a-z0-9])k3(?:[-._]|$)""").containsMatchIn(name) -> "kimi"
+        "glm" in name || "zhipu" in name || Regex("""\bzai\b""").containsMatchIn(name) -> "glm"
         else -> "other"
     }
 }

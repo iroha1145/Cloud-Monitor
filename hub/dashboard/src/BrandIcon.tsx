@@ -90,7 +90,7 @@ export function brandLogoId(name: string): string | null {
     [/hunyuan/, "hunyuan"],
     [/command-r|cohere|aya-/, "cohere"],
     [/^pi$|^pi-|inflection/, "pi"],
-    [/cursor/, "cursor"],
+    [/cursor|composer/, "cursor"],
     [/copilot|github/, "copilot"],
     [/antigravity/, "antigravity"],
     [/openrouter/, "openrouter"],

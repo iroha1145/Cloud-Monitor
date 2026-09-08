@@ -430,7 +430,8 @@ function modelVendorId(name) {
   if (s.includes("hunyuan")) return "hunyuan";
   if (s.includes("command-r") || s.includes("cohere") || s.includes("aya-")) return "cohere";
   if (s === "pi" || s.startsWith("pi-") || s.includes("inflection")) return "pi";
-  if (s.includes("cursor")) return "cursor";
+  /* composer / composer-2 等是 Cursor 自有模型，文案仍显示原名 */
+  if (s.includes("cursor") || s.includes("composer")) return "cursor";
   if (s.includes("copilot")) return "copilot";
   return "";
 }

@@ -203,7 +203,7 @@ def _canonical_from_usage_name(key: str) -> Optional[str]:
         return "kimi"
     if "grok" in key or "xai" in key or "x.ai" in key:
         return "grok"
-    if key == "cursor" or key.startswith("cursor-"):
+    if key == "cursor" or key.startswith("cursor-") or "composer" in key:
         return "cursor"
     return None
 
