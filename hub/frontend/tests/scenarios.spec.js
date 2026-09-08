@@ -502,25 +502,36 @@ test.describe("§7 capabilities.tokenComponents=false（demo ?cm-scenario=nocap�
     await expect(page.locator("#sub-grid .sub-provider i[style*='background']")).toHaveCount(0);
   });
 
-  test("k3 / k3-256k 模型图标用 kimi，文案仍显示原名", async ({ page, context }) => {
+  test("composer / k3 / glm-5.3-flash 模型图标分别用 cursor、kimi、zai，文案仍显示原名", async ({ page, context }) => {
     await loginWithToken(context);
     const p = clone(base.payload);
     const today = p.totals.today;
-    today.models = { ...(today.models || {}), k3: 9e9, "k3-256k": 8e9 };
+    const extra = {
+      "composer-2": 9e9,
+      k3: 8e9,
+      "k3-256k": 7e9,
+      "glm-5.3-flash": 6e9,
+    };
+    today.models = { ...(today.models || {}), ...extra };
     const client = Object.keys(today.clients || {})[0] || "claude";
     today.clientModels = { ...(today.clientModels || {}) };
-    today.clientModels[client] = { ...(today.clientModels[client] || {}), k3: 9e9, "k3-256k": 8e9 };
+    today.clientModels[client] = { ...(today.clientModels[client] || {}), ...extra };
     await stubOverview(page, p);
     await page.goto("/");
     await expect(page.locator("#shell")).toBeVisible();
-    await expect(page.locator('#mx .mx-col[title="k3"] .mx-label')).toHaveText("k3");
-    await expect(page.locator('#mx .mx-col[title="k3-256k"] .mx-label')).toHaveText("k3-256k");
-    for (const name of ["k3", "k3-256k"]) {
+    const expected = {
+      "composer-2": "cursor",
+      k3: "kimi",
+      "k3-256k": "kimi",
+      "glm-5.3-flash": "zai",
+    };
+    for (const [name, vendor] of Object.entries(expected)) {
+      await expect(page.locator(`#mx .mx-col[title="${name}"] .mx-label`)).toHaveText(name);
       const mask = await page.locator(`#mx .mx-col[title="${name}"] .client-logo`).evaluate((el) => {
         const s = getComputedStyle(el);
         return s.maskImage || s.webkitMaskImage || "";
       });
-      expect(mask).toMatch(/client-logos\/kimi\.svg/);
+      expect(mask).toMatch(new RegExp(`client-logos/${vendor}\\.svg`));
     }
   });
 
