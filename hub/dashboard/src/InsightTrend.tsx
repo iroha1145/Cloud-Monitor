@@ -3,11 +3,10 @@
  * Source copy: references/beautifului/InsightCards.tsx. Keep its inset chart,
  * Liveline stroke, compact metric header, pointer cursor and floating details.
  * Daily values in the tooltip are always source records, never curve samples.
- * The stroke is a Fritsch–Carlson monotone cubic so large day-to-day jumps
- * round at the vertex instead of folding into a corner.
+ * The stroke is Liveline's Fritsch–Carlson cubic through those daily points,
+ * so large jumps round at the vertex instead of folding into a corner.
  */
 import { Liveline } from "liveline";
-import { smoothTrendPoints as smoothPoints } from "./trend-math";
 import {
   useEffect,
   useId,
@@ -251,7 +250,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
         value: metric === "tokens" ? item.totalTokens : item.costUsd!,
       }));
     return {
-      points: smoothPoints(values),
+      points: values,
       end,
       value: values.at(-1)?.value ?? 0,
     };
