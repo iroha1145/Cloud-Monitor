@@ -60,12 +60,14 @@ test("invalid calendar dates never reach chart timestamp calculations", () => {
 });
 
 
-import { smoothTrendPoints } from "../src/trend-math";
+import { smoothTrendPoints, TREND_SAMPLES_PER_SEGMENT } from "../src/trend-math";
 
 test("smoothed cost curves preserve every reported credit and endpoint", () => {
   const points = [-5, -10, 8, -2].map((value, time) => ({ time, value }));
   const smoothed = smoothTrendPoints(points);
-  points.forEach((point, index) => assert.deepEqual(smoothed[index * 9], point));
+  points.forEach((point, index) =>
+    assert.deepEqual(smoothed[index * TREND_SAMPLES_PER_SEGMENT], point),
+  );
 });
 
 test("smoothing does not invent extrema between adjacent daily records", () => {
@@ -73,12 +75,32 @@ test("smoothing does not invent extrema between adjacent daily records", () => {
     const points = values.map((value, time) => ({ time, value }));
     const smoothed = smoothTrendPoints(points);
     for (let i = 0; i < points.length - 1; i++) {
-      for (const sample of smoothed.slice(i * 9, (i + 1) * 9)) {
+      for (const sample of smoothed.slice(
+        i * TREND_SAMPLES_PER_SEGMENT,
+        (i + 1) * TREND_SAMPLES_PER_SEGMENT,
+      )) {
         assert.ok(sample.value >= Math.min(values[i], values[i + 1]));
         assert.ok(sample.value <= Math.max(values[i], values[i + 1]));
       }
     }
   }
+});
+
+test("large jumps flatten at the vertex instead of folding a corner", () => {
+  const points = [2, 100, 1, 80].map((value, time) => ({ time, value }));
+  const smoothed = smoothTrendPoints(points);
+  const peak = 1 * TREND_SAMPLES_PER_SEGMENT;
+  const before = smoothed[peak - 1];
+  const at = smoothed[peak];
+  const after = smoothed[peak + 1];
+  assert.equal(at.value, 100);
+  const incoming = Math.abs(at.value - before.value);
+  const outgoing = Math.abs(after.value - at.value);
+  const midRise = Math.abs(
+    smoothed[Math.floor(TREND_SAMPLES_PER_SEGMENT / 2)].value - points[0].value,
+  );
+  assert.ok(incoming < midRise / 3);
+  assert.ok(outgoing < midRise / 3);
 });
 
 test("deadline covers JSON body reads and releases its timer", async () => {

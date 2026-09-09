@@ -3,6 +3,8 @@
  * Source copy: references/beautifului/InsightCards.tsx. Keep its inset chart,
  * Liveline stroke, compact metric header, pointer cursor and floating details.
  * Daily values in the tooltip are always source records, never curve samples.
+ * The stroke is a Fritsch–Carlson monotone cubic so large day-to-day jumps
+ * round at the vertex instead of folding into a corner.
  */
 import { Liveline } from "liveline";
 import { smoothTrendPoints as smoothPoints } from "./trend-math";
