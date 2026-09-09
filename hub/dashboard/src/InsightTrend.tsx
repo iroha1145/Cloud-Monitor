@@ -3,9 +3,11 @@
  * Source copy: references/beautifului/InsightCards.tsx. Keep its inset chart,
  * Liveline stroke, compact metric header, pointer cursor and floating details.
  * Daily values in the tooltip are always source records, never curve samples.
+ * The stroke is Liveline's Fritsch–Carlson cubic through those daily points;
+ * its same-Y live tip flattens the latest day against the dashed reference.
+ * Slope rules live in trend-math.ts as the spec Android also follows.
  */
 import { Liveline } from "liveline";
-import { smoothTrendPoints as smoothPoints } from "./trend-math";
 import {
   useEffect,
   useId,
@@ -249,7 +251,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
         value: metric === "tokens" ? item.totalTokens : item.costUsd!,
       }));
     return {
-      points: smoothPoints(values),
+      points: values,
       end,
       value: values.at(-1)?.value ?? 0,
     };

@@ -1,10 +1,13 @@
 package io.github.iroha1145.cloudmonitor
 
+import android.content.Context
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
+import android.view.inputmethod.InputMethodManager
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.After
@@ -129,12 +132,13 @@ class WorkbenchTest {
         compose.onNodeWithTag("nav-Devices").performClick()
         compose.onNodeWithTag("screen-Devices").performScrollToNode(hasTestTag("device-search"))
         compose.onNodeWithTag("device-search").performTextInput("no-such-device")
-        shell("input keyevent 4")
+        hideIme()
         compose.onNodeWithTag("nav-History").performClick()
         compose.onNodeWithTag("screen-History").performScrollToNode(hasTestTag("session-search"))
         compose.onNodeWithTag("session-search").performTextInput("no-such-session")
-        shell("input keyevent 4")
+        hideIme()
         compose.activityRule.scenario.recreate()
+        waitForTag("screen-History")
         compose.onNodeWithTag("screen-History").performScrollToNode(hasTestTag("session-search"))
         compose.onNodeWithTag("session-search").assertTextContains("no-such-session")
         compose.onNodeWithTag("nav-Devices").performClick()
@@ -166,6 +170,24 @@ class WorkbenchTest {
             compose.onNodeWithTag("screen-$tab").assertIsDisplayed()
             shot("large-text-${tab.lowercase()}")
             compose.onNodeWithTag("screen-$tab").performTouchInput { swipeUp() }
+        }
+    }
+
+    /** BACK also finishes the activity when Gboard is already hidden; hide IME directly. */
+    private fun hideIme() {
+        compose.waitForIdle()
+        runCatching { Espresso.closeSoftKeyboard() }
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val activity = compose.activity
+            val ime = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            ime.hideSoftInputFromWindow(activity.window.decorView.windowToken, 0)
+        }
+        compose.waitForIdle()
+    }
+
+    private fun waitForTag(tag: String, timeoutMs: Long = 15_000) {
+        compose.waitUntil(timeoutMs) {
+            compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
         }
     }
 

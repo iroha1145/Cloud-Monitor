@@ -8,6 +8,9 @@ projects 规范化 / diagnostics / period_windows，以及 /tm 301 兼容跳转�
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
 from conftest import (
     READ_KEY,
     TM_SECRET,
@@ -131,6 +134,13 @@ def test_hourly_activity_diff_buckets(cloud):
     assert overview(cloud)["activity"]["hourly"] == []  # 无数据为空数组
 
     pa = widget_style_payload("dev-h")
+    # 钉在东京中午：墙钟靠近 15:00 UTC 时 now+6min 会跨过东京午夜，增量落到次日。
+    noon = datetime.now(ZoneInfo("Asia/Tokyo")).replace(
+        hour=12, minute=0, second=0, microsecond=0,
+    )
+    pa["updatedAt"] = noon.astimezone(timezone.utc).isoformat(
+        timespec="milliseconds",
+    ).replace("+00:00", "Z")
     ingest(cloud, pa)
     hourly = overview(cloud)["activity"]["hourly"]
     assert len(hourly) == 24
@@ -138,12 +148,11 @@ def test_hourly_activity_diff_buckets(cloud):
     # 首次上报：差分 = 全量，落在某个 UTC 小时桶
     assert sum(h["total"] for h in hourly) == 1846320
 
-    # 同一设备再次上报（下一桶模拟增量）：差分只计增量，负值钳 0
-    pa["updatedAt"] = None  # 占位，下面覆盖
-    import datetime as _dt
-
-    later = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(minutes=6)
-    pa["updatedAt"] = later.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    # 同一设备再次上报（下一桶模拟增量）：差分只计增量，负值钳 0。
+    later = noon + timedelta(minutes=6)
+    pa["updatedAt"] = later.astimezone(timezone.utc).isoformat(
+        timespec="milliseconds",
+    ).replace("+00:00", "Z")
     pa["today"]["totalTokens"] = 1846320 + 500
     ingest(cloud, pa)
     hourly = overview(cloud)["activity"]["hourly"]
@@ -151,8 +160,10 @@ def test_hourly_activity_diff_buckets(cloud):
 
     # 回退上报（总量变小）产生 0 增量而非负数
     pa["today"]["totalTokens"] = 100
-    later2 = later + _dt.timedelta(minutes=6)
-    pa["updatedAt"] = later2.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    later2 = later + timedelta(minutes=6)
+    pa["updatedAt"] = later2.astimezone(timezone.utc).isoformat(
+        timespec="milliseconds",
+    ).replace("+00:00", "Z")
     ingest(cloud, pa)
     hourly = overview(cloud)["activity"]["hourly"]
     assert sum(h["total"] for h in hourly) == 1846320 + 500

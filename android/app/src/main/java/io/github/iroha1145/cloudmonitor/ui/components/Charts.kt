@@ -37,6 +37,26 @@ import io.github.iroha1145.cloudmonitor.data.*
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
 import kotlin.math.roundToInt
 
+/** Cubic through daily points; last-day tangent is flat like Liveline's same-Y tip. */
+private fun addMonotoneCubic(path: Path, xs: FloatArray, ys: FloatArray) {
+    val n = xs.size
+    if (n == 0) return
+    path.moveTo(xs[0], ys[0])
+    if (n == 1) return
+    val m = monotoneTrendSlopes(xs, ys)
+    for (i in 0 until n - 1) {
+        val hi = xs[i + 1] - xs[i]
+        path.cubicTo(
+            xs[i] + hi / 3f,
+            ys[i] + m[i] * hi / 3f,
+            xs[i + 1] - hi / 3f,
+            ys[i + 1] - m[i + 1] * hi / 3f,
+            xs[i + 1],
+            ys[i + 1],
+        )
+    }
+}
+
 /** The mobile HTML's inset line chart; displayed values always come from daily records. */
 @Composable
 fun DailyTrendChart(rows: List<TrendRow>, page: io.github.iroha1145.cloudmonitor.ui.PageState, modifier: Modifier = Modifier) {
@@ -121,19 +141,9 @@ fun DailyTrendChart(rows: List<TrendRow>, page: io.github.iroha1145.cloudmonitor
                 drawLine(cm.border.copy(alpha = .55f), Offset(left, bottom + 10.dp.toPx()), Offset(left + plotWidth, bottom + 10.dp.toPx()), 1.dp.toPx())
                 if (canDraw) {
                     val path = Path()
-                    path.moveTo(x(0), y(values[0]))
-                    // Same Catmull-Rom samples as InsightTrend.tsx, clamped at zero.
-                    for (i in 0 until rows.lastIndex) {
-                        val p0 = values[(i - 1).coerceAtLeast(0)]
-                        val p1 = values[i]
-                        val p2 = values[i + 1]
-                        val p3 = values[(i + 2).coerceAtMost(rows.lastIndex)]
-                        for (sample in 1..9) {
-                            val t = sample / 9.0
-                            val value = (.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t)).coerceAtLeast(0.0)
-                            path.lineTo(x(i) + (x(i + 1) - x(i)) * t.toFloat(), y(value).coerceIn(8.dp.toPx(), bottom))
-                        }
-                    }
+                    val xs = FloatArray(rows.size) { x(it) }
+                    val ys = FloatArray(rows.size) { y(values[it]).coerceIn(8.dp.toPx(), bottom) }
+                    addMonotoneCubic(path, xs, ys)
                     drawLine(color.copy(alpha = .2f), Offset(left, y(values.last())), Offset(left + plotWidth, y(values.last())), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx())))
                     drawPath(path, color, style = Stroke(2.25.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
                     drawCircle(cm.card, 5.dp.toPx(), Offset(x(rows.lastIndex), y(values.last())))
