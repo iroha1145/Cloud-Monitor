@@ -36,47 +36,16 @@ import androidx.compose.ui.unit.sp
 import io.github.iroha1145.cloudmonitor.data.*
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
 import kotlin.math.roundToInt
-import kotlin.math.sqrt
 
-/** Fritsch–Carlson cubic through the daily points; same stroke as trend-math.ts. */
+/** Cubic through daily points; last-day tangent is flat like Liveline's same-Y tip. */
 private fun addMonotoneCubic(path: Path, xs: FloatArray, ys: FloatArray) {
     val n = xs.size
     if (n == 0) return
     path.moveTo(xs[0], ys[0])
     if (n == 1) return
-    if (n == 2) {
-        path.lineTo(xs[1], ys[1])
-        return
-    }
-    val h = FloatArray(n - 1)
-    val delta = FloatArray(n - 1)
+    val m = monotoneTrendSlopes(xs, ys)
     for (i in 0 until n - 1) {
-        h[i] = xs[i + 1] - xs[i]
-        delta[i] = if (h[i] == 0f) 0f else (ys[i + 1] - ys[i]) / h[i]
-    }
-    val m = FloatArray(n)
-    m[0] = delta[0]
-    m[n - 1] = delta[n - 2]
-    for (i in 1 until n - 1) {
-        m[i] = if (delta[i - 1] * delta[i] <= 0f) 0f else (delta[i - 1] + delta[i]) / 2f
-    }
-    for (i in 0 until n - 1) {
-        if (delta[i] == 0f) {
-            m[i] = 0f
-            m[i + 1] = 0f
-        } else {
-            val alpha = m[i] / delta[i]
-            val beta = m[i + 1] / delta[i]
-            val steep = alpha * alpha + beta * beta
-            if (steep > 9f) {
-                val scale = 3f / sqrt(steep)
-                m[i] = scale * alpha * delta[i]
-                m[i + 1] = scale * beta * delta[i]
-            }
-        }
-    }
-    for (i in 0 until n - 1) {
-        val hi = h[i]
+        val hi = xs[i + 1] - xs[i]
         path.cubicTo(
             xs[i] + hi / 3f,
             ys[i] + m[i] * hi / 3f,
@@ -174,7 +143,6 @@ fun DailyTrendChart(rows: List<TrendRow>, page: io.github.iroha1145.cloudmonitor
                     val path = Path()
                     val xs = FloatArray(rows.size) { x(it) }
                     val ys = FloatArray(rows.size) { y(values[it]).coerceIn(8.dp.toPx(), bottom) }
-                    // Same Fritsch–Carlson cubic as hub/dashboard/src/trend-math.ts.
                     addMonotoneCubic(path, xs, ys)
                     drawLine(color.copy(alpha = .2f), Offset(left, y(values.last())), Offset(left + plotWidth, y(values.last())), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx())))
                     drawPath(path, color, style = Stroke(2.25.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
