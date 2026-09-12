@@ -32,6 +32,7 @@ import {
   type PeriodUsage,
   type UsageEntity,
 } from "./data";
+import { matrixHeatLevel, matrixHeatPeak } from "./matrix-heat";
 
 export const compact = (n: number) =>
   n >= 1e8
@@ -731,10 +732,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
   const models = per.models.filter((m) =>
     clients.some((c) => source?.[c]?.[m.id] !== undefined),
   );
-  const max = Math.max(
-    1,
-    ...Object.values(source || {}).flatMap((m) => Object.values(m)),
-  );
+  const peak = matrixHeatPeak(source);
   return (
     <section className="panel matrix-panel">
       <div className="panel-head">
@@ -790,10 +788,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
                   </th>
                   {models.map((m) => {
                     const v = source?.[c]?.[m.id];
-                    const level =
-                      v === undefined
-                        ? 0
-                        : Math.min(4, Math.floor((Math.max(0, v) / max) * 4));
+                    const level = matrixHeatLevel(v, peak);
                     return (
                       <td key={m.id} data-model={m.name}>
                         <MetricTooltip
