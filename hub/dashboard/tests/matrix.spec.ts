@@ -112,18 +112,23 @@ test("skewed live matrix keeps 万-scale cells colored against a 亿-scale peak"
   await expect(page.getByText("当前展示真实数据")).toBeVisible();
   await page.locator("aside").getByRole("link", { name: "模型分析" }).click();
   await expectMatrixCellsColored(page);
+  await expect(page.locator(".matrix-cell.level-4")).toHaveCount(1);
   await expect(page.locator(".matrix-cell.level-4")).toContainText("2.60 亿");
-  await expect(page.locator(".matrix-cell.level-1")).toContainText("7.7 万");
+  const small = page
+    .locator(".matrix-cell.level-1")
+    .filter({ hasText: "7.7 万" });
+  await expect(small).toHaveCount(1);
+  await expect(small).toBeVisible();
+  await page.locator(".matrix-panel").scrollIntoViewIfNeeded();
   await page.screenshot({
     path: "evidence/matrix-skewed-tokens.png",
-    fullPage: true,
     animations: "disabled",
   });
   await page.getByRole("button", { name: "使用费用" }).click();
   await expectMatrixCellsColored(page);
+  await page.locator(".matrix-panel").scrollIntoViewIfNeeded();
   await page.screenshot({
     path: "evidence/matrix-skewed-costs.png",
-    fullPage: true,
     animations: "disabled",
   });
 });
