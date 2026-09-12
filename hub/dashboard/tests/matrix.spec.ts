@@ -50,6 +50,11 @@ test("demo matrix paints a color on every reported token and cost cell", async (
     page.getByRole("heading", { name: "模型分析", exact: true }),
   ).toBeVisible();
   await expectMatrixCellsColored(page);
+  await page.locator(".matrix-panel").scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: "evidence/matrix-demo-tokens.png",
+    animations: "disabled",
+  });
   await page.getByRole("button", { name: "使用费用" }).click();
   await expect(page.getByRole("button", { name: "使用费用" })).toHaveAttribute(
     "aria-pressed",
