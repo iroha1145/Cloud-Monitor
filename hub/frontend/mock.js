@@ -1,4 +1,7 @@
 /* 云端用量面板 · 演示数据
+ * 只服务旧版原生面板的 Overview API 形契约。
+ * 新版 React 面板的演示数据以 hub/dashboard/src/data.ts#createDemoData 为准，
+ * 不再平行维护一套归一化视图。
  * 生成符合 TM Overview 契约（v2 + Cloud 扩展）的完整假数据
  *（结构对齐后端官方前端契约夹具 hub/tests/fixtures/frontend-contract/）：
  * - 3 台设备（MacBook-Pro.local / Win11-Desktop / ubuntu-server）

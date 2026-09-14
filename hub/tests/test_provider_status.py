@@ -178,6 +178,9 @@ def test_aliases_map_claude_codex_cursor():
     assert canonical_provider("glm") is None  # 无官方 Statuspage，不出卡
     assert canonical_provider("glm-4.6") is None
     assert canonical_provider("glm-5.3-flash") is None
+    assert canonical_provider("muse-spark") is None  # Meta 无状态页，不出卡
+    assert canonical_provider("muse-spark-1") is None
+    assert canonical_provider("muse spark") is None
 
 
 def test_discover_from_today_clients_when_limits_off():

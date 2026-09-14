@@ -28,7 +28,14 @@ export async function requestJSON(path: string, token: string, signal?: AbortSig
     if (!response.ok) throw new ApiError(response.status,
       response.status === 401 || response.status === 403 ? "访问密钥不正确，或没有读取权限。" :
       response.status === 404 ? "服务尚未启用该数据接口。" : `暂时无法获取数据（${response.status}），请稍后重试。`);
-    return await response.json();
+    try {
+      return await response.json();
+    } catch (error) {
+      if (controller.signal.aborted) throw controller.signal.reason;
+      if (error instanceof SyntaxError)
+        throw new Error("服务返回格式异常，请稍后重试。");
+      throw error;
+    }
   } catch (error) {
     if (timedOut) throw new Error("服务响应超时，请稍后重试。");
     if (controller.signal.aborted) throw controller.signal.reason;

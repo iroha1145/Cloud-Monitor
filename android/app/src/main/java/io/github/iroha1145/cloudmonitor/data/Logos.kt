@@ -44,7 +44,7 @@ fun modelVendorId(name: String?): String {
     if ("glm" in s || "zhipu" in s || Regex("""\bzai\b""").containsMatchIn(s)) return "zai"
     if ("kimi" in s || "moonshot" in s || Regex("""(?:^|[^a-z0-9])k3(?:[-._]|$)""").containsMatchIn(s)) return "kimi"
     if ("mistral" in s || "mixtral" in s || "codestral" in s) return "mistral"
-    if ("llama" in s || "meta" in s) return "meta"
+    if (Regex("""muse[\s-]*spark""").containsMatchIn(s) || "llama" in s || "meta" in s) return "meta"
     if ("minimax" in s) return "minimax"
     if ("doubao" in s) return "doubao"
     if ("hunyuan" in s) return "hunyuan"

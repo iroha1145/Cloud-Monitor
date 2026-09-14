@@ -1,3 +1,10 @@
+.page-loading {
+  padding: 48px 16px;
+  color: var(--ink-3);
+  font-size: 13px;
+  text-align: center;
+}
+
 /* Mobile layouts keep the same records and actions, with room for touch input. */
 .mobile-bottom-nav,
 .sv-mobile-date-picker {

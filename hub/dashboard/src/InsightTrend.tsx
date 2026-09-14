@@ -225,9 +225,11 @@ export function InsightTrend({ data }: { data: DashboardData }) {
   const series = useMemo(() => {
     const last = data.trend.at(-1);
     if (!last) return [];
-    const floor = utcDay(last.day) - (Number(days) - 1) * DAY;
+    const lastTime = utcDay(last.day);
+    const floor = lastTime - (Number(days) - 1) * DAY;
     return data.trend.filter((point) => utcDay(point.day) >= floor);
   }, [data.trend, days]);
+  const seriesTimes = useMemo(() => series.map((point) => utcDay(point.day)), [series]);
   const {
     tokenTotal, hasCost, allCosts, costTotal, cacheRate, partialCache,
     cacheDays, cacheSkippedDays,
@@ -236,26 +238,33 @@ export function InsightTrend({ data }: { data: DashboardData }) {
   const point = series[pointIndex];
   const firstDay = series[0]?.day;
   const lastDay = series.at(-1)?.day;
+  const firstTime = seriesTimes[0];
+  const lastTime = seriesTimes.at(-1);
   const span =
-    firstDay && lastDay
-      ? Math.max(DAY, utcDay(lastDay) - utcDay(firstDay))
+    firstTime != null && lastTime != null
+      ? Math.max(DAY, lastTime - firstTime)
       : DAY;
   const chart = useMemo(() => {
     const end = Date.now() / 1000;
     const last = series.at(-1);
     if (!last) return { points: [], end, value: 0 };
-    const values = series
-      .filter((item) => metric === "tokens" || item.costUsd !== null)
-      .map((item) => ({
-        time: end - (utcDay(last.day) - utcDay(item.day)),
-        value: metric === "tokens" ? item.totalTokens : item.costUsd!,
-      }));
+    const lastStamp = seriesTimes.at(-1) ?? utcDay(last.day);
+    const values = series.flatMap((item, index) =>
+      metric !== "tokens" && item.costUsd === null
+        ? []
+        : [
+            {
+              time: end - (lastStamp - (seriesTimes[index] ?? utcDay(item.day))),
+              value: metric === "tokens" ? item.totalTokens : item.costUsd!,
+            },
+          ],
+    );
     return {
       points: values,
       end,
       value: values.at(-1)?.value ?? 0,
     };
-  }, [series, metric]);
+  }, [series, seriesTimes, metric]);
 
   useEffect(() => {
     setSelected(null);
@@ -282,6 +291,14 @@ export function InsightTrend({ data }: { data: DashboardData }) {
   useEffect(() => {
     if (!hasCost && metric === "cost") setMetric("tokens");
   }, [hasCost, metric]);
+  const [plot, setPlot] = useState<DOMRect | undefined>();
+  useLayoutEffect(() => {
+    if (detailMode !== "keyboard" && detailMode !== "navigation") {
+      setPlot(undefined);
+      return;
+    }
+    setPlot(stageRef.current?.getBoundingClientRect());
+  }, [detailMode, selected, days, metric]);
 
   const setFromPointer = (
     event: PointerEvent<HTMLDivElement>,
@@ -302,11 +319,12 @@ export function InsightTrend({ data }: { data: DashboardData }) {
         ((event.clientX - bounds.left) / bounds.width - 0.015) / 0.97,
       ),
     );
-    const targetDay = utcDay(series[0].day) + progress * span;
-    const nearest = series.reduce(
-      (best, item, i) =>
-        Math.abs(utcDay(item.day) - targetDay) <
-        Math.abs(utcDay(series[best].day) - targetDay)
+    const origin = seriesTimes[0];
+    if (origin == null) return;
+    const targetDay = origin + progress * span;
+    const nearest = seriesTimes.reduce(
+      (best, time, i) =>
+        Math.abs(time - targetDay) < Math.abs(seriesTimes[best] - targetDay)
           ? i
           : best,
       0,
@@ -328,7 +346,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
     );
   const handleKey = (event: KeyboardEvent<HTMLElement>) => {
     if (
-      !["ArrowLeft", "ArrowRight", "Home", "End", "Escape"].includes(event.key)
+      !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "Escape"].includes(event.key)
     )
       return;
     event.preventDefault();
@@ -337,21 +355,23 @@ export function InsightTrend({ data }: { data: DashboardData }) {
     if (event.key === "Escape") setDetailMode(null);
     else if (event.key === "Home") setSelected(0);
     else if (event.key === "End") setSelected(series.length - 1);
-    else moveDay(event.key === "ArrowLeft" ? -1 : 1);
+    else
+      moveDay(
+        event.key === "ArrowLeft" || event.key === "ArrowDown" ? -1 : 1,
+      );
   };
   const lineColor = metric === "tokens" ? "#3d9aff" : "#f09a2f";
   const position =
-    point && firstDay
-      ? 1.5 + ((utcDay(point.day) - utcDay(firstDay)) / span) * 97
+    point && firstTime != null
+      ? 1.5 + ((seriesTimes[pointIndex] - firstTime) / span) * 97
       : 98.5;
   const tooltipVisible = detailMode !== null && selected !== null && point;
-  const stageBounds = stageRef.current?.getBoundingClientRect();
   const detailAnchor =
     pointerAnchor ||
-    (stageBounds
+    (plot
       ? {
-          x: stageBounds.left + stageBounds.width / 2,
-          y: stageBounds.top + stageBounds.height / 2,
+          x: plot.left + plot.width / 2,
+          y: plot.top + plot.height / 2,
           input:
             detailMode === "navigation"
               ? ("navigation" as const)
@@ -468,7 +488,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
               className="insight-chart-stage insight-trend-stage"
               role="slider"
               tabIndex={0}
-              aria-label="每日趋势，使用左右方向键查看日期"
+              aria-label="每日趋势，使用方向键查看日期"
               aria-valuemin={0}
               aria-valuemax={Math.max(0, series.length - 1)}
               aria-valuenow={Math.max(0, pointIndex)}
@@ -523,7 +543,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
               {canDraw ? (
                 <div className="insight-trend-canvas" aria-hidden="true">
                   <Liveline
-                    key={`${days}-${metric}-${data.generatedAt}`}
+                    key={`${days}-${metric}`}
                     data={chart.points}
                     value={chart.value}
                     theme={dark ? "dark" : "light"}
@@ -566,7 +586,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
                     <FloatingDayDetails
                       point={point}
                       anchor={detailAnchor}
-                      plot={stageBounds}
+                      plot={plot}
                       id={`${uid}-details`}
                     />
                   )}

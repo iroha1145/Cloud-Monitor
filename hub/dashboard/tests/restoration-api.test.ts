@@ -336,6 +336,20 @@ test("system check is read-only, explicit apply posts only ref, and errors prese
   );
 });
 
+test("successful HTML bodies become a friendly format error", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response("<html>bad gateway</html>", {
+      status: 200,
+      headers: { "Content-Type": "text/html" },
+    });
+  try {
+    await assert.rejects(readUpdateStatus("k"), /服务返回格式异常/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
 test("release links accept only credential-free GitHub HTTPS URLs", () => {
   assert.equal(
     safeGithubUrl("https://github.com/example/repo/releases/tag/v1"),
