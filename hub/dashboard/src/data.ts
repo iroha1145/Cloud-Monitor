@@ -292,15 +292,23 @@ function displayBinding(value: unknown): string {
     .join(" · ");
 }
 
+const DIAGNOSTIC_LIMIT = 200;
+function clipDiagnostic(text: string): string {
+  return text.length > DIAGNOSTIC_LIMIT
+    ? `${text.slice(0, DIAGNOSTIC_LIMIT)}…`
+    : text;
+}
 function diagnosticText(value: unknown): string {
-  if (typeof value === "string") return value;
-  return Object.entries(record(value))
-    .slice(0, 4)
-    .map(
-      ([key, entry]) =>
-        `${key}: ${typeof entry === "object" && entry !== null ? JSON.stringify(entry) : String(entry)}`,
-    )
-    .join(" · ");
+  if (typeof value === "string") return clipDiagnostic(value);
+  return clipDiagnostic(
+    Object.entries(record(value))
+      .slice(0, 4)
+      .map(
+        ([key, entry]) =>
+          `${key}: ${typeof entry === "object" && entry !== null ? JSON.stringify(entry) : String(entry)}`,
+      )
+      .join(" · "),
+  );
 }
 
 function normalizeClientHealth(diagnostic: JsonRecord): ClientHealth[] {
@@ -391,6 +399,7 @@ export function providerFor(name: string): string {
   if (/claude|anthropic|sonnet|opus|haiku/.test(key)) return "anthropic";
   if (/codex|gpt|openai/.test(key)) return "openai";
   if (/cursor|composer/.test(key)) return "cursor";
+  if (/(?:^|[^a-z0-9])muse[\s-]*spark/.test(key)) return "meta";
   if (/gemini|google/.test(key)) return "google";
   if (/grok|xai/.test(key)) return "xai";
   if (/deepseek/.test(key)) return "deepseek";
@@ -411,6 +420,7 @@ export function providerName(provider: string): string {
         deepseek: "DeepSeek",
         kimi: "Kimi",
         glm: "GLM",
+        meta: "Meta",
       } as Record<string, string>
     )[provider] || provider
   );
@@ -1052,12 +1062,13 @@ export function normalizeOverview(
       )
       .filter((date): date is string => date !== null)
       .sort();
+    const amountMinor = optionalNumber(item.amountMinor);
     return {
       id: text(item.id, `subscription-${index}`),
       provider: text(item.provider, "other"),
       name: text(item.planName, "未命名订阅"),
       kind: item.kind === "topup" ? "topup" : "subscription",
-      amount: validCounter(item.amountMinor) ? item.amountMinor / 100 : null,
+      amount: amountMinor !== null ? amountMinor / 100 : null,
       currency: text(item.currency, "USD"),
       interval: text(item.interval, "month"),
       intervalCount: count(item.intervalCount) || 1,
@@ -1066,9 +1077,9 @@ export function normalizeOverview(
       startDate: optionalText(item.startDate),
       topUpTotal:
         Array.isArray(item.topUps) &&
-        topUps.every((top) => validCounter(record(top).amountMinor))
+        topUps.every((top) => optionalNumber(record(top).amountMinor) !== null)
           ? topUps.reduce<number>(
-              (sum, top) => sum + count(record(top).amountMinor),
+              (sum, top) => sum + (optionalNumber(record(top).amountMinor) ?? 0),
               0,
             ) / 100
           : null,
@@ -1077,6 +1088,7 @@ export function normalizeOverview(
       topUps: Array.isArray(item.topUps)
         ? topUps.map((top, topIndex) => {
             const entry = record(top);
+            const topAmount = optionalNumber(entry.amountMinor);
             return {
               id: text(entry.id, `topup-${topIndex}`),
               label:
@@ -1088,9 +1100,7 @@ export function normalizeOverview(
                 optionalText(entry.date) ||
                 optionalText(entry.at) ||
                 optionalText(entry.createdAt),
-              amount: validCounter(entry.amountMinor)
-                ? entry.amountMinor / 100
-                : null,
+              amount: topAmount !== null ? topAmount / 100 : null,
             };
           })
         : null,
@@ -1221,7 +1231,7 @@ const DEMO_MODELS = [
   {
     id: "gpt-6-astra",
     client: "codex",
-    weight: 0.52,
+    weight: 0.47,
     read: 0.94,
     write: 0,
     output: 0.012,
@@ -1272,6 +1282,28 @@ const DEMO_MODELS = [
     unknown: 1,
     rate: 1.08,
     color: "#7a9aaa",
+  },
+  {
+    id: "muse-spark-1",
+    client: "cursor",
+    weight: 0.03,
+    read: 0,
+    write: 0,
+    output: 0,
+    unknown: 1,
+    rate: 0.42,
+    color: "#9aa5b2",
+  },
+  {
+    id: "muse spark",
+    client: "cursor",
+    weight: 0.02,
+    read: 0,
+    write: 0,
+    output: 0,
+    unknown: 1,
+    rate: 0.42,
+    color: "#8a95a2",
   },
 ];
 
@@ -1414,7 +1446,9 @@ function sumDemoPeriods(items: PeriodUsage[]): PeriodUsage {
   return sum;
 }
 
-/** Deterministic, anonymous sample; dates follow the dashboard's Tokyo day. */
+/** Deterministic, anonymous sample; dates follow the dashboard's Tokyo day.
+ *  This is the single demo source for the React panel. The legacy native
+ *  panel keeps hub/frontend/mock.js as an Overview-API generator only. */
 export function createDemoData(now = new Date()): DashboardData {
   const today = dayKey(now);
   const history = Array.from({ length: 90 }, (_, index) => {

@@ -1,6 +1,6 @@
 [data-metric-trigger] {
   cursor: help;
-  touch-action: none;
+  touch-action: pan-y;
   -webkit-tap-highlight-color: transparent;
 }
 [data-metric-trigger]:focus-visible {

@@ -1,0 +1,340 @@
+/* Mobile/tablet overrides for the lazily loaded secondary views (devices, quota,
+ * history). These MUST live in the SecondaryViews chunk: mobile.css ships in the
+ * eager main chunk, and async chunk CSS is injected later, so same-specificity
+ * base rules in secondary.css / ActivityPanel.css would otherwise win ties
+ * (e.g. the 44px activity tabs shrank back to 30px). Imported last by
+ * SecondaryViews.tsx so it also wins within its own chunk. */
+
+@media (max-width: 760px), (max-width: 960px) and (max-height: 500px) {
+  .sv-search {
+    min-height: 44px;
+    font-size: 13px;
+  }
+  .sv-search input,
+  .sv-select {
+    min-height: 42px;
+    font-size: 16px;
+  }
+  .sv-page {
+    gap: 18px;
+  }
+  .sv-summary-label,
+  .sv-dense-page .sv-summary-label {
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .sv-summary-foot {
+    font-size: 10px;
+    line-height: 1.6;
+  }
+  .sv-summary-value,
+  .sv-dense-page .sv-summary-value {
+    font-size: clamp(21px, 6vw, 26px);
+  }
+  .sv-section-head h2 {
+    font-size: 16px;
+  }
+  .sv-section-head p,
+  .sv-notice,
+  .sv-note,
+  .sv-muted {
+    font-size: 11px;
+    line-height: 1.7;
+  }
+  .sv-button,
+  .sv-pagination .sv-button {
+    min-height: 44px;
+    min-width: 44px;
+    font-size: 12px;
+    padding: 9px 12px;
+  }
+  .sv-toolbar,
+  .sv-toolbar-actions {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .sv-search {
+    flex-basis: 100%;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+  .sv-toolbar-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .sv-select {
+    max-width: 100%;
+    min-height: 44px;
+    flex: 1;
+  }
+  .sv-device-heading h3 {
+    font-size: 16px;
+  }
+  .sv-device-heading p,
+  .sv-device-meta,
+  .sv-device-statusline,
+  .sv-device-footer,
+  .sv-device-id {
+    font-size: 11px;
+    line-height: 1.65;
+  }
+  .sv-device-footer {
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .sv-device-footer button,
+  .sv-device-footer .sv-inline-detail {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .sv-device-metrics .sv-metric-label,
+  .sv-subscription .sv-metric-label {
+    font-size: 11px;
+  }
+  .sv-device-metrics > * {
+    min-height: 58px;
+  }
+  .sv-client-health {
+    min-height: 34px;
+  }
+  .sv-detail-grid dt,
+  .sv-subscription-dates dt {
+    font-size: 11px;
+  }
+  .sv-detail-grid dd,
+  .sv-subscription-dates dd,
+  .sv-subscription-note,
+  .sv-subscription-records li {
+    font-size: 12px;
+    line-height: 1.65;
+  }
+  .sv-quota-card h3 {
+    font-size: 16px;
+  }
+  .sv-quota-account-label,
+  .sv-quota-card-meta,
+  .sv-quota-window-foot,
+  .sv-quota-source,
+  .sv-records-label,
+  .sv-subscription-records time {
+    font-size: 11px;
+  }
+  .sv-quota-window {
+    padding-block: 5px;
+  }
+  .sv-quota-window + .sv-quota-window {
+    padding-top: 16px;
+  }
+  .sv-history-activity {
+    width: 100%;
+    max-width: none;
+  }
+  .cm-activity-head {
+    padding: 16px;
+    gap: 10px;
+  }
+  .cm-activity-head > div:first-child {
+    min-width: 0;
+  }
+  .cm-activity-head h2 {
+    font-size: 16px;
+  }
+  .cm-activity-head p {
+    font-size: 11px;
+  }
+  .cm-activity-tabs button {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 6px;
+    font-size: 12px;
+  }
+  .cm-activity-body {
+    padding: 16px;
+  }
+  .cm-activity-grid-week {
+    --cm-activity-week-cell: clamp(16px, calc((100vw - 108px) / 12), 24px);
+  }
+  .cm-activity-cell {
+    height: auto;
+    aspect-ratio: 1;
+    font-size: 12px;
+  }
+  .cm-activity-range,
+  .cm-activity-summary small,
+  .cm-activity-missing,
+  .cm-activity-empty,
+  .cm-activity-coverage-missing,
+  .cm-activity-warning,
+  .cm-activity-sampling-grid {
+    font-size: 11px;
+    line-height: 1.65;
+  }
+  .cm-activity-selection,
+  .cm-activity-coverage summary {
+    min-height: 44px;
+    font-size: 12px;
+  }
+  .sv-history-activity .sv-heatmap-grid {
+    --sv-heat-cell: clamp(16px, calc((100vw - 104px) / 13), 26px);
+    gap: 3px;
+  }
+  .sv-heatmap-period,
+  .sv-heatmap-footer,
+  .sv-heatmap > .sv-muted {
+    font-size: 11px !important;
+    line-height: 1.7;
+  }
+  .sv-mobile-date-picker {
+    display: grid;
+    gap: 8px;
+    margin-top: 17px;
+    padding-top: 15px;
+    border-top: 1px solid var(--line);
+  }
+  .sv-mobile-date-picker > span {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    color: var(--ink-2);
+  }
+  .sv-mobile-date-picker input {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding: 9px 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-size: 16px;
+  }
+  .sv-date-filter {
+    min-height: 44px;
+    padding: 0 0 0 10px;
+    font-size: 12px;
+  }
+  .sv-date-filter button {
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+  }
+  .sv-session-table,
+  .sv-session-table tbody,
+  .sv-session-table tr,
+  .sv-session-table td {
+    display: block;
+    width: 100%;
+  }
+  .sv-session-table thead {
+    display: none;
+  }
+  .sv-session-table tr:not(.sv-session-detail) {
+    padding: 18px 16px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .sv-session-table td,
+  .sv-session-table td:first-child,
+  .sv-session-table td:last-child {
+    min-width: 0;
+    padding: 0;
+    width: auto;
+    border: 0;
+    font-size: 13px;
+  }
+  .sv-session-table td:first-child {
+    grid-column: 1 / -1;
+  }
+  .sv-session-table td::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--ink-2);
+    font-size: 11px;
+    margin-bottom: 6px;
+  }
+  .sv-session-table td:first-child::before {
+    display: none;
+  }
+  .sv-session-table td:nth-child(3) {
+    display: block;
+  }
+  .sv-session-table td.sv-number {
+    text-align: left;
+  }
+  .sv-session-toggle {
+    min-height: 48px;
+  }
+  .sv-session-table strong {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .sv-session-table small {
+    font-size: 11px;
+    line-height: 1.7;
+  }
+  .sv-session-table .sv-session-detail td {
+    padding: 17px 16px;
+  }
+  .sv-session-table .sv-session-detail td::before {
+    display: none;
+  }
+  .sv-table-footer {
+    flex-wrap: wrap;
+    gap: 10px;
+    font-size: 11px;
+    line-height: 1.6;
+  }
+  .sv-pagination {
+    margin-left: auto;
+  }
+  .sv-history-sessions .sv-session-actions {
+    flex-wrap: wrap;
+    margin-left: 0;
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1024px) {
+  .sv-device-grid,
+  .sv-quota-grid,
+  .sv-subscription-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sv-device-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sv-device-statusline {
+    flex-wrap: wrap;
+    gap: 7px;
+  }
+}
+
+@media (max-width: 360px) {
+  .sv-device-metrics {
+    gap: 12px 10px;
+  }
+  .sv-device-statusline {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
+
+@media (pointer: coarse) and (min-width: 761px) {
+  .sv-pagination .sv-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .sv-button {
+    min-height: 44px;
+  }
+}

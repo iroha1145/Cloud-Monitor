@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowUpCircle, ExternalLink, RefreshCw } from "lucide-react";
 import {
   availableUpdateTargets,
@@ -6,6 +6,7 @@ import {
   isUpdateBusy,
   readUpdateStatus,
   submitSystemUpdate,
+  validUpdateRef,
   type UpdateJob,
   type UpdateStatus,
 } from "./restoration-api";
@@ -14,6 +15,7 @@ import "./system-update.css";
 export interface SystemUpdateProps {
   accessToken: string;
   dataMode: "live" | "demo";
+  timeZone?: string;
   onAuthExpired?: () => void;
 }
 const JOB_LABELS: Record<string, string> = {
@@ -25,13 +27,42 @@ const JOB_LABELS: Record<string, string> = {
   error: "更新失败",
   unknown: "任务状态未提供",
 };
-function displayTime(value: string) {
+function displayTime(value: string, timeZone?: string) {
   const date = new Date(value);
-  return Number.isFinite(date.getTime())
-    ? date.toLocaleString("zh-CN", { hour12: false })
-    : "未提供";
+  if (!Number.isFinite(date.getTime())) return "未提供";
+  try {
+    return date.toLocaleString("zh-CN", {
+      hour12: false,
+      timeZone: timeZone || undefined,
+    });
+  } catch {
+    return date.toLocaleString("zh-CN", { hour12: false });
+  }
 }
-function JobStatus({ job }: { job: UpdateJob }) {
+
+function linkifyNotes(notes: string): ReactNode[] {
+  const text = notes
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1");
+  return text.split(/(https?:\/\/[^\s)<>"']+)/g).map((part, index) => {
+    if (/^https?:\/\//.test(part)) {
+      try {
+        const url = new URL(part);
+        if (url.protocol === "http:" || url.protocol === "https:") {
+          return (
+            <a key={index} href={url.href} target="_blank" rel="noreferrer">
+              {part}
+            </a>
+          );
+        }
+      } catch {
+        /* keep as text */
+      }
+    }
+    return <Fragment key={index}>{part}</Fragment>;
+  });
+}
+function JobStatus({ job, timeZone }: { job: UpdateJob; timeZone?: string }) {
   return (
     <div
       className={`system-update-job system-update-job-${job.state === "error" ? "error" : job.state === "ok" ? "ok" : "normal"}`}
@@ -43,7 +74,7 @@ function JobStatus({ job }: { job: UpdateJob }) {
       {job.ref && (
         <small>
           目标版本：{job.ref}
-          {job.updatedAt ? ` · ${displayTime(job.updatedAt)}` : ""}
+          {job.updatedAt ? ` · ${displayTime(job.updatedAt, timeZone)}` : ""}
         </small>
       )}
       {job.state === "queued" && (
@@ -66,6 +97,7 @@ function JobStatus({ job }: { job: UpdateJob }) {
 export function SystemUpdate({
   accessToken,
   dataMode,
+  timeZone,
   onAuthExpired,
 }: SystemUpdateProps) {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
@@ -358,11 +390,18 @@ export function SystemUpdate({
                   升级请求由宿主机更新监视器处理；目录可写不代表监视器正在运行。
                 </p>
               )}
-              <JobStatus job={status.job} />
+              <JobStatus job={status.job} timeZone={timeZone} />
+              {status.releaseAhead &&
+                status.latestRelease &&
+                !validUpdateRef(status.latestRelease.tag) && (
+                  <p className="system-update-hint" role="status">
+                    该版本标识不受支持（{status.latestRelease.tag}）。
+                  </p>
+                )}
               {status.latestRelease?.notes && (
                 <details className="system-update-notes">
                   <summary>查看版本说明</summary>
-                  <pre>{status.latestRelease.notes}</pre>
+                  <pre>{linkifyNotes(status.latestRelease.notes)}</pre>
                 </details>
               )}
               <footer className="system-update-footer">
@@ -388,7 +427,11 @@ export function SystemUpdate({
                     </a>
                   )}
                 </div>
-                <small>最近检查：{displayTime(status.checkedAt)}</small>
+                <small>
+                  最近检查
+                  {timeZone ? `（${timeZone}）` : ""}：
+                  {displayTime(status.checkedAt, timeZone)}
+                </small>
               </footer>
             </>
           )}

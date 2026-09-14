@@ -160,6 +160,7 @@ private fun usageProvider(id: String): String {
         listOf("claude", "opus", "sonnet", "haiku", "anthropic").any { it in name } -> "anthropic"
         listOf("gpt", "codex", "openai").any { it in name } -> "openai"
         "cursor" in name || "composer" in name -> "cursor"
+        Regex("""(?:^|[^a-z0-9])muse[\s-]*spark""").containsMatchIn(name) -> "meta"
         "gemini" in name || "google" in name -> "google"
         "deepseek" in name -> "deepseek"
         "grok" in name || "xai" in name -> "xai"

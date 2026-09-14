@@ -1,4 +1,5 @@
 import { FileClock, Grid2X2, Layers3, Monitor, Wallet } from "lucide-react";
+import { scrollToTop } from "./lib/scroll";
 
 const destinations = [
   { id: "overview", label: "总览", name: "总览", icon: Grid2X2 },
@@ -35,7 +36,7 @@ export function MobileNavigation({
               return;
             event.preventDefault();
             onNavigate(id);
-            window.scrollTo({ top: 0, behavior: "instant" });
+            scrollToTop();
           }}
         >
           <Icon

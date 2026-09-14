@@ -205,6 +205,7 @@ def _canonical_from_usage_name(key: str) -> Optional[str]:
         return "grok"
     if key == "cursor" or key.startswith("cursor-") or "composer" in key:
         return "cursor"
+    # muse-spark / muse spark 在前端归为 Meta；无官方 Statuspage，不出卡
     return None
 
 

@@ -45,7 +45,9 @@ for (const width of [320, 390]) {
           await expect(tooltip).toBeHidden();
         }
 
-        // Once an inspection starts on the bar, moving beyond it still follows the finger.
+        // A horizontal drag keeps inspecting: the card follows the finger
+        // while it has room, and stays clamped (but visible) at the viewport
+        // edge on narrow phones. Only vertical panning scrolls (pan-y).
         const cdp = await context.newCDPSession(page);
         const y = box.y + box.height / 2;
         await cdp.send("Input.dispatchTouchEvent", {
@@ -56,13 +58,20 @@ for (const width of [320, 390]) {
         const before = (await tooltip.boundingBox())!;
         await cdp.send("Input.dispatchTouchEvent", {
           type: "touchMove",
-          touchPoints: [{ x, y: y + 30 }],
+          touchPoints: [{ x: x + 30, y }],
         });
-        await expect
-          .poll(async () =>
-            Math.round((await tooltip.boundingBox())!.y - before.y),
-          )
-          .toBe(30);
+        const roomRight = width - 12 - (before.x + before.width);
+        const tracksFully = before.x > 13 && roomRight >= 30;
+        if (tracksFully) {
+          await expect
+            .poll(async () =>
+              Math.round((await tooltip.boundingBox())!.x - before.x),
+            )
+            .toBe(30);
+        } else {
+          // Clamped at a viewport edge: the card stays put but keeps showing.
+          await expect(tooltip).toBeVisible();
+        }
         await cdp.send("Input.dispatchTouchEvent", {
           type: "touchEnd",
           touchPoints: [],
@@ -70,6 +79,27 @@ for (const width of [320, 390]) {
         await expect(tooltip).toBeVisible();
         await page.touchscreen.tap(x, box.y + box.height + 14);
         await expect(tooltip).toBeHidden();
+
+        // A vertical drag scrolls the page instead of scrubbing: the browser
+        // takes over the gesture, the tooltip is cancelled, and the page moves.
+        const scrollBefore = await page.evaluate(() => window.scrollY);
+        await cdp.send("Input.dispatchTouchEvent", {
+          type: "touchStart",
+          touchPoints: [{ x, y }],
+        });
+        await expect(tooltip).toBeVisible();
+        await cdp.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ x, y: y - 80 }],
+        });
+        await expect(tooltip).toBeHidden();
+        await cdp.send("Input.dispatchTouchEvent", {
+          type: "touchEnd",
+          touchPoints: [],
+        });
+        await expect
+          .poll(() => page.evaluate(() => window.scrollY))
+          .toBeGreaterThan(scrollBefore);
         await cdp.detach();
       });
     }

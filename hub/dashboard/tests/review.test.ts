@@ -116,6 +116,20 @@ test("large jumps flatten at the vertex instead of folding a corner", () => {
   assert.ok(outgoing < midRise / 3);
 });
 
+test("successful HTML bodies become a friendly format error", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response("<html>bad gateway</html>", {
+      status: 200,
+      headers: { "Content-Type": "text/html" },
+    });
+  try {
+    await assert.rejects(requestJSON("/fixture", "test"), /服务返回格式异常/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
 test("deadline covers JSON body reads and releases its timer", async () => {
   const originalFetch = globalThis.fetch;
   const originalSet = globalThis.setTimeout;
