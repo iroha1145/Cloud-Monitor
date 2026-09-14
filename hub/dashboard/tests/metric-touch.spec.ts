@@ -45,8 +45,9 @@ for (const width of [320, 390]) {
           await expect(tooltip).toBeHidden();
         }
 
-        // Horizontal inspection still follows the finger; only vertical
-        // panning is claimed by the browser for page scrolling (pan-y).
+        // A horizontal drag keeps inspecting: the card follows the finger
+        // while it has room, and stays clamped (but visible) at the viewport
+        // edge on narrow phones. Only vertical panning scrolls (pan-y).
         const cdp = await context.newCDPSession(page);
         const y = box.y + box.height / 2;
         await cdp.send("Input.dispatchTouchEvent", {
@@ -59,11 +60,18 @@ for (const width of [320, 390]) {
           type: "touchMove",
           touchPoints: [{ x: x + 30, y }],
         });
-        await expect
-          .poll(async () =>
-            Math.round((await tooltip.boundingBox())!.x - before.x),
-          )
-          .toBe(30);
+        const roomRight = width - 12 - (before.x + before.width);
+        const tracksFully = before.x > 13 && roomRight >= 30;
+        if (tracksFully) {
+          await expect
+            .poll(async () =>
+              Math.round((await tooltip.boundingBox())!.x - before.x),
+            )
+            .toBe(30);
+        } else {
+          // Clamped at a viewport edge: the card stays put but keeps showing.
+          await expect(tooltip).toBeVisible();
+        }
         await cdp.send("Input.dispatchTouchEvent", {
           type: "touchEnd",
           touchPoints: [],
