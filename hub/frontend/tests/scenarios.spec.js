@@ -502,7 +502,7 @@ test.describe("§7 capabilities.tokenComponents=false（demo ?cm-scenario=nocap�
     await expect(page.locator("#sub-grid .sub-provider i[style*='background']")).toHaveCount(0);
   });
 
-  test("composer / k3 / glm-5.3-flash 模型图标分别用 cursor、kimi、zai，文案仍显示原名", async ({ page, context }) => {
+  test("composer / k3 / glm-5.3-flash / muse-spark 模型图标分别用 cursor、kimi、zai、meta，文案仍显示原名", async ({ page, context }) => {
     await loginWithToken(context);
     const p = clone(base.payload);
     const today = p.totals.today;
@@ -511,6 +511,8 @@ test.describe("§7 capabilities.tokenComponents=false（demo ?cm-scenario=nocap�
       k3: 8e9,
       "k3-256k": 7e9,
       "glm-5.3-flash": 6e9,
+      "muse-spark": 5e9,
+      "muse spark": 4e9,
     };
     today.models = { ...(today.models || {}), ...extra };
     const client = Object.keys(today.clients || {})[0] || "claude";
@@ -524,6 +526,8 @@ test.describe("§7 capabilities.tokenComponents=false（demo ?cm-scenario=nocap�
       k3: "kimi",
       "k3-256k": "kimi",
       "glm-5.3-flash": "zai",
+      "muse-spark": "meta",
+      "muse spark": "meta",
     };
     for (const [name, vendor] of Object.entries(expected)) {
       await expect(page.locator(`#mx .mx-col[title="${name}"] .mx-label`)).toHaveText(name);
@@ -801,7 +805,7 @@ test.describe("夜间模式与趋势文案（demo）", () => {
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
     await btn.click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#0b1220");
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#191b20");
     expect(await page.evaluate(() => localStorage.getItem("cm_theme"))).toBe("dark");
     await page.reload();
     await expect(page.locator("#shell")).toBeVisible();

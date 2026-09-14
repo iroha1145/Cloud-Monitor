@@ -30,6 +30,7 @@ import { BrandIcon } from "./BrandIcon";
 import { MetricTooltip } from "./MetricTooltip";
 import { ActivityPanel } from "./ActivityPanel";
 import { compact as compactNumber } from "./Overview";
+import { escapeCsv, downloadCsv } from "./lib/csv";
 
 export interface SecondaryProps {
   data: DashboardData;
@@ -227,7 +228,7 @@ function DeviceCard({
               { label: "设备状态", value: status },
             ]}
           >
-            <span className="sv-inline-detail" role="button" tabIndex={0}>
+            <span className="sv-inline-detail">
               <Clock3 size={12} aria-hidden="true" />
               {relativeTime(device.lastSeen, data.generatedAt)}
             </span>
@@ -248,11 +249,7 @@ function DeviceCard({
                   { label: "完整标识", value: device.id },
                 ]}
               >
-                <span
-                  className="sv-device-id sv-inline-detail"
-                  role="button"
-                  tabIndex={0}
-                >
+                <span className="sv-device-id sv-inline-detail">
                   {device.id.length > 12
                     ? `${device.id.slice(0, 8)}…`
                     : device.id}
@@ -308,12 +305,7 @@ function DeviceCard({
                 },
               ]}
             >
-              <span
-                className="sv-client-health sv-detail-trigger"
-                tabIndex={0}
-                role="button"
-                aria-label={`查看 ${device.name} ${client.name} 状态详情`}
-              >
+              <span className="sv-client-health sv-detail-trigger">
                 <BrandIcon name={client.name} size={22} />
                 <span>
                   {client.name}
@@ -379,12 +371,7 @@ function DeviceCard({
                 { label: "设备时区", value: device.timeZone || "未提供" },
               ]}
             >
-              <div
-                className="sv-device-stat sv-detail-trigger"
-                tabIndex={0}
-                role="button"
-                aria-label={`查看 ${device.name} ${label}详情`}
-              >
+              <div className="sv-device-stat sv-detail-trigger">
                 <span className="sv-metric-label">{label}</span>
                 <span className="sv-metric-value">
                   {compactNumber(device.periods[key].totalTokens)}
@@ -400,12 +387,7 @@ function DeviceCard({
               { label: "累计费用", value: usd(device.periods.allTime.costUsd) },
             ]}
           >
-            <div
-              className="sv-device-stat sv-detail-trigger"
-              tabIndex={0}
-              role="button"
-              aria-label={`查看 ${device.name} 估算费用详情`}
-            >
+            <div className="sv-device-stat sv-detail-trigger">
               <span className="sv-metric-label">累计估算费用</span>
               <span className="sv-metric-value">
                 {usd(device.periods.allTime.costUsd)}
@@ -750,12 +732,7 @@ function QuotaWindow({ quota, data }: { quota: Quota; data: DashboardData }) {
       rows={detailRows}
       note={detailNote}
     >
-      <div
-        className="sv-quota-window sv-detail-trigger"
-        tabIndex={0}
-        role="button"
-        aria-label={`查看 ${quota.plan || quota.name} ${quota.label} 额度详情`}
-      >
+      <div className="sv-quota-window sv-detail-trigger">
         <div className="sv-progress-label">
           <span>{quota.label}</span>
           <strong>
@@ -920,7 +897,7 @@ function SubscriptionRow({ subscription }: { subscription: Subscription }) {
               { label: "绑定账户", value: subscription.binding },
             ]}
           >
-            <span className="sv-inline-detail" role="button" tabIndex={0}>
+            <span className="sv-inline-detail">
               绑定 {subscription.binding}
             </span>
           </MetricTooltip>
@@ -1039,11 +1016,7 @@ export function QuotaView({ data }: SecondaryProps) {
                             },
                           ]}
                         >
-                          <span
-                            className="sv-inline-detail"
-                            role="button"
-                            tabIndex={0}
-                          >
+                          <span className="sv-inline-detail">
                             {first.account}
                           </span>
                         </MetricTooltip>
@@ -1065,11 +1038,7 @@ export function QuotaView({ data }: SecondaryProps) {
                             { label: "套餐", value: first.plan || "未提供" },
                           ]}
                         >
-                          <span
-                            className="sv-inline-detail"
-                            role="button"
-                            tabIndex={0}
-                          >
+                          <span className="sv-inline-detail">
                             <Monitor size={12} aria-hidden="true" />
                             {first.sourceDevice}
                           </span>
@@ -1142,11 +1111,7 @@ export function QuotaView({ data }: SecondaryProps) {
 
 /** Quote every cell and neutralize formula prefixes before spreadsheet export. */
 export function sessionsToCsv(sessions: Session[]): string {
-  const cell = (value: string | number | null) => {
-    const raw = value === null ? "" : String(value);
-    const safe = /^(?:\s*[=+\-@]|[\t\r\n])/.test(raw) ? `'${raw}` : raw;
-    return `"${safe.replace(/"/g, '""')}"`;
-  };
+  const cell = (value: string | number | null) => escapeCsv(value);
   const rows: (string | number | null)[][] = [
     [
       "会话",
@@ -1227,14 +1192,10 @@ export function HistoryView({ data }: SecondaryProps) {
     0,
   );
   function exportCsv() {
-    const url = URL.createObjectURL(
-      new Blob([sessionsToCsv(filtered)], { type: "text/csv;charset=utf-8;" }),
+    downloadCsv(
+      `cloud-monitor-sessions-${selectedDay || dateKey(data.generatedAt, data.timeZone) || "export"}.csv`,
+      sessionsToCsv(filtered),
     );
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `cloud-monitor-sessions-${selectedDay || dateKey(data.generatedAt, data.timeZone) || "export"}.csv`;
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     setExported(true);
   }
   function changeDay(day: string | null) {
@@ -1428,11 +1389,7 @@ export function HistoryView({ data }: SecondaryProps) {
                               },
                             ]}
                           >
-                            <span
-                              className="sv-inline-detail"
-                              role="button"
-                              tabIndex={0}
-                            >
+                            <span className="sv-inline-detail">
                               {compactNumber(session.totalTokens)}
                             </span>
                           </MetricTooltip>

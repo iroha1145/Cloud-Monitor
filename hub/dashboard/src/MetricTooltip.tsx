@@ -117,6 +117,7 @@ export function MetricTooltip({
   note,
   preserveAction = false,
   strictTouchBounds = false,
+  focusable = false,
 }: {
   children: ReactElement;
   title: string;
@@ -126,6 +127,8 @@ export function MetricTooltip({
   preserveAction?: boolean;
   /** Ignore native touch retargeting beyond a deliberately sized bar trigger. */
   strictTouchBounds?: boolean;
+  /** Opt in to Tab focus for key controls. Hover-only details stay unfocusable. */
+  focusable?: boolean;
 }) {
   const id = useId();
   const [anchor, setAnchor] = useState<Anchor | null>(null);
@@ -217,8 +220,7 @@ export function MetricTooltip({
   const child = children as ReactElement<HTMLAttributes<HTMLElement>>;
   // cloneElement retains the existing child ref, including calendar roving focus.
   const trigger = cloneElement(child, {
-    tabIndex: child.props.tabIndex ?? 0,
-    "aria-label": child.props["aria-label"] || `${title}，查看详细信息`,
+    tabIndex: focusable ? (child.props.tabIndex ?? 0) : child.props.tabIndex,
     "aria-describedby":
       [child.props["aria-describedby"], open ? `${id}-content` : null]
         .filter(Boolean)
@@ -256,8 +258,7 @@ export function MetricTooltip({
         }
       }
       if (preserveAction) child.props.onPointerDown?.(event);
-      if (event.pointerType !== "mouse" || !preserveAction)
-        event.preventDefault();
+      if (event.pointerType !== "mouse") event.preventDefault();
       if (!preserveAction) event.stopPropagation();
       suppressClick.current = false;
       gesture.current = {
@@ -315,7 +316,7 @@ export function MetricTooltip({
         close();
         return;
       }
-      if (event.key === "Enter" || event.key === " ") {
+      if ((event.key === "Enter" || event.key === " ") && (focusable || preserveAction)) {
         suppressClick.current = false;
         if (!preserveAction) {
           event.preventDefault();

@@ -202,7 +202,14 @@ async function requestJson(
           : detail || `请求失败（${response.status}），请稍后重试。`,
       );
     }
-    return await response.json();
+    try {
+      return await response.json();
+    } catch (error) {
+      if (controller.signal.aborted) throw controller.signal.reason;
+      if (error instanceof SyntaxError)
+        throw new Error("服务返回格式异常，请稍后重试。");
+      throw error;
+    }
   } catch (error) {
     if (timedOut) throw new Error("服务响应超时，请稍后重试。");
     if (error instanceof TypeError)

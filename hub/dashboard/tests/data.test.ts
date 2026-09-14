@@ -662,7 +662,7 @@ test("account and subscription detail survives adaptation without exposing full 
   assert.ok(!JSON.stringify(data).includes("reviewer@example.invalid"));
 });
 
-test("providerFor maps composer to Cursor, K3 to Kimi, and glm-5.3-flash to GLM", () => {
+test("providerFor maps composer to Cursor, K3 to Kimi, glm-5.3-flash to GLM, and muse-spark to Meta", () => {
   assert.equal(providerFor("composer"), "cursor");
   assert.equal(providerFor("composer-2"), "cursor");
   assert.equal(providerFor("Composer-1.5"), "cursor");
@@ -671,7 +671,52 @@ test("providerFor maps composer to Cursor, K3 to Kimi, and glm-5.3-flash to GLM"
   assert.equal(providerFor("K3-256K"), "kimi");
   assert.equal(providerFor("glm-5.3-flash"), "glm");
   assert.equal(providerFor("GLM-5.3-Flash"), "glm");
+  assert.equal(providerFor("muse-spark"), "meta");
+  assert.equal(providerFor("muse-spark-1"), "meta");
+  assert.equal(providerFor("muse spark"), "meta");
+  assert.equal(providerFor("Muse Spark Max"), "meta");
+  assert.equal(providerFor("musespark"), "meta");
+  assert.equal(providerFor("amuse-spark"), "other");
   assert.equal(providerName("cursor"), "Cursor");
   assert.equal(providerName("kimi"), "Kimi");
   assert.equal(providerName("glm"), "GLM");
+  assert.equal(providerName("meta"), "Meta");
+});
+
+test("demo muse-spark models are grouped under Meta", () => {
+  const data = createDemoData(new Date("2026-09-05T02:00:00Z"));
+  const hyphen = data.periods.today.models.find((model) => model.id === "muse-spark-1");
+  const spaced = data.periods.today.models.find((model) => model.id === "muse spark");
+  assert.equal(hyphen?.provider, "meta");
+  assert.equal(hyphen?.name, "muse-spark-1");
+  assert.equal(spaced?.provider, "meta");
+  assert.equal(spaced?.name, "muse spark");
+  assert.equal(providerName(hyphen?.provider || ""), "Meta");
+});
+
+test("diagnostic text is truncated and subscription amounts may be negative", () => {
+  const long = "x".repeat(250);
+  const data = normalizeOverview(
+    {
+      totals: {},
+      devices: [{ deviceId: "d1", hostname: "Box" }],
+      diagnostics: [{ deviceId: "d1", clientStatus: { note: long } }],
+    },
+    {
+      subscriptions: {
+        subscriptions: [
+          {
+            provider: "openai",
+            amountMinor: -1500,
+            topUps: [{ amountMinor: -250, date: "2026-08-01" }],
+          },
+        ],
+      },
+    },
+  );
+  assert.ok((data.devices[0].clientStatus || "").length <= 201);
+  assert.ok((data.devices[0].clientStatus || "").endsWith("…"));
+  assert.equal(data.subscriptions[0].amount, -15);
+  assert.equal(data.subscriptions[0].topUps?.[0].amount, -2.5);
+  assert.equal(data.subscriptions[0].topUpTotal, -2.5);
 });

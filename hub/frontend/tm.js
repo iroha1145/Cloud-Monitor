@@ -424,7 +424,7 @@ function modelVendorId(name) {
   /* k3 / k3-256k 即 Moonshot Kimi K3；文案仍显示原名，只换厂商图标 */
   if (s.includes("kimi") || s.includes("moonshot") || /(?:^|[^a-z0-9])k3(?:[-._]|$)/.test(s)) return "kimi";
   if (s.includes("mistral") || s.includes("mixtral") || s.includes("codestral")) return "mistral";
-  if (s.includes("llama") || s.includes("meta")) return "meta";
+  if (/muse[\s-]*spark/.test(s) || s.includes("llama") || s.includes("meta")) return "meta";
   if (s.includes("minimax")) return "minimax";
   if (s.includes("doubao")) return "doubao";
   if (s.includes("hunyuan")) return "hunyuan";
@@ -491,14 +491,19 @@ const VIEWS = {
 /* 导航次序：page-enter 的方向依据（前进从右进、后退从左进） */
 const VIEW_ORDER = Object.keys(VIEWS);
 
+function clearAccessTokenStores() {
+  for (const storage of [sessionStorage, localStorage]) {
+    try { storage.removeItem(TOKEN_KEY); } catch (e) { /* blocked storage */ }
+  }
+}
 const store = {
   get token() {
     try { return tokenStore().getItem(TOKEN_KEY) || ""; } catch (e) { return ""; }
   },
   set token(v) {
     try {
+      clearAccessTokenStores();
       if (v) tokenStore().setItem(TOKEN_KEY, v);
-      else tokenStore().removeItem(TOKEN_KEY);
     } catch (e) { /* 隐私模式下静默失败 */ }
   },
 };
@@ -778,7 +783,17 @@ function toastSpreadOpen() {
   }
 }
 
+let toastTrackRaf = 0;
 function toastSpreadTrack(e) {
+  if (toastTrackRaf) return;
+  const { clientX, clientY } = e;
+  toastTrackRaf = requestAnimationFrame(() => {
+    toastTrackRaf = 0;
+    toastSpreadTrackNow(clientX, clientY);
+  });
+}
+
+function toastSpreadTrackNow(clientX, clientY) {
   const root = $("#toast-root");
   if (!root) return;
   const r = root.getBoundingClientRect();
@@ -787,8 +802,8 @@ function toastSpreadTrack(e) {
        长文案展开后指针停在上层旧通知上也不得提前收拢（审计阻断项 2） */
     const top = r.bottom - (toastStack.expandedHeight || r.height);
     const inside =
-      e.clientX >= r.left && e.clientX <= r.right &&
-      e.clientY <= r.bottom && e.clientY >= top;
+      clientX >= r.left && clientX <= r.right &&
+      clientY <= r.bottom && clientY >= top;
     if (!inside) {
       root.classList.remove("is-spread");
       toastSpreadReset();
@@ -802,8 +817,8 @@ function toastSpreadTrack(e) {
       if (b.top < vTop) vTop = b.top;
     });
     if (
-      e.clientX >= r.left && e.clientX <= r.right &&
-      e.clientY <= r.bottom && e.clientY >= vTop - 2
+      clientX >= r.left && clientX <= r.right &&
+      clientY <= r.bottom && clientY >= vTop - 2
     ) {
       root.classList.add("is-spread");
       toastSpreadLayout();
@@ -3525,8 +3540,14 @@ function peekUpdateBadge() {
 }
 
 const updDialog = { prevFocus: null };
+const updatePoll = { gen: 0, controller: null };
 
 function closeUpdateDialog() {
+  updatePoll.gen++;
+  if (updatePoll.controller) {
+    updatePoll.controller.abort();
+    updatePoll.controller = null;
+  }
   const el = $("#upd-overlay");
   if (!el || el.hidden) return;
   el.hidden = true;
@@ -3683,6 +3704,14 @@ async function openUpdateDialog() {
 
 async function applyUpdateRef(ref) {
   if (!ref) return;
+  const gen = ++updatePoll.gen;
+  if (updatePoll.controller) updatePoll.controller.abort();
+  const controller = new AbortController();
+  updatePoll.controller = controller;
+  const stillUpdating = () => {
+    const overlay = $("#upd-overlay");
+    return gen === updatePoll.gen && !controller.signal.aborted && overlay && !overlay.hidden;
+  };
   const body = $("#upd-body");
   if (body) body.innerHTML = `<span class="t-shimmer">已提交更新，后台执行中…</span>`;
   const applyRel = $("#upd-apply-rel");
@@ -3690,21 +3719,25 @@ async function applyUpdateRef(ref) {
   if (applyRel) applyRel.hidden = true;
   if (applyMain) applyMain.hidden = true;
   try {
-    const job = await dataApi.updateApply(ref);
+    const job = await dataApi.updateApply(ref, controller.signal);
+    if (!stillUpdating()) return;
     if (state.demo) {
       toast(job.message || "演示模式不会改服务器");
-      renderUpdateDialog(await dataApi.updateCheck());
+      renderUpdateDialog(await dataApi.updateCheck(controller.signal));
       return;
     }
     toast("已开始后台更新，完成后请刷新");
     let dropped = false;
     for (let i = 0; i < 180; i++) {
       await new Promise((r) => setTimeout(r, 2000));
+      if (!stillUpdating()) return;
       try {
-        const data = await dataApi.updateCheck();
+        const data = await dataApi.updateCheck(controller.signal);
+        if (!stillUpdating()) return;
         const st = (data.job && data.job.state) || "";
         if (body) body.textContent = (data.job && data.job.message) || st || "更新中…";
         if (st === "ok") {
+          if (!stillUpdating()) return;
           toast("更新完成，即将刷新");
           location.reload();
           return;
@@ -3715,20 +3748,23 @@ async function applyUpdateRef(ref) {
           return;
         }
       } catch (e) {
+        if (!stillUpdating()) return;
         dropped = true;
         if (body) body.textContent = "服务正在重启，等待恢复…";
         try {
-          const live = await fetch("/api/v1/health/live", { cache: "no-store" });
+          const live = await fetch("/api/v1/health/live", { cache: "no-store", signal: controller.signal });
           if (live.ok) {
+            if (!stillUpdating()) return;
             toast("服务已恢复，即将刷新");
             location.reload();
             return;
           }
-        } catch (e2) { /* still down */ }
+        } catch (e2) { /* still down or cancelled */ }
       }
     }
-    if (dropped) toast("等待超时，请手动刷新", true);
+    if (dropped && stillUpdating()) toast("等待超时，请手动刷新", true);
   } catch (err) {
+    if (!stillUpdating()) return;
     toast((err && err.message) || "无法提交更新", true);
     openUpdateDialog();
   }
@@ -3865,8 +3901,14 @@ if ("IntersectionObserver" in window) {
 }
 
 let resizeTimer = null;
+let resizeRaf = 0;
 window.addEventListener("resize", () => {
-  positionAllPills(true);
+  if (!resizeRaf) {
+    resizeRaf = requestAnimationFrame(() => {
+      resizeRaf = 0;
+      positionAllPills(true);
+    });
+  }
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
     if (state.data && state.view === "overview") {
@@ -3894,7 +3936,7 @@ window.addEventListener("beforeunload", abortAllRequests);
 
 /* ================= 主题 ================= */
 const THEME_KEY = "cm_theme";
-const THEME_COLOR = { light: "#f8fafd", dark: "#0b1220" };
+const THEME_COLOR = { light: "#fafafb", dark: "#191b20" };
 
 function currentTheme() {
   return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
