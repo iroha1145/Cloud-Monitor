@@ -29,12 +29,15 @@ const JOB_LABELS: Record<string, string> = {
 };
 function displayTime(value: string, timeZone?: string) {
   const date = new Date(value);
-  return Number.isFinite(date.getTime())
-    ? date.toLocaleString("zh-CN", {
-        hour12: false,
-        timeZone: timeZone || undefined,
-      })
-    : "未提供";
+  if (!Number.isFinite(date.getTime())) return "未提供";
+  try {
+    return date.toLocaleString("zh-CN", {
+      hour12: false,
+      timeZone: timeZone || undefined,
+    });
+  } catch {
+    return date.toLocaleString("zh-CN", { hour12: false });
+  }
 }
 
 function linkifyNotes(notes: string): ReactNode[] {

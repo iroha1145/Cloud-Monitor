@@ -31,6 +31,8 @@ import { MetricTooltip } from "./MetricTooltip";
 import { ActivityPanel } from "./ActivityPanel";
 import { compact as compactNumber } from "./Overview";
 import { escapeCsv, downloadCsv } from "./lib/csv";
+// Last import: mobile overrides must win ties within this async chunk.
+import "./secondary-mobile.css";
 
 export interface SecondaryProps {
   data: DashboardData;

@@ -424,7 +424,7 @@ function modelVendorId(name) {
   /* k3 / k3-256k 即 Moonshot Kimi K3；文案仍显示原名，只换厂商图标 */
   if (s.includes("kimi") || s.includes("moonshot") || /(?:^|[^a-z0-9])k3(?:[-._]|$)/.test(s)) return "kimi";
   if (s.includes("mistral") || s.includes("mixtral") || s.includes("codestral")) return "mistral";
-  if (/muse[\s-]*spark/.test(s) || s.includes("llama") || s.includes("meta")) return "meta";
+  if (/(?:^|[^a-z0-9])muse[\s-]*spark/.test(s) || s.includes("llama") || s.includes("meta")) return "meta";
   if (s.includes("minimax")) return "minimax";
   if (s.includes("doubao")) return "doubao";
   if (s.includes("hunyuan")) return "hunyuan";
@@ -492,8 +492,11 @@ const VIEWS = {
 const VIEW_ORDER = Object.keys(VIEWS);
 
 function clearAccessTokenStores() {
-  for (const storage of [sessionStorage, localStorage]) {
-    try { storage.removeItem(TOKEN_KEY); } catch (e) { /* blocked storage */ }
+  for (const key of ["session", "local"]) {
+    try {
+      const storage = key === "session" ? sessionStorage : localStorage;
+      storage.removeItem(TOKEN_KEY);
+    } catch (e) { /* blocked storage */ }
   }
 }
 const store = {

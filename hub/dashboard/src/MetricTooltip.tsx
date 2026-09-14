@@ -219,8 +219,13 @@ export function MetricTooltip({
 
   const child = children as ReactElement<HTMLAttributes<HTMLElement>>;
   // cloneElement retains the existing child ref, including calendar roving focus.
+  // Text triggers keep their visible text as the accessible name; only role="img"
+  // triggers (whose content is hidden from assistive tech) get a fallback label.
+  const needsFallbackLabel =
+    child.props.role === "img" && !child.props["aria-label"];
   const trigger = cloneElement(child, {
     tabIndex: focusable ? (child.props.tabIndex ?? 0) : child.props.tabIndex,
+    ...(needsFallbackLabel ? { "aria-label": title } : {}),
     "aria-describedby":
       [child.props["aria-describedby"], open ? `${id}-content` : null]
         .filter(Boolean)

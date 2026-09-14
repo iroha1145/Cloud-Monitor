@@ -84,7 +84,7 @@ export function brandLogoId(name: string): string | null {
     [/glm|zhipu|\bzai\b/, "zai"],
     [/kimi|moonshot|(?:^|[^a-z0-9])k3(?:[-._]|$)/, "kimi"],
     [/mistral|mixtral|codestral/, "mistral"],
-    [/muse[\s-]*spark|llama|meta/, "meta"],
+    [/(?:^|[^a-z0-9])muse[\s-]*spark|llama|meta/, "meta"],
     [/minimax/, "minimax"],
     [/doubao|bytedance/, "doubao"],
     [/hunyuan/, "hunyuan"],

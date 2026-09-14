@@ -77,7 +77,7 @@ test.describe("mobile reading and actions", () => {
   }) => {
     await openDemo(page, "models");
     const table = page.locator(".model-table");
-    await expect(table.locator("tbody tr")).toHaveCount(5);
+    await expect(table.locator("tbody tr")).toHaveCount(7);
     const first = table.locator("tbody tr").first();
     await expect(first.locator(".money-cell")).toContainText("$");
     await expect(first.locator(".model-read-cell")).toContainText("万");
@@ -93,7 +93,7 @@ test.describe("mobile reading and actions", () => {
     await page.getByRole("textbox", { name: "搜索模型", exact: true }).fill("");
     await first.locator(".cache-track").tap();
     const tooltip = page.locator(".metric-tooltip-card");
-    await expect(tooltip).toContainText("36,351,746");
+    await expect(tooltip).toContainText("32,856,386");
     const popup = await tooltip.boundingBox();
     expect(popup!.x).toBeGreaterThanOrEqual(12);
     expect(popup!.x + popup!.width).toBeLessThanOrEqual(378);
