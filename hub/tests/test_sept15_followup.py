@@ -232,6 +232,40 @@ def test_replay_does_not_skip_older_day_when_newer_day_has_snapshot(tmp_path):
         db.close()
 
 
+def test_ensure_schema_adds_migrated_columns_before_new_index(tmp_path):
+    db = Database(tmp_path / "legacy-outbox.sqlite3")
+    try:
+        db.execute(
+            """
+            CREATE TABLE tm_ingest_outbox (
+                request_id TEXT PRIMARY KEY,
+                device_id TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                received_at TEXT NOT NULL,
+                state TEXT NOT NULL DEFAULT 'pending',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT
+            )
+            """
+        )
+        db.execute(
+            "INSERT INTO tm_ingest_outbox (request_id, device_id, payload_json, received_at)"
+            " VALUES (?, 'dev', '{}', '2026-09-15T00:00:00.000Z')",
+            ("r1",),
+        )
+        ensure_schema(db)
+        names = {row["name"] for row in db.fetchall("PRAGMA table_info(tm_ingest_outbox)")}
+        assert {"local_day", "ingest_sequence", "snapshot_written", "writes_usage"} <= names
+        indexes = {row["name"] for row in db.fetchall("PRAGMA index_list(tm_ingest_outbox)")}
+        assert "idx_outbox_device_day_seq" in indexes
+        row = db.fetchone(
+            "SELECT ingest_sequence FROM tm_ingest_outbox WHERE request_id='r1'"
+        )
+        assert int(row["ingest_sequence"] or 0) >= 1
+    finally:
+        db.close()
+
+
 def test_compose_and_scripts_pass_reset_cursor_and_runtime_mode():
     root = Path(__file__).resolve().parents[2]
     compose = (root / "agent" / "docker-compose.yml").read_text(encoding="utf-8")

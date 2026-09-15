@@ -3531,10 +3531,16 @@ async function refreshHistoryFirstPage() {
     aux.dayBasis = res.day_basis || aux.dayBasis;
     aux.mixedTz = res.mixed_time_zones === true;
     aux.partial = aux.partial || res.partial === true;
-    const lastDay = incoming.length ? incoming[incoming.length - 1].day : "";
-    aux.cursor = res.next_cursor || lastDay || null;
-    const hasMore = res.has_more != null ? res.has_more === true : !!res.next_cursor;
-    aux.done = !hasMore && rest.length === 0;
+    if (rest.length) {
+      // 已加载后续页时保留原游标，避免下一页重取第 2 页后 added=0 提前结束。
+      aux.cursor = prev.cursor;
+      aux.done = prev.done;
+    } else {
+      const lastDay = incoming.length ? incoming[incoming.length - 1].day : "";
+      aux.cursor = res.next_cursor || lastDay || null;
+      const hasMore = res.has_more != null ? res.has_more === true : !!res.next_cursor;
+      aux.done = !hasMore;
+    }
     aux.status = aux.rows.length ? "ready" : "empty";
   } catch (e) {
     if (ctl.signal.aborted || rev !== state.tokenRevision) return;

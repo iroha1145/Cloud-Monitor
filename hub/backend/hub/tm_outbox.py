@@ -56,6 +56,9 @@ CREATE TABLE IF NOT EXISTS tm_ingest_outbox (
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_state_time
     ON tm_ingest_outbox(state, received_at);
+"""
+
+INDEX_DEVICE_DAY_SEQ = """
 CREATE INDEX IF NOT EXISTS idx_outbox_device_day_seq
     ON tm_ingest_outbox(device_id, local_day, ingest_sequence);
 """
@@ -177,6 +180,8 @@ def ensure_schema(db: Database) -> None:
             "SELECT 1 FROM tm_ingest_outbox WHERE ingest_sequence = 0 LIMIT 1"
         ).fetchone():
             _backfill_outbox_columns(db)
+        # 旧库先 ALTER 加列，再建模；否则 CREATE INDEX 会因缺列中止启动。
+        db._conn.executescript(INDEX_DEVICE_DAY_SEQ)
 
 
 def new_request_id() -> str:

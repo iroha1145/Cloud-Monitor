@@ -1048,6 +1048,60 @@ test.describe("审计回归批 2026-08-25（demo）", () => {
     expect(await page.evaluate(() => window.__histKept)).toBe(true);
   });
 
+  test("历史刷新保留已加载后续页的游标，下一页仍能继续", async ({ page }) => {
+    await page.goto("/demo#history");
+    await expect(page.locator("#shell")).toBeVisible();
+    await expect.poll(() => page.evaluate(() => state.aux.history.status)).toBe("ready");
+    await page.evaluate(async () => {
+      const page1 = [
+        { day: "2026-09-15", tokens: 10 },
+        { day: "2026-09-14", tokens: 9 },
+      ];
+      const page2 = [{ day: "2026-09-13", tokens: 8 }];
+      state.aux.history.rows = [...page1, ...page2].map((item) => ({
+        day: item.day,
+        tokens: item.tokens,
+        costUsd: null,
+        mix: null,
+        mixModel: null,
+        deviceCount: null,
+        complete: true,
+        coverage: null,
+      }));
+      state.aux.history.seen = new Set(state.aux.history.rows.map((row) => row.day));
+      state.aux.history.cursor = "2026-09-13";
+      state.aux.history.done = false;
+      state.aux.history.status = "ready";
+      dataApi.historyDaily = async (cursor) => {
+        if (!cursor) {
+          return { items: page1, next_cursor: "2026-09-14", has_more: true };
+        }
+        if (cursor === "2026-09-13") {
+          return { items: [{ day: "2026-09-12", tokens: 7 }], next_cursor: "2026-09-12", has_more: false };
+        }
+        throw new Error("unexpected cursor " + cursor);
+      };
+      await refreshHistoryFirstPage();
+      window.__histFrontier = {
+        cursor: state.aux.history.cursor,
+        done: state.aux.history.done,
+        days: state.aux.history.rows.map((row) => row.day),
+      };
+      await loadHistoryPage();
+      window.__histContinued = {
+        days: state.aux.history.rows.map((row) => row.day),
+        done: state.aux.history.done,
+      };
+    });
+    const frontier = await page.evaluate(() => window.__histFrontier);
+    expect(frontier.cursor).toBe("2026-09-13");
+    expect(frontier.done).toBe(false);
+    expect(frontier.days).toEqual(["2026-09-15", "2026-09-14", "2026-09-13"]);
+    const continued = await page.evaluate(() => window.__histContinued);
+    expect(continued.days).toContain("2026-09-12");
+    expect(continued.done).toBe(true);
+  });
+
   test("夜间模式下矩阵色阶图例与格子同源：CSS 类驱动，无内联色", async ({ page }) => {
     await page.goto("/demo");
     await expect(page.locator("#shell")).toBeVisible();
