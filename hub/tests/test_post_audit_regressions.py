@@ -533,34 +533,16 @@ def test_unavailable_response_falls_back_to_exception_type():
     assert body["message"] == "Blank"
 
 
-def test_empty_bearer_does_not_fall_back_to_custom_header(tmp_path):
-    from fastapi.testclient import TestClient
+def test_empty_bearer_does_not_fall_back_to_custom_header():
+    from starlette.datastructures import Headers
+    from types import SimpleNamespace
 
-    from conftest import API_KEY, READ_KEY, TM_SECRET
-    from hub.config import Settings
-    from hub.main import create_app
+    from conftest import TM_SECRET
+    from hub.tm_proxy import request_tm_secret
 
-    settings = Settings(
-        api_key=API_KEY,
-        access_token=READ_KEY,
-        database_path=tmp_path / "auth.db",
-        frontend_dir=tmp_path,
-        max_records_per_push=500,
-        tm_ingest_secret=TM_SECRET,
-    )
-    client = TestClient(create_app(settings))
-    empty_bearer = client.post(
-        "/api/ingest",
-        json={"deviceId": "dev"},
-        headers={
-            "Authorization": "Bearer ",
-            "X-Token-Monitor-Secret": TM_SECRET,
-        },
-    )
-    header_only = client.post(
-        "/api/ingest",
-        json={"deviceId": "dev"},
-        headers={"X-Token-Monitor-Secret": TM_SECRET},
-    )
-    assert empty_bearer.status_code == 401
-    assert header_only.status_code != 401
+    def req(headers: dict) -> SimpleNamespace:
+        return SimpleNamespace(headers=Headers(headers))
+
+    assert request_tm_secret(req({"authorization": "Bearer ", "x-token-monitor-secret": TM_SECRET})) == ""
+    assert request_tm_secret(req({"x-token-monitor-secret": TM_SECRET})) == TM_SECRET
+    assert request_tm_secret(req({"authorization": f"Bearer {TM_SECRET}"})) == TM_SECRET

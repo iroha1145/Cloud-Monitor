@@ -137,6 +137,14 @@ def _proxy_response(resp: httpx.Response) -> JSONResponse:
         return JSONResponse(status_code=502, content={"error": "bad_gateway"})
 
 
+def request_tm_secret(request: Request) -> str:
+    """与官方 requestSecret 一致：出现 Bearer 就只看 Bearer，即使值为空。"""
+    auth = request.headers.get("authorization") or ""
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return request.headers.get("x-token-monitor-secret") or ""
+
+
 def _unavailable_response(exc: Exception) -> JSONResponse:
     message = str(exc).strip() or type(exc).__name__
     return JSONResponse(
@@ -171,12 +179,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
         import hmac
 
         secret = settings.tm_ingest_secret
-        auth = request.headers.get("authorization") or ""
-        # 与官方 requestSecret 一致：出现 Bearer 就只看 Bearer，即使值为空。
-        if auth.lower().startswith("bearer "):
-            provided = auth[7:].strip()
-        else:
-            provided = request.headers.get("x-token-monitor-secret") or ""
+        provided = request_tm_secret(request)
         if not provided or not hmac.compare_digest(provided.encode(), secret.encode()):
             raise HTTPException(status_code=401, detail="unauthorized")
 
