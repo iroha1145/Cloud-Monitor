@@ -6,8 +6,8 @@ import org.junit.Test
 class FormatTest {
     @Test fun usdUsesFourDecimalsBelowACentAndGroupingAbove() {
         assertEquals("$0.00", Format.fmtUsd(0.0))
-        assertEquals("$0.0034", Format.fmtUsd(0.0034))
-        assertEquals("-$0.0034", Format.fmtUsd(-0.0034))
+        assertEquals("$0.00", Format.fmtUsd(0.0034))
+        assertEquals("-$0.00", Format.fmtUsd(-0.0034))
         assertEquals("$4.82", Format.fmtUsd(4.82))
         assertEquals("$1,234.56", Format.fmtUsd(1234.56))
         assertEquals("-$1,234.56", Format.fmtUsd(-1234.56))

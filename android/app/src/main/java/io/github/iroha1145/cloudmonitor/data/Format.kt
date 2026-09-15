@@ -69,11 +69,8 @@ object Format {
 
     fun fmtUsd(v: Double): String {
         if (!v.isFinite()) return "未提供"
-        if (v == 0.0) return "$0.00"
         val sign = if (v < 0) "-" else ""
-        val amount = abs(v)
-        if (amount < 0.01) return sign + "$" + String.format(Locale.US, "%.4f", amount)
-        return sign + "$" + checkNotNull(usdLocal.get()).format(amount)
+        return sign + "$" + checkNotNull(usdLocal.get()).format(abs(v))
     }
 
     fun fmtPct(ratio: Double): String {
