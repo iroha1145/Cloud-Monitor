@@ -48,11 +48,24 @@ CREATE TABLE IF NOT EXISTS tm_ingest_outbox (
     received_at TEXT NOT NULL,
     state TEXT NOT NULL DEFAULT 'pending',
     attempts INTEGER NOT NULL DEFAULT 0,
-    last_error TEXT
+    last_error TEXT,
+    local_day TEXT NOT NULL DEFAULT '',
+    ingest_sequence INTEGER NOT NULL DEFAULT 0,
+    snapshot_written INTEGER NOT NULL DEFAULT 0,
+    writes_usage INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_state_time
     ON tm_ingest_outbox(state, received_at);
+CREATE INDEX IF NOT EXISTS idx_outbox_device_day_seq
+    ON tm_ingest_outbox(device_id, local_day, ingest_sequence);
 """
+
+_OUTBOX_COLUMNS = (
+    ("local_day", "TEXT NOT NULL DEFAULT ''"),
+    ("ingest_sequence", "INTEGER NOT NULL DEFAULT 0"),
+    ("snapshot_written", "INTEGER NOT NULL DEFAULT 0"),
+    ("writes_usage", "INTEGER NOT NULL DEFAULT 1"),
+)
 
 
 def is_retryable_http(status_code: int) -> bool:
@@ -64,9 +77,106 @@ class OutboxFullError(Exception):
     """pending 超过上限：背压拒绝，客户端稍后重试。"""
 
 
+def _as_flag(value: object) -> bool:
+    try:
+        return int(value or 0) != 0
+    except (TypeError, ValueError):
+        return bool(value)
+
+
+def _payload_local_day(payload: dict) -> str:
+    from .tm_snapshots import resolve_local_day
+
+    if not isinstance(payload, dict):
+        return ""
+    windows = payload.get("periodWindows")
+    try:
+        day, _tz = resolve_local_day(
+            period_windows=windows if isinstance(windows, dict) else None,
+            updated_at=payload.get("updatedAt"),
+            received_at=payload.get("receivedAt"),
+        )
+    except (OverflowError, ValueError, TypeError):
+        return ""
+    return day or ""
+
+
+def _payload_writes_usage(payload: dict) -> int:
+    from .tm_validate import is_limits_only_update
+
+    return 0 if is_limits_only_update(payload) else 1
+
+
+def _next_ingest_sequence(db: Database) -> int:
+    row = db.fetchone(
+        "SELECT COALESCE(MAX(ingest_sequence), 0) AS n FROM tm_ingest_outbox"
+    )
+    return int((row or {}).get("n") or 0) + 1
+
+
+def _backfill_outbox_columns(db: Database) -> None:
+    rows = db._conn.execute(
+        "SELECT request_id, payload_json, received_at, ingest_sequence, local_day, writes_usage "
+        "FROM tm_ingest_outbox ORDER BY received_at ASC, request_id ASC"
+    ).fetchall()
+    seq = 0
+    for row in rows:
+        current = int(row["ingest_sequence"] or 0)
+        if current > seq:
+            seq = current
+        updates: list[str] = []
+        params: list[object] = []
+        if current <= 0:
+            seq += 1
+            updates.append("ingest_sequence = ?")
+            params.append(seq)
+        payload: dict = {}
+        raw = row["payload_json"]
+        if isinstance(raw, str) and raw:
+            try:
+                parsed = json.loads(raw)
+            except ValueError:
+                parsed = {}
+            if isinstance(parsed, dict):
+                payload = parsed
+        if not str(row["local_day"] or ""):
+            day = _payload_local_day(payload)
+            if day:
+                updates.append("local_day = ?")
+                params.append(day)
+        if row["writes_usage"] is None or (
+            int(row["writes_usage"] or 1) == 1 and payload
+        ):
+            writes = _payload_writes_usage(payload)
+            if writes != int(row["writes_usage"] or 1):
+                updates.append("writes_usage = ?")
+                params.append(writes)
+        if updates:
+            params.append(row["request_id"])
+            db._conn.execute(
+                "UPDATE tm_ingest_outbox SET "
+                + ", ".join(updates)
+                + " WHERE request_id = ?",
+                params,
+            )
+
+
 def ensure_schema(db: Database) -> None:
     with db._lock:
         db._conn.executescript(SCHEMA)
+        columns = {
+            str(row["name"])
+            for row in db._conn.execute("PRAGMA table_info(tm_ingest_outbox)")
+        }
+        migrated = False
+        for name, decl in _OUTBOX_COLUMNS:
+            if name not in columns:
+                db._conn.execute(f"ALTER TABLE tm_ingest_outbox ADD COLUMN {name} {decl}")
+                migrated = True
+        if migrated or db._conn.execute(
+            "SELECT 1 FROM tm_ingest_outbox WHERE ingest_sequence = 0 LIMIT 1"
+        ).fetchone():
+            _backfill_outbox_columns(db)
 
 
 def new_request_id() -> str:
@@ -101,41 +211,107 @@ def record_pending(
             raise OutboxFullError(
                 f"待重放队列已达上限 {max_pending}（快照层持续失败？）"
             )
+        slim = _slim_payload(payload)
         db.execute(
             """
-            INSERT INTO tm_ingest_outbox (request_id, device_id, payload_json, received_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO tm_ingest_outbox (
+                request_id, device_id, payload_json, received_at,
+                local_day, ingest_sequence, snapshot_written, writes_usage
+            )
+            VALUES (?, ?, ?, ?, ?, ?, 0, ?)
             """,
             (
                 request_id,
                 device_id,
-                json.dumps(_slim_payload(payload), ensure_ascii=False),
+                json.dumps(slim, ensure_ascii=False),
                 norm_ts(utc_now()),
+                _payload_local_day(payload),
+                _next_ingest_sequence(db),
+                _payload_writes_usage(payload),
             ),
         )
 
 
-def mark_done(db: Database, request_id: str) -> None:
+def mark_done(
+    db: Database, request_id: str, *, snapshot_written: Optional[bool] = None
+) -> None:
+    if snapshot_written is None:
+        db.execute(
+            "UPDATE tm_ingest_outbox SET state = 'done', last_error = NULL WHERE request_id = ?",
+            (request_id,),
+        )
+        return
     db.execute(
-        "UPDATE tm_ingest_outbox SET state = 'done', last_error = NULL WHERE request_id = ?",
+        """
+        UPDATE tm_ingest_outbox
+        SET state = 'done', last_error = NULL, snapshot_written = ?
+        WHERE request_id = ?
+        """,
+        (1 if snapshot_written else 0, request_id),
+    )
+
+
+def can_supersede(old: dict, saved: dict) -> bool:
+    """无需补写必须以已持久化的用量快照为证据。"""
+    if not _as_flag(saved.get("snapshot_written")):
+        return False
+    if str(saved.get("device_id") or "") != str(old.get("device_id") or ""):
+        return False
+    saved_day = str(saved.get("local_day") or "")
+    old_day = str(old.get("local_day") or "")
+    if not saved_day or not old_day or saved_day != old_day:
+        return False
+    if int(saved.get("ingest_sequence") or 0) <= int(old.get("ingest_sequence") or 0):
+        return False
+    if _as_flag(old.get("writes_usage")) and not _as_flag(saved.get("writes_usage")):
+        return False
+    return True
+
+
+def _outbox_identity(db: Database, request_id: str) -> Optional[dict]:
+    return db.fetchone(
+        """
+        SELECT request_id, device_id, local_day, ingest_sequence,
+               snapshot_written, writes_usage, received_at
+        FROM tm_ingest_outbox WHERE request_id = ?
+        """,
         (request_id,),
     )
 
 
 def supersede_older_pending(db: Database, device_id: str, request_id: str) -> int:
-    """H-5：只在新行已经 mark_done 之后，才把同设备旧 pending 标 superseded。
+    """只在新行已写入同日用量快照后，才把更早的同日 pending 标 superseded。
 
-    转发前 supersede 再 drop 新行，会把 tm-core 已收、快照未写的旧行永久丢掉。
+    额度-only 或先到请求不得清掉仍需补写的用量行。
     """
-    cur = db.execute(
+    saved = _outbox_identity(db, request_id)
+    if not saved or str(saved.get("device_id") or "") != device_id:
+        return 0
+    if not _as_flag(saved.get("snapshot_written")):
+        return 0
+    pending = db.fetchall(
         """
-        UPDATE tm_ingest_outbox
-        SET state = 'done', last_error = 'superseded_by_newer'
+        SELECT request_id, device_id, local_day, ingest_sequence,
+               snapshot_written, writes_usage
+        FROM tm_ingest_outbox
         WHERE device_id = ? AND state = 'pending' AND request_id != ?
         """,
         (device_id, request_id),
     )
-    return cur.rowcount or 0
+    n = 0
+    for old in pending:
+        if not can_supersede(old, saved):
+            continue
+        db.execute(
+            """
+            UPDATE tm_ingest_outbox
+            SET state = 'done', last_error = 'superseded_by_newer'
+            WHERE request_id = ?
+            """,
+            (old["request_id"],),
+        )
+        n += 1
+    return n
 
 
 def reject_exhausted_pending(
@@ -315,17 +491,35 @@ def _current_device_record(
     return index.get(device_id)
 
 
-def _superseded(db: Database, device_id: str, received_at: str) -> bool:
-    """该设备已有比 pending 项更新的快照桶：无需回灌旧载荷。"""
-    row = db.fetchone(
+def _superseded(db: Database, row: dict) -> bool:
+    """同设备同日本地日已有更新的用量快照时，无需回灌旧载荷。"""
+    device_id = str(row.get("device_id") or "")
+    local_day = str(row.get("local_day") or "")
+    if not device_id or not local_day:
+        return False
+    seq = int(row.get("ingest_sequence") or 0)
+    writes_usage = 1 if _as_flag(row.get("writes_usage")) else 0
+    later = db.fetchone(
         """
-        SELECT 1 FROM tm_snapshot_buckets
-        WHERE device_id = ? AND server_received_at > ?
+        SELECT 1 FROM tm_ingest_outbox
+        WHERE device_id = ? AND local_day = ? AND snapshot_written = 1
+          AND ingest_sequence > ? AND request_id != ?
+          AND (? = 0 OR writes_usage = 1)
         LIMIT 1
         """,
-        (device_id, norm_ts(received_at)),
+        (device_id, local_day, seq, row["request_id"], writes_usage),
     )
-    return row is not None
+    if later is not None:
+        return True
+    snap = db.fetchone(
+        """
+        SELECT 1 FROM tm_snapshot_buckets
+        WHERE device_id = ? AND local_day = ? AND server_received_at > ?
+        LIMIT 1
+        """,
+        (device_id, local_day, norm_ts(row.get("received_at"))),
+    )
+    return snap is not None
 
 
 def replay_pending(
@@ -342,20 +536,12 @@ def replay_pending(
 
     rows = db.fetchall(
         """
-        SELECT request_id, device_id, payload_json, received_at
+        SELECT request_id, device_id, payload_json, received_at,
+               local_day, ingest_sequence, snapshot_written, writes_usage
         FROM tm_ingest_outbox
-        WHERE state = 'pending' AND request_id IN (
-            SELECT request_id FROM (
-                SELECT request_id,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY device_id ORDER BY received_at DESC
-                       ) AS rn
-                FROM tm_ingest_outbox
-                WHERE state = 'pending' AND attempts < ?
-            ) latest
-            WHERE latest.rn = 1
-        )
-        ORDER BY received_at ASC LIMIT ?
+        WHERE state = 'pending' AND attempts < ?
+        ORDER BY ingest_sequence ASC, received_at ASC
+        LIMIT ?
         """,
         (MAX_ATTEMPTS_DEFAULT, max_items),
     )
@@ -378,7 +564,7 @@ def replay_pending(
             mark_rejected(db, row["request_id"], "stored payload is not JSON")
             stats["rejected"] += 1
             continue
-        if _superseded(db, row["device_id"], row["received_at"]):
+        if _superseded(db, row):
             mark_done(db, row["request_id"])
             stats["superseded"] += 1
             continue
@@ -394,16 +580,20 @@ def replay_pending(
                 )
                 stats["failed"] += 1
                 continue
-            write_snapshot(
-                db,
-                device_id=row["device_id"],
-                record=record or {},
-                incoming=payload,
-                limits_only=is_limits_only_update(payload),
-                force_received_at=row["received_at"],
-            )
-            mark_done(db, row["request_id"])
-            supersede_older_pending(db, row["device_id"], row["request_id"])
+            with db.transaction():
+                written = write_snapshot(
+                    db,
+                    device_id=row["device_id"],
+                    record=record or {},
+                    incoming=payload,
+                    limits_only=is_limits_only_update(payload),
+                    force_received_at=row["received_at"],
+                )
+                mark_done(
+                    db, row["request_id"], snapshot_written=written is not None
+                )
+                if written is not None:
+                    supersede_older_pending(db, row["device_id"], row["request_id"])
             set_snapshot_status(db, success=True)
             stats["completed"] += 1
             _invalidate_overview(db)

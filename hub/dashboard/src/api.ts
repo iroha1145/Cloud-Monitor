@@ -1,25 +1,64 @@
-import { API_ENDPOINTS, normalizeOverview, type DashboardData } from "./data";
+import { API_ENDPOINTS, normalizeOverview, type DashboardData, type TrendPoint } from "./data";
 
-function retainAuxiliary(next: DashboardData, previous?: DashboardData): DashboardData {
+type AuxOutcome = "fulfilled" | "rejected" | "skipped";
+
+type AuxSettlement = {
+  subscriptions: AuxOutcome;
+  providers: AuxOutcome;
+  history: AuxOutcome;
+};
+
+function retainMatchingCosts(next: TrendPoint[], previous: TrendPoint[]): { points: TrendPoint[]; kept: boolean } {
+  let kept = false;
+  const points = next.map((point) => {
+    const prior = previous.find((row) => row.day === point.day);
+    if (!prior || prior.totalTokens !== point.totalTokens) return point;
+    const costUsd = point.costUsd ?? prior.costUsd;
+    const components = point.components ?? prior.components;
+    if (costUsd === point.costUsd && components === point.components) return point;
+    kept = true;
+    return { ...point, costUsd, components, costStale: true };
+  });
+  return { points, kept };
+}
+
+function retainAuxiliary(
+  next: DashboardData,
+  previous?: DashboardData,
+  settled?: AuxSettlement,
+): DashboardData {
   if (!previous || previous.mode !== "live") return next;
-  return {
-    ...next,
-    subscriptions: next.subscriptions.length
-      ? next.subscriptions
-      : previous.subscriptions,
-    subscriptionsUpdatedAt:
-      next.subscriptionsUpdatedAt || previous.subscriptionsUpdatedAt,
-    providers: next.providers.length ? next.providers : previous.providers,
-    trend: next.trend.map((point) => {
-      const prior = previous.trend.find((row) => row.day === point.day);
-      if (!prior) return point;
-      return {
-        ...point,
-        costUsd: point.costUsd ?? prior.costUsd,
-        components: point.components ?? prior.components,
-      };
-    }),
-  };
+  if (!settled) {
+    const retained = retainMatchingCosts(next.trend, previous.trend);
+    return {
+      ...next,
+      subscriptions: previous.subscriptions,
+      subscriptionsUpdatedAt: previous.subscriptionsUpdatedAt,
+      providers: previous.providers,
+      trend: retained.points,
+    };
+  }
+  let subscriptions = next.subscriptions;
+  let subscriptionsUpdatedAt = next.subscriptionsUpdatedAt;
+  let providers = next.providers;
+  let trend = next.trend;
+  const notices = [...next.notices];
+  if (settled.subscriptions === "rejected") {
+    subscriptions = previous.subscriptions;
+    subscriptionsUpdatedAt = previous.subscriptionsUpdatedAt;
+  }
+  if (settled.providers === "rejected") providers = previous.providers;
+  if (settled.history === "rejected") {
+    const retained = retainMatchingCosts(next.trend, previous.trend);
+    trend = retained.points;
+    if (retained.kept) notices.push("部分日期费用暂时读不到，先沿用上次的费用。");
+  }
+  return { ...next, subscriptions, subscriptionsUpdatedAt, providers, trend, notices };
+}
+
+function outcome(disabled: boolean, result: PromiseSettledResult<unknown>): AuxOutcome {
+  if (disabled) return "skipped";
+  return result.status === "fulfilled" ? "fulfilled" : "rejected";
 }
 
 export class ApiError extends Error {
@@ -102,5 +141,9 @@ export async function loadDashboard(
   if (subs.status === "rejected") data.notices.push("订阅信息暂时未能加载。");
   if (providers.status === "rejected") data.notices.push("提供商状态暂时未能加载。");
   if (history.status === "rejected") data.notices.push("每日费用明细暂时未能加载。");
-  return data;
+  return retainAuxiliary(data, previous, {
+    subscriptions: outcome(features?.subscriptions === false, subs),
+    providers: outcome(features?.provider_status === false, providers),
+    history: outcome(features?.history_daily === false, history),
+  });
 }

@@ -57,6 +57,17 @@ compose() {
   fi
 }
 
+# 容器以 999:999 读升级状态。root:999 0750 让管理员可写、容器组可进入；
+# 非 root 或宿主机没有 gid 999 时降级，不要让安装失败。
+ensure_update_runtime_dir() {
+  local dir="$1"
+  if [[ "$(id -u)" -eq 0 ]] && install -d -o root -g 999 -m 0750 "$dir" 2>/dev/null; then
+    return 0
+  fi
+  mkdir -p "$dir" || return 1
+  chmod 750 "$dir" 2>/dev/null || true
+}
+
 resolve_install_dir() {
   # 显式 --dir 永远最优先：此前从仓库 checkout 内运行时脚本目录会盖掉
   # 用户指定的目录，--dir 被静默忽略
@@ -222,9 +233,9 @@ upsert_env "$ENVF" CM_VERSION "$(tr -d '[:space:]' <"$INSTALL_DIR/VERSION" 2>/de
 upsert_env "$ENVF" CM_GIT_SHA "$(git -c "safe.directory=$INSTALL_DIR" -C "$INSTALL_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 
 ensure_updater() {
-  mkdir -p "$HUB/update-control" "$HUB/update-runtime"
-  if mkdir -p /run/cloud-monitor 2>/dev/null; then
-    chmod 700 /run/cloud-monitor 2>/dev/null || true
+  mkdir -p "$HUB/update-control"
+  ensure_update_runtime_dir "$HUB/update-runtime" || true
+  if ensure_update_runtime_dir /run/cloud-monitor; then
     upsert_env "$ENVF" CM_UPDATE_RUNTIME_HOST /run/cloud-monitor
   fi
   # 容器内 monitor 用户固定为 999；root 监视器仍可写。禁止 0777。

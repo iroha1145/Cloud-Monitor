@@ -300,15 +300,17 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
                 raise ValueError(
                     f"tm-core ingest response missing normalized device {device_id!r}"
                 )
-            write_snapshot(
-                db,
-                device_id=device_id,
-                record=record or {},
-                incoming=payload,
-                limits_only=is_limits_only_update(payload),
-            )
-            mark_done(db, request_id)
-            supersede_older_pending(db, device_id, request_id)
+            with db.transaction():
+                written = write_snapshot(
+                    db,
+                    device_id=device_id,
+                    record=record or {},
+                    incoming=payload,
+                    limits_only=is_limits_only_update(payload),
+                )
+                mark_done(db, request_id, snapshot_written=written is not None)
+                if written is not None:
+                    supersede_older_pending(db, device_id, request_id)
             set_snapshot_status(db, success=True)
             _wake_replay(request)
         except DETERMINISTIC_FAILURES as exc:

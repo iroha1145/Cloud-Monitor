@@ -61,6 +61,8 @@ export interface TrendPoint {
   /** Raw total is exactly zero with no contradictory component counters. */
   zeroUsageConfirmed?: boolean;
   costUsd: number | null;
+  /** Auxiliary history failed; cost/components were kept from the last success. */
+  costStale?: boolean;
   models: Record<string, number>;
   /** Daily components only. Never borrow today's or a whole period's cache mix. */
   components: UsageComponents | null;

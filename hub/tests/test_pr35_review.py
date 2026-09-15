@@ -90,6 +90,13 @@ def test_record_pending_does_not_supersede_before_mark_done(tmp_path):
         row = db.fetchone(
             "SELECT state, last_error FROM tm_ingest_outbox WHERE request_id='old'"
         )
+        assert row["state"] == "pending"
+        assert row["last_error"] is None
+        mark_done(db, "new", snapshot_written=True)
+        supersede_older_pending(db, "dev", "new")
+        row = db.fetchone(
+            "SELECT state, last_error FROM tm_ingest_outbox WHERE request_id='old'"
+        )
         assert row["state"] == "done"
         assert row["last_error"] == "superseded_by_newer"
     finally:

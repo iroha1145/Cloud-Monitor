@@ -18,11 +18,15 @@ LOCK="$RUNTIME/update.lock"
 ENVF="$HUB/.env"
 
 mkdir -p "$CTRL"
-if ! mkdir -p "$RUNTIME"; then
+# 容器 999:999 需要进入目录读 status；0700 会让面板把已在重建的任务误判为排队。
+if [[ "$(id -u)" -eq 0 ]] && install -d -o root -g 999 -m 0750 "$RUNTIME" 2>/dev/null; then
+  :
+elif mkdir -p "$RUNTIME"; then
+  chmod 750 "$RUNTIME" 2>/dev/null || true
+else
   echo "无法创建更新运行时目录: $RUNTIME" >&2
   exit 1
 fi
-chmod 700 "$RUNTIME" || true
 
 refuse_symlink() {
   local path="$1"
@@ -60,13 +64,23 @@ if os.path.islink(tmp):
 flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
 if hasattr(os, "O_NOFOLLOW"):
     flags |= os.O_NOFOLLOW
-fd = os.open(tmp, flags, 0o644)
-with os.fdopen(fd, "w", encoding="utf-8") as f:
-    json.dump(
-        {"id": rid, "state": state, "ref": ref, "message": message, "updated_at": ts},
-        f, ensure_ascii=False,
-    )
-    f.write("\n")
+fd = os.open(tmp, flags, 0o640)
+try:
+    os.fchmod(fd, 0o640)
+    try:
+        os.fchown(fd, 0, 999)
+    except OSError:
+        pass
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        fd = None
+        json.dump(
+            {"id": rid, "state": state, "ref": ref, "message": message, "updated_at": ts},
+            f, ensure_ascii=False,
+        )
+        f.write("\n")
+finally:
+    if fd is not None:
+        os.close(fd)
 os.replace(tmp, path)
 PY
 }
@@ -103,6 +117,7 @@ fi
 
 refuse_symlink "$LOCK" || exit 1
 exec 9>"$LOCK"
+chmod 600 "$LOCK" 2>/dev/null || true
 if ! flock -n 9; then
   echo "已有更新在进行，跳过"
   exit 0

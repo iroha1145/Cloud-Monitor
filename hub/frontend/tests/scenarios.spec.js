@@ -992,6 +992,62 @@ test.describe("审计回归批 2026-08-25（demo）", () => {
     expect(hist.loading).toBe(false);
   });
 
+  test("主刷新强制重拉已就绪的订阅，失败时保留旧清单", async ({ page }) => {
+    await page.goto("/demo#quota");
+    await expect(page.locator("#shell")).toBeVisible();
+    await expect.poll(() => page.evaluate(() => state.aux.subs.status)).toBe("ready");
+    const first = await page.evaluate(() => {
+      window.__subCalls = 0;
+      const orig = dataApi.subscriptions;
+      dataApi.subscriptions = async (...args) => {
+        window.__subCalls += 1;
+        return orig.apply(dataApi, args);
+      };
+      return {
+        count: (state.aux.subs.data && state.aux.subs.data.subscriptions || []).length,
+      };
+    });
+    expect(first.count).toBeGreaterThan(0);
+    await page.evaluate(async () => { await ensureSubs(false); });
+    expect(await page.evaluate(() => window.__subCalls)).toBe(0);
+    await page.evaluate(async () => { await ensureSubs(true); });
+    expect(await page.evaluate(() => window.__subCalls)).toBe(1);
+    await page.evaluate(async () => {
+      const n = (state.aux.subs.data && state.aux.subs.data.subscriptions || []).length;
+      dataApi.subscriptions = async () => { throw new Error("aux down"); };
+      await ensureSubs(true);
+      window.__subsKept = (state.aux.subs.data && state.aux.subs.data.subscriptions || []).length === n
+        && n > 0
+        && state.aux.subs.status === "error";
+    });
+    expect(await page.evaluate(() => window.__subsKept)).toBe(true);
+  });
+
+  test("历史页刷新重取首页，失败时保留已加载行", async ({ page }) => {
+    await page.goto("/demo#history");
+    await expect(page.locator("#shell")).toBeVisible();
+    await expect.poll(() => page.evaluate(() => state.aux.history.status)).toBe("ready");
+    await page.evaluate(() => {
+      window.__histCalls = 0;
+      const orig = dataApi.historyDaily;
+      dataApi.historyDaily = async (...args) => {
+        window.__histCalls += 1;
+        return orig.apply(dataApi, args);
+      };
+    });
+    await page.evaluate(async () => { await refreshHistoryFirstPage(); });
+    expect(await page.evaluate(() => window.__histCalls)).toBeGreaterThan(0);
+    await page.evaluate(async () => {
+      const n = state.aux.history.rows.length;
+      dataApi.historyDaily = async () => { throw new Error("aux down"); };
+      await refreshHistoryFirstPage();
+      window.__histKept = state.aux.history.rows.length === n
+        && n > 0
+        && state.aux.history.status === "ready";
+    });
+    expect(await page.evaluate(() => window.__histKept)).toBe(true);
+  });
+
   test("夜间模式下矩阵色阶图例与格子同源：CSS 类驱动，无内联色", async ({ page }) => {
     await page.goto("/demo");
     await expect(page.locator("#shell")).toBeVisible();

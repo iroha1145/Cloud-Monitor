@@ -182,6 +182,7 @@ class UpdateService:
         if pending is not None and not isinstance(pending, dict):
             return {"state": "error", "message": "请求文件格式错误"}
         status_path = self.status_file()
+        status_unreadable = False
         try:
             if status_path is None:
                 raise FileNotFoundError
@@ -189,9 +190,21 @@ class UpdateService:
         except FileNotFoundError:
             data = {"state": "idle", "message": ""}
         except (OSError, ValueError):
-            data = {"state": "error", "message": "状态文件无法读取"}
+            # 权限拒绝或损坏：不得改写成 queued，否则页面会取消已开始的重建。
+            status_unreadable = True
+            data = {"state": "unknown", "message": "状态文件无法读取"}
         if not isinstance(data, dict):
-            data = {"state": "error", "message": "状态文件格式错误"}
+            status_unreadable = True
+            data = {"state": "unknown", "message": "状态文件格式错误"}
+        if pending is not None and status_unreadable:
+            return {
+                "id": str(pending.get("id") or ""),
+                "state": "unknown",
+                "ref": str(pending.get("ref") or ""),
+                "message": "升级状态无法读取，无法确认是否已在重建",
+                "updated_at": str(pending.get("requested_at") or ""),
+                "status_unreadable": True,
+            }
         if pending is not None and (
             not data.get("id") or data.get("id") != pending.get("id")
         ):
@@ -213,13 +226,16 @@ class UpdateService:
                     "message": "更新超时，容器可能未重建，请重试",
                 }
         state = str(data.get("state") or "idle")
-        return {
+        job = {
             "id": str(data.get("id") or ""),
             "state": state,
             "ref": str(data.get("ref") or ""),
             "message": str(data.get("message") or ""),
             "updated_at": str(data.get("updated_at") or ""),
         }
+        if status_unreadable:
+            job["status_unreadable"] = True
+        return job
 
     def current(self) -> dict[str, str]:
         return {
@@ -344,7 +360,10 @@ class UpdateService:
             raise HTTPException(status_code=503, detail="未启用在线更新")
         with self._apply_lock:
             job = self.read_job()
-            if job.get("state") == "running":
+            if (
+                job.get("state") in {"running", "unknown"}
+                or job.get("status_unreadable")
+            ):
                 raise HTTPException(
                     status_code=409,
                     detail="更新已开始重建，无法中止",
