@@ -2957,9 +2957,9 @@ function renderHistoryTable() {
   if (aux.status === "error" && !rows.length) {
     body.innerHTML = `<tr><td colspan="4" class="aux-note err">日归档暂不可用</td></tr>`;
   }
-  const more = !aux.done && aux.status !== "error";
-  sentinel.hidden = !more && aux.status !== "loading";
-  $("#hist-more").textContent = more ? "加载更早记录" : "";
+  const more = !aux.done && (aux.status === "ready" || aux.status === "loading");
+  sentinel.hidden = !more;
+  $("#hist-more").textContent = more && aux.status === "ready" ? "加载更早记录" : "";
 }
 
 function renderHistoryView() {
@@ -3972,8 +3972,9 @@ initSeg("#mx-period-seg", (p) => {
 });
 
 /* §9：日归档服务端分页滚动加载：IntersectionObserver + 滚动/按钮兜底
-   （防重复由 aux.loading 保证）。仅靠 IO 时，哨兵若带着 rootMargin 已在
-   相交态，scrollIntoView / 小幅来回滚不会再回调，第二页就永远不来。 */
+   （防重复由 aux.loading 保证）。哨兵带着 rootMargin 已经相交时，
+   scrollIntoView 不再触发 IO；首屏未滚动（scrollY=0）也不自动翻页，
+   避免第一页请求被预取搅乱。用户滚过之后按哨兵位置补拉。 */
 function histSentinelInRange(marginPx) {
   const el = $("#hist-sentinel");
   if (!el || el.hidden) return false;
@@ -3985,9 +3986,9 @@ function histSentinelInRange(marginPx) {
 }
 
 function maybeLoadHistoryBySentinel() {
-  if (state.alive && state.view === "history" && histSentinelInRange(160)) {
-    loadHistoryPage();
-  }
+  if (!state.alive || state.view !== "history") return;
+  if ((window.scrollY || 0) <= 0) return;
+  if (histSentinelInRange(160)) loadHistoryPage();
 }
 
 $("#hist-more").addEventListener("click", () => loadHistoryPage());
@@ -4001,6 +4002,11 @@ if ("IntersectionObserver" in window) {
 }
 window.addEventListener("scroll", maybeLoadHistoryBySentinel, { passive: true, capture: true });
 document.addEventListener("scroll", maybeLoadHistoryBySentinel, { passive: true, capture: true });
+setInterval(() => {
+  if (state.view === "history" && !state.aux.history.done && !state.aux.history.loading) {
+    maybeLoadHistoryBySentinel();
+  }
+}, 200);
 
 let resizeTimer = null;
 let resizeRaf = 0;

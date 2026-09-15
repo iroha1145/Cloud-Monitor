@@ -246,8 +246,9 @@ test.describe("§9 History 分页（真实后端 + [拦截] history/daily）", (
     // 第一页 30 行
     await expect(page.locator("#hist-body tr")).toHaveCount(30);
     expect(state.count).toBe(1);
-    // 滚动触发哨兵：慢第二页期间反复滚动，不应重复发请求
+    // 滚动触发哨兵；按钮是同一套 loading 闸门的兜底（IO 已相交时 scrollIntoView 不再回调）
     await page.evaluate(() => document.querySelector("#hist-sentinel").scrollIntoView());
+    await page.locator("#hist-more").click();
     await page.waitForTimeout(150);
     for (let i = 0; i < 4; i++) {
       await page.evaluate(() => {
