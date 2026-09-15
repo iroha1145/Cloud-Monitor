@@ -201,7 +201,6 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
                     "role": "hub",
                     "runtime": "cloud-monitor",
                     "error": "tm-core 上游不可用",
-                    "snapshot": snapshot_health_of(db),
                 },
             )
         public = {

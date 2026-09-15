@@ -583,7 +583,11 @@ def test_health_upstream_shape_and_downstream_fallback(node_hub, tmp_path):
     with cloud2:
         resp = cloud2.get("/api/health")
         assert resp.status_code == 503
-        assert resp.json()["ok"] is False
+        body = resp.json()
+        assert body["ok"] is False
+        assert "snapshot" not in body
+        assert "pending_outbox" not in body
+        assert "last_snapshot_error" not in body
 
 
 # ================================================================ 22/23、重启保留与旧表迁移
