@@ -18,12 +18,16 @@ export function lazyWithReload<T extends ComponentType<any>>(
       return mod;
     } catch (error) {
       try {
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          throw error;
+        }
         if (sessionStorage.getItem(reloadKey(name)) !== "1") {
           sessionStorage.setItem(reloadKey(name), "1");
           location.reload();
           return new Promise<{ default: T }>(() => undefined);
         }
-      } catch {
+      } catch (inner) {
+        if (inner === error) throw error;
         /* private mode */
       }
       throw error;
@@ -32,7 +36,12 @@ export function lazyWithReload<T extends ComponentType<any>>(
 }
 
 export class AppErrorBoundary extends Component<
-  { title?: string; children: ReactNode },
+  {
+    title?: string;
+    children: ReactNode;
+    variant?: "page" | "dialog";
+    onFail?: () => void;
+  },
   { failed: boolean }
 > {
   state = { failed: false };
@@ -41,8 +50,34 @@ export class AppErrorBoundary extends Component<
     return { failed: true };
   }
 
+  componentDidCatch() {
+    this.props.onFail?.();
+  }
+
   render() {
     if (!this.state.failed) return this.props.children;
+    if (this.props.variant === "dialog") {
+      return (
+        <div
+          className="dialog-error-toast"
+          role="alert"
+          style={{
+            position: "fixed",
+            inset: "auto 16px 16px 16px",
+            zIndex: 80,
+            padding: "12px 16px",
+            borderRadius: 12,
+            background: "var(--surface, #fff)",
+            boxShadow: "0 8px 24px #0003",
+          }}
+        >
+          <p>{this.props.title || "对话框已更新，请刷新后继续。"}</p>
+          <button type="button" onClick={() => location.reload()}>
+            刷新页面
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="page-loading" role="alert">
         <p>{this.props.title || "页面已更新，请刷新后继续。"}</p>

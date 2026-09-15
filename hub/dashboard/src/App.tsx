@@ -733,7 +733,17 @@ export default function App({ initialData, initialToken = "", hosted = false, is
           <MobileNavigation page={page} onNavigate={go} />
         </div>
         {(searchOpen || settings || notifications || !!selected || design) && (
-          <AppErrorBoundary title="对话框已更新，请刷新。">
+          <AppErrorBoundary
+            title="对话框已更新，请刷新。"
+            variant="dialog"
+            onFail={() => {
+              setSearchOpen(false);
+              setSettings(false);
+              setNotifications(false);
+              setDesign(false);
+              setSelected(null);
+            }}
+          >
           <Suspense fallback={null}>
             <AppDialogs
               searchOpen={searchOpen}

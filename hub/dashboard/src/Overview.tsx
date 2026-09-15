@@ -1,5 +1,6 @@
-import { Suspense, useMemo, useState } from "react";
-import { AppErrorBoundary, lazyWithReload } from "./chunkLoad";
+import { useMemo, useState } from "react";
+import { AppErrorBoundary } from "./chunkLoad";
+import { InsightTrend } from "./InsightTrend";
 import {
   ArrowDown,
   ArrowUpRight,
@@ -19,7 +20,6 @@ export { BrandIcon } from "./BrandIcon";
 import { NumberTicker } from "./components/motion/number-ticker";
 import { MetricTooltip, type MetricDetailRow } from "./MetricTooltip";
 
-const InsightTrend = lazyWithReload("trend", () => import("./InsightTrend"));
 import {
   Select,
   SelectContent,
@@ -698,9 +698,7 @@ export function Overview({
       <div className="overview-layout">
         <div className="overview-primary">
           <AppErrorBoundary title="用量趋势已更新，请刷新。">
-            <Suspense fallback={<div className="page-loading" role="status">正在加载趋势…</div>}>
-              <InsightTrend data={data} />
-            </Suspense>
+            <InsightTrend data={data} />
           </AppErrorBoundary>
           <ModelTable per={per} onSelect={onModel} />
         </div>

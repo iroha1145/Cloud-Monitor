@@ -58,16 +58,14 @@ function DialogContent({
   placement?: "center" | "left"
 }) {
   const restoreFocus = React.useRef<HTMLElement | null>(null)
-  React.useLayoutEffect(() => {
-    const active = document.activeElement
-    if (active instanceof HTMLElement) restoreFocus.current = active
-  }, [])
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
         onOpenAutoFocus={(event) => {
+          const active = document.activeElement
+          if (active instanceof HTMLElement) restoreFocus.current = active
           onOpenAutoFocus?.(event)
         }}
         onCloseAutoFocus={(event) => {

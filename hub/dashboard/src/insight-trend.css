@@ -352,6 +352,16 @@
     min-height: 30px;
   }
 }
+@media (pointer: coarse) {
+  .insight-trend .insight-trend-switch button {
+    min-height: 44px;
+    padding: 8px 14px;
+  }
+  .insight-trend .insight-trend-day-nav button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .insight-trend-switch button {
     transition: none;

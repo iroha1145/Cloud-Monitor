@@ -635,12 +635,18 @@ function apiErrorCode(data) {
   if (typeof data.error === "string" && data.error) return data.error;
   if (typeof data.error_code === "string" && data.error_code) return data.error_code;
   if (typeof data.code === "string" && data.code) return data.code;
+  if (data.detail && typeof data.detail === "object" && typeof data.detail.error === "string") {
+    return data.detail.error;
+  }
   return "";
 }
 
 function isAccessTokenUnconfigured(err) {
   if (!(err instanceof ApiError)) return false;
-  return ACCESS_TOKEN_UNCONFIGURED_CODES.has(String(err.code || "").trim().toLowerCase());
+  if (ACCESS_TOKEN_UNCONFIGURED_CODES.has(String(err.code || "").trim().toLowerCase())) {
+    return true;
+  }
+  return String(err.message || "").trim() === "服务器未配置访问密钥";
 }
 
 async function apiFetch(path, opts) {

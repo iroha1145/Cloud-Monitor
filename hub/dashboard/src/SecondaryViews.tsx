@@ -31,6 +31,7 @@ import { MetricTooltip } from "./MetricTooltip";
 import { ActivityPanel } from "./ActivityPanel";
 import { compact as compactNumber } from "./Overview";
 import { escapeCsv, downloadCsv } from "./lib/csv";
+import { usd } from "./money";
 // Last import: mobile overrides must win ties within this async chunk.
 import "./secondary-mobile.css";
 
@@ -41,10 +42,6 @@ export interface SecondaryProps {
 
 const fullNumber = (value: number) =>
   new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
-const usd = (value: number | null) =>
-  value === null
-    ? "未提供"
-    : `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const DAY = 86_400_000;
 
 function dateLabel(
