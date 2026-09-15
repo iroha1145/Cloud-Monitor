@@ -6,5 +6,5 @@ test("numeric negatives stay numeric instead of formula-escaped text", () => {
   assert.equal(escapeCsv(-0.45), "-0.45");
   assert.equal(escapeCsv(12), "12");
   assert.equal(escapeCsv("=cmd"), `"'=cmd"`);
-  assert.equal(escapeCsv("-0.45"), `"-0.45"`);
+  assert.equal(escapeCsv("-0.45"), `"'-0.45"`);
 });

@@ -27,10 +27,11 @@ import token_monitor_bridge as tm
 
 
 class FakeResponse:
-    def __init__(self, status_code=200, json_body=None, text=""):
+    def __init__(self, status_code=200, json_body=None, text="", headers=None):
         self.status_code = status_code
         self._json = json_body
         self.text = text or (json.dumps(json_body) if json_body_body_ok(json_body) else "")
+        self.headers = headers or {}
 
     def json(self):
         if self._json is None:

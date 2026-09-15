@@ -89,7 +89,9 @@ def test_snapshot_failure_not_silently_lost_then_replayed(node_hub, tmp_path, mo
         assert snap["pending_outbox"] == 1
         assert snap["snapshot_degraded"] is True
         assert snap["last_snapshot_error"]
-        assert cloud.get("/api/v1/health").json()["snapshot"]["pending_outbox"] == 1
+        public = cloud.get("/api/v1/health").json()
+        assert "snapshot" not in public
+        assert public["ok"] is True
 
         monkeypatch.setattr(proxy, "write_snapshot", real_write)
         from hub.tm_outbox import replay_pending
@@ -498,8 +500,6 @@ def test_overview_partial_on_history_failure(node_hub, tmp_path, monkeypatch):
 @requires_node
 @pytest.mark.parametrize("mutation,fragment", [
     ({"today": {"input": 100}}, "旧别名"),
-    ({"today": {"cost": 1}}, "旧别名"),
-    ({"today": {"cost_usd": 1}}, "旧别名"),
     ({"today": {"cacheRead": 5}}, "旧别名"),
     ({"today": {"clients": {"claude": True}}}, "布尔"),
     ({"today": {"models": {"m": -3}}}, "负数"),
@@ -514,6 +514,18 @@ def test_validator_additions_reject(cloud, mutation, fragment):
     resp = cloud.post("/api/ingest", json=payload, headers=HEADERS)
     assert resp.status_code == 400, mutation
     assert fragment in resp.json()["message"]
+
+
+@requires_node
+@pytest.mark.parametrize("mutation", [
+    {"today": {"cost": 1}},
+    {"today": {"cost_usd": 1}},
+])
+def test_validator_accepts_official_cost_aliases(cloud, mutation):
+    payload = {"deviceId": "dev-cost", "today": {"totalTokens": 1}}
+    payload.update(mutation)
+    resp = cloud.post("/api/ingest", json=payload, headers=HEADERS)
+    assert resp.status_code == 200, mutation
 
 
 def test_validator_accepts_all_official_payload_shapes():
