@@ -266,7 +266,7 @@ def test_prune_keeps_daily_anchors_beyond_7d(tmp_path):
     ({"today": {"totalTokens": -1}}, "负数"),
     ({"today": {"totalTokens": True}}, "布尔"),
     ({"today": {"totalTokens": 1.5}}, "整数"),
-    ({"today": {"totalTokens": 2**63}}, "64 位"),
+    ({"today": {"totalTokens": 2**63}}, "2^53-1"),
     ({"today": {"__proto__": 1}}, "原型"),
     ({"today": {"sessions": {f"s{i}": 1 for i in range(5000)}}}, "sessions"),
     ({"trackedClients": ["a"] * 100}, "trackedClients"),

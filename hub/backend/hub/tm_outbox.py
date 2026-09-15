@@ -103,14 +103,6 @@ def record_pending(
             )
         db.execute(
             """
-            UPDATE tm_ingest_outbox
-            SET state = 'done', last_error = 'superseded_by_newer'
-            WHERE device_id = ? AND state = 'pending' AND request_id != ?
-            """,
-            (device_id, request_id),
-        )
-        db.execute(
-            """
             INSERT INTO tm_ingest_outbox (request_id, device_id, payload_json, received_at)
             VALUES (?, ?, ?, ?)
             """,
@@ -128,6 +120,38 @@ def mark_done(db: Database, request_id: str) -> None:
         "UPDATE tm_ingest_outbox SET state = 'done', last_error = NULL WHERE request_id = ?",
         (request_id,),
     )
+
+
+def supersede_older_pending(db: Database, device_id: str, request_id: str) -> int:
+    """H-5：只在新行已经 mark_done 之后，才把同设备旧 pending 标 superseded。
+
+    转发前 supersede 再 drop 新行，会把 tm-core 已收、快照未写的旧行永久丢掉。
+    """
+    cur = db.execute(
+        """
+        UPDATE tm_ingest_outbox
+        SET state = 'done', last_error = 'superseded_by_newer'
+        WHERE device_id = ? AND state = 'pending' AND request_id != ?
+        """,
+        (device_id, request_id),
+    )
+    return cur.rowcount or 0
+
+
+def reject_exhausted_pending(
+    db: Database, *, max_attempts: int = MAX_ATTEMPTS_DEFAULT
+) -> int:
+    """H-9：升级前 attempts≥上限的 pending 僵尸行一次性转 rejected。"""
+    cur = db.execute(
+        """
+        UPDATE tm_ingest_outbox
+        SET state = 'rejected',
+            last_error = ?
+        WHERE state = 'pending' AND attempts >= ?
+        """,
+        (f"exceeded {max_attempts} attempts (startup sweep)", max_attempts),
+    )
+    return cur.rowcount or 0
 
 
 def mark_failed(
@@ -258,24 +282,37 @@ def _invalidate_overview(_db: Database) -> None:
         _overview_invalidator()
 
 
-def _current_device_record(core, device_id: str) -> Optional[dict]:
+def _fetch_devices_index(core) -> dict[str, dict]:
+    """一轮重放只 GET 一次 /api/devices（H-10）。不可达必须抛出（H-3）。"""
+    from .tm_proxy import UpstreamUnavailable
+
     try:
         resp = core.request("GET", "/api/devices")
+    except UpstreamUnavailable:
+        raise
     except Exception:
-        return None
+        return {}
     if getattr(resp, "status_code", 0) != 200:
-        return None
+        return {}
     try:
         body = resp.json()
     except ValueError:
-        return None
+        return {}
     devices = body.get("devices") if isinstance(body, dict) else None
     if not isinstance(devices, list):
-        return None
+        return {}
+    index: dict[str, dict] = {}
     for record in devices:
-        if isinstance(record, dict) and str(record.get("deviceId")) == device_id:
-            return record
-    return None
+        if isinstance(record, dict) and record.get("deviceId") is not None:
+            index[str(record.get("deviceId"))] = record
+    return index
+
+
+def _current_device_record(
+    core, device_id: str, devices_index: Optional[dict[str, dict]] = None
+) -> Optional[dict]:
+    index = devices_index if devices_index is not None else _fetch_devices_index(core)
+    return index.get(device_id)
 
 
 def _superseded(db: Database, device_id: str, received_at: str) -> bool:
@@ -297,8 +334,11 @@ def replay_pending(
 ) -> dict:
     """重放未完成项。core 为 TmCore；返回统计。返回值含 stopped_by 表示
     因上游不可达提前中止（下轮继续）。"""
+    from .tm_proxy import UpstreamUnavailable
     from .tm_snapshots import write_snapshot
     from .tm_validate import is_limits_only_update
+
+    reject_exhausted_pending(db)
 
     rows = db.fetchall(
         """
@@ -326,6 +366,7 @@ def replay_pending(
         "rejected": 0,
         "failed": 0,
     }
+    devices_index: dict[str, dict] | None = None
     for row in rows:
         # Finish the current request/snapshot, then leave untouched items pending.
         if should_stop is not None and should_stop():
@@ -342,8 +383,10 @@ def replay_pending(
             stats["superseded"] += 1
             continue
         try:
-            # G-04：重放只读当前设备记录写快照，不再把瘦身载荷 POST 回 tm-core。
-            record = _current_device_record(core, row["device_id"])
+            # G-04 / H-10：重放只读当前设备记录写快照；每轮缓存一次设备表。
+            if devices_index is None:
+                devices_index = _fetch_devices_index(core)
+            record = _current_device_record(core, row["device_id"], devices_index)
             if record is None:
                 mark_failed(
                     db, row["request_id"],
@@ -360,9 +403,14 @@ def replay_pending(
                 force_received_at=row["received_at"],
             )
             mark_done(db, row["request_id"])
+            supersede_older_pending(db, row["device_id"], row["request_id"])
             set_snapshot_status(db, success=True)
             stats["completed"] += 1
             _invalidate_overview(db)
+        except UpstreamUnavailable as exc:
+            log.warning("重放中止（tm-core 不可达）: %s", exc)
+            stats["stopped_by"] = "upstream_unavailable"
+            break
         except Exception as exc:  # noqa: BLE001
             if isinstance(exc, DETERMINISTIC_FAILURES):
                 mark_rejected(db, row["request_id"], str(exc))

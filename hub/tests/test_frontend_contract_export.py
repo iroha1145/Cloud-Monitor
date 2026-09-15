@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import httpx
@@ -65,7 +66,10 @@ def test_export_frontend_contract_fixtures(cloud, tmp_path):
     assert st["schema_version"] == 1
     assert len(ov["activity"]["daily"]) <= 90
 
-    out = tmp_path / "frontend-contract"
+    regenerate = os.environ.get("REGENERATE_FRONTEND_CONTRACT", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+    out = FIXTURE_DIR if regenerate else tmp_path / "frontend-contract"
     out.mkdir(parents=True, exist_ok=True)
     (out / "overview.json").write_text(json.dumps(ov, ensure_ascii=False, indent=2), encoding="utf-8")
     (out / "history_daily.json").write_text(json.dumps(hist, ensure_ascii=False, indent=2), encoding="utf-8")

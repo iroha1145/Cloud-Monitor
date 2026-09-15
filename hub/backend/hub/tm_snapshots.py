@@ -198,8 +198,7 @@ def norm_ts(value: Any) -> str:
     """
     dt = _parse_iso(value)
     if dt is None:
-        raw = str(value or "")
-        return raw
+        return utc_z(datetime.now(timezone.utc))
     return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
@@ -431,8 +430,12 @@ def _prune_if_due(db: Database) -> None:
 
 
 def schedule_prune(db: Database) -> None:
-    """D-11：清理移出 ingest 请求线程，避免持写锁拖慢上报。"""
+    """D-11 / H-17：到期才起一个清理线程，避免每次快照都新建线程。"""
     global _prune_running
+    last = _parse_iso(_meta_get(db, "last_prune_at"))
+    now_dt = datetime.now(timezone.utc)
+    if last is not None and (now_dt - last).total_seconds() < PRUNE_INTERVAL_SECONDS:
+        return
     with _prune_lock:
         if _prune_running:
             return

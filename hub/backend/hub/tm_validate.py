@@ -2,7 +2,7 @@
 
 官方 readJsonBody 只限制体积（1 MiB）；数字与结构的规范化发生在
 mergeDeviceRecord 内。本层在转发前拒绝明显恶意/损坏的载荷（负数、bool、
-NaN/Infinity、超 64 位、非法时区、原型污染键、数量超限、过度未来时间），
+NaN/Infinity、超 2^53-1、非法时区、原型污染键、数量超限、过度未来时间），
 避免污染官方聚合与 SQLite 快照。任何拒绝都返回明确的 400 错误，不静默
 截断。官方 merge 仍是字段语义（合并/归属/unclassified）的唯一权威。
 """
@@ -117,7 +117,7 @@ def _check_int(value: Any, path: str) -> int:
     if value < 0:
         _reject(f"{path}: 负数不被接受（{value}）")
     if value > MAX_SAFE_INT:
-        _reject(f"{path}: 超出 64 位安全范围（{value}）")
+        _reject(f"{path}: 超出 2^53-1 安全整数范围（{value}）")
     return value
 
 

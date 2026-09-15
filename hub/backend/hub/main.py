@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.staticfiles import StaticFiles as StarletteStaticFiles
 
 from .auth import (
+    CodedHTTPException,
     WriteBinding,
     enforce_device_binding,
     require_access_token,
@@ -36,18 +37,24 @@ from .tm_update import UpdateService, build_update_router
 def _cache_control_for(path: str) -> str:
     lowered = path.lower()
     if lowered.endswith((".html",)) or lowered in {"/", "/demo", "/index.html"}:
-        return "no-cache"
+        return "no-store"
     if lowered.endswith("theme-boot.js") or lowered.endswith("manifest.json"):
-        return "no-cache"
+        return "no-store"
     if "/static/app/assets/" in lowered or lowered.startswith("/static/app/assets/"):
         return "public, max-age=31536000, immutable"
+    if lowered.startswith("/api/") or lowered == "/api":
+        return "no-store"
     return "no-cache"
 
 
 class SafeStaticFiles(StarletteStaticFiles):
     async def get_response(self, path: str, scope):
-        normalized = path.replace("\\", "/").lstrip("/")
-        if normalized.startswith("tests/") or "/tests/" in normalized:
+        normalized = path.replace("\\", "/").lstrip("/").lower()
+        if (
+            normalized == "tests"
+            or normalized.startswith("tests/")
+            or "/tests/" in normalized
+        ):
             from starlette.responses import PlainTextResponse
 
             return PlainTextResponse("Not Found", status_code=404)
@@ -74,7 +81,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             timeout=httpx.Timeout(5.0, read=15.0), limits=httpx.Limits(max_connections=20)
         )
         _app.state.http_sse = httpx.AsyncClient(
-            timeout=httpx.Timeout(5.0, read=None), limits=httpx.Limits(max_connections=None)
+            timeout=httpx.Timeout(5.0, read=None), limits=httpx.Limits(max_connections=64)
         )
         _app.state.http_provider = httpx.AsyncClient(
             timeout=httpx.Timeout(5.0, read=5.0), limits=httpx.Limits(max_connections=20)
@@ -172,7 +179,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                             b" base-uri 'none'; form-action 'self'",
                         ),
                     ]
-                    if b"cache-control" not in names:
+                    status = int(message.get("status") or 0)
+                    # H-12：只给 2xx/304 加缓存头，避免 404 被 immutable 锁一年。
+                    if (
+                        b"cache-control" not in names
+                        and (200 <= status < 300 or status == 304)
+                    ):
                         extras.append(
                             (b"cache-control", _cache_control_for(path).encode())
                         )
@@ -185,6 +197,17 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             await self.app(scope, receive, send_with_headers)
 
     app.add_middleware(SecurityAndCacheMiddleware)
+
+    @app.exception_handler(CodedHTTPException)
+    async def coded_http_error(_request: Request, exc: CodedHTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error": exc.code,
+                "detail": exc.detail,
+                "message": exc.detail,
+            },
+        )
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request: Request, exc: RequestValidationError):
@@ -238,9 +261,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             components["sqlite_read"] = {"ok": False, "error": "sqlite_unreadable"}
 
         try:
-            # G-06：匿名就绪探测只做可写锁探活，不往 tm_meta 落持久行。
-            app.state.db.execute("BEGIN IMMEDIATE")
-            app.state.db.execute("ROLLBACK")
+            # G-06 / H-1：匿名就绪探测只做可写锁探活，BEGIN/ROLLBACK 同一次持锁。
+            app.state.db.probe_write()
             components["sqlite_write"] = {"ok": True}
         except Exception:  # noqa: BLE001
             components["sqlite_write"] = {"ok": False, "error": "sqlite_unwritable"}
@@ -283,32 +305,37 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(status_code=400, detail="请求体不是合法 JSON") from exc
         from pydantic import ValidationError
 
-        try:
-            payload = SyncPushRequest.model_validate(raw)
-        except ValidationError as exc:
-            details = []
-            for error in exc.errors():
-                item = {key: error[key] for key in ("type", "loc", "msg") if key in error}
-                loc = item.get("loc")
-                if isinstance(loc, (list, tuple)) and (not loc or loc[0] != "body"):
-                    item["loc"] = ["body", *loc]
-                details.append(item)
-            return JSONResponse(
-                status_code=400,
-                content={"error": "请求体校验失败", "details": details},
-            )
-        enforce_device_binding(binding, payload.device.id)
-        if len(payload.records) > settings.max_records_per_push:
-            raise HTTPException(
-                status_code=400,
-                detail=f"records 单次最多 {settings.max_records_per_push} 条",
-            )
-        try:
-            return apply_sync_push(
-                db, payload, protocol_version=settings.protocol_version
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        from starlette.concurrency import run_in_threadpool
+
+        def _sync_push() -> dict:
+            try:
+                payload = SyncPushRequest.model_validate(raw)
+            except ValidationError as exc:
+                details = []
+                for error in exc.errors():
+                    item = {key: error[key] for key in ("type", "loc", "msg") if key in error}
+                    loc = item.get("loc")
+                    if isinstance(loc, (list, tuple)) and (not loc or loc[0] != "body"):
+                        item["loc"] = ["body", *loc]
+                    details.append(item)
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "请求体校验失败", "details": details},
+                )
+            enforce_device_binding(binding, payload.device.id)
+            if len(payload.records) > settings.max_records_per_push:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"records 单次最多 {settings.max_records_per_push} 条",
+                )
+            try:
+                return apply_sync_push(
+                    db, payload, protocol_version=settings.protocol_version
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        return await run_in_threadpool(_sync_push)
 
     @app.get("/api/v1/usage", dependencies=[Depends(read_auth)])
     def get_usage(

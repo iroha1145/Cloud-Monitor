@@ -258,14 +258,11 @@ def test_ready_reports_sqlite_unwritable(node_hub, tmp_path, monkeypatch):
     cloud = make_cloud_app(tmp_path, node_hub.url, background=False)
     with cloud:
         db = cloud.app.state.db
-        real_execute = db.execute
 
-        def failing_execute(sql, params=()):
-            if "BEGIN IMMEDIATE" in sql:
-                raise sqlite3.OperationalError("attempt to write a readonly database")
-            return real_execute(sql, params)
+        def failing_probe():
+            raise sqlite3.OperationalError("attempt to write a readonly database")
 
-        monkeypatch.setattr(db, "execute", failing_execute)
+        monkeypatch.setattr(db, "probe_write", failing_probe)
         resp = cloud.get("/api/v1/health/ready")
         assert resp.status_code == 503
         assert resp.json()["components"]["sqlite_write"]["ok"] is False

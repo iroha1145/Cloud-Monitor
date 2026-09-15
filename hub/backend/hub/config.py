@@ -100,6 +100,7 @@ class Settings:
     cm_git_sha: str = ""
     cm_github_repo: str = "iroha1145/Cloud-Monitor"
     cm_update_dir: Path | None = None
+    cm_update_runtime_dir: Path | None = None
     github_api_token: str = ""
 
 
@@ -245,6 +246,7 @@ def load_settings() -> Settings:
         cm_git_sha=(os.environ.get("CM_GIT_SHA") or "").strip(),
         cm_github_repo=_github_repo_env(),
         cm_update_dir=_update_dir_env(),
+        cm_update_runtime_dir=_update_runtime_dir_env(),
         github_api_token=(os.environ.get("GITHUB_TOKEN") or "").strip(),
     )
 
@@ -274,6 +276,14 @@ def _github_repo_env() -> str:
 
 def _update_dir_env() -> Path | None:
     raw = (os.environ.get("CM_UPDATE_DIR") or "/update").strip()
+    if not raw:
+        return None
+    path = Path(raw).expanduser()
+    return path if path.is_dir() else None
+
+
+def _update_runtime_dir_env() -> Path | None:
+    raw = (os.environ.get("CM_UPDATE_RUNTIME_DIR") or "/update-runtime").strip()
     if not raw:
         return None
     path = Path(raw).expanduser()

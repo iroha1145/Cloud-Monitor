@@ -39,7 +39,9 @@ from .tm_outbox import (
     purge_device as purge_device_outbox,
     record_pending,
     replay_pending,
+    replayable_count,
     set_snapshot_status,
+    supersede_older_pending,
     is_retryable_http,
 )
 from .tm_snapshots import (
@@ -166,15 +168,21 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             cache.invalidate()
 
     def _wake_replay(request: Request) -> None:
+        # H-8：空 outbox 不唤醒整轮维护（避免每次成功 ingest 都 WAL checkpoint）。
+        if replayable_count(db) <= 0:
+            return
         background = getattr(request.app.state, "tm_background", None)
         if background is not None:
             background.wake()
 
     def tm_auth(request: Request) -> None:
         if not settings.tm_ingest_secret:
-            raise HTTPException(
-                status_code=404,
-                detail="未启用 token-monitor 接入（缺少 TOKEN_MONITOR_SECRET）",
+            from .auth import CodedHTTPException
+
+            raise CodedHTTPException(
+                404,
+                "token_monitor_secret_unconfigured",
+                "未启用 token-monitor 接入（缺少 TOKEN_MONITOR_SECRET）",
             )
         import hmac
 
@@ -209,7 +217,15 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             )
         public = {
             key: upstream[key]
-            for key in ("ok", "role", "hubBuild", "runtime")
+            for key in (
+                "ok",
+                "role",
+                "hubBuild",
+                "runtime",
+                "version",
+                "secretRequired",
+                "now",
+            )
             if key in upstream
         }
         return JSONResponse(status_code=200, content=public or {"ok": True, "role": "hub"})
@@ -221,15 +237,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
 
     # ------------------------------------------------------------ ingest（outbox 闭环）
 
-    @router.post("/api/ingest")
-    async def tm_ingest(request: Request) -> JSONResponse:
-        tm_auth(request)
-        try:
-            payload = await request.json()
-        except Exception:
-            return JSONResponse(
-                status_code=400, content={"error": "bad_request", "message": "invalid json"}
-            )
+    def _tm_ingest_sync(request: Request, payload: dict) -> JSONResponse:
         if not isinstance(payload, dict):
             return JSONResponse(
                 status_code=400, content={"error": "bad_request", "message": "请求体必须是 JSON 对象"}
@@ -261,11 +269,12 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
         except UpstreamUnavailable as exc:
             drop_pending(db, request_id)
             log.warning("tm-core 不可达（不入 outbox，由客户端重试）: %s", exc)
-            _wake_replay(request)
+            # H-3：不可达路径不 wake，避免把正品 pending 的 attempts 烧光。
             return _unavailable_response(exc)
         if resp.status_code != 200:
             # G-14：网关已校验过的载荷再遇上游 4xx，更像 persist/内部错误，留给重试。
             mark_failed(db, request_id, f"upstream HTTP {resp.status_code}")
+            _wake_replay(request)
             return _proxy_response(resp)
 
         try:
@@ -275,6 +284,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             set_snapshot_status(
                 db, success=False, error="upstream response is not JSON"
             )
+            _wake_replay(request)
             return JSONResponse(status_code=502, content={"error": "bad_gateway"})
 
         try:
@@ -298,6 +308,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
                 limits_only=is_limits_only_update(payload),
             )
             mark_done(db, request_id)
+            supersede_older_pending(db, device_id, request_id)
             set_snapshot_status(db, success=True)
             _wake_replay(request)
         except DETERMINISTIC_FAILURES as exc:
@@ -308,8 +319,22 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             mark_failed(db, request_id, str(exc))
             set_snapshot_status(db, success=False, error=str(exc))
             log.warning("快照写入失败（outbox 留待重放）: %s", exc)
+            _wake_replay(request)
         _invalidate_overview(request)
         return JSONResponse(status_code=200, content=body)
+
+    @router.post("/api/ingest")
+    async def tm_ingest(request: Request) -> JSONResponse:
+        tm_auth(request)
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(
+                status_code=400, content={"error": "bad_request", "message": "invalid json"}
+            )
+        from starlette.concurrency import run_in_threadpool
+
+        return await run_in_threadpool(_tm_ingest_sync, request, payload)
 
     # ------------------------------------------------------------ 只读透传（统一 503）
 
@@ -371,13 +396,18 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             return JSONResponse(
                 status_code=400, content={"error": "bad_request", "message": "invalid json"}
             )
-        try:
-            resp = core_of(request).request(
-                "PUT", "/api/subscriptions", json_body=payload
-            )
-        except UpstreamUnavailable as exc:
-            return _unavailable_response(exc)
-        return _proxy_response(resp)
+        from starlette.concurrency import run_in_threadpool
+
+        def _put() -> JSONResponse:
+            try:
+                resp = core_of(request).request(
+                    "PUT", "/api/subscriptions", json_body=payload
+                )
+            except UpstreamUnavailable as exc:
+                return _unavailable_response(exc)
+            return _proxy_response(resp)
+
+        return await run_in_threadpool(_put)
 
     # ------------------------------------------------------------ SSE（错误不伪装成事件流）
 
@@ -442,6 +472,12 @@ class TmBackground:
         self._wake.set()
 
     def start(self) -> None:
+        from .tm_outbox import reject_exhausted_pending
+
+        try:
+            reject_exhausted_pending(self.db)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("启动时清理耗尽 attempts 的 pending 失败: %s", exc)
         self._thread = threading.Thread(target=self._loop, name="tm-maintenance", daemon=True)
         self._thread.start()
 

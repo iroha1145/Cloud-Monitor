@@ -53,12 +53,15 @@ def validate_github_repo(raw: str) -> str:
 
 
 def parse_ref(raw: str) -> str:
-    ref = (raw or "").strip()
-    # 拒绝裸 40 位 SHA，避免把部署降级到任意历史提交
+    text = raw or ""
+    ref = text.strip()
+    # 拒绝裸 40 位 SHA，避免把部署降级到任意历史提交。
+    # fullmatch：制表符/后缀不得被 re.match 前缀放过（与 self-update.sh valid_ref 对齐）。
     if (
-        len(ref) > 66
+        "\t" in text
+        or len(ref) > 66
         or SHA_RE.fullmatch(ref)
-        or not REF_RE.match(ref)
+        or not REF_RE.fullmatch(ref)
         or ".." in ref
     ):
         raise ValueError("非法更新目标")
@@ -151,6 +154,19 @@ class UpdateService:
     def apply_enabled(self) -> bool:
         return self.update_dir is not None
 
+    def status_file(self) -> Path | None:
+        runtime = self.settings.cm_update_runtime_dir
+        if runtime is not None:
+            return runtime / "status.json"
+        d = self.update_dir
+        return None if d is None else d / "status.json"
+
+    def _write_status(self, data: dict[str, Any]) -> None:
+        path = self.status_file()
+        if path is None:
+            raise OSError("no status path")
+        _atomic_write(path, data)
+
     def read_job(self) -> dict[str, Any]:
         d = self.update_dir
         if d is None:
@@ -165,8 +181,11 @@ class UpdateService:
             return {"state": "error", "message": "请求文件无法读取"}
         if pending is not None and not isinstance(pending, dict):
             return {"state": "error", "message": "请求文件格式错误"}
+        status_path = self.status_file()
         try:
-            data = json.loads((d / "status.json").read_text(encoding="utf-8"))
+            if status_path is None:
+                raise FileNotFoundError
+            data = json.loads(status_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             data = {"state": "idle", "message": ""}
         except (OSError, ValueError):
@@ -310,7 +329,7 @@ class UpdateService:
             _atomic_write(d / "request.json", request)
         except OSError as exc:
             try:
-                _atomic_write(d / "status.json", {
+                self._write_status({
                     "id": req_id, "state": "error", "ref": target,
                     "message": "更新请求写入失败", "updated_at": _iso_now(),
                 })
@@ -324,6 +343,12 @@ class UpdateService:
         if d is None:
             raise HTTPException(status_code=503, detail="未启用在线更新")
         with self._apply_lock:
+            job = self.read_job()
+            if job.get("state") == "running":
+                raise HTTPException(
+                    status_code=409,
+                    detail="更新已开始重建，无法中止",
+                )
             req = d / "request.json"
             try:
                 if req.exists() or req.is_symlink():
@@ -333,13 +358,16 @@ class UpdateService:
             except OSError as exc:
                 raise HTTPException(status_code=503, detail="无法取消更新请求") from exc
             job = self.read_job()
-            _atomic_write(d / "status.json", {
-                "id": job.get("id") or "",
-                "state": "error",
-                "ref": job.get("ref") or "",
-                "message": "已取消更新",
-                "updated_at": _iso_now(),
-            })
+            try:
+                self._write_status({
+                    "id": job.get("id") or "",
+                    "state": "error",
+                    "ref": job.get("ref") or "",
+                    "message": "已取消更新",
+                    "updated_at": _iso_now(),
+                })
+            except OSError:
+                pass
             return self.read_job()
 
     def _get(self, url: str) -> tuple[int, Any]:
@@ -433,8 +461,10 @@ def build_update_router(settings: Settings, service: UpdateService) -> APIRouter
             body = ApplyBody.model_validate(raw)
         except ValidationError as exc:
             raise HTTPException(status_code=400, detail="请求体校验失败") from exc
+        from starlette.concurrency import run_in_threadpool
+
         try:
-            return service.apply(body.ref)
+            return await run_in_threadpool(service.apply, body.ref)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
