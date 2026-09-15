@@ -123,4 +123,13 @@ jobs:
           sse=$(curl -s -N --max-time 3 -H "X-Token-Monitor-Secret: ci-placeholder-tm-0123456789abcdef" http://127.0.0.1:7878/api/stats/stream || true)
           printf '%s\n' "$sse" | head -2
           printf '%s' "$sse" | grep -q 'data:' || { echo "::error::SSE 3 秒内无 data 帧"; docker compose logs; exit 1; }
+          echo "== backup =="
+          mkdir -p /tmp/cm-backup-ci ./update-runtime
+          ./scripts/backup.sh /tmp/cm-backup-ci
+          latest=$(ls -d /tmp/cm-backup-ci/cloud-monitor-backup-* | tail -1)
+          test -s "$latest/cloud-monitor.sqlite3" || { echo "::error::backup sqlite 为空"; exit 1; }
+          test -s "$latest/devices.json" || { echo "::error::backup devices.json 为空"; exit 1; }
+          grep -q 'backup_at:' "$latest/BACKUP-MANIFEST.txt"
+          echo "== restore dry check =="
+          python3 -c "import sqlite3,sys; con=sqlite3.connect(sys.argv[1]); n=con.execute('SELECT COUNT(*) FROM tm_snapshot_buckets').fetchone()[0]; assert n>=1, n" "$latest/cloud-monitor.sqlite3"
           docker compose down

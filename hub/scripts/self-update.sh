@@ -12,11 +12,17 @@ fi
 HUB="$INSTALL_DIR/hub"
 CTRL="$HUB/update-control"
 REQ="$CTRL/request.json"
-STATUS="$CTRL/status.json"
-LOCK="$CTRL/update.lock"
+RUNTIME="${CM_UPDATE_RUNTIME_HOST:-${CM_UPDATE_RUNTIME_DIR:-/run/cloud-monitor}}"
+STATUS="$RUNTIME/status.json"
+LOCK="$RUNTIME/update.lock"
 ENVF="$HUB/.env"
 
 mkdir -p "$CTRL"
+if ! mkdir -p "$RUNTIME"; then
+  echo "无法创建更新运行时目录: $RUNTIME" >&2
+  exit 1
+fi
+chmod 700 "$RUNTIME" || true
 
 refuse_symlink() {
   local path="$1"
@@ -54,7 +60,7 @@ if os.path.islink(tmp):
 flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
 if hasattr(os, "O_NOFOLLOW"):
     flags |= os.O_NOFOLLOW
-fd = os.open(tmp, flags, 0o660)
+fd = os.open(tmp, flags, 0o644)
 with os.fdopen(fd, "w", encoding="utf-8") as f:
     json.dump(
         {"id": rid, "state": state, "ref": ref, "message": message, "updated_at": ts},
@@ -71,6 +77,7 @@ json_get() {
 
 valid_ref() {
   local ref="$1"
+  [[ "$ref" != *$'\t'* ]] || return 1
   [[ ${#ref} -le 66 ]] || return 1
   [[ "$ref" =~ ^(main|master|v?[0-9]+(\.[0-9A-Za-z_-]+)*)$ ]] || return 1
   [[ "$ref" != *..* ]] || return 1
@@ -90,7 +97,7 @@ if ! command -v flock >/dev/null 2>&1; then
   REF="$(json_get "$REQ" ref)"
   [[ -n "$ID" ]] || ID="unknown"
   write_status "$ID" error "$REF" "宿主机缺少 flock，无法安全串行更新"
-  rm -f "$REQ"
+  # 中断保留 request，供修好 flock 后重试（与 trap 约定一致）。
   exit 1
 fi
 
