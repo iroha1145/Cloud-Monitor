@@ -189,13 +189,14 @@ class UpdateService:
             data = json.loads(status_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             data = {"state": "idle", "message": ""}
-        except (OSError, ValueError):
-            # 权限拒绝或损坏：不得改写成 queued，否则页面会取消已开始的重建。
+        except OSError:
+            # 权限拒绝：不得改写成 queued，否则页面会取消已开始的重建。
             status_unreadable = True
             data = {"state": "unknown", "message": "状态文件无法读取"}
+        except ValueError:
+            data = {"state": "error", "message": "状态文件无法读取"}
         if not isinstance(data, dict):
-            status_unreadable = True
-            data = {"state": "unknown", "message": "状态文件格式错误"}
+            data = {"state": "error", "message": "状态文件格式错误"}
         if pending is not None and status_unreadable:
             return {
                 "id": str(pending.get("id") or ""),
