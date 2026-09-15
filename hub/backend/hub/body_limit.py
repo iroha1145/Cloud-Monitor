@@ -52,7 +52,20 @@ class TmBodyLimitMiddleware:
                 if not message.get("more_body"):
                     break
             elif mtype == "http.disconnect":
-                return  # 客户端断开，无需响应
+                payload = b'{"error":"client_disconnected"}'
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 499,
+                        "headers": [
+                            (b"content-type", b"application/json"),
+                            (b"content-length", str(len(payload)).encode()),
+                            (b"connection", b"close"),
+                        ],
+                    }
+                )
+                await send({"type": "http.response.body", "body": payload})
+                return
 
         if exceeded:
             payload = json.dumps(

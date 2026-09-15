@@ -513,3 +513,5 @@ def test_parse_ref_still_rejects_dangerous_refs():
         parse_ref("main..evil")
     with pytest.raises(ValueError):
         parse_ref("not a ref")
+    with pytest.raises(ValueError):
+        parse_ref("0123456789abcdef0123456789abcdef01234567")

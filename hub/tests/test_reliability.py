@@ -183,8 +183,8 @@ def test_outbox_backpressure_cap(node_hub, tmp_path, monkeypatch):
 
 
 @requires_node
-def test_ingest_upstream_down_returns_503_pending_kept(tmp_path):
-    """tm-core 不可达：503 + outbox 留待重试，不伪装成功。"""
+def test_ingest_upstream_down_returns_503_pending_dropped(tmp_path):
+    """tm-core 不可达：503 且不新增 pending，避免毒行填满 outbox。"""
     from conftest import NodeHub
 
     dead = NodeHub(tmp_path / "dead.json")
@@ -199,7 +199,7 @@ def test_ingest_upstream_down_returns_503_pending_kept(tmp_path):
         db = cloud.app.state.db
         assert db.fetchone(
             "SELECT COUNT(*) n FROM tm_ingest_outbox WHERE state='pending'"
-        )["n"] == 1
+        )["n"] == 0
 
 
 # ================================================================ P0-2 健康检查

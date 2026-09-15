@@ -29,6 +29,7 @@ from .config import Settings
 from .db import Database
 from .tm_outbox import (
     OutboxFullError,
+    drop_pending,
     ensure_schema as ensure_outbox_schema,
     mark_done,
     mark_failed,
@@ -136,9 +137,10 @@ def _proxy_response(resp: httpx.Response) -> JSONResponse:
 
 
 def _unavailable_response(exc: Exception) -> JSONResponse:
+    message = str(exc).strip() or type(exc).__name__
     return JSONResponse(
         status_code=503,
-        content={"error": "upstream_unavailable", "message": str(exc)[:200]},
+        content={"error": "upstream_unavailable", "message": message[:200]},
     )
 
 
@@ -154,6 +156,11 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
         if cache is not None:
             cache.invalidate()
 
+    def _wake_replay(request: Request) -> None:
+        background = getattr(request.app.state, "tm_background", None)
+        if background is not None:
+            background.wake()
+
     def tm_auth(request: Request) -> None:
         if not settings.tm_ingest_secret:
             raise HTTPException(
@@ -166,7 +173,10 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
         header = request.headers.get("x-token-monitor-secret") or ""
         auth = request.headers.get("authorization") or ""
         bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-        if not hmac.compare_digest((header or bearer).encode(), secret.encode()):
+        provided = bearer or header
+        if bearer:
+            provided = bearer
+        if not provided or not hmac.compare_digest(provided.encode(), secret.encode()):
             raise HTTPException(status_code=401, detail="unauthorized")
 
     # ------------------------------------------------------------ health
@@ -194,7 +204,12 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
                     "snapshot": snapshot_health_of(db),
                 },
             )
-        return JSONResponse(status_code=200, content=upstream)
+        public = {
+            key: upstream[key]
+            for key in ("ok", "role", "hubBuild", "runtime")
+            if key in upstream
+        }
+        return JSONResponse(status_code=200, content=public or {"ok": True, "role": "hub"})
 
     def snapshot_health_of(db: Database) -> dict:
         from .tm_outbox import snapshot_health
@@ -204,8 +219,18 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
     # ------------------------------------------------------------ ingest（outbox 闭环）
 
     @router.post("/api/ingest")
-    def tm_ingest(request: Request, payload: dict) -> JSONResponse:
+    async def tm_ingest(request: Request) -> JSONResponse:
         tm_auth(request)
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(
+                status_code=400, content={"error": "bad_request", "message": "invalid json"}
+            )
+        if not isinstance(payload, dict):
+            return JSONResponse(
+                status_code=400, content={"error": "bad_request", "message": "请求体必须是 JSON 对象"}
+            )
         try:
             validate_ingest_payload(payload)
         except PayloadValidationError as exc:
@@ -231,7 +256,9 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
         try:
             resp = core_of(request).request("POST", "/api/ingest", json_body=payload)
         except UpstreamUnavailable as exc:
-            log.warning("tm-core 不可达（outbox pending 留待重放/重试）: %s", exc)
+            drop_pending(db, request_id)
+            log.warning("tm-core 不可达（不入 outbox，由客户端重试）: %s", exc)
+            _wake_replay(request)
             return _unavailable_response(exc)
         if resp.status_code != 200:
             if 400 <= resp.status_code < 500 and not is_retryable_http(resp.status_code):
@@ -249,7 +276,6 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             )
             return JSONResponse(status_code=502, content={"error": "bad_gateway"})
 
-        # 快照：直接取本次响应内的规范化记录（同请求闭环，不串批）
         try:
             record = next(
                 (
@@ -272,6 +298,11 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             )
             mark_done(db, request_id)
             set_snapshot_status(db, success=True)
+            _wake_replay(request)
+        except (OverflowError, ValueError, UnicodeEncodeError) as exc:
+            mark_rejected(db, request_id, str(exc))
+            set_snapshot_status(db, success=False, error=str(exc))
+            log.warning("快照确定性失败（outbox rejected）: %s", exc)
         except Exception as exc:  # noqa: BLE001 — outbox 兜底，不阻断协议响应
             mark_failed(db, request_id, str(exc))
             set_snapshot_status(db, success=False, error=str(exc))
@@ -331,8 +362,14 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
         return _proxied(request, "GET", "/api/subscriptions")
 
     @router.put("/api/subscriptions")
-    def tm_put_subscriptions(request: Request, payload: dict) -> JSONResponse:
+    async def tm_put_subscriptions(request: Request) -> JSONResponse:
         tm_auth(request)
+        try:
+            payload = await request.json()
+        except Exception:
+            return JSONResponse(
+                status_code=400, content={"error": "bad_request", "message": "invalid json"}
+            )
         try:
             resp = core_of(request).request(
                 "PUT", "/api/subscriptions", json_body=payload
@@ -346,7 +383,9 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
     @router.get("/api/stats/stream")
     async def tm_stats_stream(request: Request):
         tm_auth(request)
-        async_client: httpx.AsyncClient = request.app.state.http_async
+        async_client: httpx.AsyncClient = getattr(
+            request.app.state, "http_sse", request.app.state.http_async
+        )
         core = core_of(request)
         upstream_req = async_client.build_request(
             "GET",
@@ -398,7 +437,11 @@ class TmBackground:
         self.db = db
         self.core = core
         self._stop = threading.Event()
+        self._wake = threading.Event()
         self._thread: Optional[threading.Thread] = None
+
+    def wake(self) -> None:
+        self._wake.set()
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._loop, name="tm-maintenance", daemon=True)
@@ -406,6 +449,7 @@ class TmBackground:
 
     def stop(self) -> None:
         self._stop.set()
+        self._wake.set()
         thread = self._thread
         if thread is not None and thread.is_alive():
             # The lifespan closes HTTP/SQLite immediately after stop(). An
@@ -418,7 +462,11 @@ class TmBackground:
             bootstrapped = self._bootstrap()
         except Exception as exc:  # Retry transient startup failures next cycle.
             log.warning("tm-core 后台初始化异常: %s", exc)
-        while not self._stop.wait(self.settings.tm_background_interval):
+        while not self._stop.is_set():
+            self._wake.wait(self.settings.tm_background_interval)
+            self._wake.clear()
+            if self._stop.is_set():
+                break
             try:
                 replay_pending(self.db, self.core, should_stop=self._stop.is_set)
             except Exception as exc:  # noqa: BLE001 — 后台任务不得崩溃进程

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import time
 import uuid
@@ -31,7 +32,9 @@ log = logging.getLogger("tm-update")
 
 GITHUB_API = "https://api.github.com"
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
-REF_RE = re.compile(r"^(main|master|v?[0-9][A-Za-z0-9._-]{0,64})$")
+REF_RE = re.compile(r"^(main|master|v?[0-9]+(\.[0-9A-Za-z_-]+)*)$")
+SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+STALE_RUNNING_SECONDS = 30 * 60
 CACHE_SECONDS = 60.0
 RELEASE_PAGE = 10
 
@@ -51,14 +54,27 @@ def validate_github_repo(raw: str) -> str:
 
 def parse_ref(raw: str) -> str:
     ref = (raw or "").strip()
-    # REF_RE 锚定 ^ 已排除 "-" 开头，无需再查
-    if not REF_RE.match(ref) or ".." in ref:
+    # 拒绝裸 40 位 SHA，避免把部署降级到任意历史提交
+    if SHA_RE.fullmatch(ref) or not REF_RE.match(ref) or ".." in ref:
         raise ValueError("非法更新目标")
     return ref
 
 
 def _iso_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _job_age_seconds(updated_at: str) -> float | None:
+    raw = (updated_at or "").strip()
+    if not raw:
+        return None
+    try:
+        ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return max(0.0, (datetime.now(timezone.utc) - ts).total_seconds())
 
 
 def version_key(raw: str) -> tuple[int, ...]:
@@ -163,6 +179,15 @@ class UpdateService:
         elif pending is None and data.get("state") == "queued":
             # Recover leftovers from the former status-then-request protocol.
             data = {**data, "state": "error", "message": "上次更新请求未完成提交，请重新提交"}
+        elif pending is None and data.get("state") == "running":
+            updated = str(data.get("updated_at") or "")
+            age = _job_age_seconds(updated)
+            if age is None or age > STALE_RUNNING_SECONDS:
+                data = {
+                    **data,
+                    "state": "error",
+                    "message": "更新超时，容器可能未重建，请重试",
+                }
         state = str(data.get("state") or "idle")
         return {
             "id": str(data.get("id") or ""),
@@ -289,6 +314,29 @@ class UpdateService:
             raise HTTPException(status_code=503, detail="更新请求写入失败，请检查更新目录") from exc
         return self.read_job()
 
+    def cancel(self) -> dict[str, Any]:
+        d = self.update_dir
+        if d is None:
+            raise HTTPException(status_code=503, detail="未启用在线更新")
+        with self._apply_lock:
+            req = d / "request.json"
+            try:
+                if req.exists() or req.is_symlink():
+                    if req.is_symlink():
+                        raise HTTPException(status_code=400, detail="更新请求文件异常")
+                    req.unlink()
+            except OSError as exc:
+                raise HTTPException(status_code=503, detail="无法取消更新请求") from exc
+            job = self.read_job()
+            _atomic_write(d / "status.json", {
+                "id": job.get("id") or "",
+                "state": "error",
+                "ref": job.get("ref") or "",
+                "message": "已取消更新",
+                "updated_at": _iso_now(),
+            })
+            return self.read_job()
+
     def _get(self, url: str) -> tuple[int, Any]:
         allowed = f"{GITHUB_API}/repos/{self.settings.cm_github_repo}/"
         if not url.startswith(allowed):
@@ -341,9 +389,18 @@ def _gh_error(status: int, body: Any) -> str:
 
 
 def _atomic_write(path: Path, data: dict[str, Any]) -> None:
+    if path.is_symlink() or path.parent.is_symlink():
+        raise OSError("refusing to follow symlink")
     tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
     try:
-        tmp.write_text(json.dumps(data, ensure_ascii=False) + "\n", encoding="utf-8")
+        if tmp.exists() or tmp.is_symlink():
+            tmp.unlink()
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(tmp, flags, 0o660)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(data, ensure_ascii=False) + "\n")
         tmp.replace(path)
     finally:
         tmp.unlink(missing_ok=True)
@@ -367,5 +424,10 @@ def build_update_router(settings: Settings, service: UpdateService) -> APIRouter
             return service.apply(body.ref)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/update/cancel")
+    def cancel_update(request: Request) -> dict[str, Any]:
+        require_access_token(request, settings)
+        return service.cancel()
 
     return router

@@ -32,8 +32,10 @@ from .tm_snapshots import norm_ts, utc_z
 log = logging.getLogger("tm-outbox")
 
 MAX_PENDING_DEFAULT = 1000
+MAX_ATTEMPTS_DEFAULT = 8
 DONE_RETENTION_HOURS = 2
 REPLAY_BATCH = 100
+DETERMINISTIC_FAILURES = (OverflowError, ValueError, UnicodeEncodeError, TypeError, ArithmeticError)
 # 4xx 里仍应重试的状态：限流 / 请求超时 / Too Early。其余 4xx 视为载荷
 # 确定性拒绝（mark_rejected，不再重放）。
 RETRYABLE_CLIENT_ERRORS = frozenset({408, 425, 429})
@@ -94,15 +96,19 @@ def record_pending(
     max_pending: int = MAX_PENDING_DEFAULT,
 ) -> None:
     with db.transaction():
-        pending = int(
-            db.fetchone(
-                "SELECT COUNT(*) AS n FROM tm_ingest_outbox WHERE state = 'pending'"
-            )["n"]
-        )
+        pending = replayable_count(db, max_attempts=MAX_ATTEMPTS_DEFAULT)
         if pending >= max_pending:
             raise OutboxFullError(
                 f"待重放队列已达上限 {max_pending}（快照层持续失败？）"
             )
+        db.execute(
+            """
+            UPDATE tm_ingest_outbox
+            SET state = 'done', last_error = 'superseded_by_newer'
+            WHERE device_id = ? AND state = 'pending' AND request_id != ?
+            """,
+            (device_id, request_id),
+        )
         db.execute(
             """
             INSERT INTO tm_ingest_outbox (request_id, device_id, payload_json, received_at)
@@ -124,7 +130,13 @@ def mark_done(db: Database, request_id: str) -> None:
     )
 
 
-def mark_failed(db: Database, request_id: str, error: str) -> None:
+def mark_failed(
+    db: Database,
+    request_id: str,
+    error: str,
+    *,
+    max_attempts: int = MAX_ATTEMPTS_DEFAULT,
+) -> None:
     db.execute(
         """
         UPDATE tm_ingest_outbox
@@ -133,6 +145,19 @@ def mark_failed(db: Database, request_id: str, error: str) -> None:
         """,
         (error[:500], request_id),
     )
+    row = db.fetchone(
+        "SELECT attempts FROM tm_ingest_outbox WHERE request_id = ?",
+        (request_id,),
+    )
+    if row and int(row["attempts"] or 0) >= max_attempts:
+        db.execute(
+            """
+            UPDATE tm_ingest_outbox
+            SET state = 'rejected', last_error = ?
+            WHERE request_id = ?
+            """,
+            ((f"exceeded {max_attempts} attempts: {error}")[:500], request_id),
+        )
 
 
 def mark_rejected(db: Database, request_id: str, error: str) -> None:
@@ -157,9 +182,21 @@ def purge_device(db: Database, device_id: str) -> int:
 
 
 def pending_count(db: Database) -> int:
+    return replayable_count(db)
+
+
+def replayable_count(db: Database, *, max_attempts: int = MAX_ATTEMPTS_DEFAULT) -> int:
     return int(
-        db.fetchone("SELECT COUNT(*) AS n FROM tm_ingest_outbox WHERE state='pending'")["n"]
+        db.fetchone(
+            "SELECT COUNT(*) AS n FROM tm_ingest_outbox"
+            " WHERE state='pending' AND attempts < ?",
+            (max_attempts,),
+        )["n"]
     )
+
+
+def drop_pending(db: Database, request_id: str) -> None:
+    db.execute("DELETE FROM tm_ingest_outbox WHERE request_id = ?", (request_id,))
 
 
 def prune_done(db: Database, *, retention_hours: int = DONE_RETENTION_HOURS) -> int:
@@ -177,7 +214,7 @@ def set_snapshot_status(db: Database, *, success: bool, error: Optional[str] = N
         db.execute(
             "INSERT INTO tm_meta (key, value) VALUES ('last_snapshot_success_at', ?)"
             " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (utc_now(),),
+            (utc_z(datetime.now(timezone.utc)),),
         )
         db.execute(
             "INSERT INTO tm_meta (key, value) VALUES ('last_snapshot_error', '')"
@@ -208,6 +245,39 @@ def snapshot_health(db: Database) -> dict:
     }
 
 
+_overview_invalidator: Callable[[], None] | None = None
+
+
+def set_overview_invalidator(fn: Callable[[], None] | None) -> None:
+    global _overview_invalidator
+    _overview_invalidator = fn
+
+
+def _invalidate_overview(_db: Database) -> None:
+    if _overview_invalidator is not None:
+        _overview_invalidator()
+
+
+def _current_device_record(core, device_id: str) -> Optional[dict]:
+    try:
+        resp = core.request("GET", "/api/devices")
+    except Exception:
+        return None
+    if getattr(resp, "status_code", 0) != 200:
+        return None
+    try:
+        body = resp.json()
+    except ValueError:
+        return None
+    devices = body.get("devices") if isinstance(body, dict) else None
+    if not isinstance(devices, list):
+        return None
+    for record in devices:
+        if isinstance(record, dict) and str(record.get("deviceId")) == device_id:
+            return record
+    return None
+
+
 def _superseded(db: Database, device_id: str, received_at: str) -> bool:
     """该设备已有比 pending 项更新的快照桶：无需回灌旧载荷。"""
     row = db.fetchone(
@@ -233,10 +303,21 @@ def replay_pending(
     rows = db.fetchall(
         """
         SELECT request_id, device_id, payload_json, received_at
-        FROM tm_ingest_outbox WHERE state = 'pending'
+        FROM tm_ingest_outbox
+        WHERE state = 'pending' AND request_id IN (
+            SELECT request_id FROM (
+                SELECT request_id,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY device_id ORDER BY received_at DESC
+                       ) AS rn
+                FROM tm_ingest_outbox
+                WHERE state = 'pending' AND attempts < ?
+            ) latest
+            WHERE latest.rn = 1
+        )
         ORDER BY received_at ASC LIMIT ?
         """,
-        (max_items,),
+        (MAX_ATTEMPTS_DEFAULT, max_items),
     )
     stats = {
         "checked": len(rows),
@@ -261,35 +342,32 @@ def replay_pending(
             stats["superseded"] += 1
             continue
         try:
-            resp = core.request("POST", "/api/ingest", json_body=payload)
-        except Exception as exc:  # 上游不可达：中止本轮
-            log.warning("重放中止（tm-core 不可达）: %s", exc)
-            stats["stopped_by"] = "upstream_unavailable"
-            break
-        if resp.status_code != 200:
-            if 400 <= resp.status_code < 500 and not is_retryable_http(resp.status_code):
-                mark_rejected(
-                    db, row["request_id"], f"upstream HTTP {resp.status_code}"
+            record = _current_device_record(core, row["device_id"])
+            if record is None:
+                resp = core.request("POST", "/api/ingest", json_body=payload)
+                if resp.status_code != 200:
+                    if 400 <= resp.status_code < 500 and not is_retryable_http(resp.status_code):
+                        mark_rejected(
+                            db, row["request_id"], f"upstream HTTP {resp.status_code}"
+                        )
+                        stats["rejected"] += 1
+                        continue
+                    mark_failed(db, row["request_id"], f"upstream HTTP {resp.status_code}")
+                    stats["failed"] += 1
+                    stats["stopped_by"] = f"upstream_status_{resp.status_code}"
+                    break
+                body = resp.json()
+                record = next(
+                    (
+                        r
+                        for r in (body.get("stats") or {}).get("devices") or []
+                        if str(r.get("deviceId")) == row["device_id"]
+                    ),
+                    None,
                 )
-                stats["rejected"] += 1
-                continue
-            mark_failed(db, row["request_id"], f"upstream HTTP {resp.status_code}")
-            stats["failed"] += 1
-            stats["stopped_by"] = f"upstream_status_{resp.status_code}"
-            break
-        try:
-            body = resp.json()
-            record = next(
-                (
-                    r
-                    for r in (body.get("stats") or {}).get("devices") or []
-                    if str(r.get("deviceId")) == row["device_id"]
-                ),
-                None,
-            )
             if record is None:
                 raise ValueError(
-                    "tm-core ingest response missing normalized device "
+                    "tm-core missing normalized device "
                     f"{row['device_id']!r}"
                 )
             write_snapshot(
@@ -303,10 +381,21 @@ def replay_pending(
             mark_done(db, row["request_id"])
             set_snapshot_status(db, success=True)
             stats["completed"] += 1
+            _invalidate_overview(db)
         except Exception as exc:  # noqa: BLE001
-            mark_failed(db, row["request_id"], str(exc))
+            if isinstance(exc, DETERMINISTIC_FAILURES):
+                mark_rejected(db, row["request_id"], str(exc))
+                stats["rejected"] += 1
+            else:
+                if "不可达" in str(exc) or exc.__class__.__name__ in {
+                    "UpstreamUnavailable", "ConnectError", "ConnectTimeout",
+                }:
+                    log.warning("重放中止（tm-core 不可达）: %s", exc)
+                    stats["stopped_by"] = "upstream_unavailable"
+                    break
+                mark_failed(db, row["request_id"], str(exc))
+                stats["failed"] += 1
             set_snapshot_status(db, success=False, error=str(exc))
-            stats["failed"] += 1
     # 无条件清理：健康路径下 pending 恒空（ingest 即插即 done），若只在
     # 处理过 pending 后才清，done/rejected 的保留策略就是死代码，库无限增长
     pruned = prune_done(db)

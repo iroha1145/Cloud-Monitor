@@ -132,7 +132,7 @@ def _float_env(
 
 
 def load_settings() -> Settings:
-    api_key = os.environ.get("API_KEY", "")
+    api_key = (os.environ.get("API_KEY") or "").strip()
     validate_secret("API_KEY", api_key)
 
     access_token = (os.environ.get("ACCESS_TOKEN") or "").strip()

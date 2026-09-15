@@ -30,6 +30,7 @@ log = logging.getLogger("tm-provider-status")
 
 SCHEMA_VERSION = 1
 TOTAL_BUDGET_SECONDS = 3.0
+MAX_STATUS_BODY_BYTES = 512 * 1024
 
 # 客户端 / 提供商名 → 状态页 canonical。claude/codex 不得因 STATUS_PAGES
 # 只写 anthropic/openai 而消失。GLM/智谱暂无官方 Statuspage，故不建卡。
@@ -413,10 +414,22 @@ def parse_rss_payload(page: StatusPage, xml_text: Any) -> dict[str, Any]:
     cleaned = re.sub(r"^<\?xml[^?]*\?>", "", xml_text, count=1, flags=re.IGNORECASE).strip()
     # 再剔除 DOCTYPE（含内部实体子集）作为纵深防御：defusedxml 已禁实体
     # 扩展，剔除后连合法 DTD 声明也不进入解析器
-    cleaned = re.sub(
-        r"<!DOCTYPE[^>[]*(?:\[[^\]]*\])?[^>]*>",
-        "", cleaned, count=1, flags=re.IGNORECASE | re.DOTALL,
-    ).strip()
+    doctype = cleaned.upper().find("<!DOCTYPE")
+    if doctype >= 0:
+        depth = 0
+        end = -1
+        for index, char in enumerate(cleaned[doctype:], start=doctype):
+            if char == "[":
+                depth += 1
+            elif char == "]":
+                depth = max(0, depth - 1)
+            elif char == ">" and depth == 0:
+                end = index
+                break
+        if end >= 0:
+            cleaned = (cleaned[:doctype] + cleaned[end + 1 :]).strip()
+        else:
+            cleaned = cleaned[:doctype].strip()
     try:
         # defusedxml：拒绝实体扩展/外部实体（标准库 ElementTree 不禁 DTD，
         # 远端 RSS 可用 billion laughs 制造资源耗尽）
@@ -631,8 +644,14 @@ async def _get_text(
     response, error = await _get_response(client, url, timeout)
     if response is None:
         return None, error
-    text = response.text
-    if not isinstance(text, str) or not text.strip():
+    content = response.content[: MAX_STATUS_BODY_BYTES + 1]
+    if len(content) > MAX_STATUS_BODY_BYTES:
+        return None, "payload_too_large"
+    try:
+        text = content.decode("utf-8", errors="replace")
+    except Exception:
+        return None, "invalid_json"
+    if not text.strip():
         return None, "invalid_json"
     return text, None
 
@@ -648,7 +667,7 @@ async def fetch_one_provider(
     if page.parser == "rss":
         text, error = await _get_text(client, page.summary_url, timeout)
         if text is not None:
-            return parse_rss_payload(page, text), None
+            return await asyncio.to_thread(parse_rss_payload, page, text), None
         if error == "timeout" or page.status_url == page.summary_url:
             return {}, error or "network"
         text, error2 = await _get_text(client, page.status_url, timeout)

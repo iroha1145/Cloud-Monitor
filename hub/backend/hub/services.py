@@ -327,8 +327,8 @@ def usage_report(
     totals_row = db.fetchone(
         f"""
         SELECT COUNT(*) AS calls,
-               COALESCE(SUM(input_tokens), 0) AS input_tokens,
-               COALESCE(SUM(output_tokens), 0) AS output_tokens,
+               COALESCE(TOTAL(input_tokens), 0) AS input_tokens,
+               COALESCE(TOTAL(output_tokens), 0) AS output_tokens,
                COUNT(DISTINCT user_id) AS distinct_users,
                COUNT(DISTINCT model_name) AS distinct_models,
                MIN(created_at) AS min_at,
@@ -351,12 +351,12 @@ def usage_report(
         SELECT r.user_id,
                {_NICKNAME_SQL},
                COUNT(*) AS calls,
-               COALESCE(SUM(r.input_tokens), 0) AS input_tokens,
-               COALESCE(SUM(r.output_tokens), 0) AS output_tokens
+               COALESCE(TOTAL(r.input_tokens), 0) AS input_tokens,
+               COALESCE(TOTAL(r.output_tokens), 0) AS output_tokens
         FROM usage_records r LEFT JOIN users u ON u.id = r.user_id
         {rwhere}
         GROUP BY r.user_id
-        ORDER BY (COALESCE(SUM(r.input_tokens), 0) + COALESCE(SUM(r.output_tokens), 0)) DESC,
+        ORDER BY (COALESCE(TOTAL(r.input_tokens), 0) + COALESCE(TOTAL(r.output_tokens), 0)) DESC,
                  r.user_id ASC
         """,
         rparams,
@@ -403,12 +403,12 @@ def _group_by(
         f"""
         SELECT r.{column} AS {column},
                COUNT(*) AS calls,
-               COALESCE(SUM(r.input_tokens), 0) AS input_tokens,
-               COALESCE(SUM(r.output_tokens), 0) AS output_tokens
+               COALESCE(TOTAL(r.input_tokens), 0) AS input_tokens,
+               COALESCE(TOTAL(r.output_tokens), 0) AS output_tokens
         FROM usage_records r
         {where}
         GROUP BY r.{column}
-        ORDER BY (COALESCE(SUM(r.input_tokens), 0) + COALESCE(SUM(r.output_tokens), 0)) DESC,
+        ORDER BY (COALESCE(TOTAL(r.input_tokens), 0) + COALESCE(TOTAL(r.output_tokens), 0)) DESC,
                  r.{column} ASC
         """,
         params,
@@ -440,8 +440,8 @@ def list_users(
             u.created_at,
             u.updated_at,
             COUNT(r.id) AS calls,
-            COALESCE(SUM(r.input_tokens), 0) AS input_tokens,
-            COALESCE(SUM(r.output_tokens), 0) AS output_tokens
+            COALESCE(TOTAL(r.input_tokens), 0) AS input_tokens,
+            COALESCE(TOTAL(r.output_tokens), 0) AS output_tokens
         FROM users u
         LEFT JOIN usage_records r
             ON r.user_id = u.id
@@ -470,8 +470,8 @@ def list_devices(db: Database) -> list[dict]:
             d.first_seen_at,
             d.last_seen_at,
             COUNT(r.id) AS record_count,
-            COALESCE(SUM(r.input_tokens), 0) AS input_tokens,
-            COALESCE(SUM(r.output_tokens), 0) AS output_tokens,
+            COALESCE(TOTAL(r.input_tokens), 0) AS input_tokens,
+            COALESCE(TOTAL(r.output_tokens), 0) AS output_tokens,
             MAX(r.created_at) AS latest_record_at
         FROM devices d
         LEFT JOIN usage_records r ON r.device_id = d.id

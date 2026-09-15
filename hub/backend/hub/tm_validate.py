@@ -9,12 +9,14 @@ NaN/Infinity、超 64 位、非法时区、原型污染键、数量超限、过�
 
 from __future__ import annotations
 
+import json
 import math
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-MAX_SAFE_INT = 2**63 - 1
+MAX_SAFE_INT = 2**53 - 1
+MIN_TIMESTAMP = datetime(2000, 1, 1, tzinfo=timezone.utc)
 MAX_COST = 1e12
 MAX_FUTURE_SKEW = timedelta(hours=24)
 # 配额窗口 resetsAt 常为数天到数周后（周/月重置），不能套用 ingest 时钟的 24h 上限。
@@ -48,8 +50,8 @@ PROTOTYPE_KEYS = {"__proto__", "constructor", "prototype"}
 PERIOD_NAMES = ("today", "month", "allTime")
 TOKEN_INT_SUFFIXES = ("tokens", "Tokens")
 
-# 旧别名：官方核心不识别（发送方 bug，静默忽略会产生错误聚合数据），
-# 官方客户端只发送规范字段——因此明确拒绝并提示规范名。
+# 旧别名：官方 normalizePeriod 读 costUsd ?? cost_usd ?? cost，因此金额别名
+# 在校验层改写为 costUsd。其余别名仍会静默产生错误聚合，继续拒绝。
 LEGACY_ALIAS_FIELDS = {
     "input": "totalTokens/cacheReadTokens 等规范字段",
     "output": "outputTokens",
@@ -57,9 +59,8 @@ LEGACY_ALIAS_FIELDS = {
     "cacheWrite": "cacheWriteTokens",
     "totalInput": "unclassifiedTokens + cacheReadTokens",
     "totalOutput": "outputTokens",
-    "cost": "costUsd",
-    "cost_usd": "costUsd",
 }
+COST_ALIASES = ("costUsd", "cost_usd", "cost")
 
 # 周期内必须做数值校验的映射字段（key→数值）
 PERIOD_NUMERIC_MAPS = (
@@ -145,6 +146,8 @@ def _check_timestamp(value: Any, path: str, *, allow_future: timedelta) -> None:
         _reject(f"{path}: 非法时间戳 {value!r}")
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
+    if dt < MIN_TIMESTAMP:
+        _reject(f"{path}: 时间早于 {MIN_TIMESTAMP.date().isoformat()}（{value}）")
     if dt > datetime.now(timezone.utc) + allow_future:
         _reject(f"{path}: 时间过度超前（{value}）")
 
@@ -229,8 +232,15 @@ def validate_ingest_payload(payload: Any) -> dict:
     device_id = payload.get("deviceId") or payload.get("id")
     if not isinstance(device_id, str) or not device_id.strip():
         _reject("缺少有效 deviceId")
+    if device_id in PROTOTYPE_KEYS:
+        _reject(f"deviceId 使用了原型敏感值 {device_id!r}")
     if len(device_id) > LIMITS["deviceId"]:
         _reject(f"deviceId 过长（>{LIMITS['deviceId']}）")
+    try:
+        json_ok = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        del json_ok
+    except (TypeError, UnicodeEncodeError, ValueError):
+        _reject("载荷包含无法 UTF-8 编码的孤立代理项")
     for field in ("hostname", "platform", "osName", "osVersion", "agentVersion", "agentRuntime"):
         value = payload.get(field)
         if value is not None and not isinstance(value, str):
@@ -272,6 +282,11 @@ def validate_ingest_payload(payload: Any) -> dict:
                     f"{name}.{alias}: 旧别名不被接受（官方核心不识别，会产生错误"
                     f"聚合），请改用 {canonical}"
                 )
+        if "costUsd" not in period:
+            for alias in ("cost_usd", "cost"):
+                if alias in period:
+                    period["costUsd"] = period[alias]
+                    break
         for map_name in PERIOD_NUMERIC_MAPS:
             values = period.get(map_name)
             if values is None:

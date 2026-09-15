@@ -51,6 +51,11 @@ def test_parse_ref_rejects_paths():
         assert False
     except ValueError:
         pass
+    try:
+        parse_ref("0123456789abcdef0123456789abcdef01234567")
+        assert False
+    except ValueError:
+        pass
 
 
 def test_check_marks_release_ahead(tmp_path):

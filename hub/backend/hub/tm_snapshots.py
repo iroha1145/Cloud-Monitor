@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
@@ -255,7 +256,7 @@ def _period_field(period: Any, key: str) -> int:
         value = int(value or 0)
     except (TypeError, ValueError):
         return 0
-    return max(value, 0)
+    return min(max(value, 0), 2**53 - 1)
 
 
 def _period_cost(period: Any) -> float:
@@ -308,6 +309,13 @@ def write_snapshot(
         source_today = incoming.get("today")
         if not isinstance(source_today, dict):
             source_today = source_periods.get("today") if isinstance(source_periods, dict) else None
+        if (
+            incoming.get("today") is None
+            and not (
+                isinstance(source_periods, dict) and isinstance(source_periods.get("today"), dict)
+            )
+        ):
+            return None
     # Official normalization fills absent counters with zeros. Only the raw
     # report can prove those zeros, and only while its counters still match the
     # merged record; retained usage from another report has separate provenance.
@@ -325,11 +333,16 @@ def write_snapshot(
     producer_stamp = None
     if isinstance(incoming, dict) and isinstance(incoming.get("updatedAt"), str):
         producer_stamp = incoming["updatedAt"]
-    local_day, tz_name = resolve_local_day(
-        period_windows=windows,
-        updated_at=producer_stamp or record.get("updatedAt"),
-        received_at=record.get("receivedAt"),
-    )
+    try:
+        local_day, tz_name = resolve_local_day(
+            period_windows=windows,
+            updated_at=producer_stamp or record.get("updatedAt"),
+            received_at=record.get("receivedAt"),
+        )
+    except (OverflowError, ValueError) as exc:
+        from .tm_validate import PayloadValidationError
+
+        raise PayloadValidationError(f"无法解析本地日: {exc}") from exc
     producer = _parse_iso(producer_stamp) or _parse_iso(record.get("updatedAt")) or _parse_iso(record.get("receivedAt"))
     received_at = force_received_at or record.get("receivedAt") or utc_now()
     received_at = norm_ts(received_at)
@@ -383,7 +396,7 @@ def write_snapshot(
                 received_at,
             ),
         )
-    _prune_if_due(db)
+    schedule_prune(db)
     return {"device_id": device_id, "local_day": local_day, "bucket": bucket}
 
 
@@ -403,12 +416,37 @@ def _meta_set(db: Database, key: str, value: str) -> None:
     )
 
 
+_prune_lock = threading.Lock()
+_prune_running = False
+
+
 def _prune_if_due(db: Database) -> None:
     last = _parse_iso(_meta_get(db, "last_prune_at"))
     now_dt = datetime.now(timezone.utc)
     if last is not None and (now_dt - last).total_seconds() < PRUNE_INTERVAL_SECONDS:
         return
     prune_snapshots(db, now=now_dt)
+
+
+def schedule_prune(db: Database) -> None:
+    """D-11：清理移出 ingest 请求线程，避免持写锁拖慢上报。"""
+    global _prune_running
+    with _prune_lock:
+        if _prune_running:
+            return
+        _prune_running = True
+
+    def _run() -> None:
+        global _prune_running
+        try:
+            _prune_if_due(db)
+        except Exception:  # noqa: BLE001
+            log.exception("后台快照清理失败")
+        finally:
+            with _prune_lock:
+                _prune_running = False
+
+    threading.Thread(target=_run, name="tm-snapshot-prune", daemon=True).start()
 
 
 def prune_snapshots(db: Database, *, now: Optional[datetime] = None) -> dict:
@@ -423,7 +461,7 @@ def prune_snapshots(db: Database, *, now: Optional[datetime] = None) -> dict:
     if now_dt.tzinfo is None:
         now_dt = now_dt.replace(tzinfo=timezone.utc)
     now_dt = now_dt.astimezone(timezone.utc)
-    full_cutoff = utc_z(now_dt - timedelta(days=FULL_RESOLUTION_DAYS))
+    full_cutoff = (now_dt.date() - timedelta(days=FULL_RESOLUTION_DAYS + 1)).isoformat()
     hard_cutoff = utc_z(now_dt - timedelta(days=HARD_RETENTION_DAYS))
     removed = {"full_res": 0, "hard": 0}
     with db.transaction():
@@ -440,7 +478,7 @@ def prune_snapshots(db: Database, *, now: Optional[datetime] = None) -> dict:
                                         id DESC
                            ) AS rn
                     FROM tm_snapshot_buckets
-                    WHERE bucket_start < ?
+                    WHERE local_day < ?
                 ) ranked
                 WHERE ranked.rn > 1
             )
@@ -536,12 +574,13 @@ def _snapshot_components(row: dict) -> dict[str, Any]:
     }
     classified = sum(value for value in known.values() if value is not None)
     unclassified = raw["unclassifiedTokens"] if recorded else total - classified
-    available = recorded and unclassified == 0
+    gap = max(0, total - classified - (unclassified or 0))
+    available = recorded and unclassified == 0 and gap == 0
     return {
         **known,
         "unclassifiedTokens": unclassified,
         "tokenComponentsAvailable": available,
-        "componentsPartial": not available,
+        "componentsPartial": not available or gap > 0,
     }
 
 
@@ -795,7 +834,9 @@ def migrate_legacy_tables(db: Database) -> dict:
                     float(row.get("today_cost") or 0),
                     int(row.get("month_total") or 0), float(row.get("month_cost") or 0),
                     int(row.get("all_time_total") or 0), float(row.get("all_time_cost") or 0),
-                    row.get("received_at") or "",
+                    norm_ts(row.get("received_at") or "") or utc_z(
+                        received if isinstance(received, datetime) else datetime.now(timezone.utc)
+                    ),
                 ),
             )
             ported += 1
