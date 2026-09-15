@@ -270,7 +270,7 @@ private fun numberMap(values: Map<String, Double>): JsonObject =
 internal fun periodSource(period: PeriodTotals): JsonObject = period.rawUsage ?: buildJsonObject {
     put("capabilities", buildJsonObject { put("tokenComponents", period.capabilities.tokenComponents) })
     if (period.totalTokens.isFinite()) put("totalTokens", period.totalTokens)
-    if (period.costUsd.isFinite()) put("costUsd", period.costUsd)
+    if (period.costUsd?.isFinite() == true) put("costUsd", period.costUsd)
     val capable = period.capabilities.tokenComponents
     mapOf(
         "outputTokens" to period.outputTokens, "cacheReadTokens" to period.cacheReadTokens,
@@ -334,7 +334,7 @@ abstract class UsageJsonSerializer<T>(name: String) : KSerializer<T> {
 object PeriodTotalsSerializer : UsageJsonSerializer<PeriodTotals>("PeriodTotals") {
     override fun read(source: JsonObject) = PeriodTotals(
         capabilities = Capabilities(source["capabilities"].record()["tokenComponents"].flag() == true),
-        totalTokens = count(source["totalTokens"]), costUsd = source["costUsd"].usageNumber() ?: 0.0,
+        totalTokens = count(source["totalTokens"]), costUsd = source["costUsd"].usageNumber(),
         cacheReadTokens = count(source["cacheReadTokens"]), cacheWriteTokens = count(source["cacheWriteTokens"]),
         outputTokens = count(source["outputTokens"]), unclassifiedTokens = count(source["unclassifiedTokens"]),
         timedTokens = count(source["timedTokens"]), timedOutputTokens = count(source["timedOutputTokens"]),

@@ -264,6 +264,7 @@ class UsageAnalysisTest {
         assertFalse(parts.cacheReadKnown)
         assertNull(parts.cacheRate)
         assertNull(periodCost(period))
+        assertNull(period.costUsd)
         assertFalse(usageComponents(PeriodTotals(totalTokens = 1000.0)).known)
     }
 

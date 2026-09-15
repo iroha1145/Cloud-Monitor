@@ -138,7 +138,7 @@ data class Capabilities(
 data class PeriodTotals(
     val capabilities: Capabilities = Capabilities(),
     val totalTokens: Double = 0.0,
-    val costUsd: Double = 0.0,
+    val costUsd: Double? = null,
     val cacheReadTokens: Double = 0.0,
     val cacheWriteTokens: Double = 0.0,
     val outputTokens: Double = 0.0,
