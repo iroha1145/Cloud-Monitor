@@ -9,7 +9,7 @@ import pytest
 from zoneinfo import ZoneInfo
 
 from hub.db import Database
-from hub.tm_outbox import ensure_schema as ensure_outbox, record_pending, replay_pending
+from hub.tm_outbox import ensure_schema as ensure_outbox, record_pending, replay_pending, record_from_payload, save_normalized
 from hub.tm_overview import _dashboard_period, activity_report
 from hub.tm_provider_status import ProviderStatusService, _observed_key
 from hub.tm_proxy import TmCore, UpstreamUnavailable
@@ -84,7 +84,7 @@ class UnusedCore:
         raise AssertionError("replay must not call tm-core or read the current device")
 
 
-def test_replay_writes_snapshot_from_payload_without_calling_core(tmp_path):
+def test_replay_writes_acknowledged_snapshot_without_calling_core(tmp_path):
     db = db_for(tmp_path)
     record_pending(
         db,
@@ -97,6 +97,9 @@ def test_replay_writes_snapshot_from_payload_without_calling_core(tmp_path):
             "today": {"totalTokens": 1, "costUsd": 0.5, "models": {"m": 1}},
         },
     )
+    # Simulate the saved normalization returned by a successful upstream POST.
+    raw = db.fetchone("SELECT payload_json FROM tm_ingest_outbox WHERE request_id='r1'")["payload_json"]
+    save_normalized(db, "r1", record_from_payload(json.loads(raw)))
     result = replay_pending(db, UnusedCore())
     row = db.fetchone(
         "SELECT state, attempts, snapshot_written FROM tm_ingest_outbox WHERE request_id='r1'"
@@ -134,7 +137,7 @@ def test_missing_usage_never_writes_zero_snapshot(tmp_path):
     result = replay_pending(db, UnusedCore())
     row = db.fetchone("SELECT state, attempts FROM tm_ingest_outbox WHERE request_id='r2'")
     count = db.fetchone("SELECT COUNT(*) AS n FROM tm_snapshot_buckets")["n"]
-    assert result["failed"] == 1
+    assert result["checked"] == 0  # unconfirmed rows never create zero snapshots
     assert row["state"] == "pending"
     assert int(row["attempts"] or 0) == 0
     assert count == 0

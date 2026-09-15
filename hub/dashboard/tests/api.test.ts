@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { loadDashboard, isAuthFailure } from "../src/api";
+import { normalizeOverview } from "../src/data";
 const require=createRequire(import.meta.url);
 const fixture=require('./fixtures/overview.json');
 const original=globalThis.fetch;
@@ -74,8 +75,10 @@ test('auxiliary outage keeps previous live subscriptions providers and matching 
     const day = data.trend.find((point) => point.day === '2026-08-25');
     assert.equal(day?.costUsd, 1.25);
     assert.equal(day?.costStale, true);
+    assert.equal(day?.componentsStale, true);
     assert.ok(data.notices.some((notice) => notice.includes('订阅信息暂时未能加载')));
     assert.ok(data.notices.some((notice) => notice.includes('沿用上次的费用')));
+    assert.ok(data.notices.some((notice) => notice.includes('沿用上次的组成')));
   } finally {
     globalThis.fetch = original;
   }
@@ -132,6 +135,40 @@ test('failed daily costs are not reused when token totals no longer match', asyn
       : Response.json({}, { status: 502 });
     const data = await loadDashboard('fixture', undefined, undefined, changed);
     assert.equal(data.trend.find((row) => row.day === '2026-08-25')?.costUsd, null);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+test('retained components are marked separately and do not claim that a missing cost was kept', async () => {
+  const overview = {
+    totals: {},
+    generated_at: '2026-09-15T00:00:00Z',
+    features: { subscriptions: true, provider_status: true, history_daily: true },
+    trend: [{ day: '2026-09-14', total: 100 }],
+  };
+  const previous = normalizeOverview({
+    ...overview,
+    trend: [{
+      day: '2026-09-14', total: 100, costUsd: null,
+      outputTokens: 10, cacheReadTokens: 80, cacheWriteTokens: 0,
+      unclassifiedTokens: 0, tokenComponentsAvailable: true,
+    }],
+  });
+  globalThis.fetch = async (input) => {
+    const path = String(input);
+    if (path.endsWith('/overview')) return Response.json(overview);
+    if (path.includes('/history')) return Response.json({}, { status: 502 });
+    return Response.json(path.includes('/subscriptions') ? { subscriptions: [] } : { providers: [] });
+  };
+  try {
+    const data = await loadDashboard('fixture', undefined, undefined, previous);
+    const day = data.trend[0];
+    assert.equal(day.costUsd, null);
+    assert.equal(day.costStale, undefined);
+    assert.equal(day.components?.cacheRead, 80);
+    assert.equal(day.componentsStale, true);
+    assert.ok(data.notices.some((notice) => notice.includes('沿用上次的组成')));
+    assert.ok(!data.notices.some((notice) => notice.includes('沿用上次的费用')));
   } finally {
     globalThis.fetch = original;
   }

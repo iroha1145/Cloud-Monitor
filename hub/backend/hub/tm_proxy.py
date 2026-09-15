@@ -274,21 +274,22 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             # H-3：不可达路径不 wake，避免把正品 pending 的 attempts 烧光。
             return _unavailable_response(exc)
         if resp.status_code != 200:
-            # G-14：网关已校验过的载荷再遇上游 4xx，更像 persist/内部错误，留给重试。
-            mark_failed(db, request_id, f"upstream HTTP {resp.status_code}")
-            _wake_replay(request)
+            # No acceptance acknowledgement: the client owns this retry. Do
+            # not accumulate unreplayable rows for rejected upstream requests.
+            drop_pending(db, request_id)
             return _proxy_response(resp)
 
         try:
             body = resp.json()
         except ValueError:
-            mark_failed(db, request_id, "upstream response is not JSON")
+            drop_pending(db, request_id)
             set_snapshot_status(
                 db, success=False, error="upstream response is not JSON"
             )
             _wake_replay(request)
             return JSONResponse(status_code=502, content={"error": "bad_gateway"})
 
+        normalized_saved = False
         try:
             record = next(
                 (
@@ -303,6 +304,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
                     f"tm-core ingest response missing normalized device {device_id!r}"
                 )
             save_normalized(db, request_id, record)
+            normalized_saved = True
             with db.transaction():
                 written = write_snapshot(
                     db,
@@ -326,6 +328,15 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             set_snapshot_status(db, success=False, error=str(exc))
             log.warning("快照写入失败（outbox 留待重放）: %s", exc)
             _wake_replay(request)
+        if not normalized_saved:
+            # The upstream may have accepted the request, but replay has no
+            # durable acknowledgement yet. Let the client retry rather than
+            # promising that an unconfirmed raw payload is safely recoverable.
+            drop_pending(db, request_id)
+            return JSONResponse(status_code=503, content={
+                "error": "snapshot_ack_unavailable",
+                "message": "上游已响应，但快照确认未能保存，请稍后重试",
+            })
         _invalidate_overview(request)
         return JSONResponse(status_code=200, content=body)
 

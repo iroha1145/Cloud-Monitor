@@ -11,10 +11,10 @@
 4. 重放（启动时 + 后台周期）：
    - 同设备同日本地日已有更高 ingest_sequence 的用量快照时，直接标
      done，不回灌旧载荷（禁止用 server_received_at 时间戳后备推翻已知顺序）；
-   - 否则用本请求保存的规范化记录（或从原载荷恢复的同一周期数据）写快照，
+   - 否则用本请求保存的规范化记录写快照，
      不读取当前设备、不把今日总量补到另一天；
-   - 无法恢复同一周期用量时保守保留 pending，不烧 attempts。
-5. pending 数量上限（默认 1000）触发背压：新 ingest 拒绝为 503；
+   - 无确认的旧 pending 保留并报告降级，但不占已确认队列的处理批次或背压额度。
+5. 已确认 pending 数量上限（默认 1000）触发背压：新 ingest 拒绝为 503；
    done 记录保留 DONE_RETENTION_HOURS（2 小时）后清理。
 """
 
@@ -58,6 +58,11 @@ CREATE TABLE IF NOT EXISTS tm_ingest_outbox (
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_state_time
     ON tm_ingest_outbox(state, received_at);
+
+CREATE TABLE IF NOT EXISTS tm_ingest_sequence (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    value INTEGER NOT NULL
+);
 """
 
 INDEX_DEVICE_DAY_SEQ = """
@@ -114,10 +119,24 @@ def _payload_writes_usage(payload: dict) -> int:
 
 
 def _next_ingest_sequence(db: Database) -> int:
-    row = db.fetchone(
-        "SELECT COALESCE(MAX(ingest_sequence), 0) AS n FROM tm_ingest_outbox"
+    # Called inside record_pending's transaction. Outbox/snapshot retention and
+    # device deletion must never recycle a previously issued sequence.
+    db.execute("UPDATE tm_ingest_sequence SET value = value + 1 WHERE singleton = 1")
+    return int(db.fetchone("SELECT value FROM tm_ingest_sequence WHERE singleton = 1")["value"])
+
+
+def _initialize_ingest_sequence(db: Database) -> None:
+    high = int(db.fetchone("SELECT COALESCE(MAX(ingest_sequence), 0) AS n FROM tm_ingest_outbox")["n"])
+    columns = {row["name"] for row in db.fetchall("PRAGMA table_info(tm_snapshot_buckets)")}
+    if "ingest_sequence" in columns:
+        high = max(high, int(db.fetchone(
+            "SELECT COALESCE(MAX(ingest_sequence), 0) AS n FROM tm_snapshot_buckets"
+        )["n"]))
+    db.execute(
+        "INSERT INTO tm_ingest_sequence (singleton, value) VALUES (1, ?) "
+        "ON CONFLICT(singleton) DO UPDATE SET value = MAX(value, excluded.value)",
+        (high,),
     )
-    return int((row or {}).get("n") or 0) + 1
 
 
 def _backfill_outbox_columns(db: Database) -> None:
@@ -125,17 +144,13 @@ def _backfill_outbox_columns(db: Database) -> None:
         "SELECT request_id, payload_json, received_at, ingest_sequence, local_day, writes_usage "
         "FROM tm_ingest_outbox ORDER BY received_at ASC, request_id ASC"
     ).fetchall()
-    seq = 0
     for row in rows:
         current = int(row["ingest_sequence"] or 0)
-        if current > seq:
-            seq = current
         updates: list[str] = []
         params: list[object] = []
         if current <= 0:
-            seq += 1
             updates.append("ingest_sequence = ?")
-            params.append(seq)
+            params.append(_next_ingest_sequence(db))
         payload: dict = {}
         raw = row["payload_json"]
         if isinstance(raw, str) and raw:
@@ -179,6 +194,7 @@ def ensure_schema(db: Database) -> None:
             if name not in columns:
                 db._conn.execute(f"ALTER TABLE tm_ingest_outbox ADD COLUMN {name} {decl}")
                 migrated = True
+        _initialize_ingest_sequence(db)
         if migrated or db._conn.execute(
             "SELECT 1 FROM tm_ingest_outbox WHERE ingest_sequence = 0 LIMIT 1"
         ).fetchone():
@@ -241,14 +257,31 @@ def record_pending(
 
 
 def save_normalized(db: Database, request_id: str, record: dict) -> None:
+    # This row is also the durable proof that tm-core accepted this request.
+    # Keep only the fields consumed by write_snapshot, not multi-MB session or
+    # project lists which the ordinary outbox payload deliberately omits.
+    compact = {key: record[key] for key in (
+        "deviceId", "updatedAt", "receivedAt", "periodWindows"
+    ) if key in record}
+    periods = record.get("periods") or {}
+    compact["periods"] = {}
+    for name in ("today", "month", "allTime"):
+        period = periods.get(name)
+        fields = ("totalTokens", "costUsd")
+        if name == "today":
+            fields += ("outputTokens", "cacheReadTokens", "cacheWriteTokens",
+                       "unclassifiedTokens", "clients", "models")
+        compact["periods"][name] = {
+            key: period[key] for key in fields if isinstance(period, dict) and key in period
+        }
     db.execute(
         "UPDATE tm_ingest_outbox SET normalized_json = ? WHERE request_id = ?",
-        (json.dumps(record, ensure_ascii=False), request_id),
+        (json.dumps(compact, ensure_ascii=False), request_id),
     )
 
 
 def record_from_payload(payload: dict, received_at: Optional[str] = None) -> dict:
-    """从原始上报恢复同一周期的规范化形状，供重放写快照。"""
+    """兼容辅助：只整理字段形状，不代表官方规范化或上游接收确认。"""
     if not isinstance(payload, dict):
         return {}
     periods_in = payload.get("periods") if isinstance(payload.get("periods"), dict) else {}
@@ -275,12 +308,6 @@ def record_from_payload(payload: dict, received_at: Optional[str] = None) -> dic
     }
 
 
-def _record_has_usage(record: dict) -> bool:
-    periods = record.get("periods") if isinstance(record, dict) else None
-    today = periods.get("today") if isinstance(periods, dict) else None
-    return isinstance(today, dict) and bool(today)
-
-
 def replay_record(row: dict, payload: dict) -> Optional[dict]:
     raw = row.get("normalized_json")
     if isinstance(raw, str) and raw.strip():
@@ -288,11 +315,10 @@ def replay_record(row: dict, payload: dict) -> Optional[dict]:
             stored = json.loads(raw)
         except ValueError:
             stored = None
-        if isinstance(stored, dict) and _record_has_usage(stored):
+        if isinstance(stored, dict) and isinstance(stored.get("periods"), dict):
             return stored
-    reconstructed = record_from_payload(payload, row.get("received_at"))
-    if _record_has_usage(reconstructed):
-        return reconstructed
+    # A pending row precedes the upstream POST. Raw input alone proves neither
+    # acceptance nor normalization; replaying it can invent rejected usage.
     return None
 
 
@@ -451,14 +477,16 @@ def purge_device(db: Database, device_id: str) -> int:
 
 
 def pending_count(db: Database) -> int:
-    return replayable_count(db)
+    return int(db.fetchone(
+        "SELECT COUNT(*) AS n FROM tm_ingest_outbox WHERE state='pending'"
+    )["n"])
 
 
 def replayable_count(db: Database, *, max_attempts: int = MAX_ATTEMPTS_DEFAULT) -> int:
     return int(
         db.fetchone(
             "SELECT COUNT(*) AS n FROM tm_ingest_outbox"
-            " WHERE state='pending' AND attempts < ?",
+            " WHERE state='pending' AND attempts < ? AND normalized_json IS NOT NULL",
             (max_attempts,),
         )["n"]
     )
@@ -506,11 +534,16 @@ def snapshot_health(db: Database) -> dict:
     last_success = meta("last_snapshot_success_at")
     last_error = meta("last_snapshot_error")
     pending = pending_count(db)
+    unconfirmed = int(db.fetchone(
+        "SELECT COUNT(*) AS n FROM tm_ingest_outbox "
+        "WHERE state='pending' AND normalized_json IS NULL"
+    )["n"])
     return {
         "pending_outbox": pending,
+        "unconfirmed_outbox": unconfirmed,
         "last_snapshot_success_at": last_success,
         "last_snapshot_error": last_error,
-        "snapshot_degraded": pending > 0 or (last_success is None and last_error is not None),
+        "snapshot_degraded": pending > 0 or last_error is not None,
     }
 
 
@@ -582,7 +615,7 @@ def replay_pending(
                local_day, ingest_sequence, snapshot_written, writes_usage,
                normalized_json
         FROM tm_ingest_outbox
-        WHERE state = 'pending' AND attempts < ?
+        WHERE state = 'pending' AND attempts < ? AND normalized_json IS NOT NULL
         ORDER BY ingest_sequence ASC, received_at ASC
         LIMIT ?
         """,

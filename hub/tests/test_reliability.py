@@ -101,31 +101,34 @@ def test_snapshot_failure_not_silently_lost_then_replayed(node_hub, tmp_path, mo
         assert db.fetchone(
             "SELECT COUNT(*) n FROM tm_snapshot_buckets WHERE device_id='dev-ob'"
         )["n"] == 1
+        assert db.fetchone("SELECT today_total FROM tm_snapshot_buckets WHERE device_id='dev-ob'")["today_total"] == widget_style_payload("dev-ob")["today"]["totalTokens"]
         assert replay_pending(db, cloud.app.state.tm_core)["checked"] == 0  # 幂等
 
 
 @requires_node
 def test_outbox_replay_after_crash_before_snapshot(node_hub, tmp_path):
-    """tm-core 成功、进程在快照前崩溃：重启后重放补齐，不产生重复桶。"""
-    from hub.tm_outbox import new_request_id, record_pending, replay_pending
+    """tm-core 确认已持久化、进程在快照前崩溃：重放补齐且不产生重复桶。"""
+    from hub.tm_outbox import new_request_id, record_pending, replay_pending, save_normalized
 
     cloud = make_cloud_app(tmp_path, node_hub.url, background=False)
     db = cloud.app.state.db
     core = cloud.app.state.tm_core
     payload = widget_style_payload("dev-crash")
     with cloud:
-        record_pending(
-            db, request_id=new_request_id(), device_id="dev-crash", payload=payload
-        )
-        core.request("POST", "/api/ingest", json_body=payload)
+        request_id = new_request_id()
+        record_pending(db, request_id=request_id, device_id="dev-crash", payload=payload)
+        response = core.request("POST", "/api/ingest", json_body=payload)
+        assert response.status_code == 200
+        normalized = next(r for r in response.json()["stats"]["devices"] if r["deviceId"] == "dev-crash")
+        save_normalized(db, request_id, normalized)
         result = replay_pending(db, core)
         assert result["completed"] == 1
         assert db.fetchone(
             "SELECT COUNT(*) n FROM tm_snapshot_buckets WHERE device_id='dev-crash'"
         )["n"] == 1
-        record_pending(
-            db, request_id=new_request_id(), device_id="dev-crash", payload=payload
-        )
+        request_id = new_request_id()
+        record_pending(db, request_id=request_id, device_id="dev-crash", payload=payload)
+        save_normalized(db, request_id, normalized)
         replay_pending(db, core)
         assert db.fetchone(
             "SELECT COUNT(*) n FROM tm_snapshot_buckets WHERE device_id='dev-crash'"

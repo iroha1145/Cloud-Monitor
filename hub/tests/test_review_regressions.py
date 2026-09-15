@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import sqlite3
 from threading import Event
 from urllib.parse import quote
@@ -18,7 +19,7 @@ from hub.db import Database, record_fingerprint
 from hub.main import create_app
 from hub.models import SyncPushRequest
 from hub.services import apply_sync_push
-from hub.tm_outbox import ensure_schema, record_pending, replay_pending
+from hub.tm_outbox import ensure_schema, record_pending, replay_pending, record_from_payload, save_normalized
 from hub.tm_overview import OverviewCache
 from hub.tm_proxy import TmBackground
 from hub.tm_snapshots import ensure_schema as ensure_snapshots
@@ -143,6 +144,9 @@ def test_replay_stops_between_requests_and_keeps_remaining_items_pending(tmp_pat
                     "today": {"totalTokens": 1},
                 },
             )
+        # Persist the acknowledgements received before snapshot processing stopped.
+        for row in db.fetchall("SELECT request_id, payload_json FROM tm_ingest_outbox"):
+            save_normalized(db, row["request_id"], record_from_payload(json.loads(row["payload_json"])))
         result = replay_pending(db, UnusedCore(), should_stop=should_stop)
         assert result["stopped_by"] == "shutdown"
         assert db.fetchone("SELECT COUNT(*) AS n FROM tm_ingest_outbox WHERE state='pending'")["n"] == 1

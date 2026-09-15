@@ -8,18 +8,30 @@ type AuxSettlement = {
   history: AuxOutcome;
 };
 
-function retainMatchingCosts(next: TrendPoint[], previous: TrendPoint[]): { points: TrendPoint[]; kept: boolean } {
-  let kept = false;
+function retainMatchingHistory(next: TrendPoint[], previous: TrendPoint[]): {
+  points: TrendPoint[];
+  keptCost: boolean;
+  keptComponents: boolean;
+} {
+  let keptCost = false;
+  let keptComponents = false;
   const points = next.map((point) => {
     const prior = previous.find((row) => row.day === point.day);
     if (!prior || prior.totalTokens !== point.totalTokens) return point;
-    const costUsd = point.costUsd ?? prior.costUsd;
-    const components = point.components ?? prior.components;
-    if (costUsd === point.costUsd && components === point.components) return point;
-    kept = true;
-    return { ...point, costUsd, components, costStale: true };
+    const retainsCost = point.costUsd === null && prior.costUsd !== null;
+    const retainsComponents = point.components === null && prior.components !== null;
+    if (!retainsCost && !retainsComponents) return point;
+    keptCost ||= retainsCost;
+    keptComponents ||= retainsComponents;
+    return {
+      ...point,
+      costUsd: retainsCost ? prior.costUsd : point.costUsd,
+      components: retainsComponents ? prior.components : point.components,
+      ...(retainsCost ? { costStale: true } : {}),
+      ...(retainsComponents ? { componentsStale: true } : {}),
+    };
   });
-  return { points, kept };
+  return { points, keptCost, keptComponents };
 }
 
 function retainAuxiliary(
@@ -29,7 +41,7 @@ function retainAuxiliary(
 ): DashboardData {
   if (!previous || previous.mode !== "live") return next;
   if (!settled) {
-    const retained = retainMatchingCosts(next.trend, previous.trend);
+    const retained = retainMatchingHistory(next.trend, previous.trend);
     return {
       ...next,
       subscriptions: previous.subscriptions,
@@ -49,9 +61,12 @@ function retainAuxiliary(
   }
   if (settled.providers === "rejected") providers = previous.providers;
   if (settled.history === "rejected") {
-    const retained = retainMatchingCosts(next.trend, previous.trend);
+    const retained = retainMatchingHistory(next.trend, previous.trend);
     trend = retained.points;
-    if (retained.kept) notices.push("部分日期费用暂时读不到，先沿用上次的费用。");
+    if (retained.keptCost)
+      notices.push("部分日期费用暂时读不到，先沿用上次的费用。");
+    if (retained.keptComponents)
+      notices.push("部分日期缓存组成暂时读不到，先沿用上次的组成。");
   }
   return { ...next, subscriptions, subscriptionsUpdatedAt, providers, trend, notices };
 }

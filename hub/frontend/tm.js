@@ -3545,7 +3545,15 @@ async function refreshHistoryFirstPage() {
       const rest = prev.rows.filter((row) => (
         !incomingKeys.has(row.day) && oldestIncoming && row.day < oldestIncoming
       ));
-      aux.rows = incoming.concat(rest);
+      const reportedTotal = Number(res.total_days);
+      const hasReportedTotal = res.total_days != null
+        && Number.isInteger(reportedTotal) && reportedTotal >= 0;
+      const merged = incoming.concat(rest);
+      // A smaller authoritative total means at least one cached older row no
+      // longer exists. Its position is unknowable (device deletion can remove a
+      // middle day), so discard the unverified tail and paginate it again.
+      const cacheConflict = hasReportedTotal && merged.length > reportedTotal;
+      aux.rows = cacheConflict ? incoming : merged;
       aux.rows.sort((a, b) => (a.day < b.day ? 1 : -1));
       aux.seen = new Set(aux.rows.map((row) => row.day));
       if (res.total_days != null) aux.totalDays = Number(res.total_days);
@@ -3553,7 +3561,15 @@ async function refreshHistoryFirstPage() {
       aux.dayBasis = res.day_basis || aux.dayBasis;
       aux.mixedTz = res.mixed_time_zones === true;
       aux.partial = aux.partial || res.partial === true;
-      if (rest.length) {
+      if (cacheConflict) {
+        const lastDay = incoming.length ? incoming[incoming.length - 1].day : "";
+        aux.cursor = res.next_cursor || lastDay || null;
+        const hasMore = res.has_more != null ? res.has_more === true : !!res.next_cursor;
+        aux.done = !hasMore || !aux.cursor;
+      } else if (hasReportedTotal && aux.rows.length >= reportedTotal) {
+        aux.cursor = null;
+        aux.done = true;
+      } else if (rest.length) {
         // 已加载后续页时保留原游标，避免下一页重取第 2 页后 added=0 提前结束。
         aux.cursor = prev.cursor;
         aux.done = prev.done;

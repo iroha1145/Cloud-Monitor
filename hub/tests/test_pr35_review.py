@@ -1,6 +1,7 @@
 """PR #35 复审回归：H-1…H-5、H-9、H-12、L-09、D-4。"""
 from __future__ import annotations
 
+import json
 import threading
 import time
 
@@ -17,6 +18,8 @@ from hub.tm_outbox import (
     ensure_schema,
     mark_done,
     record_pending,
+    record_from_payload,
+    save_normalized,
     reject_exhausted_pending,
     replay_pending,
     replayable_count,
@@ -84,6 +87,9 @@ def test_record_pending_does_not_supersede_before_mark_done(tmp_path):
     try:
         record_pending(db, request_id="old", device_id="dev", payload={"deviceId": "dev"})
         record_pending(db, request_id="new", device_id="dev", payload={"deviceId": "dev"})
+        # Simulate the two durable acknowledgements returned by tm-core.
+        for request_id in ("old", "new"):
+            save_normalized(db, request_id, {"deviceId": "dev", "periods": {}})
         assert replayable_count(db) == 2
         mark_done(db, "new")
         supersede_older_pending(db, "dev", "new")
@@ -116,7 +122,7 @@ def test_unavailable_replay_stops_without_burning_attempts(tmp_path):
     try:
         result = replay_pending(db, DeadCore())
         assert "stopped_by" not in result
-        assert result["failed"] == 1
+        assert result["checked"] == 0  # no durable upstream acknowledgement
         row = db.fetchone(
             "SELECT state, attempts FROM tm_ingest_outbox WHERE request_id='keep'"
         )
@@ -232,6 +238,9 @@ def test_replay_finishes_current_item_then_stops(tmp_path):
                 "today": {"totalTokens": 2},
             },
         )
+        # These requests were accepted before shutdown interrupted snapshot writes.
+        for row in db.fetchall("SELECT request_id, payload_json FROM tm_ingest_outbox"):
+            save_normalized(db, row["request_id"], record_from_payload(json.loads(row["payload_json"])))
         result = replay_pending(db, UnusedCore(), should_stop=should_stop)
         assert result["stopped_by"] == "shutdown"
         states = {

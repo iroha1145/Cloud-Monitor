@@ -127,6 +127,7 @@ def test_limits_only_done_does_not_supersede_usage_pending(tmp_path):
         assert not is_limits_only_update(usage)
         assert is_limits_only_update(limits)
         record_pending(db, request_id="usage", device_id="dev", payload=usage)
+        save_normalized(db, "usage", _normalized(usage, "2026-09-15T03:00:00.000Z"))
         record_pending(db, request_id="limits", device_id="dev", payload=limits)
         mark_done(db, "limits", snapshot_written=False)
         assert supersede_older_pending(db, "dev", "limits") == 0

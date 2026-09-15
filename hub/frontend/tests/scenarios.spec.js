@@ -219,7 +219,11 @@ test.describe("§9 History 分页（真实后端 + [拦截] history/daily）", (
       }
       let pageItems = all.slice(start, start + 30);
       if (state.count === 2 && pageItems.length > 1) pageItems = [all[29]].concat(all.slice(start, start + 29)); // 重复游标日 + 29 新行
-      if (state.count === 2) await new Promise((r) => setTimeout(r, 600)); // 慢第二页（防重复请求窗口）
+      if (state.count === 2) {
+        state.secondPageStarted?.resolve();
+        if (state.secondPage) await state.secondPage.promise;
+        else await new Promise((r) => setTimeout(r, 600));
+      }
       const more = start + 30 < all.length;
       await fulfillJson(route, {
         schema_version: 1,
@@ -240,16 +244,21 @@ test.describe("§9 History 分页（真实后端 + [拦截] history/daily）", (
   test("IntersectionObserver 滚动加载下一页、游标去重、加载中不重复发请求", async ({ page, context }) => {
     await loginWithToken(context);
     await stubOverview(page, base.payload);
-    const state = { count: 0 };
+    const secondPage = deferred();
+    const secondPageStarted = deferred();
+    const state = { count: 0, secondPage, secondPageStarted };
     await page.route("**/api/v1/tm/history/daily*", historyHandler(state));
     await page.goto("/#history");
     // 第一页 30 行
     await expect(page.locator("#hist-body tr")).toHaveCount(30);
     expect(state.count).toBe(1);
-    // 滚动触发哨兵；按钮是同一套 loading 闸门的兜底（IO 已相交时 scrollIntoView 不再回调）
+    // 滚动触发哨兵；若当前布局中哨兵原本已相交，则用按钮触发同一加载入口。
     await page.evaluate(() => document.querySelector("#hist-sentinel").scrollIntoView());
-    await page.locator("#hist-more").click();
-    await page.waitForTimeout(150);
+    await page.waitForTimeout(50);
+    if (state.count === 1) await page.locator("#hist-more").click();
+    await secondPageStarted.promise;
+    expect(state.count, "第二页应已发出并保持在途").toBe(2);
+    // 在第二页响应明确阻塞时反复跨过哨兵；loading 闸门不得发出重复请求。
     for (let i = 0; i < 4; i++) {
       await page.evaluate(() => {
         window.scrollBy(0, -300);
@@ -257,6 +266,11 @@ test.describe("§9 History 分页（真实后端 + [拦截] history/daily）", (
       });
       await page.waitForTimeout(60);
     }
+    expect(state.count, "慢页期间不得重复请求").toBe(2);
+    // 先移开哨兵，再释放第二页；避免第三页合法加载抢过 59 行中间态。
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(100);
+    secondPage.resolve();
     await expect(page.locator("#hist-body tr")).toHaveCount(59, { timeout: 8000 }); // 30+30-1 去重
     expect(state.count, "慢页期间不得重复请求").toBe(2);
     // 第三页：先滚离哨兵再滚回（IO 仅在相交状态变化时回调）
@@ -1133,6 +1147,70 @@ test.describe("审计回归批 2026-08-25（demo）", () => {
     await expect(page.locator("#hist-body tr")).toHaveCount(0);
     await expect(page.locator("#hist-empty")).toBeVisible();
     await expect(page.locator("#hist-empty")).toContainText("暂无历史归档数据");
+  });
+
+  test("历史总数冲突时丢弃旧分页并从新首页游标恢复", async ({ page }) => {
+    await page.goto("/demo#history");
+    await expect(page.locator("#shell")).toBeVisible();
+    await expect.poll(() => page.evaluate(() => state.aux.history.status)).toBe("ready");
+    const result = await page.evaluate(async () => {
+      const row = (day, tokens) => ({
+        day, tokens, costUsd: null, mix: null, mixModel: null,
+        deviceCount: null, complete: true, coverage: null,
+      });
+      state.aux.history.rows = [
+        row("2026-09-15", 10), row("2026-09-14", 9),
+        row("2026-09-13", 8), row("2026-09-12", 7),
+      ];
+      state.aux.history.seen = new Set(state.aux.history.rows.map((item) => item.day));
+      state.aux.history.cursor = "2026-09-12";
+      state.aux.history.done = true;
+      state.aux.history.status = "ready";
+      dataApi.historyDaily = async (cursor) => cursor
+        ? {
+            // 09-14 was removed with a deleted device; it must not survive
+            // merely because it used to sit between still-valid dates.
+            items: [
+              { day: "2026-09-13", tokens: 8 },
+              { day: "2026-09-12", tokens: 7 },
+            ],
+            next_cursor: null,
+            has_more: false,
+            total_days: 4,
+          }
+        : {
+            items: [
+              { day: "2026-09-16", tokens: 11 },
+              { day: "2026-09-15", tokens: 10 },
+            ],
+            next_cursor: "2026-09-15",
+            has_more: true,
+            total_days: 4,
+          };
+      await refreshHistoryFirstPage();
+      const afterRefresh = {
+        days: state.aux.history.rows.map((item) => item.day),
+        cursor: state.aux.history.cursor,
+        done: state.aux.history.done,
+      };
+      await loadHistoryPage();
+      return {
+        afterRefresh,
+        finalDays: state.aux.history.rows.map((item) => item.day),
+        done: state.aux.history.done,
+        totalDays: state.aux.history.totalDays,
+      };
+    });
+    expect(result.afterRefresh).toEqual({
+      days: ["2026-09-16", "2026-09-15"],
+      cursor: "2026-09-15",
+      done: false,
+    });
+    expect(result.finalDays).toEqual([
+      "2026-09-16", "2026-09-15", "2026-09-13", "2026-09-12",
+    ]);
+    expect(result.done).toBe(true);
+    expect(result.totalDays).toBe(4);
   });
 
   test("夜间模式下矩阵色阶图例与格子同源：CSS 类驱动，无内联色", async ({ page }) => {
