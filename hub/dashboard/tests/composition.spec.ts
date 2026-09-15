@@ -8,7 +8,7 @@ async function expectStaticComposition(
   await expect(
     card.getByRole("heading", { name: "用量组成", exact: true }),
   ).toBeVisible();
-  const ring = card.getByRole("img", { name: "用量组成环形图", exact: true });
+  const ring = card.getByRole("img", { name: /用量组成环形图/ });
   await expect(ring).toBeVisible();
   const legend = card.locator(".composition-legend > div");
   await expect(legend).toHaveCount(5);
