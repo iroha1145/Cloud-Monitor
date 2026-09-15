@@ -20,6 +20,8 @@ services:
       # 逃生阀（错误提示引用的补救开关必须能从 compose 传进容器）
       ALLOW_LEGACY_FALLBACK: ${ALLOW_LEGACY_FALLBACK:-false}
       ALLOW_STATE_CONFLICT: ${ALLOW_STATE_CONFLICT:-false}
+      # 备份恢复后游标大于库内最大记录时使用；全量重推成功后务必改回 false
+      RESET_CURSOR: ${RESET_CURSOR:-false}
       RUN_ONCE: ${RUN_ONCE:-false}
       # 可选：token-monitor 桥接
       TOKEN_MONITOR_HUB_URL: ${TOKEN_MONITOR_HUB_URL:-}

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import sqlite3
 from threading import Event
 from urllib.parse import quote
@@ -18,7 +19,7 @@ from hub.db import Database, record_fingerprint
 from hub.main import create_app
 from hub.models import SyncPushRequest
 from hub.services import apply_sync_push
-from hub.tm_outbox import ensure_schema, record_pending, replay_pending
+from hub.tm_outbox import ensure_schema, record_pending, replay_pending, record_from_payload, save_normalized
 from hub.tm_overview import OverviewCache
 from hub.tm_proxy import TmBackground
 from hub.tm_snapshots import ensure_schema as ensure_snapshots
@@ -123,21 +124,32 @@ def test_replay_stops_between_requests_and_keeps_remaining_items_pending(tmp_pat
     db = Database(tmp_path / "outbox.sqlite3")
     ensure_schema(db)
     ensure_snapshots(db)
-    stop = Event()
-    class Core:
-        calls = 0
+    checks = {"n": 0}
+    def should_stop():
+        checks["n"] += 1
+        return checks["n"] > 1
+    class UnusedCore:
         def request(self, *_args, **_kwargs):
-            self.calls += 1
-            stop.set()
-            return httpx.Response(400, json={"error": "invalid"})
-    core = Core()
+            raise AssertionError("replay must not read the current device")
     try:
         for key in ("one", "two"):
-            record_pending(db, request_id=key, device_id=key, payload={"deviceId": key})
-        result = replay_pending(db, core, should_stop=stop.is_set)
-        assert core.calls == 1  # GET /api/devices only；不再 POST 瘦身载荷
+            record_pending(
+                db,
+                request_id=key,
+                device_id=key,
+                payload={
+                    "deviceId": key,
+                    "updatedAt": "2026-09-15T03:00:00.000Z",
+                    "periodWindows": {"timeZone": "UTC", "today": {"key": "2026-09-15"}},
+                    "today": {"totalTokens": 1},
+                },
+            )
+        # Persist the acknowledgements received before snapshot processing stopped.
+        for row in db.fetchall("SELECT request_id, payload_json FROM tm_ingest_outbox"):
+            save_normalized(db, row["request_id"], record_from_payload(json.loads(row["payload_json"])))
+        result = replay_pending(db, UnusedCore(), should_stop=should_stop)
         assert result["stopped_by"] == "shutdown"
-        assert db.fetchone("SELECT COUNT(*) AS n FROM tm_ingest_outbox WHERE state='pending'")["n"] == 2
+        assert db.fetchone("SELECT COUNT(*) AS n FROM tm_ingest_outbox WHERE state='pending'")["n"] == 1
     finally:
         db.close()
 

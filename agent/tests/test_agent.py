@@ -392,6 +392,18 @@ def test_legacy_fallback_requires_stable_source_instance(tmp_path):
         agent.probe_sync_meta()
 
 
+def test_reset_cursor_is_passed_by_compose_and_load_config(tmp_path):
+    compose = Path(__file__).resolve().parents[1] / "docker-compose.yml"
+    text = compose.read_text(encoding="utf-8")
+    assert "RESET_CURSOR: ${RESET_CURSOR:-false}" in text
+    cfg = sa.load_config({
+        "CLOUD_HUB_URL": "https://cloud.example.com",
+        "STATE_PATH": str(tmp_path / "s.json"),
+        "RESET_CURSOR": "true",
+    })
+    assert cfg.reset_cursor is True
+
+
 def test_allow_state_conflict_env_is_wired_and_independent(tmp_path):
     """错误提示教用户设 ALLOW_STATE_CONFLICT，load_config 必须真的读它；
     且与 ALLOW_LEGACY_FALLBACK 互不串线。"""

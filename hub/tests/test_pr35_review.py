@@ -1,6 +1,7 @@
 """PR #35 复审回归：H-1…H-5、H-9、H-12、L-09、D-4。"""
 from __future__ import annotations
 
+import json
 import threading
 import time
 
@@ -17,6 +18,8 @@ from hub.tm_outbox import (
     ensure_schema,
     mark_done,
     record_pending,
+    record_from_payload,
+    save_normalized,
     reject_exhausted_pending,
     replay_pending,
     replayable_count,
@@ -84,8 +87,18 @@ def test_record_pending_does_not_supersede_before_mark_done(tmp_path):
     try:
         record_pending(db, request_id="old", device_id="dev", payload={"deviceId": "dev"})
         record_pending(db, request_id="new", device_id="dev", payload={"deviceId": "dev"})
+        # Simulate the two durable acknowledgements returned by tm-core.
+        for request_id in ("old", "new"):
+            save_normalized(db, request_id, {"deviceId": "dev", "periods": {}})
         assert replayable_count(db) == 2
         mark_done(db, "new")
+        supersede_older_pending(db, "dev", "new")
+        row = db.fetchone(
+            "SELECT state, last_error FROM tm_ingest_outbox WHERE request_id='old'"
+        )
+        assert row["state"] == "pending"
+        assert row["last_error"] is None
+        mark_done(db, "new", snapshot_written=True)
         supersede_older_pending(db, "dev", "new")
         row = db.fetchone(
             "SELECT state, last_error FROM tm_ingest_outbox WHERE request_id='old'"
@@ -108,7 +121,8 @@ def test_unavailable_replay_stops_without_burning_attempts(tmp_path):
 
     try:
         result = replay_pending(db, DeadCore())
-        assert result["stopped_by"] == "upstream_unavailable"
+        assert "stopped_by" not in result
+        assert result["checked"] == 0  # no durable upstream acknowledgement
         row = db.fetchone(
             "SELECT state, attempts FROM tm_ingest_outbox WHERE request_id='keep'"
         )
@@ -191,32 +205,49 @@ def test_replay_finishes_current_item_then_stops(tmp_path):
     db = Database(tmp_path / "stop.sqlite3")
     ensure_schema(db)
     ensure_snapshots(db)
-    stop = threading.Event()
+    checks = {"n": 0}
 
-    class Core:
-        calls = 0
+    def should_stop() -> bool:
+        checks["n"] += 1
+        return checks["n"] > 1
 
-        def request(self, method, path, **_kwargs):
-            self.calls += 1
-            if method == "GET":
-                stop.set()
-                return httpx.Response(
-                    200,
-                    json={"devices": [{"deviceId": "one", "today": {"totalTokens": 1}}]},
-                )
-            raise AssertionError(path)
+    class UnusedCore:
+        def request(self, *_args, **_kwargs):
+            raise AssertionError("replay must not read the current device")
 
     try:
-        record_pending(db, request_id="one", device_id="one", payload={"deviceId": "one"})
-        record_pending(db, request_id="two", device_id="two", payload={"deviceId": "two"})
-        core = Core()
-        result = replay_pending(db, core, should_stop=stop.is_set)
-        assert core.calls == 1
+        record_pending(
+            db,
+            request_id="one",
+            device_id="one",
+            payload={
+                "deviceId": "one",
+                "updatedAt": "2026-09-15T03:00:00.000Z",
+                "periodWindows": {"timeZone": "UTC", "today": {"key": "2026-09-15"}},
+                "today": {"totalTokens": 1},
+            },
+        )
+        record_pending(
+            db,
+            request_id="two",
+            device_id="two",
+            payload={
+                "deviceId": "two",
+                "updatedAt": "2026-09-15T03:00:00.000Z",
+                "periodWindows": {"timeZone": "UTC", "today": {"key": "2026-09-15"}},
+                "today": {"totalTokens": 2},
+            },
+        )
+        # These requests were accepted before shutdown interrupted snapshot writes.
+        for row in db.fetchall("SELECT request_id, payload_json FROM tm_ingest_outbox"):
+            save_normalized(db, row["request_id"], record_from_payload(json.loads(row["payload_json"])))
+        result = replay_pending(db, UnusedCore(), should_stop=should_stop)
         assert result["stopped_by"] == "shutdown"
         states = {
             row["request_id"]: row["state"]
             for row in db.fetchall("SELECT request_id, state FROM tm_ingest_outbox")
         }
+        assert states["one"] == "done"
         assert states["two"] == "pending"
     finally:
         db.close()

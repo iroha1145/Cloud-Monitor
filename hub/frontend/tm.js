@@ -2500,22 +2500,28 @@ function renderSubs() {
     grid.innerHTML = `<p class="aux-note">正在加载订阅清单…</p>`;
     return;
   }
-  if (aux.status === "error" || aux.status === "unsupported") {
+  const s = aux.data;
+  const list = s && Array.isArray(s.subscriptions) ? s.subscriptions : [];
+  if (aux.status === "unsupported" || (aux.status === "error" && !list.length)) {
     panel.hidden = false;
     $("#subs-sub").textContent = "";
     grid.innerHTML = `<p class="aux-note err">订阅清单暂不可用</p>`;
     return;
   }
-  const s = aux.data;
-  const list = s && Array.isArray(s.subscriptions) ? s.subscriptions : [];
   if (!list.length) {
     panel.hidden = true;
     grid.innerHTML = "";
     return;
   }
   panel.hidden = false;
-  $("#subs-sub").textContent = s.updated_at ? "更新于 " + fmtDateTime(s.updated_at) : "";
-  grid.innerHTML = list.map((it, si) => {
+  const updated = s.updated_at ? "更新于 " + fmtDateTime(s.updated_at) : "";
+  $("#subs-sub").textContent = aux.status === "error"
+    ? (updated ? updated + " · " : "") + "刷新失败，仍显示上次清单"
+    : updated;
+  const failNote = aux.status === "error"
+    ? `<p class="aux-note err">订阅清单刷新失败，仍显示上次内容</p>`
+    : "";
+  grid.innerHTML = failNote + list.map((it, si) => {
     it = it && typeof it === "object" ? it : {};
     const kind = String(it.kind || "subscription").toLowerCase() === "topup" ? "topup" : "subscription";
     const topUps = Array.isArray(it.topUps) ? it.topUps : [];
@@ -3321,8 +3327,8 @@ async function load(manual) {
     // §4-2/3/4：provider-status 独立异步；配额/历史切到对应页才加载
     loadProviderStatus();
     peekUpdateBadge();
-    if (state.view === "quota") ensureSubs();
-    if (state.view === "history" && state.aux.history.status === "idle") resetHistory();
+    if (state.view === "quota") ensureSubs(true);
+    if (state.view === "history") refreshHistoryFirstPage();
     schedulePoll();
   } catch (err) {
     if ((err && err.name === "AbortError") || !fresh()) return;
@@ -3394,10 +3400,12 @@ async function loadProviderStatus() {
 }
 
 /* ---------- §4：订阅清单（切到配额页才加载） ---------- */
-async function ensureSubs() {
+async function ensureSubs(force = false) {
   const aux = state.aux.subs;
   /* L-12：404 unsupported 是终态，配额页再进入不得重发 */
-  if (aux.status === "ready" || aux.status === "empty" || aux.status === "loading" || aux.status === "unsupported") return;
+  if (aux.status === "loading" || aux.status === "unsupported") return;
+  if (!force && (aux.status === "ready" || aux.status === "empty")) return;
+  const prevData = aux.data;
   if (aux.aborter) aux.aborter.abort();
   const ctl = new AbortController();
   aux.aborter = ctl;
@@ -3412,8 +3420,13 @@ async function ensureSubs() {
     }
   } catch (e) {
     if (!ctl.signal.aborted && rev === state.tokenRevision) {
-      aux.data = null;
-      aux.status = e instanceof ApiError && e.status === 404 ? "unsupported" : "error";
+      if (e instanceof ApiError && e.status === 404) {
+        aux.data = null;
+        aux.status = "unsupported";
+      } else {
+        aux.data = prevData;
+        aux.status = "error";
+      }
     }
   } finally {
     if (aux.aborter === ctl) {
@@ -3454,6 +3467,146 @@ function fallbackHistoryRows() {
   aux.totalDays = aux.rows.length;
   aux.done = true;
   aux.status = aux.rows.length ? "ready" : "empty";
+}
+
+function mapHistoryItem(h) {
+  if (!h || !h.day) return null;
+  const key = String(h.day).slice(0, 10);
+  return {
+    day: key,
+    tokens: Number(h.tokens ?? h.total) || 0,
+    costUsd: h.costUsd != null ? Number(h.costUsd) : null,
+    mix: h.perClient && typeof h.perClient === "object" ? { kind: "client", map: h.perClient } : null,
+    mixModel: h.perModel && typeof h.perModel === "object" ? h.perModel : null,
+    deviceCount: h.deviceCount != null ? Number(h.deviceCount) : null,
+    complete: h.complete !== false,
+    coverage: h.coverage != null && Number.isFinite(Number(h.coverage)) ? Number(h.coverage) : null,
+  };
+}
+
+async function refreshHistoryFirstPage() {
+  const aux = state.aux.history;
+  if (aux.status === "unsupported" || aux.loading) return;
+  const feats = (state.data && state.data.features) || {};
+  if (feats.history_daily === false) {
+    fallbackHistoryRows();
+    if (state.view === "history") renderHistoryTable();
+    return;
+  }
+  if (aux.status === "idle") {
+    resetHistory();
+    return;
+  }
+  const prev = {
+    rows: aux.rows.slice(),
+    cursor: aux.cursor,
+    done: aux.done,
+    status: aux.status,
+    seen: new Set(aux.seen),
+    totalDays: aux.totalDays,
+    retentionDays: aux.retentionDays,
+    dayBasis: aux.dayBasis,
+    mixedTz: aux.mixedTz,
+    partial: aux.partial,
+  };
+  if (aux.aborter) aux.aborter.abort();
+  const ctl = new AbortController();
+  aux.aborter = ctl;
+  aux.loading = true;
+  const rev = state.tokenRevision;
+  updateHistLoading(true);
+  try {
+    const res = await dataApi.historyDaily(null, "", ctl.signal);
+    if (ctl.signal.aborted || rev !== state.tokenRevision) return;
+    const items = res && Array.isArray(res.items) ? res.items
+      : res && Array.isArray(res.days) ? res.days : [];
+    const incoming = [];
+    const incomingKeys = new Set();
+    for (const h of items) {
+      const row = mapHistoryItem(h);
+      if (!row) continue;
+      incoming.push(row);
+      incomingKeys.add(row.day);
+    }
+    const explicitEmpty = !incoming.length && (res.total_days === 0 || res.has_more === false);
+    if (explicitEmpty) {
+      aux.rows = [];
+      aux.seen = new Set();
+      aux.cursor = null;
+      aux.done = true;
+      aux.totalDays = res.total_days != null ? Number(res.total_days) : 0;
+      if (res.retention_days != null) aux.retentionDays = Number(res.retention_days);
+      aux.dayBasis = res.day_basis || aux.dayBasis;
+      aux.mixedTz = res.mixed_time_zones === true;
+      aux.partial = res.partial === true;
+      aux.status = "empty";
+    } else {
+      const oldestIncoming = incoming.length ? incoming[incoming.length - 1].day : "";
+      const rest = prev.rows.filter((row) => (
+        !incomingKeys.has(row.day) && oldestIncoming && row.day < oldestIncoming
+      ));
+      const reportedTotal = Number(res.total_days);
+      const hasReportedTotal = res.total_days != null
+        && Number.isInteger(reportedTotal) && reportedTotal >= 0;
+      const merged = incoming.concat(rest);
+      // A smaller authoritative total means at least one cached older row no
+      // longer exists. Its position is unknowable (device deletion can remove a
+      // middle day), so discard the unverified tail and paginate it again.
+      const cacheConflict = hasReportedTotal && merged.length > reportedTotal;
+      aux.rows = cacheConflict ? incoming : merged;
+      aux.rows.sort((a, b) => (a.day < b.day ? 1 : -1));
+      aux.seen = new Set(aux.rows.map((row) => row.day));
+      if (res.total_days != null) aux.totalDays = Number(res.total_days);
+      if (res.retention_days != null) aux.retentionDays = Number(res.retention_days);
+      aux.dayBasis = res.day_basis || aux.dayBasis;
+      aux.mixedTz = res.mixed_time_zones === true;
+      aux.partial = aux.partial || res.partial === true;
+      if (cacheConflict) {
+        const lastDay = incoming.length ? incoming[incoming.length - 1].day : "";
+        aux.cursor = res.next_cursor || lastDay || null;
+        const hasMore = res.has_more != null ? res.has_more === true : !!res.next_cursor;
+        aux.done = !hasMore || !aux.cursor;
+      } else if (hasReportedTotal && aux.rows.length >= reportedTotal) {
+        aux.cursor = null;
+        aux.done = true;
+      } else if (rest.length) {
+        // 已加载后续页时保留原游标，避免下一页重取第 2 页后 added=0 提前结束。
+        aux.cursor = prev.cursor;
+        aux.done = prev.done;
+      } else {
+        const lastDay = incoming.length ? incoming[incoming.length - 1].day : "";
+        aux.cursor = res.next_cursor || lastDay || null;
+        const hasMore = res.has_more != null ? res.has_more === true : !!res.next_cursor;
+        aux.done = !hasMore;
+      }
+      aux.status = aux.rows.length ? "ready" : "empty";
+    }
+  } catch (e) {
+    if (ctl.signal.aborted || rev !== state.tokenRevision) return;
+    if (e instanceof ApiError && (e.status === 404 || e.status === 501)) {
+      fallbackHistoryRows();
+    } else {
+      aux.rows = prev.rows;
+      aux.cursor = prev.cursor;
+      aux.done = prev.done;
+      aux.seen = prev.seen;
+      aux.totalDays = prev.totalDays;
+      aux.retentionDays = prev.retentionDays;
+      aux.dayBasis = prev.dayBasis;
+      aux.mixedTz = prev.mixedTz;
+      aux.partial = prev.partial;
+      aux.status = prev.rows.length ? (prev.status === "empty" ? "empty" : "ready") : "error";
+      if (aux.status === "error") scheduleHistoryRetry();
+    }
+  } finally {
+    if (aux.aborter === ctl) {
+      aux.aborter = null;
+      aux.loading = false;
+      if (aux.status === "loading") aux.status = aux.rows.length ? "ready" : "idle";
+    }
+    updateHistLoading(false);
+    if (state.view === "history") renderHistoryTable();
+  }
 }
 
 function resetHistory() {
@@ -3502,21 +3655,12 @@ async function loadHistoryPage() {
       : res && Array.isArray(res.days) ? res.days : [];
     let added = 0;
     for (const h of items) {
-      if (!h || !h.day) continue;
-      const key = String(h.day).slice(0, 10);
-      if (aux.seen.has(key)) continue; // 游标去重
-      aux.seen.add(key);
+      const row = mapHistoryItem(h);
+      if (!row) continue;
+      if (aux.seen.has(row.day)) continue; // 游标去重
+      aux.seen.add(row.day);
       added++;
-      aux.rows.push({
-        day: key,
-        tokens: Number(h.tokens ?? h.total) || 0,
-        costUsd: h.costUsd != null ? Number(h.costUsd) : null,
-        mix: h.perClient && typeof h.perClient === "object" ? { kind: "client", map: h.perClient } : null,
-        mixModel: h.perModel && typeof h.perModel === "object" ? h.perModel : null,
-        deviceCount: h.deviceCount != null ? Number(h.deviceCount) : null,
-        complete: h.complete !== false,
-        coverage: h.coverage != null && Number.isFinite(Number(h.coverage)) ? Number(h.coverage) : null,
-      });
+      aux.rows.push(row);
     }
     aux.rows.sort((a, b) => (a.day < b.day ? 1 : -1));
     if (res.total_days != null) aux.totalDays = Number(res.total_days);
