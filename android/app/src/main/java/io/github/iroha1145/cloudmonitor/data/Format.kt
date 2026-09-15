@@ -14,12 +14,20 @@ import kotlin.math.roundToLong
 
 object Format {
     private val nfLocal = ThreadLocal.withInitial {
-        NumberFormat.getInstance(Locale.SIMPLIFIED_CHINESE).apply {
+        NumberFormat.getInstance(Locale.US).apply {
             maximumFractionDigits = 0
+            isGroupingUsed = true
+        }
+    }
+    private val usdLocal = ThreadLocal.withInitial {
+        NumberFormat.getNumberInstance(Locale.US).apply {
+            minimumFractionDigits = 2
+            maximumFractionDigits = 2
+            isGroupingUsed = true
         }
     }
 
-    fun fmtInt(v: Double): String = if (v.isFinite()) nfLocal.get().format(v.roundToLong()) else "未提供"
+    fun fmtInt(v: Double): String = if (v.isFinite()) checkNotNull(nfLocal.get()).format(v.roundToLong()) else "未提供"
 
     data class Compact(val n: String, val u: String)
 
@@ -60,9 +68,12 @@ object Format {
     }
 
     fun fmtUsd(v: Double): String {
+        if (!v.isFinite()) return "未提供"
         if (v == 0.0) return "$0.00"
-        if (abs(v) < 0.01) return "$" + String.format(Locale.US, "%.4f", v)
-        return "$" + String.format(Locale.US, "%.2f", v)
+        val sign = if (v < 0) "-" else ""
+        val amount = abs(v)
+        if (amount < 0.01) return sign + "$" + String.format(Locale.US, "%.4f", amount)
+        return sign + "$" + checkNotNull(usdLocal.get()).format(amount)
     }
 
     fun fmtPct(ratio: Double): String {

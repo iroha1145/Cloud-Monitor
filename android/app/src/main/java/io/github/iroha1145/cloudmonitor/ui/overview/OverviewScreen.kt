@@ -45,7 +45,8 @@ fun LazyListScope.overviewItems(
     item("summary") { SummaryPanel(state, page) }
     item("trend") {
         var days by page.trendDays
-        val rows = remember(ov, state.history, days) { trendWindow(analyzeTrend(ov, state.history), days) }
+        val series = remember(ov, state.history) { analyzeTrend(ov, state.history) }
+        val rows = remember(series, days) { trendWindow(series, days) }
         val summary = remember(rows) { summarizeTrend(rows) }
         Panel(Modifier.padding(bottom = 16.dp)) {
             PanelHead("用量趋势", "沿着曲线，查看每一天的花费与缓存", trailing = {
@@ -142,7 +143,7 @@ fun LazyListScope.overviewItems(
                 Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).tipClick(session.client ?: "会话", listOf(
                     "会话" to (session.sessionId ?: "未提供"), "项目" to (session.project ?: "未提供"),
                     "设备" to (session.device ?: "未提供"), "模型" to session.models.keys.joinToString("、"),
-                    "词元用量" to Format.fmtInt(session.tokens), "费用" to Format.fmtUsd(session.costUsd))).padding(vertical = 12.dp)) {
+                    "词元用量" to Format.fmtInt(session.tokens), "费用" to (session.costUsd?.let(Format::fmtUsd) ?: "未提供"))).padding(vertical = 12.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         ClientLogo(session.client, 20.dp)
                         Text(session.client ?: "未知客户端", Modifier.weight(1f), fontWeight = FontWeight.Medium)
@@ -165,26 +166,35 @@ private fun SummaryPanel(state: UiState, page: PageState) {
     val per = ov.totals.period(selected.key)
     val components = usageComponents(per)
     val cm = CmColorsCurrent
+    val trendSeries = remember(ov, state.history) { analyzeTrend(ov, state.history) }
+    val zone = ov.dashboardPeriod?.timeZone?.takeIf { it.isNotBlank() } ?: ov.dashboardTimeZone
+    val todayKey = ov.dashboardPeriod?.today?.key?.takeIf { isCalendarDay(it) }
+        ?: Format.dayKeyTz(System.currentTimeMillis(), zone)
+    val monthKey = ov.dashboardPeriod?.month?.key?.takeIf { it.matches(Regex("""^\d{4}-\d{2}$""")) }
+        ?: todayKey.take(7)
     Column(Modifier.padding(bottom = 16.dp).testTag("usage-summary")) {
         FlowRow(Modifier.fillMaxWidth().padding(bottom = 12.dp), itemVerticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             PeriodSeg(selected) { periodName = it.name }
-            Text(java.time.LocalDate.now().let { when (selected) {
-                Period.Today -> "${it.monthValue}月${it.dayOfMonth}日"
-                Period.Month -> "${it.year}年${it.monthValue}月"
+            Text(when (selected) {
+                Period.Today -> runCatching { java.time.LocalDate.parse(todayKey) }.getOrNull()
+                    ?.let { "${it.monthValue}月${it.dayOfMonth}日" } ?: todayKey
+                Period.Month -> runCatching { java.time.YearMonth.parse(monthKey) }.getOrNull()
+                    ?.let { "${it.year}年${it.monthValue}月" } ?: monthKey
                 else -> "全部历史记录"
-            } }, fontSize = 11.sp, color = cm.mute)
+            }, fontSize = 11.sp, color = cm.mute)
         }
         val shape = RoundedCornerShape(10.dp)
         Column(Modifier.fillMaxWidth().clip(shape).background(cm.card).border(1.dp, cm.border, shape)) {
+            val spark = remember(trendSeries) { trendSeries.takeLast(14) }
             val stats: List<@Composable (Modifier) -> Unit> = listOf(
                 { m -> StatCell("总用量", Format.fmtCompact(per.totalTokens), "所有模型与客户端", AppIcons.Bolt, SEG_INPUT,
-                    analyzeTrend(ov, state.history).takeLast(14).map { it.total }, m) },
+                    spark.map { it.total }, m) },
                 { m -> StatCell("使用费用", periodCost(per)?.let(Format::fmtUsd) ?: "未提供", "按上报价格统计", AppIcons.AccountBalanceWallet, SEG_OUTPUT,
-                    analyzeTrend(ov, state.history).takeLast(14).takeIf { it.all { row -> row.costUsd != null } }?.map { it.costUsd!! }.orEmpty(), m) },
+                    spark.takeIf { it.all { row -> row.costUsd != null } }?.map { it.costUsd!! }.orEmpty(), m, costSpark = true) },
                 { m -> StatCell(components.cacheLabel, components.cacheRate?.let(Format::fmtPct) ?: "未提供",
                     if (components.cacheReadKnown) "${Format.fmtCompact(components.cacheRead)} 缓存读取" else "等待来源提供缓存数据", AppIcons.Database, SEG_CACHE_READ, emptyList(), m) },
-                { m -> StatCell("在线设备", "${ov.devices.count { deviceOnline(it, ov) == true }} / ${ov.devices.size}",
+                { m -> StatCell("在线设备", "${ov.devices.count { deviceOnline(it, ov) }} / ${ov.devices.size}",
                     connBanner(ov, state.demo, state.staleData).first, AppIcons.Computer, SEG_CACHE_WRITE, emptyList(), m) },
             )
             val oneColumn = LocalDensity.current.fontScale > 1.6f
@@ -203,7 +213,7 @@ private fun SummaryPanel(state: UiState, page: PageState) {
 
 @Composable
 private fun StatCell(label: String, value: String, note: String, icon: androidx.compose.ui.graphics.vector.ImageVector,
-    color: Color, spark: List<Double>, modifier: Modifier) {
+    color: Color, spark: List<Double>, modifier: Modifier, costSpark: Boolean = false) {
     val cm = CmColorsCurrent
     Column(modifier.padding(horizontal = 13.dp).padding(bottom = 14.dp)) {
         Box(Modifier.width(26.dp).height(2.dp).background(color))
@@ -217,7 +227,8 @@ private fun StatCell(label: String, value: String, note: String, icon: androidx.
             Text(note, color = if (label.contains("缓存")) cm.okInk else cm.mute, fontSize = 10.sp, lineHeight = 16.sp, modifier = Modifier.weight(1f))
             if (spark.size >= 2 && LocalDensity.current.fontScale < 1.5f) Canvas(Modifier.width(52.dp).height(20.dp)) {
                 val low = spark.minOrNull() ?: 0.0
-                val range = ((spark.maxOrNull() ?: 1.0) - low).coerceAtLeast(1.0)
+                val high = spark.maxOrNull() ?: if (costSpark) 0.01 else 1.0
+                val range = (high - low).coerceAtLeast(if (costSpark) 0.01 else 1.0)
                 val path = androidx.compose.ui.graphics.Path()
                 spark.forEachIndexed { i, v ->
                     val x = i.toFloat() / spark.lastIndex * size.width

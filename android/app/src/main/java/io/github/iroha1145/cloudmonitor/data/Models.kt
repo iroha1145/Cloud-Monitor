@@ -367,7 +367,7 @@ data class SessionRow(
     val client: String? = null,
     val sessionId: String? = null,
     val tokens: Double = 0.0,
-    val costUsd: Double = 0.0,
+    val costUsd: Double? = null,
     @Serializable(with = TokenMapSerializer::class)
     val models: Map<String, Double> = emptyMap(),
     val project: String? = null,

@@ -319,21 +319,27 @@ fun ClientLogo(name: String?, size: Dp = 16.dp, tint: Color = CmColorsCurrent.in
 }
 
 @Composable
-fun StatusDot(ok: Boolean?, unknown: Boolean = false, pulse: Boolean = false) {
+fun StatusDot(ok: Boolean?, unknown: Boolean = false, pulse: Boolean = false, delayed: Boolean = false) {
     val cm = CmColorsCurrent
     val c = when {
+        delayed -> cm.warn
         unknown || ok == null -> cm.mute
         ok -> cm.ok
         else -> cm.crit
     }
     val reduced = LocalReducedMotion.current
-    val inf = rememberInfiniteTransition(label = "dot-pulse")
-    val pulseScale by inf.animateFloat(
-        1f, 1.35f,
-        infiniteRepeatable(tween(1100, easing = LinearEasing), RepeatMode.Reverse),
-        label = "pulse",
-    )
-    val scale = if (pulse && ok == true && !reduced) pulseScale else 1f
+    val shouldPulse = pulse && ok == true && !reduced
+    val scale = if (shouldPulse) {
+        val inf = rememberInfiniteTransition(label = "dot-pulse")
+        val pulseScale by inf.animateFloat(
+            1f, 1.35f,
+            infiniteRepeatable(tween(1100, easing = LinearEasing), RepeatMode.Reverse),
+            label = "pulse",
+        )
+        pulseScale
+    } else {
+        1f
+    }
     Box(
         Modifier
             .size(8.dp)

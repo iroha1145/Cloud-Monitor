@@ -40,16 +40,19 @@ private fun DevicesContent(overview: Overview, page: PageState) {
     val cm = CmColorsCurrent
     var query by page.query
     var filter by page.selection
-    val onlineMap = overview.devices.associate { it.deviceId to deviceOnline(it, overview) }
-    val online = onlineMap.values.count { it == true }
+    val statusMap = overview.devices.associate { it.deviceId to deviceStatus(it, overview) }
+    val online = statusMap.values.count { it == DeviceStatus.Online }
     val clients = overview.devices.flatMap { it.trackedClients }.toSet().size
+    val filters = listOf("全部", "在线", "同步延迟", "离线")
+    val activeFilter = filter.takeIf { it in filters } ?: "全部"
+    SideEffect { if (filter !in filters) filter = "全部" }
     val visible = overview.devices.filter { device ->
         val matches = listOf(device.hostname, device.deviceId, device.platform, device.osName)
             .plus(device.trackedClients).filterNotNull().any { it.contains(query.trim(), ignoreCase = true) }
-        matches && when (filter) {
-            "在线" -> onlineMap[device.deviceId] == true
-            "离线" -> onlineMap[device.deviceId] == false
-            "未知" -> onlineMap[device.deviceId] == null
+        matches && when (activeFilter) {
+            "在线" -> statusMap[device.deviceId] == DeviceStatus.Online
+            "同步延迟" -> statusMap[device.deviceId] == DeviceStatus.Delayed
+            "离线" -> statusMap[device.deviceId] == DeviceStatus.Offline
             else -> true
         }
     }
@@ -70,8 +73,7 @@ private fun DevicesContent(overview: Overview, page: PageState) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 WebSearchField(query, { query = it }, label = "搜索设备", placeholder = "名称、系统或客户端",
                     modifier = Modifier.fillMaxWidth().testTag("device-search"))
-                val filters = listOf("全部", "在线", "离线", "未知")
-                WebSegmentedControl(filters, filters.indexOf(filter).coerceAtLeast(0), { filter = filters[it] })
+                WebSegmentedControl(filters, filters.indexOf(activeFilter).coerceAtLeast(0), { filter = filters[it] })
                 Text("${visible.size} 台设备", color = cm.ink2, fontSize = 11.sp, lineHeight = 16.sp)
             }
             if (visible.isEmpty()) {
@@ -88,7 +90,7 @@ private fun DevicesContent(overview: Overview, page: PageState) {
                             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                                 group.forEach { device ->
                                     key(device.deviceId) {
-                                        Box(Modifier.weight(1f)) { DeviceCard(device, overview, onlineMap[device.deviceId]) }
+                                        Box(Modifier.weight(1f)) { DeviceCard(device, overview, statusMap.getValue(device.deviceId)) }
                                     }
                                 }
                                 if (group.size < columns) Spacer(Modifier.weight(1f))
@@ -104,22 +106,26 @@ private fun DevicesContent(overview: Overview, page: PageState) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DeviceCard(device: Device, overview: Overview, online: Boolean?) {
+private fun DeviceCard(device: Device, overview: Overview, status: DeviceStatus) {
     val cm = CmColorsCurrent
     var expanded by rememberSaveable(device.deviceId) { mutableStateOf(false) }
     val diagnostics = overview.diagnostics.find { it.deviceId == device.deviceId }
     val tools = healthTools(diagnostics)
     val zone = overview.periodWindowsByDevice[device.deviceId]?.timeZone
-    val status = when (online) { true -> "在线"; false -> "离线"; null -> "状态未知" }
+    val statusText = deviceStatusLabel(status)
     val platform = device.osName?.takeIf { it.isNotBlank() } ?: when (device.platform) {
         "darwin" -> "macOS"; "win32" -> "Windows"; "linux" -> "Linux"; else -> device.platform ?: "系统未提供"
     }
     Panel {
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                StatusDot(online)
+                StatusDot(ok = status == DeviceStatus.Online, delayed = status == DeviceStatus.Delayed)
                 Spacer(Modifier.width(7.dp))
-                Text(status, color = when (online) { true -> cm.okInk; false -> cm.crit; null -> cm.ink2 }, fontSize = 11.sp, lineHeight = 15.sp)
+                Text(statusText, color = when (status) {
+                    DeviceStatus.Online -> cm.okInk
+                    DeviceStatus.Delayed -> cm.warnInk
+                    DeviceStatus.Offline -> cm.crit
+                }, fontSize = 11.sp, lineHeight = 15.sp)
             }
             Text("最近上报 ${Format.relTime(device.receivedAt).ifBlank { "未提供" }}", color = cm.ink2, fontSize = 11.sp, lineHeight = 15.sp)
         }
@@ -169,7 +175,8 @@ private fun DeviceCard(device: Device, overview: Overview, online: Boolean?) {
         HorizontalDivider(color = cm.border)
         Spacer(Modifier.height(13.dp))
         DeviceMetrics(listOf("今日词元" to Format.fmtCompact(device.today.totalTokens), "本月词元" to Format.fmtCompact(device.month.totalTokens),
-            "累计词元" to Format.fmtCompact(device.allTime.totalTokens), "累计估算费用" to Format.fmtUsd(device.allTime.costUsd)))
+            "累计词元" to Format.fmtCompact(device.allTime.totalTokens),
+            "累计估算费用" to (periodCost(device.allTime)?.let(Format::fmtUsd) ?: "未提供")))
         if (expanded) {
             Spacer(Modifier.height(20.dp))
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

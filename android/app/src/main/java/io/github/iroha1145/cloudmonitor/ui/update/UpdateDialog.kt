@@ -1,6 +1,7 @@
 package io.github.iroha1145.cloudmonitor.ui.update
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,6 +30,7 @@ fun UpdateDialog(
     error: String?,
     data: SystemUpdate?,
     onDismiss: () -> Unit,
+    onRefresh: () -> Unit = {},
 ) {
     val cm = CmColorsCurrent
     val context = LocalContext.current
@@ -56,7 +58,12 @@ fun UpdateDialog(
                 TextButton({ context.openHttpUrl(url) }) { Text("打开 GitHub") }
             }
         },
-        dismissButton = { TextButton(onDismiss) { Text("关闭") } },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onRefresh, enabled = !loading) { Text("重新检查") }
+                TextButton(onDismiss) { Text("关闭") }
+            }
+        },
     )
 }
 
