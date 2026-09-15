@@ -282,9 +282,8 @@ def start_bridge_thread(agent: SyncAgent) -> Optional[threading.Thread]:
     try:
         check_hub_health(bridge_session, config.token_monitor_hub_url, config.request_timeout_seconds)
     except PermanentBridgeError as exc:
-        log.error("token-monitor 桥接未启动（健康检查失败，判定为永久错误）: %s", exc)
+        log.error("token-monitor 启动健康检查为确定性 4xx，桥接将按长退避重试: %s", exc)
         _record_bridge_error(agent, str(exc))
-        return None
     except (TransientBridgeError, requests.RequestException) as exc:
         log.warning("token-monitor hub 暂不可达，桥接稍后随周期重试: %s", exc)
 

@@ -17,11 +17,13 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import random
 import shutil
 import signal
 import sys
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -142,6 +144,7 @@ class AgentConfig:
     token_monitor_interval_seconds: float = 300.0
     allow_legacy_fallback: bool = False
     allow_state_conflict: bool = False
+    reset_cursor: bool = False
     extra: dict = field(default_factory=dict)
 
 
@@ -215,6 +218,7 @@ def load_config(env: Optional[dict[str, str]] = None) -> AgentConfig:
         # 独立开关：设备身份切换授权。此前从未被读取，错误提示教用户设它
         # 却接的是 ALLOW_LEGACY_FALLBACK——两者语义无关，不得交叉授权
         allow_state_conflict=_env_bool(env.get("ALLOW_STATE_CONFLICT")),
+        reset_cursor=_env_bool(env.get("RESET_CURSOR")),
     )
 
 
@@ -227,6 +231,7 @@ class AgentState:
     def __init__(self, path: Path):
         self.path = path
         self.data: dict[str, Any] = self._fresh()
+        self._lock = threading.Lock()
 
     @staticmethod
     def _fresh() -> dict[str, Any]:
@@ -243,6 +248,9 @@ class AgentState:
             "last_error": None,
             "last_error_type": None,
             "last_permanent_error": None,
+            "cursor_regressed_at": None,
+            "cursor_regressed_from": None,
+            "cursor_regressed_to": None,
         }
 
     def load(self, *, readonly: bool = False) -> None:
@@ -289,8 +297,11 @@ class AgentState:
     def _backup_corrupt(self, reason: str) -> None:
         if not self.path.is_file():
             return
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        stamp = datetime.now().strftime("%Y%m%d")
         backup = self.path.with_name(f"{self.path.name}.corrupt-{stamp}")
+        if backup.exists():
+            log.error("状态文件损坏（%s），当日备份已存在 %s", reason, backup)
+            return
         try:
             shutil.copy2(self.path, backup)
             log.error("状态文件损坏（%s），已复制备份到 %s；原文件保留以免重启换身份", reason, backup)
@@ -298,14 +309,17 @@ class AgentState:
             log.error("状态文件损坏（%s）且备份失败: %s", reason, self.path)
 
     def save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        payload = json.dumps(self.data, ensure_ascii=False, indent=2)
-        with tmp.open("w", encoding="utf-8") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(tmp, self.path)
+        with self._lock:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.with_name(
+                f"{self.path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
+            )
+            payload = json.dumps(self.data, ensure_ascii=False, indent=2)
+            with tmp.open("w", encoding="utf-8") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, self.path)
 
     # 便捷访问 ------------------------------------------------------
 
@@ -386,15 +400,34 @@ def classify_status(status_code: int) -> bool:
     return status_code in (408, 425, 429) or status_code >= 500
 
 
+MAX_RETRY_AFTER_SECONDS = 3600.0
+
+
 def retry_after_seconds(headers: Optional[dict]) -> Optional[float]:
-    """解析 Retry-After 秒数；HTTP-date 或不合法值返回 None。"""
+    """解析 Retry-After 秒数；HTTP-date / 非有限值返回 None，上限 1 小时。"""
     raw = (headers or {}).get("Retry-After")
     if raw is None:
         return None
     try:
-        return max(float(raw), 0.5)
+        value = float(raw)
     except (TypeError, ValueError):
         return None
+    if not math.isfinite(value):
+        return None
+    return min(max(value, 0.5), MAX_RETRY_AFTER_SECONDS)
+
+
+def _is_cert_verify_failure(exc: BaseException) -> bool:
+    current: BaseException | None = exc
+    seen = 0
+    while current is not None and seen < 8:
+        if current.__class__.__name__ == "SSLCertVerificationError":
+            return True
+        if "CERTIFICATE_VERIFY_FAILED" in str(current):
+            return True
+        current = current.__cause__ or current.__context__
+        seen += 1
+    return False
 
 
 def clamp_token_monitor_interval(seconds: float) -> float:
@@ -419,7 +452,13 @@ def post_with_retry(
         try:
             resp = session.post(url, json=json_body, headers=headers, timeout=timeout)
         except requests.exceptions.SSLError as exc:
-            raise PermanentConfigError(f"TLS 证书校验失败: {exc}") from exc
+            if _is_cert_verify_failure(exc):
+                raise PermanentConfigError(f"TLS 证书校验失败: {exc}") from exc
+            last_exc = exc
+            delay = (2**attempt) + random.uniform(0, 0.5)
+            log.warning("TLS 握手瞬时失败（第 %d 次）: %s，%.1fs 后重试", attempt + 1, exc, delay)
+            time.sleep(delay)
+            continue
         except requests.RequestException as exc:
             last_exc = exc
             delay = (2**attempt) + random.uniform(0, 0.5)
@@ -495,6 +534,8 @@ class SyncAgent:
         self.config = config
         self.state = state
         self.session = session or requests.Session()
+        self._reset_cursor_applied = False
+        self._skipped_users = 0
 
     # ------------------------------------------------------------ 本地读取
 
@@ -530,17 +571,22 @@ class SyncAgent:
             raise TransientError(f"本地接口 {path} 返回了字符串而不是对象")
         return body
 
-    @staticmethod
-    def _sanitize_user(raw: Any) -> Optional[dict]:
+    def _sanitize_user(self, raw: Any) -> Optional[dict]:
         if not isinstance(raw, dict):
+            self._skipped_users += 1
+            log.warning("跳过无法同步的用户（不是对象）")
             return None
         user_id = raw.get("id")
         if not isinstance(user_id, str) or not user_id or len(user_id) > 128:
+            self._skipped_users += 1
+            log.warning("跳过无法同步的用户 id=%r", raw.get("id"))
             return None
         email = raw.get("email") or ""
         name = raw.get("name") or ""
         role = raw.get("role") or "user"
         if not isinstance(email, str) or not isinstance(name, str) or not isinstance(role, str):
+            self._skipped_users += 1
+            log.warning("跳过无法同步的用户 %s（字段类型非法）", user_id)
             return None
         created = raw.get("created_at")
         updated = raw.get("updated_at")
@@ -561,11 +607,17 @@ class SyncAgent:
         payload = self.local_get("/api/v1/users", {})
         if not isinstance(payload, dict):
             raise TransientError("本地 /api/v1/users 响应不是对象")
+        self._skipped_users = 0
         users = [
             user
             for user in (self._sanitize_user(item) for item in payload.get("users") or [])
             if user
         ]
+        if self._skipped_users:
+            self.state.data["skipped_users"] = (
+                int(self.state.data.get("skipped_users") or 0) + self._skipped_users
+            )
+            log.warning("本批共跳过 %d 个无法同步的用户", self._skipped_users)
         digest = hashlib.sha256(
             json.dumps(users, ensure_ascii=False, sort_keys=True).encode("utf-8")
         ).hexdigest()
@@ -631,6 +683,8 @@ class SyncAgent:
                 if "单次最多" in str(exc) and records and self.config.batch_size > 1:
                     raise TransientError(f"云端单批上限小于当前批次，将缩批重试: {exc}") from exc
                 raise
+            if chunk:
+                self.state.data["last_users_push_at"] = utc_now_iso()
             device_id = payload["device"]["id"]
             last = validate_push_response(
                 body,
@@ -649,7 +703,7 @@ class SyncAgent:
             "model_name": r.get("model_name") or "",
             "input_tokens": int(r.get("input_tokens") or 0),
             "output_tokens": int(r.get("output_tokens") or 0),
-            "created_at": r.get("created_at") or CREATED_AT_FALLBACK,
+            "created_at": str(r.get("created_at") or "").strip() or CREATED_AT_FALLBACK,
         }
 
     @staticmethod
@@ -691,8 +745,8 @@ class SyncAgent:
                 return f"created_at 超前当前时间过多: {created}"
         return None
 
-    def _wire_valid(self, records: list[dict]) -> tuple[list[dict], int]:
-        """拆分可同步/必被云端拒绝的记录；跳过项计数并写入状态文件。"""
+    def _classify_records(self, records: list[dict]) -> tuple[list[dict], int]:
+        """拆分可同步/必被云端拒绝的记录；不写状态（等推送成功后再计数）。"""
         wire: list[dict] = []
         skipped = 0
         for r in records:
@@ -703,9 +757,13 @@ class SyncAgent:
             skipped += 1
             if skipped <= 5:
                 log.warning("跳过无法同步的记录 local_id=%s（%s）", r.get("id"), reason)
+        if skipped > 5:
+            log.warning("本批共跳过 %d 条无法同步的记录", skipped)
+        return wire, skipped
+
+    def _wire_valid(self, records: list[dict]) -> tuple[list[dict], int]:
+        wire, skipped = self._classify_records(records)
         if skipped:
-            if skipped > 5:
-                log.warning("本批共跳过 %d 条无法同步的记录", skipped)
             self.state.data["skipped_invalid"] = (
                 int(self.state.data.get("skipped_invalid") or 0) + skipped
             )
@@ -785,17 +843,36 @@ class SyncAgent:
         return self._run_time_round(source)
 
     def _run_cursor_round(self, source: str, snapshot_max_id: int) -> dict:
+        if self.config.reset_cursor and not self._reset_cursor_applied:
+            self.state.cursor = 0
+            self.state.data["cursor_regressed_at"] = None
+            self.state.data["cursor_regressed_from"] = None
+            self.state.data["cursor_regressed_to"] = None
+            self.state.save()
+            self._reset_cursor_applied = True
+            log.warning("RESET_CURSOR=true：已清游标并解除回退锁存，将全量重推")
+        if self.state.data.get("cursor_regressed_at") and not self.config.reset_cursor:
+            raise PermanentConfigError(
+                f"本地库回退已锁存：cursor 曾从 {self.state.data.get('cursor_regressed_from')} "
+                f"落到 {self.state.data.get('cursor_regressed_to')}。"
+                "设置 RESET_CURSOR=true 后才会归零全量重推。"
+            )
         if snapshot_max_id < int(self.state.cursor or 0):
+            self.state.data["cursor_regressed_at"] = utc_now_iso()
+            self.state.data["cursor_regressed_from"] = int(self.state.cursor or 0)
+            self.state.data["cursor_regressed_to"] = int(snapshot_max_id)
+            self.state.save()
             raise PermanentConfigError(
                 f"本地库回退：max_record_id={snapshot_max_id} < cursor={self.state.cursor}。"
-                "请检查备份恢复或显式清游标后全量重推。"
+                "已锁存；请检查备份恢复或显式设置 RESET_CURSOR=true 后全量重推。"
             )
         users = self.fetch_users()
         send_users = self._users_for_push(users)
         fetched = 0
         inserted = 0
         first_batch = True
-        limit = self.config.batch_size
+        limit = int(self.state.data.get("effective_batch_size") or self.config.batch_size)
+        limit = min(max(limit, 1), self.config.batch_size)
         while True:
             after_id = self.state.cursor
             payload = self.local_get(
@@ -819,22 +896,28 @@ class SyncAgent:
                         "心跳完成: users=%d received=%d", result.get("users_upserted", 0), 0
                     )
                 break
-            fetched += len(records)
-            wire_records, _skipped = self._wire_valid(records)
+            wire_records, skipped = self._classify_records(records)
             try:
                 result = self.push_batch(send_users if first_batch else [], wire_records, source)
             except TransientError as exc:
                 if "缩批" in str(exc) and limit > 1:
                     limit = max(1, limit // 2)
+                    self.state.data["effective_batch_size"] = limit
                     log.warning("按云端上限将 BATCH_SIZE 降为 %d 后重试本批", limit)
                     continue
                 raise
+            fetched += len(records)
+            if skipped:
+                self.state.data["skipped_invalid"] = (
+                    int(self.state.data.get("skipped_invalid") or 0) + skipped
+                )
             inserted += int(result.get("inserted") or 0)
             try:
                 self.state.cursor = int(records[-1]["id"])
             except (KeyError, TypeError, ValueError) as exc:
                 raise TransientError(f"记录 id 不是可推进的数字: {records[-1].get('id')!r}") from exc
             self.state.data["pushed_records"] += int(result.get("inserted") or 0)
+            self.state.data["effective_batch_size"] = limit
             self._mark_batch_ok(users_digest=self.state.data.get("users_digest"))
             first_batch = False
             if len(records) < limit:
@@ -843,6 +926,16 @@ class SyncAgent:
 
     def _users_for_push(self, users: list[dict]) -> list[dict]:
         previous_digest = self.state.data.get("last_users_digest")
+        last_push = self.state.data.get("last_users_push_at")
+        if last_push:
+            try:
+                dt = datetime.fromisoformat(str(last_push).replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if (datetime.now(timezone.utc) - dt).total_seconds() >= 6 * 3600:
+                    return users
+            except ValueError:
+                return users
         return users if self.state.data.get("users_digest") != previous_digest else []
 
     def _mark_batch_ok(self, *, users_digest: Optional[str] = None) -> None:
@@ -895,19 +988,26 @@ class SyncAgent:
         inserted = 0
         offset = 0
         first_batch = True
-        limit = self.config.batch_size
+        limit = int(self.state.data.get("effective_batch_size") or self.config.batch_size)
+        limit = min(max(limit, 1), self.config.batch_size)
         while offset < fetched:
             chunk = records[offset : offset + limit]
-            wire_records, _skipped = self._wire_valid(chunk)
+            wire_records, skipped = self._classify_records(chunk)
             try:
                 result = self.push_batch(send_users if first_batch else [], wire_records, source)
             except TransientError as exc:
                 if "缩批" in str(exc) and limit > 1:
                     limit = max(1, limit // 2)
+                    self.state.data["effective_batch_size"] = limit
                     log.warning("按云端上限将 BATCH_SIZE 降为 %d 后重试本批", limit)
                     continue
                 raise
+            if skipped:
+                self.state.data["skipped_invalid"] = (
+                    int(self.state.data.get("skipped_invalid") or 0) + skipped
+                )
             inserted += int(result.get("inserted") or 0)
+            self.state.data["effective_batch_size"] = limit
             self.state.watermark = chunk[-1].get("created_at") or snapshot_end
             self.state.data["pushed_records"] += int(result.get("inserted") or 0)
             self._mark_batch_ok(users_digest=self.state.data.get("users_digest"))
