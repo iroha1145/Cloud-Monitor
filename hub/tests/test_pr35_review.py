@@ -42,6 +42,9 @@ def settings(tmp_path, **overrides):
 
 def test_probe_write_does_not_rollback_a_concurrent_writer(tmp_path):
     db = Database(tmp_path / "probe.sqlite3")
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS probe_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, n INTEGER)"
+    )
     try:
         errors: list[BaseException] = []
 
@@ -50,8 +53,8 @@ def test_probe_write_does_not_rollback_a_concurrent_writer(tmp_path):
                 for index in range(200):
                     with db.transaction():
                         db.execute(
-                            "INSERT INTO tm_meta (key, value) VALUES (?, ?)",
-                            (f"race-{index}", "1"),
+                            "INSERT INTO probe_rows (n) VALUES (?)",
+                            (index,),
                         )
             except BaseException as exc:  # noqa: BLE001
                 errors.append(exc)
@@ -69,9 +72,7 @@ def test_probe_write_does_not_rollback_a_concurrent_writer(tmp_path):
         for thread in threads:
             thread.join()
         assert errors == []
-        count = db.fetchone(
-            "SELECT COUNT(*) AS n FROM tm_meta WHERE key LIKE 'race-%'"
-        )["n"]
+        count = db.fetchone("SELECT COUNT(*) AS n FROM probe_rows")["n"]
         assert count == 200
     finally:
         db.close()
@@ -208,8 +209,9 @@ def test_replay_finishes_current_item_then_stops(tmp_path):
     try:
         record_pending(db, request_id="one", device_id="one", payload={"deviceId": "one"})
         record_pending(db, request_id="two", device_id="two", payload={"deviceId": "two"})
-        result = replay_pending(db, Core(), should_stop=stop.is_set)
-        assert Core.calls == 1
+        core = Core()
+        result = replay_pending(db, core, should_stop=stop.is_set)
+        assert core.calls == 1
         assert result["stopped_by"] == "shutdown"
         states = {
             row["request_id"]: row["state"]
