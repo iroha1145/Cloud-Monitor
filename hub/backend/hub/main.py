@@ -238,10 +238,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             components["sqlite_read"] = {"ok": False, "error": "sqlite_unreadable"}
 
         try:
-            app.state.db.execute(
-                "INSERT INTO tm_meta(key, value) VALUES('health_probe', '1')"
-                " ON CONFLICT(key) DO UPDATE SET value=excluded.value"
-            )
+            # G-06：匿名就绪探测只做可写锁探活，不往 tm_meta 落持久行。
+            app.state.db.execute("BEGIN IMMEDIATE")
+            app.state.db.execute("ROLLBACK")
             components["sqlite_write"] = {"ok": True}
         except Exception:  # noqa: BLE001
             components["sqlite_write"] = {"ok": False, "error": "sqlite_unwritable"}

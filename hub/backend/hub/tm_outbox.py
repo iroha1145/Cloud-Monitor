@@ -342,29 +342,8 @@ def replay_pending(
             stats["superseded"] += 1
             continue
         try:
+            # G-04：重放只读当前设备记录写快照，不再把瘦身载荷 POST 回 tm-core。
             record = _current_device_record(core, row["device_id"])
-            if record is None:
-                resp = core.request("POST", "/api/ingest", json_body=payload)
-                if resp.status_code != 200:
-                    if 400 <= resp.status_code < 500 and not is_retryable_http(resp.status_code):
-                        mark_rejected(
-                            db, row["request_id"], f"upstream HTTP {resp.status_code}"
-                        )
-                        stats["rejected"] += 1
-                        continue
-                    mark_failed(db, row["request_id"], f"upstream HTTP {resp.status_code}")
-                    stats["failed"] += 1
-                    stats["stopped_by"] = f"upstream_status_{resp.status_code}"
-                    break
-                body = resp.json()
-                record = next(
-                    (
-                        r
-                        for r in (body.get("stats") or {}).get("devices") or []
-                        if str(r.get("deviceId")) == row["device_id"]
-                    ),
-                    None,
-                )
             if record is None:
                 mark_failed(
                     db, row["request_id"],

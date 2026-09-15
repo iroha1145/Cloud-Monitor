@@ -23,7 +23,7 @@ from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from .auth import require_access_token
 from .config import Settings
@@ -423,8 +423,16 @@ def build_update_router(settings: Settings, service: UpdateService) -> APIRouter
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @router.post("/update")
-    def post_update(request: Request, body: ApplyBody) -> dict[str, Any]:
+    async def post_update(request: Request) -> dict[str, Any]:
         require_access_token(request, settings)
+        try:
+            raw = await request.json()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="请求体不是合法 JSON") from exc
+        try:
+            body = ApplyBody.model_validate(raw)
+        except ValidationError as exc:
+            raise HTTPException(status_code=400, detail="请求体校验失败") from exc
         try:
             return service.apply(body.ref)
         except ValueError as exc:

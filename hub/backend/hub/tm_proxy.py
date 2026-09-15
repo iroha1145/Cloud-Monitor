@@ -261,10 +261,8 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             _wake_replay(request)
             return _unavailable_response(exc)
         if resp.status_code != 200:
-            if 400 <= resp.status_code < 500 and not is_retryable_http(resp.status_code):
-                mark_rejected(db, request_id, f"upstream HTTP {resp.status_code}")
-            else:
-                mark_failed(db, request_id, f"upstream HTTP {resp.status_code}")
+            # G-14：网关已校验过的载荷再遇上游 4xx，更像 persist/内部错误，留给重试。
+            mark_failed(db, request_id, f"upstream HTTP {resp.status_code}")
             return _proxy_response(resp)
 
         try:

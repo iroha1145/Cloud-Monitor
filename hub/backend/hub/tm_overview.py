@@ -934,13 +934,14 @@ class OverviewCache:
     JSON dict——命中时零 HTTP + 零 SQLite + 零 CPU 组装。
     """
 
-    __slots__ = ("_ttl", "_data", "_expires_at", "_generation", "_lock")
+    __slots__ = ("_ttl", "_data", "_expires_at", "_generation", "_lock", "_refreshing")
 
     def __init__(self, ttl_seconds: float = 30.0):
         self._ttl = ttl_seconds
         self._data: Optional[dict] = None
         self._expires_at: float = 0.0
         self._generation = 0
+        self._refreshing = False
         from threading import Lock
 
         self._lock = Lock()
@@ -974,6 +975,17 @@ class OverviewCache:
         with self._lock:
             self._generation += 1
             self._expires_at = 0.0
+
+    def begin_refresh(self) -> bool:
+        with self._lock:
+            if self._refreshing:
+                return False
+            self._refreshing = True
+            return True
+
+    def end_refresh(self) -> None:
+        with self._lock:
+            self._refreshing = False
 
 
 def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRouter, OverviewCache]:
@@ -1054,6 +1066,11 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         cached = overview_cache.get()
         if cached is not None:
             return cached
+        owned = overview_cache.begin_refresh()
+        if not owned:
+            stale = overview_cache.get(allow_stale=True)
+            if stale is not None:
+                return stale
         core = _core(request)
         import asyncio
         from .tm_proxy import UpstreamUnavailable
@@ -1088,9 +1105,13 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
                 stats, history, history_error, raw_devices, devices_error
             )
 
-        overview = await asyncio.to_thread(_build)
-        overview_cache.put(overview, generation=generation)
-        return overview
+        try:
+            overview = await asyncio.to_thread(_build)
+            overview_cache.put(overview, generation=generation)
+            return overview
+        finally:
+            if owned:
+                overview_cache.end_refresh()
 
     @router.get("/api/v1/tm/subscriptions")
     def tm_subscriptions_read(request: Request) -> dict:
