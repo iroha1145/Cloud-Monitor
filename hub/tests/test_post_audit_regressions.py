@@ -78,7 +78,7 @@ def test_thirty_minute_interval_is_not_treated_as_five_minute_loss(tmp_path):
     db.close()
 
 
-def test_terminal_4xx_is_rejected_not_replayed_forever(tmp_path):
+def test_replay_does_not_post_when_device_record_is_missing(tmp_path):
     db = db_for(tmp_path)
     record_pending(
         db,
@@ -88,8 +88,9 @@ def test_terminal_4xx_is_rejected_not_replayed_forever(tmp_path):
     )
     result = replay_pending(db, Core(Response(400)))
     row = db.fetchone("SELECT state, attempts FROM tm_ingest_outbox WHERE request_id='r1'")
-    assert result["rejected"] == 1
-    assert row["state"] == "rejected"
+    assert result["rejected"] == 0
+    assert result["failed"] == 1
+    assert row["state"] == "pending"
     assert row["attempts"] == 1
     db.close()
 

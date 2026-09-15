@@ -160,6 +160,12 @@ def test_same_local_id_different_device_both_kept(client: TestClient):
 
 def test_push_requires_auth(client: TestClient):
     assert client.post("/api/v1/sync/push", json=push_payload()).status_code == 401
+    assert client.post("/api/v1/sync/push", json=[1, 2, 3]).status_code == 401
+    assert client.post(
+        "/api/v1/sync/push",
+        content=b"not-json",
+        headers={"content-type": "application/json"},
+    ).status_code == 401
 
 
 def test_push_rejects_bad_payload(client: TestClient):

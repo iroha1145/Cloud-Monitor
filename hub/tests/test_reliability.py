@@ -261,7 +261,7 @@ def test_ready_reports_sqlite_unwritable(node_hub, tmp_path, monkeypatch):
         real_execute = db.execute
 
         def failing_execute(sql, params=()):
-            if "health_probe" in sql:
+            if "BEGIN IMMEDIATE" in sql:
                 raise sqlite3.OperationalError("attempt to write a readonly database")
             return real_execute(sql, params)
 
