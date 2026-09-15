@@ -22,6 +22,7 @@ import { ChevronLeft, ChevronRight, MoveHorizontal } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { summarizeTrend, type DashboardData, type TrendPoint } from "./data";
 import { usd } from "./money";
+import { indexForSelectedDay } from "./trend-math";
 import "./insight-trend.css";
 
 const Liveline = lazy(() =>
@@ -236,13 +237,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
     tokenTotal, hasCost, allCosts, costTotal, cacheRate, partialCache,
     cacheDays, cacheSkippedDays,
   } = summarizeTrend(series);
-  const pointIndex = (() => {
-    if (selectedDay) {
-      const found = series.findIndex((item) => item.day === selectedDay);
-      if (found >= 0) return found;
-    }
-    return Math.max(0, series.length - 1);
-  })();
+  const pointIndex = indexForSelectedDay(series, selectedDay);
   const point = series[pointIndex];
   const firstDay = series[0]?.day;
   const lastDay = series.at(-1)?.day;
@@ -306,7 +301,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
       return;
     }
     setPlot(stageRef.current?.getBoundingClientRect());
-  }, [detailMode, selected, days, metric]);
+  }, [detailMode, selectedDay, days, metric]);
 
   const setFromPointer = (
     event: PointerEvent<HTMLDivElement>,
@@ -373,7 +368,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
     point && firstTime != null
       ? 1.5 + ((seriesTimes[pointIndex] - firstTime) / span) * 97
       : 98.5;
-  const tooltipVisible = detailMode !== null && selected !== null && point;
+  const tooltipVisible = detailMode !== null && selectedDay !== null && point;
   const detailAnchor =
     pointerAnchor ||
     (plot
