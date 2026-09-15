@@ -115,7 +115,8 @@ def test_unavailable_replay_stops_without_burning_attempts(tmp_path):
 
     try:
         result = replay_pending(db, DeadCore())
-        assert result["stopped_by"] == "upstream_unavailable"
+        assert "stopped_by" not in result
+        assert result["failed"] == 1
         row = db.fetchone(
             "SELECT state, attempts FROM tm_ingest_outbox WHERE request_id='keep'"
         )
@@ -198,32 +199,46 @@ def test_replay_finishes_current_item_then_stops(tmp_path):
     db = Database(tmp_path / "stop.sqlite3")
     ensure_schema(db)
     ensure_snapshots(db)
-    stop = threading.Event()
+    checks = {"n": 0}
 
-    class Core:
-        calls = 0
+    def should_stop() -> bool:
+        checks["n"] += 1
+        return checks["n"] > 1
 
-        def request(self, method, path, **_kwargs):
-            self.calls += 1
-            if method == "GET":
-                stop.set()
-                return httpx.Response(
-                    200,
-                    json={"devices": [{"deviceId": "one", "today": {"totalTokens": 1}}]},
-                )
-            raise AssertionError(path)
+    class UnusedCore:
+        def request(self, *_args, **_kwargs):
+            raise AssertionError("replay must not read the current device")
 
     try:
-        record_pending(db, request_id="one", device_id="one", payload={"deviceId": "one"})
-        record_pending(db, request_id="two", device_id="two", payload={"deviceId": "two"})
-        core = Core()
-        result = replay_pending(db, core, should_stop=stop.is_set)
-        assert core.calls == 1
+        record_pending(
+            db,
+            request_id="one",
+            device_id="one",
+            payload={
+                "deviceId": "one",
+                "updatedAt": "2026-09-15T03:00:00.000Z",
+                "periodWindows": {"timeZone": "UTC", "today": {"key": "2026-09-15"}},
+                "today": {"totalTokens": 1},
+            },
+        )
+        record_pending(
+            db,
+            request_id="two",
+            device_id="two",
+            payload={
+                "deviceId": "two",
+                "updatedAt": "2026-09-15T03:00:00.000Z",
+                "periodWindows": {"timeZone": "UTC", "today": {"key": "2026-09-15"}},
+                "today": {"totalTokens": 2},
+            },
+        )
+        result = replay_pending(db, UnusedCore(), should_stop=should_stop)
         assert result["stopped_by"] == "shutdown"
         states = {
             row["request_id"]: row["state"]
             for row in db.fetchall("SELECT request_id, state FROM tm_ingest_outbox")
         }
+        assert states["one"] == "done"
         assert states["two"] == "pending"
     finally:
         db.close()

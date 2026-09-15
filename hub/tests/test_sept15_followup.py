@@ -1,6 +1,7 @@
 """2026-09-15 审计五项：升级状态权限、outbox 替代、RESET_CURSOR。"""
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -13,12 +14,15 @@ from hub.tm_outbox import (
     can_supersede,
     ensure_schema,
     mark_done,
+    record_from_payload,
     record_pending,
     replay_pending,
     replayable_count,
+    save_normalized,
     supersede_older_pending,
 )
 from hub.tm_snapshots import ensure_schema as ensure_snapshots
+from hub.tm_snapshots import write_snapshot
 from hub.tm_update import UpdateService
 from hub.tm_validate import is_limits_only_update
 
@@ -35,16 +39,36 @@ def settings(tmp_path, **overrides):
     return Settings(**(values | overrides))
 
 
-def _usage(device: str, day: str, total: int) -> dict:
+def _usage(
+    device: str,
+    day: str,
+    total: int,
+    *,
+    cost: float = 0,
+    model: str | None = None,
+    updated_at: str | None = None,
+) -> dict:
+    today = {"totalTokens": total, "costUsd": cost}
+    if model:
+        today["models"] = {model: total}
     return {
         "deviceId": device,
-        "updatedAt": f"{day}T03:00:00.000Z",
+        "updatedAt": updated_at or f"{day}T03:00:00.000Z",
         "periodWindows": {
             "timeZone": "UTC",
             "today": {"key": day},
         },
-        "today": {"totalTokens": total},
+        "today": today,
     }
+
+
+def _normalized(payload: dict, received_at: str) -> dict:
+    return record_from_payload(payload, received_at)
+
+
+class UnusedCore:
+    def request(self, *_args, **_kwargs):
+        raise AssertionError("replay must not call tm-core or read the current device")
 
 
 def _limits(device: str, day: str) -> dict:
@@ -201,33 +225,114 @@ def test_replay_does_not_skip_older_day_when_newer_day_has_snapshot(tmp_path):
     db = Database(tmp_path / "replay-day.sqlite3")
     ensure_schema(db)
     ensure_snapshots(db)
+    yesterday = _usage("dev", "2026-09-14", 900, cost=9, model="model-900")
+    today = _usage("dev", "2026-09-15", 100, cost=1, model="model-100")
     try:
-        record_pending(
-            db, request_id="day1", device_id="dev",
-            payload=_usage("dev", "2026-09-14", 10),
-        )
-        record_pending(
-            db, request_id="day2", device_id="dev",
-            payload=_usage("dev", "2026-09-15", 20),
-        )
+        record_pending(db, request_id="day1", device_id="dev", payload=yesterday)
+        record_pending(db, request_id="day2", device_id="dev", payload=today)
+        save_normalized(db, "day1", _normalized(yesterday, "2026-09-14T08:00:00.000Z"))
+        save_normalized(db, "day2", _normalized(today, "2026-09-15T08:00:00.000Z"))
         mark_done(db, "day2", snapshot_written=True)
-        db.execute(
-            "INSERT INTO tm_snapshot_buckets (device_id, local_day, bucket_start,"
-            " today_total, server_received_at) VALUES (?,?,?,?,?)",
-            ("dev", "2026-09-15", "2026-09-15T03:00:00.000Z", 20, "2026-09-15T03:00:00.000Z"),
+        written = write_snapshot(
+            db,
+            device_id="dev",
+            record=_normalized(today, "2026-09-15T08:00:00.000Z"),
+            incoming=today,
+            limits_only=False,
+            force_received_at="2026-09-15T08:00:00.000Z",
+            ingest_sequence=2,
         )
+        assert written is not None
 
-        class DeadCore:
-            def request(self, *_args, **_kwargs):
-                from hub.tm_proxy import UpstreamUnavailable
-
-                raise UpstreamUnavailable("tm-core 不可达")
-
-        result = replay_pending(db, DeadCore())
-        assert result["stopped_by"] == "upstream_unavailable"
-        row = db.fetchone("SELECT state FROM tm_ingest_outbox WHERE request_id='day1'")
-        assert row["state"] == "pending"
+        result = replay_pending(db, UnusedCore())
+        assert "stopped_by" not in result
         assert result["superseded"] == 0
+        assert result["completed"] == 1
+        day1 = db.fetchone(
+            "SELECT state, snapshot_written FROM tm_ingest_outbox WHERE request_id='day1'"
+        )
+        assert day1["state"] == "done"
+        assert int(day1["snapshot_written"] or 0) == 1
+
+        rows = {
+            row["local_day"]: row
+            for row in db.fetchall(
+                "SELECT local_day, today_total, today_cost, models_json"
+                " FROM tm_snapshot_buckets"
+            )
+        }
+        assert int(rows["2026-09-14"]["today_total"]) == 900
+        assert float(rows["2026-09-14"]["today_cost"]) == 9
+        assert json.loads(rows["2026-09-14"]["models_json"]) == {"model-900": 900}
+        assert int(rows["2026-09-15"]["today_total"]) == 100
+        assert float(rows["2026-09-15"]["today_cost"]) == 1
+        assert json.loads(rows["2026-09-15"]["models_json"]) == {"model-100": 100}
+    finally:
+        db.close()
+
+
+def test_replay_newer_same_second_usage_overwrites_older_snapshot(tmp_path):
+    """同一秒内：较早快照带毫秒，较新 pending 被截到整秒，仍须写入 200。"""
+    db = Database(tmp_path / "same-second.sqlite3")
+    ensure_schema(db)
+    ensure_snapshots(db)
+    stamp = "2026-09-15T08:33:44.000Z"
+    older_snap = "2026-09-15T08:33:44.024Z"
+    first = _usage(
+        "dev", "2026-09-15", 100, cost=1, model="model-100", updated_at=stamp
+    )
+    second = _usage(
+        "dev", "2026-09-15", 200, cost=2, model="model-200", updated_at=stamp
+    )
+    try:
+        record_pending(db, request_id="a", device_id="dev", payload=first)
+        record_pending(db, request_id="b", device_id="dev", payload=second)
+        db.execute(
+            "UPDATE tm_ingest_outbox SET ingest_sequence=3, received_at=? WHERE request_id='a'",
+            (older_snap,),
+        )
+        db.execute(
+            "UPDATE tm_ingest_outbox SET ingest_sequence=4, received_at=? WHERE request_id='b'",
+            (stamp,),
+        )
+        save_normalized(db, "a", _normalized(first, older_snap))
+        save_normalized(db, "b", _normalized(second, stamp))
+        mark_done(db, "a", snapshot_written=True)
+        written = write_snapshot(
+            db,
+            device_id="dev",
+            record=_normalized(first, older_snap),
+            incoming=first,
+            limits_only=False,
+            force_received_at=older_snap,
+            ingest_sequence=3,
+        )
+        assert written is not None
+        before = db.fetchone(
+            "SELECT today_total, server_received_at, ingest_sequence"
+            " FROM tm_snapshot_buckets WHERE device_id='dev'"
+        )
+        assert int(before["today_total"]) == 100
+        assert before["server_received_at"] == older_snap
+        assert int(before["ingest_sequence"]) == 3
+
+        result = replay_pending(db, UnusedCore())
+        assert result["checked"] == 1
+        assert result["completed"] == 1
+        assert result["superseded"] == 0
+        row = db.fetchone(
+            "SELECT state, snapshot_written FROM tm_ingest_outbox WHERE request_id='b'"
+        )
+        assert row["state"] == "done"
+        assert int(row["snapshot_written"] or 0) == 1
+        after = db.fetchone(
+            "SELECT today_total, today_cost, models_json, ingest_sequence"
+            " FROM tm_snapshot_buckets WHERE device_id='dev'"
+        )
+        assert int(after["today_total"]) == 200
+        assert float(after["today_cost"]) == 2
+        assert json.loads(after["models_json"]) == {"model-200": 200}
+        assert int(after["ingest_sequence"]) == 4
     finally:
         db.close()
 
@@ -255,7 +360,13 @@ def test_ensure_schema_adds_migrated_columns_before_new_index(tmp_path):
         )
         ensure_schema(db)
         names = {row["name"] for row in db.fetchall("PRAGMA table_info(tm_ingest_outbox)")}
-        assert {"local_day", "ingest_sequence", "snapshot_written", "writes_usage"} <= names
+        assert {
+            "local_day",
+            "ingest_sequence",
+            "snapshot_written",
+            "writes_usage",
+            "normalized_json",
+        } <= names
         indexes = {row["name"] for row in db.fetchall("PRAGMA index_list(tm_ingest_outbox)")}
         assert "idx_outbox_device_day_seq" in indexes
         row = db.fetchone(

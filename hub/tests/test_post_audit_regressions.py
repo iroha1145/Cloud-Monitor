@@ -79,62 +79,64 @@ def test_thirty_minute_interval_is_not_treated_as_five_minute_loss(tmp_path):
     db.close()
 
 
-def test_replay_does_not_post_when_device_record_is_missing(tmp_path):
+class UnusedCore:
+    def request(self, *_args, **_kwargs):
+        raise AssertionError("replay must not call tm-core or read the current device")
+
+
+def test_replay_writes_snapshot_from_payload_without_calling_core(tmp_path):
     db = db_for(tmp_path)
     record_pending(
         db,
         request_id="r1",
         device_id="dev",
-        payload={"deviceId": "dev", "today": {"totalTokens": 1}},
+        payload={
+            "deviceId": "dev",
+            "updatedAt": "2026-09-15T03:00:00.000Z",
+            "periodWindows": {"timeZone": "UTC", "today": {"key": "2026-09-15"}},
+            "today": {"totalTokens": 1, "costUsd": 0.5, "models": {"m": 1}},
+        },
     )
-    result = replay_pending(db, Core(Response(400)))
-    row = db.fetchone("SELECT state, attempts FROM tm_ingest_outbox WHERE request_id='r1'")
+    result = replay_pending(db, UnusedCore())
+    row = db.fetchone(
+        "SELECT state, attempts, snapshot_written FROM tm_ingest_outbox WHERE request_id='r1'"
+    )
+    snap = db.fetchone("SELECT today_total, today_cost, models_json FROM tm_snapshot_buckets")
     assert result["rejected"] == 0
-    assert result["failed"] == 1
-    assert row["state"] == "pending"
-    assert row["attempts"] == 1
+    assert result["failed"] == 0
+    assert result["completed"] == 1
+    assert row["state"] == "done"
+    assert int(row["attempts"] or 0) == 0
+    assert int(row["snapshot_written"] or 0) == 1
+    assert int(snap["today_total"]) == 1
+    assert float(snap["today_cost"]) == 0.5
+    assert json.loads(snap["models_json"]) == {"m": 1}
     db.close()
 
 
-def test_rate_limit_4xx_stays_pending_for_retry(tmp_path):
+def test_rate_limit_4xx_stays_pending_for_retry():
     """429/408 是暂时失败，不得 mark_rejected 把快照点丢掉。"""
     from hub.tm_outbox import is_retryable_http
 
     assert is_retryable_http(429) is True
     assert is_retryable_http(408) is True
     assert is_retryable_http(400) is False
-    db = db_for(tmp_path, "retry429.sqlite3")
-    record_pending(
-        db,
-        request_id="r-429",
-        device_id="dev",
-        payload={"deviceId": "dev", "today": {"totalTokens": 1}},
-    )
-    result = replay_pending(db, Core(Response(429)))
-    row = db.fetchone(
-        "SELECT state, attempts FROM tm_ingest_outbox WHERE request_id='r-429'"
-    )
-    assert result["rejected"] == 0
-    assert result["failed"] == 1
-    assert row["state"] == "pending"
-    assert row["attempts"] == 1
-    db.close()
 
 
-def test_missing_normalized_device_never_writes_zero_snapshot(tmp_path):
+def test_missing_usage_never_writes_zero_snapshot(tmp_path):
     db = db_for(tmp_path)
     record_pending(
         db,
         request_id="r2",
         device_id="dev",
-        payload={"deviceId": "dev", "today": {"totalTokens": 1}},
+        payload={"deviceId": "dev"},
     )
-    result = replay_pending(db, Core(Response(200, {"stats": {"devices": []}})))
+    result = replay_pending(db, UnusedCore())
     row = db.fetchone("SELECT state, attempts FROM tm_ingest_outbox WHERE request_id='r2'")
     count = db.fetchone("SELECT COUNT(*) AS n FROM tm_snapshot_buckets")["n"]
     assert result["failed"] == 1
     assert row["state"] == "pending"
-    assert row["attempts"] == 1
+    assert int(row["attempts"] or 0) == 0
     assert count == 0
     db.close()
 

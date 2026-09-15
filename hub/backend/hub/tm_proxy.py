@@ -40,6 +40,8 @@ from .tm_outbox import (
     record_pending,
     replay_pending,
     replayable_count,
+    outbox_ingest_sequence,
+    save_normalized,
     set_snapshot_status,
     supersede_older_pending,
     is_retryable_http,
@@ -300,6 +302,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
                 raise ValueError(
                     f"tm-core ingest response missing normalized device {device_id!r}"
                 )
+            save_normalized(db, request_id, record)
             with db.transaction():
                 written = write_snapshot(
                     db,
@@ -307,6 +310,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
                     record=record or {},
                     incoming=payload,
                     limits_only=is_limits_only_update(payload),
+                    ingest_sequence=outbox_ingest_sequence(db, request_id),
                 )
                 mark_done(db, request_id, snapshot_written=written is not None)
                 if written is not None:

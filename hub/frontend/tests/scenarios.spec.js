@@ -1021,6 +1021,9 @@ test.describe("审计回归批 2026-08-25（demo）", () => {
         && state.aux.subs.status === "error";
     });
     expect(await page.evaluate(() => window.__subsKept)).toBe(true);
+    await expect(page.locator("#sub-grid .sub-card").first()).toBeVisible();
+    await expect(page.locator("#sub-grid .aux-note.err")).toContainText("刷新失败");
+    await expect(page.locator("#subs-sub")).toContainText("刷新失败，仍显示上次清单");
   });
 
   test("历史页刷新重取首页，失败时保留已加载行", async ({ page }) => {
@@ -1100,6 +1103,36 @@ test.describe("审计回归批 2026-08-25（demo）", () => {
     const continued = await page.evaluate(() => window.__histContinued);
     expect(continued.days).toContain("2026-09-12");
     expect(continued.done).toBe(true);
+  });
+
+  test("历史刷新成功返回空首页时清空旧行并显示空状态", async ({ page }) => {
+    await page.goto("/demo#history");
+    await expect(page.locator("#shell")).toBeVisible();
+    await expect.poll(() => page.evaluate(() => state.aux.history.status)).toBe("ready");
+    expect(await page.evaluate(() => state.aux.history.rows.length)).toBeGreaterThan(0);
+    await page.evaluate(async () => {
+      dataApi.historyDaily = async () => ({
+        items: [],
+        next_cursor: null,
+        has_more: false,
+        total_days: 0,
+      });
+      await refreshHistoryFirstPage();
+      window.__histCleared = {
+        days: state.aux.history.rows.map((row) => row.day),
+        status: state.aux.history.status,
+        cursor: state.aux.history.cursor,
+        done: state.aux.history.done,
+      };
+    });
+    const cleared = await page.evaluate(() => window.__histCleared);
+    expect(cleared.days).toEqual([]);
+    expect(cleared.status).toBe("empty");
+    expect(cleared.cursor).toBeNull();
+    expect(cleared.done).toBe(true);
+    await expect(page.locator("#hist-body tr")).toHaveCount(0);
+    await expect(page.locator("#hist-empty")).toBeVisible();
+    await expect(page.locator("#hist-empty")).toContainText("暂无历史归档数据");
   });
 
   test("夜间模式下矩阵色阶图例与格子同源：CSS 类驱动，无内联色", async ({ page }) => {

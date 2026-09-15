@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS tm_snapshot_buckets (
     device_time_zone TEXT NOT NULL DEFAULT '',
     producer_updated_at TEXT NOT NULL DEFAULT '',
     server_received_at TEXT NOT NULL DEFAULT '',
+    ingest_sequence INTEGER NOT NULL DEFAULT 0,
     UNIQUE(device_id, local_day, bucket_start)
 );
 CREATE INDEX IF NOT EXISTS idx_tm_buckets_day ON tm_snapshot_buckets(local_day);
@@ -78,6 +79,10 @@ def ensure_schema(db: Database) -> None:
         if "today_components_recorded" not in columns:
             # NULL preserves old rows' missing provenance; do not backfill their zeros.
             db._conn.execute("ALTER TABLE tm_snapshot_buckets ADD COLUMN today_components_recorded INTEGER")
+        if "ingest_sequence" not in columns:
+            db._conn.execute(
+                "ALTER TABLE tm_snapshot_buckets ADD COLUMN ingest_sequence INTEGER NOT NULL DEFAULT 0"
+            )
     _migrate_timestamp_format(db)
 
 
@@ -288,6 +293,7 @@ def write_snapshot(
     limits_only: bool,
     incoming: Optional[dict] = None,
     force_received_at: Optional[str] = None,
+    ingest_sequence: int = 0,
 ) -> Optional[dict]:
     """record = 官方合并后的设备记录；incoming = 本次上报的原始载荷。
 
@@ -358,8 +364,9 @@ def write_snapshot(
                 today_unclassified, today_components_recorded, today_cost,
                 month_total, month_cost, all_time_total, all_time_cost,
                 clients_json, models_json,
-                device_time_zone, producer_updated_at, server_received_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                device_time_zone, producer_updated_at, server_received_at,
+                ingest_sequence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(device_id, local_day, bucket_start) DO UPDATE SET
                 today_total = excluded.today_total,
                 today_output = excluded.today_output,
@@ -376,8 +383,13 @@ def write_snapshot(
                 models_json = excluded.models_json,
                 device_time_zone = excluded.device_time_zone,
                 producer_updated_at = excluded.producer_updated_at,
-                server_received_at = excluded.server_received_at
-            WHERE excluded.server_received_at >= tm_snapshot_buckets.server_received_at
+                server_received_at = excluded.server_received_at,
+                ingest_sequence = excluded.ingest_sequence
+            WHERE excluded.ingest_sequence > COALESCE(tm_snapshot_buckets.ingest_sequence, 0)
+               OR (
+                    excluded.ingest_sequence = COALESCE(tm_snapshot_buckets.ingest_sequence, 0)
+                    AND excluded.server_received_at >= tm_snapshot_buckets.server_received_at
+               )
             """,
             (
                 device_id, local_day, bucket,
@@ -395,6 +407,7 @@ def write_snapshot(
                 tz_name,
                 norm_ts(record.get("updatedAt") or ""),
                 received_at,
+                int(ingest_sequence or 0),
             ),
         )
     schedule_prune(db)

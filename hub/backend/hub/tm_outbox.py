@@ -9,10 +9,11 @@
    200（数据已持久化于官方 devices.json），由重放保证最终一致；健康接口
    暴露 snapshot_degraded。
 4. 重放（启动时 + 后台周期）：
-   - 已被更新数据超越的 pending（该设备存在 server_received_at 更新的桶）
-     直接标 done，不回灌旧载荷（避免官方记录回退）；
-   - 否则重放载荷到 tm-core（官方 merge 幂等）并写快照；
-   - 上游不可达时中止本轮重放，下轮再试。
+   - 同设备同日本地日已有更高 ingest_sequence 的用量快照时，直接标
+     done，不回灌旧载荷（禁止用 server_received_at 时间戳后备推翻已知顺序）；
+   - 否则用本请求保存的规范化记录（或从原载荷恢复的同一周期数据）写快照，
+     不读取当前设备、不把今日总量补到另一天；
+   - 无法恢复同一周期用量时保守保留 pending，不烧 attempts。
 5. pending 数量上限（默认 1000）触发背压：新 ingest 拒绝为 503；
    done 记录保留 DONE_RETENTION_HOURS（2 小时）后清理。
 """
@@ -52,7 +53,8 @@ CREATE TABLE IF NOT EXISTS tm_ingest_outbox (
     local_day TEXT NOT NULL DEFAULT '',
     ingest_sequence INTEGER NOT NULL DEFAULT 0,
     snapshot_written INTEGER NOT NULL DEFAULT 0,
-    writes_usage INTEGER NOT NULL DEFAULT 1
+    writes_usage INTEGER NOT NULL DEFAULT 1,
+    normalized_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_state_time
     ON tm_ingest_outbox(state, received_at);
@@ -68,6 +70,7 @@ _OUTBOX_COLUMNS = (
     ("ingest_sequence", "INTEGER NOT NULL DEFAULT 0"),
     ("snapshot_written", "INTEGER NOT NULL DEFAULT 0"),
     ("writes_usage", "INTEGER NOT NULL DEFAULT 1"),
+    ("normalized_json", "TEXT"),
 )
 
 
@@ -237,6 +240,62 @@ def record_pending(
         )
 
 
+def save_normalized(db: Database, request_id: str, record: dict) -> None:
+    db.execute(
+        "UPDATE tm_ingest_outbox SET normalized_json = ? WHERE request_id = ?",
+        (json.dumps(record, ensure_ascii=False), request_id),
+    )
+
+
+def record_from_payload(payload: dict, received_at: Optional[str] = None) -> dict:
+    """从原始上报恢复同一周期的规范化形状，供重放写快照。"""
+    if not isinstance(payload, dict):
+        return {}
+    periods_in = payload.get("periods") if isinstance(payload.get("periods"), dict) else {}
+
+    def period(name: str) -> dict:
+        top = payload.get(name)
+        nested = periods_in.get(name)
+        if isinstance(top, dict):
+            return top
+        if isinstance(nested, dict):
+            return nested
+        return {}
+
+    return {
+        "deviceId": payload.get("deviceId") or payload.get("id"),
+        "updatedAt": payload.get("updatedAt"),
+        "receivedAt": received_at or payload.get("receivedAt"),
+        "periodWindows": payload.get("periodWindows"),
+        "periods": {
+            "today": period("today"),
+            "month": period("month"),
+            "allTime": period("allTime"),
+        },
+    }
+
+
+def _record_has_usage(record: dict) -> bool:
+    periods = record.get("periods") if isinstance(record, dict) else None
+    today = periods.get("today") if isinstance(periods, dict) else None
+    return isinstance(today, dict) and bool(today)
+
+
+def replay_record(row: dict, payload: dict) -> Optional[dict]:
+    raw = row.get("normalized_json")
+    if isinstance(raw, str) and raw.strip():
+        try:
+            stored = json.loads(raw)
+        except ValueError:
+            stored = None
+        if isinstance(stored, dict) and _record_has_usage(stored):
+            return stored
+    reconstructed = record_from_payload(payload, row.get("received_at"))
+    if _record_has_usage(reconstructed):
+        return reconstructed
+    return None
+
+
 def mark_done(
     db: Database, request_id: str, *, snapshot_written: Optional[bool] = None
 ) -> None:
@@ -271,6 +330,11 @@ def can_supersede(old: dict, saved: dict) -> bool:
     if _as_flag(old.get("writes_usage")) and not _as_flag(saved.get("writes_usage")):
         return False
     return True
+
+
+def outbox_ingest_sequence(db: Database, request_id: str) -> int:
+    row = _outbox_identity(db, request_id)
+    return int((row or {}).get("ingest_sequence") or 0)
 
 
 def _outbox_identity(db: Database, request_id: str) -> Optional[dict]:
@@ -463,41 +527,12 @@ def _invalidate_overview(_db: Database) -> None:
         _overview_invalidator()
 
 
-def _fetch_devices_index(core) -> dict[str, dict]:
-    """一轮重放只 GET 一次 /api/devices（H-10）。不可达必须抛出（H-3）。"""
-    from .tm_proxy import UpstreamUnavailable
-
-    try:
-        resp = core.request("GET", "/api/devices")
-    except UpstreamUnavailable:
-        raise
-    except Exception:
-        return {}
-    if getattr(resp, "status_code", 0) != 200:
-        return {}
-    try:
-        body = resp.json()
-    except ValueError:
-        return {}
-    devices = body.get("devices") if isinstance(body, dict) else None
-    if not isinstance(devices, list):
-        return {}
-    index: dict[str, dict] = {}
-    for record in devices:
-        if isinstance(record, dict) and record.get("deviceId") is not None:
-            index[str(record.get("deviceId"))] = record
-    return index
-
-
-def _current_device_record(
-    core, device_id: str, devices_index: Optional[dict[str, dict]] = None
-) -> Optional[dict]:
-    index = devices_index if devices_index is not None else _fetch_devices_index(core)
-    return index.get(device_id)
-
-
 def _superseded(db: Database, row: dict) -> bool:
-    """同设备同日本地日已有更新的用量快照时，无需回灌旧载荷。"""
+    """同设备同日本地日已有更高序列的用量快照时，无需回灌旧载荷。
+
+    只比较 ingest_sequence。pending 的 received_at 被截到整秒，快照带毫秒，
+    同一秒内较早的快照时间戳会大于待补写记录，不得据此判替代。
+    """
     device_id = str(row.get("device_id") or "")
     local_day = str(row.get("local_day") or "")
     if not device_id or not local_day:
@@ -516,13 +551,15 @@ def _superseded(db: Database, row: dict) -> bool:
     )
     if later is not None:
         return True
+    if seq <= 0:
+        return False
     snap = db.fetchone(
         """
         SELECT 1 FROM tm_snapshot_buckets
-        WHERE device_id = ? AND local_day = ? AND server_received_at > ?
+        WHERE device_id = ? AND local_day = ? AND ingest_sequence > ?
         LIMIT 1
         """,
-        (device_id, local_day, norm_ts(row.get("received_at"))),
+        (device_id, local_day, seq),
     )
     return snap is not None
 
@@ -542,7 +579,8 @@ def replay_pending(
     rows = db.fetchall(
         """
         SELECT request_id, device_id, payload_json, received_at,
-               local_day, ingest_sequence, snapshot_written, writes_usage
+               local_day, ingest_sequence, snapshot_written, writes_usage,
+               normalized_json
         FROM tm_ingest_outbox
         WHERE state = 'pending' AND attempts < ?
         ORDER BY ingest_sequence ASC, received_at ASC
@@ -557,7 +595,6 @@ def replay_pending(
         "rejected": 0,
         "failed": 0,
     }
-    devices_index: dict[str, dict] | None = None
     for row in rows:
         # Finish the current request/snapshot, then leave untouched items pending.
         if should_stop is not None and should_stop():
@@ -574,25 +611,20 @@ def replay_pending(
             stats["superseded"] += 1
             continue
         try:
-            # G-04 / H-10：重放只读当前设备记录写快照；每轮缓存一次设备表。
-            if devices_index is None:
-                devices_index = _fetch_devices_index(core)
-            record = _current_device_record(core, row["device_id"], devices_index)
+            record = replay_record(row, payload)
             if record is None:
-                mark_failed(
-                    db, row["request_id"],
-                    f"tm-core missing normalized device {row['device_id']!r}",
-                )
+                # 无法从本请求恢复同一周期数据时保守保留 pending，不借用当前设备。
                 stats["failed"] += 1
                 continue
             with db.transaction():
                 written = write_snapshot(
                     db,
                     device_id=row["device_id"],
-                    record=record or {},
+                    record=record,
                     incoming=payload,
                     limits_only=is_limits_only_update(payload),
                     force_received_at=row["received_at"],
+                    ingest_sequence=int(row.get("ingest_sequence") or 0),
                 )
                 mark_done(
                     db, row["request_id"], snapshot_written=written is not None

@@ -2500,22 +2500,28 @@ function renderSubs() {
     grid.innerHTML = `<p class="aux-note">正在加载订阅清单…</p>`;
     return;
   }
-  if (aux.status === "error" || aux.status === "unsupported") {
+  const s = aux.data;
+  const list = s && Array.isArray(s.subscriptions) ? s.subscriptions : [];
+  if (aux.status === "unsupported" || (aux.status === "error" && !list.length)) {
     panel.hidden = false;
     $("#subs-sub").textContent = "";
     grid.innerHTML = `<p class="aux-note err">订阅清单暂不可用</p>`;
     return;
   }
-  const s = aux.data;
-  const list = s && Array.isArray(s.subscriptions) ? s.subscriptions : [];
   if (!list.length) {
     panel.hidden = true;
     grid.innerHTML = "";
     return;
   }
   panel.hidden = false;
-  $("#subs-sub").textContent = s.updated_at ? "更新于 " + fmtDateTime(s.updated_at) : "";
-  grid.innerHTML = list.map((it, si) => {
+  const updated = s.updated_at ? "更新于 " + fmtDateTime(s.updated_at) : "";
+  $("#subs-sub").textContent = aux.status === "error"
+    ? (updated ? updated + " · " : "") + "刷新失败，仍显示上次清单"
+    : updated;
+  const failNote = aux.status === "error"
+    ? `<p class="aux-note err">订阅清单刷新失败，仍显示上次内容</p>`
+    : "";
+  grid.innerHTML = failNote + list.map((it, si) => {
     it = it && typeof it === "object" ? it : {};
     const kind = String(it.kind || "subscription").toLowerCase() === "topup" ? "topup" : "subscription";
     const topUps = Array.isArray(it.topUps) ? it.topUps : [];
@@ -3522,26 +3528,43 @@ async function refreshHistoryFirstPage() {
       incoming.push(row);
       incomingKeys.add(row.day);
     }
-    const rest = prev.rows.filter((row) => !incomingKeys.has(row.day));
-    aux.rows = incoming.concat(rest);
-    aux.rows.sort((a, b) => (a.day < b.day ? 1 : -1));
-    aux.seen = new Set(aux.rows.map((row) => row.day));
-    if (res.total_days != null) aux.totalDays = Number(res.total_days);
-    if (res.retention_days != null) aux.retentionDays = Number(res.retention_days);
-    aux.dayBasis = res.day_basis || aux.dayBasis;
-    aux.mixedTz = res.mixed_time_zones === true;
-    aux.partial = aux.partial || res.partial === true;
-    if (rest.length) {
-      // 已加载后续页时保留原游标，避免下一页重取第 2 页后 added=0 提前结束。
-      aux.cursor = prev.cursor;
-      aux.done = prev.done;
+    const explicitEmpty = !incoming.length && (res.total_days === 0 || res.has_more === false);
+    if (explicitEmpty) {
+      aux.rows = [];
+      aux.seen = new Set();
+      aux.cursor = null;
+      aux.done = true;
+      aux.totalDays = res.total_days != null ? Number(res.total_days) : 0;
+      if (res.retention_days != null) aux.retentionDays = Number(res.retention_days);
+      aux.dayBasis = res.day_basis || aux.dayBasis;
+      aux.mixedTz = res.mixed_time_zones === true;
+      aux.partial = res.partial === true;
+      aux.status = "empty";
     } else {
-      const lastDay = incoming.length ? incoming[incoming.length - 1].day : "";
-      aux.cursor = res.next_cursor || lastDay || null;
-      const hasMore = res.has_more != null ? res.has_more === true : !!res.next_cursor;
-      aux.done = !hasMore;
+      const oldestIncoming = incoming.length ? incoming[incoming.length - 1].day : "";
+      const rest = prev.rows.filter((row) => (
+        !incomingKeys.has(row.day) && oldestIncoming && row.day < oldestIncoming
+      ));
+      aux.rows = incoming.concat(rest);
+      aux.rows.sort((a, b) => (a.day < b.day ? 1 : -1));
+      aux.seen = new Set(aux.rows.map((row) => row.day));
+      if (res.total_days != null) aux.totalDays = Number(res.total_days);
+      if (res.retention_days != null) aux.retentionDays = Number(res.retention_days);
+      aux.dayBasis = res.day_basis || aux.dayBasis;
+      aux.mixedTz = res.mixed_time_zones === true;
+      aux.partial = aux.partial || res.partial === true;
+      if (rest.length) {
+        // 已加载后续页时保留原游标，避免下一页重取第 2 页后 added=0 提前结束。
+        aux.cursor = prev.cursor;
+        aux.done = prev.done;
+      } else {
+        const lastDay = incoming.length ? incoming[incoming.length - 1].day : "";
+        aux.cursor = res.next_cursor || lastDay || null;
+        const hasMore = res.has_more != null ? res.has_more === true : !!res.next_cursor;
+        aux.done = !hasMore;
+      }
+      aux.status = aux.rows.length ? "ready" : "empty";
     }
-    aux.status = aux.rows.length ? "ready" : "empty";
   } catch (e) {
     if (ctl.signal.aborted || rev !== state.tokenRevision) return;
     if (e instanceof ApiError && (e.status === 404 || e.status === 501)) {
