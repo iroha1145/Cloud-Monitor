@@ -87,7 +87,7 @@ function DayDetails({ point }: { point: TrendPoint }) {
     },
   ];
   return (
-    <div className="insight-chart-tooltip insight-trend-tooltip">
+    <div className="insight-trend-tooltip">
       <div className="insight-trend-tooltip-title">
         <time dateTime={point.day}>{point.day}</time>
         <span>每日明细</span>
@@ -270,7 +270,12 @@ export function InsightTrend({ data }: { data: DashboardData }) {
     setSelected(null);
     setPointerAnchor(null);
     setDetailMode(null);
-  }, [days, metric, data.trend]);
+  }, [days, metric]);
+  useEffect(() => {
+    setSelected((current) =>
+      current == null ? null : Math.min(current, Math.max(0, series.length - 1)),
+    );
+  }, [series.length]);
   useEffect(() => {
     const dismiss = () => {
       setPointerAnchor(null);

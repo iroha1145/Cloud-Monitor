@@ -1,5 +1,27 @@
 import { API_ENDPOINTS, normalizeOverview, type DashboardData } from "./data";
 
+function retainAuxiliary(next: DashboardData, previous?: DashboardData): DashboardData {
+  if (!previous || previous.mode !== "live") return next;
+  return {
+    ...next,
+    subscriptions: next.subscriptions.length
+      ? next.subscriptions
+      : previous.subscriptions,
+    subscriptionsUpdatedAt:
+      next.subscriptionsUpdatedAt || previous.subscriptionsUpdatedAt,
+    providers: next.providers.length ? next.providers : previous.providers,
+    trend: next.trend.map((point) => {
+      const prior = previous.trend.find((row) => row.day === point.day);
+      if (!prior) return point;
+      return {
+        ...point,
+        costUsd: point.costUsd ?? prior.costUsd,
+        components: point.components ?? prior.components,
+      };
+    }),
+  };
+}
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) { super(message); this.name = "ApiError"; this.status = status; }
@@ -51,9 +73,14 @@ export async function loadOverview(token: string, signal?: AbortSignal): Promise
   return normalizeOverview(await requestJSON(API_ENDPOINTS.overview, token, signal));
 }
 
-export async function loadDashboard(token: string, signal?: AbortSignal, onOverview?: (data: DashboardData) => void): Promise<DashboardData> {
+export async function loadDashboard(
+  token: string,
+  signal?: AbortSignal,
+  onOverview?: (data: DashboardData) => void,
+  previous?: DashboardData,
+): Promise<DashboardData> {
   const raw = await requestJSON(API_ENDPOINTS.overview, token, signal);
-  const initial = normalizeOverview(raw);
+  const initial = retainAuxiliary(normalizeOverview(raw), previous);
   onOverview?.(initial);
   const features = initial.features;
   const requests = [
@@ -70,6 +97,7 @@ export async function loadDashboard(token: string, signal?: AbortSignal, onOverv
     subscriptions: subs.status === "fulfilled" ? subs.value : undefined,
     providers: providers.status === "fulfilled" ? providers.value : undefined,
     history: history.status === "fulfilled" ? history.value : undefined,
+    complete: true,
   });
   if (subs.status === "rejected") data.notices.push("订阅信息暂时未能加载。");
   if (providers.status === "rejected") data.notices.push("提供商状态暂时未能加载。");

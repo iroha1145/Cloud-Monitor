@@ -702,7 +702,8 @@
   .plain-button,
   .refresh-button,
   .period-tabs [role="tab"],
-  .metric-switch button {
+  .metric-switch button,
+  .insight-trend-switch button {
     min-height: 44px;
   }
 }

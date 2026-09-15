@@ -25,7 +25,7 @@ const formatCount = (value: number | null) =>
 const formatCost = (value: number | null) =>
   value === null
     ? "未提供"
-    : `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+    : `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 function Composition({
   title,
   values,

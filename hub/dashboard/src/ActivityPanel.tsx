@@ -191,6 +191,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
               aria-label={`${cell.day}，尚未到来`}>{cell.label}</span>;
             return <MetricTooltip key={cell.hour ?? cell.day} title={label}
               preserveAction={cell.hour === undefined}
+              focusable={cell.hour !== undefined}
               rows={[{ label: "词元用量", value: cell.total === null ? "未上报" : full(cell.total) }]}
               note={cell.hour === undefined ? "点击日期筛选会话" : `活动时区：${metadata.timeZone}`}>
               <button type="button" className={`cm-activity-cell${selected === cell.day && view !== "day" ? " is-selected" : ""}`}

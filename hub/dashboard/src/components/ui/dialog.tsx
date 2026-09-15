@@ -50,16 +50,35 @@ function DialogContent({
   children,
   showCloseButton = true,
   placement = "center",
+  onOpenAutoFocus,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
   placement?: "center" | "left"
 }) {
+  const restoreFocus = React.useRef<HTMLElement | null>(null)
+  React.useLayoutEffect(() => {
+    const active = document.activeElement
+    if (active instanceof HTMLElement) restoreFocus.current = active
+  }, [])
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
+        onOpenAutoFocus={(event) => {
+          onOpenAutoFocus?.(event)
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          const target = restoreFocus.current
+          restoreFocus.current = null
+          if (target && typeof target.focus === "function") {
+            target.focus()
+          }
+          onCloseAutoFocus?.(event)
+        }}
         className={cn(
           "fixed z-50 grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 sm:max-w-lg",
           // Omit centering utilities for drawers: compiled CSS may lower

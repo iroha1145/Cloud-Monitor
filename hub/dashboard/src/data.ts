@@ -700,6 +700,8 @@ export interface OverviewExtras {
   history?: unknown;
   /** Explicit reference time makes stale classification deterministic in tests. */
   now?: Date;
+  /** Set when auxiliary requests have finished (success or failure). */
+  complete?: boolean;
 }
 
 const sourceCounter = (value: unknown): number | null =>
@@ -732,7 +734,9 @@ const sourceDateKey = (value: unknown, timeZone: string): string | null => {
 function normalizeActivity(root: JsonRecord, features: DashboardFeatures) {
   const activity = record(root.activity);
   const dashboardPeriod = record(root.dashboard_period);
-  const timeZone = text(activity.time_zone) || text(root.dashboard_time_zone, "UTC");
+  const timeZone = safeTimeZone(
+    text(activity.time_zone) || text(root.dashboard_time_zone, "UTC"),
+  );
   const today =
     sourceDate(record(dashboardPeriod.today).key) ||
     sourceDateKey(root.generated_at, timeZone);
@@ -824,10 +828,39 @@ function normalizeActivity(root: JsonRecord, features: DashboardFeatures) {
 }
 
 /** Pass API JSON, never credentials. Missing auxiliary data remains unavailable. */
+function safeTimeZone(raw: string): string {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: raw }).format(new Date());
+    return raw;
+  } catch {
+    return "UTC";
+  }
+}
+
+const LIMIT_STATUS_NOTICE: Record<string, string | null> = {
+  ok: null,
+  disabled: null,
+  notConfigured: null,
+  unauthorized: "额度来源授权失效",
+  rateLimited: "已达速率限制",
+  sourceRateLimited: "状态源限流",
+  unavailable: "来源暂不可用",
+  error: "额度来源读取失败",
+};
+
+const PARTIAL_ERROR_NOTICE: Record<string, string> = {
+  history_unavailable: "官方历史记录暂时不可用，趋势可能不完整。",
+  devices_badges_unavailable: "设备徽章暂时不可用。",
+  activity_unavailable: "活动时间数据暂时不可用。",
+  clients_json_corrupt: "日归档的客户端明细损坏。",
+  models_json_corrupt: "日归档的模型明细损坏。",
+};
+
 export function normalizeOverview(
   payload: unknown,
   extras: OverviewExtras = {},
 ): DashboardData {
+  const extrasProvided = extras.complete === true;
   const root = record(payload);
   if (!isRecord(root.totals))
     throw new Error("服务器返回的用量格式无法识别，请检查服务版本。");
@@ -1159,7 +1192,15 @@ export function normalizeOverview(
   );
   const activityData = normalizeActivity(root, features);
   const notices: string[] = [];
-  if (root.partial === true)
+  if (Array.isArray(root.partial_errors)) {
+    for (const item of root.partial_errors) {
+      const code =
+        typeof item === "string" ? item : text(record(item).code);
+      if (code && PARTIAL_ERROR_NOTICE[code])
+        notices.push(PARTIAL_ERROR_NOTICE[code]);
+    }
+  }
+  if (root.partial === true && !notices.some((line) => line.includes("暂时不可用") || line.includes("损坏")))
     notices.push("部分辅助数据暂不可用，用量总计仍来自设备上报。");
   if (root.snapshot_degraded === true)
     notices.push("历史快照同步延迟，趋势可能尚未更新。");
@@ -1184,21 +1225,32 @@ export function normalizeOverview(
       notices.push(
         `${providerName(text(item.provider))} 额度尚未刷新，保留上一次上报。`,
       );
-    else if (typeof item.status === "string" && item.status !== "ok")
-      notices.push(`${providerName(text(item.provider))} 额度来源暂不可用。`);
+    else if (typeof item.status === "string") {
+      const mapped = LIMIT_STATUS_NOTICE[item.status];
+      if (mapped)
+        notices.push(`${providerName(text(item.provider))} ${mapped}。`);
+    }
   }
   for (const provider of providers) {
     if (provider.stale)
       notices.push(`${provider.name} 服务状态尚未刷新，正在显示上一次查询结果。`);
   }
-  if (extras.subscriptions === undefined && features.subscriptions !== false)
+  if (
+    extrasProvided &&
+    extras.subscriptions === undefined &&
+    features.subscriptions !== false
+  )
     notices.push("未载入订阅清单。");
-  if (extras.providers === undefined && features.provider_status !== false)
+  if (
+    extrasProvided &&
+    extras.providers === undefined &&
+    features.provider_status !== false
+  )
     notices.push("未载入服务商状态。");
   return {
     mode: "live",
     generatedAt,
-    timeZone: text(root.dashboard_time_zone, "UTC"),
+    timeZone: safeTimeZone(text(root.dashboard_time_zone, "UTC")),
     periods: normalizedPeriods,
     trend,
     devices,

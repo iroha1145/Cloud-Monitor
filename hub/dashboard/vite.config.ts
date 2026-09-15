@@ -10,10 +10,20 @@ export default defineConfig(({ command, mode }) => ({
   build: {
     outDir: mode === "showcase" ? "dist-showcase" : "../frontend/app",
     emptyOutDir: true,
-    rolldownOptions: { input: {
-      index: fileURLToPath(new URL("./index.html", import.meta.url)),
-      demo: fileURLToPath(new URL("./demo.html", import.meta.url)),
-    } },
+    rolldownOptions: {
+      input: {
+        index: fileURLToPath(new URL("./index.html", import.meta.url)),
+        demo: fileURLToPath(new URL("./demo.html", import.meta.url)),
+      },
+      output: {
+        manualChunks(id: string) {
+          if (id.includes("node_modules/liveline")) return "liveline";
+          if (id.includes("node_modules/motion")) return "motion";
+          if (id.includes("node_modules/lucide-react")) return "icons";
+          if (id.includes("node_modules")) return "vendor";
+        },
+      },
+    },
   },
   server: {
     watch: { usePolling: true, interval: 500, ignored: ["**/dist-showcase/**", "**/frontend/app/**", "**/evidence/**"] },

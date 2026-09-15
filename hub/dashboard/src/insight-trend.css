@@ -151,16 +151,21 @@
   pointer-events: none;
   transform-origin: top left;
   will-change: transform;
+  isolation: isolate;
+  overflow: hidden;
 }
 .insight-trend-tooltip {
-  display: block;
+  display: flex;
+  flex-direction: column;
   width: 260px;
   max-width: 100%;
   padding: 11px 12px;
   white-space: normal;
+  overflow: hidden;
+  isolation: isolate;
   color: var(--ink);
   background: var(--surface);
-  border-color: var(--line-strong);
+  border: 1px solid var(--line-strong);
   border-radius: 9px;
   box-shadow:
     0 5px 20px #132b4824,
