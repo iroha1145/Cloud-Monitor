@@ -32,6 +32,7 @@ from sync_agent import (
     AgentConfig,
     SyncAgent,
     classify_status,
+    retry_after_seconds,
     utc_now_iso,
 )
 
@@ -48,6 +49,10 @@ class PermanentBridgeError(Exception):
 
 class TransientBridgeError(Exception):
     """上游 5xx 或网络错误：下个周期重试。"""
+
+    def __init__(self, message: str, retry_after: Optional[float] = None):
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 # ---------------------------------------------------------------- 时区边界
@@ -194,7 +199,10 @@ def check_hub_health(session: requests.Session, hub_url: str, timeout: float) ->
         raise TransientBridgeError(f"hub health 网络错误: {exc}") from exc
     if resp.status_code >= 400:
         if classify_status(resp.status_code):
-            raise TransientBridgeError(f"hub health HTTP {resp.status_code}")
+            raise TransientBridgeError(
+                f"hub health HTTP {resp.status_code}",
+                retry_after=retry_after_seconds(resp.headers),
+            )
         raise PermanentBridgeError(f"hub health HTTP {resp.status_code}: {resp.text[:200]}")
     try:
         body = resp.json()
@@ -235,7 +243,10 @@ def push_to_token_monitor(
     )
     if resp.status_code >= 400:
         if classify_status(resp.status_code):
-            raise TransientBridgeError(f"token-monitor hub HTTP {resp.status_code}")
+            raise TransientBridgeError(
+                f"token-monitor hub HTTP {resp.status_code}",
+                retry_after=retry_after_seconds(resp.headers),
+            )
         raise PermanentBridgeError(
             f"token-monitor hub 拒绝 HTTP {resp.status_code}: {resp.text[:300]}"
         )
@@ -297,6 +308,10 @@ def start_bridge_thread(agent: SyncAgent) -> Optional[threading.Thread]:
                 log.error("token-monitor 桥接因确定性 4xx 进入长退避: %s", exc)
                 _record_bridge_error(agent, str(exc))
                 backoff = max(interval * 12, 3600)
+            except TransientBridgeError as exc:
+                log.warning("token-monitor 推送失败（下个周期重试）: %s", exc)
+                _record_bridge_error(agent, str(exc))
+                backoff = exc.retry_after if exc.retry_after is not None else min(backoff * 2, 3600)
             except Exception as exc:  # noqa: BLE001 — 线程不得静默退出
                 log.warning("token-monitor 推送失败（下个周期重试）: %s", exc)
                 _record_bridge_error(agent, str(exc))

@@ -40,7 +40,7 @@ MAX_POST_ATTEMPTS = 3
 DEGRADED_INTERVAL_MULTIPLIER = 10
 # 与云端 hub/backend/hub/models.py 的 MAX_FUTURE_SKEW / MAX_INT 保持一致
 MAX_FUTURE_SKEW = timedelta(hours=48)
-MAX_RECORD_INT = 2**62
+MAX_RECORD_INT = 2**53 - 1
 USER_CHUNK = 500
 OFFICIAL_SYNC_INTERVALS = (600.0, 1200.0, 1800.0)
 BUSY_TIMEOUT_OVERLAP_SECONDS = 10
@@ -386,6 +386,17 @@ def classify_status(status_code: int) -> bool:
     return status_code in (408, 425, 429) or status_code >= 500
 
 
+def retry_after_seconds(headers: Optional[dict]) -> Optional[float]:
+    """解析 Retry-After 秒数；HTTP-date 或不合法值返回 None。"""
+    raw = (headers or {}).get("Retry-After")
+    if raw is None:
+        return None
+    try:
+        return max(float(raw), 0.5)
+    except (TypeError, ValueError):
+        return None
+
+
 def clamp_token_monitor_interval(seconds: float) -> float:
     """官方 normalizeSyncUploadIntervalMs 只认 0/10/20/30 分钟，其它值归一成 0。"""
     if seconds <= 0:
@@ -418,10 +429,8 @@ def post_with_retry(
         if resp.status_code >= 400:
             detail = resp.text[:300]
             if classify_status(resp.status_code):
-                retry_after = resp.headers.get("Retry-After")
-                try:
-                    delay = max(float(retry_after), 0.5) if retry_after else (2**attempt) + random.uniform(0, 0.5)
-                except ValueError:
+                delay = retry_after_seconds(resp.headers)
+                if delay is None:
                     delay = (2**attempt) + random.uniform(0, 0.5)
                 if attempt >= attempts - 1:
                     raise TransientError(f"HTTP {resp.status_code}: {detail}")
@@ -782,8 +791,7 @@ class SyncAgent:
                 "请检查备份恢复或显式清游标后全量重推。"
             )
         users = self.fetch_users()
-        previous_digest = self.state.data.get("last_users_digest")
-        send_users = users if self.state.data.get("users_digest") != previous_digest else []
+        send_users = self._users_for_push(users)
         fetched = 0
         inserted = 0
         first_batch = True
@@ -833,6 +841,10 @@ class SyncAgent:
                 break
         return {"mode": "cursor", "fetched": fetched, "inserted": inserted}
 
+    def _users_for_push(self, users: list[dict]) -> list[dict]:
+        previous_digest = self.state.data.get("last_users_digest")
+        return users if self.state.data.get("users_digest") != previous_digest else []
+
     def _mark_batch_ok(self, *, users_digest: Optional[str] = None) -> None:
         self.state.data["last_batch_ok_at"] = utc_now_iso()
         if users_digest:
@@ -852,14 +864,15 @@ class SyncAgent:
         snapshot_end = utc_now_iso()
         watermark = self.state.watermark
         users = self.fetch_users()
+        send_users = self._users_for_push(users)
 
         records: list[dict] = []
         page = 1
         while True:
             params: dict[str, Any] = {"end_time": snapshot_end, "page": page, "page_size": 200}
             if watermark:
-                # 水位线前移 1 秒重叠：崩溃在两批边界时与水位线同秒的记录
-                # 不得丢失；重复由云端 (source_instance_id, local_id) 幂等去重
+                # 水位线前移 busy_timeout 重叠：锁等待或时钟回拨导致 stamp
+                # 早于水位线的迟到记录不得丢失；重复由云端幂等去重
                 params["start_time"] = _iso_shift_seconds(watermark, -BUSY_TIMEOUT_OVERLAP_SECONDS)
             payload = self.local_get("/api/v1/records", params)
             batch = payload.get("records") or []
@@ -871,7 +884,8 @@ class SyncAgent:
 
         records.sort(key=self._record_sort_key)
         if not records:
-            result = self.push_batch(users, [], source)
+            result = self.push_batch(send_users, [], source)
+            self._mark_batch_ok(users_digest=self.state.data.get("users_digest"))
             log.info(
                 "心跳完成: users=%d", result.get("users_upserted", 0)
             )
@@ -879,16 +893,26 @@ class SyncAgent:
 
         fetched = len(records)
         inserted = 0
-        for i in range(0, fetched, self.config.batch_size):
-            chunk = records[i : i + self.config.batch_size]
-            send_users = users if i == 0 else []
+        offset = 0
+        first_batch = True
+        limit = self.config.batch_size
+        while offset < fetched:
+            chunk = records[offset : offset + limit]
             wire_records, _skipped = self._wire_valid(chunk)
-            result = self.push_batch(send_users, wire_records, source)
+            try:
+                result = self.push_batch(send_users if first_batch else [], wire_records, source)
+            except TransientError as exc:
+                if "缩批" in str(exc) and limit > 1:
+                    limit = max(1, limit // 2)
+                    log.warning("按云端上限将 BATCH_SIZE 降为 %d 后重试本批", limit)
+                    continue
+                raise
             inserted += int(result.get("inserted") or 0)
-            # 批内按时间升序，推进水位线到本批最大时间（下轮读取时前移 1s 重叠）
             self.state.watermark = chunk[-1].get("created_at") or snapshot_end
             self.state.data["pushed_records"] += int(result.get("inserted") or 0)
             self._mark_batch_ok(users_digest=self.state.data.get("users_digest"))
+            offset += len(chunk)
+            first_batch = False
         return {"mode": "time", "fetched": fetched, "inserted": inserted}
 
     # ------------------------------------------------------------ 主循环
