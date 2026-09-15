@@ -15,14 +15,27 @@ HUB_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 COMPOSE="docker compose --project-directory $HUB_DIR"
 
 echo "[1/3] 备份 tm-core devices.json（官方状态 + 订阅）..."
-$COMPOSE exec -T tm-core sh -c 'cat /data/devices.json' > "$OUT/devices.json"
+if $COMPOSE exec -T tm-core sh -c 'test -f /data/devices.json && cat /data/devices.json' > "$OUT/devices.json" 2>/dev/null; then
+  :
+else
+  echo "{}" > "$OUT/devices.json"
+  echo "devices.json 尚不存在，已写入空对象并继续备份数据库"
+fi
 
-echo "[2/3] 备份 SQLite（.backup 一致性快照，含 WAL）..."
+echo "[2/3] 备份 SQLite（Python sqlite3.backup，含 WAL）..."
 CID=$($COMPOSE ps -q cloud-hub)
 [ -n "$CID" ] || { echo "cloud-hub 未运行，无法备份 SQLite" >&2; exit 1; }
-# hub 镜像不含 sqlite3；不要先 exec 再 cat 覆盖——失败的重定向会把已写好的备份截成空文件
-docker run --rm --volumes-from "$CID" -v "$OUT:/backup" alpine:3.21 \
-  sh -c 'apk add --no-cache sqlite >/dev/null && sqlite3 /data/cloud-monitor.sqlite3 ".backup /backup/cloud-monitor.sqlite3"'
+$COMPOSE exec -T cloud-hub python3 - <<'PY'
+import os
+import sqlite3
+os.makedirs("/tmp", exist_ok=True)
+src = sqlite3.connect("/data/cloud-monitor.sqlite3")
+dst = sqlite3.connect("/tmp/cloud-monitor-backup.sqlite3")
+src.backup(dst)
+dst.close()
+src.close()
+PY
+docker cp "$CID:/tmp/cloud-monitor-backup.sqlite3" "$OUT/cloud-monitor.sqlite3"
 [ -s "$OUT/cloud-monitor.sqlite3" ] || { echo "SQLite 备份是空文件" >&2; exit 1; }
 
 echo "[3/3] 备份 manifest（两卷时间点）..."
@@ -31,8 +44,16 @@ echo "[3/3] 备份 manifest（两卷时间点）..."
   echo "tm-core devices.json saved_at:"
   grep -o '"savedAt": *"[^"]*"' "$OUT/devices.json" | head -1 || true
   echo "sqlite latest bucket:"
-  sqlite3 "$OUT/cloud-monitor.sqlite3" \
-    "SELECT MAX(bucket_start) FROM tm_snapshot_buckets;" 2>/dev/null || true
+  python3 - "$OUT/cloud-monitor.sqlite3" <<'PY'
+import sqlite3, sys
+try:
+    con = sqlite3.connect(sys.argv[1])
+    row = con.execute("SELECT MAX(bucket_start) FROM tm_snapshot_buckets").fetchone()
+    print(row[0] if row and row[0] else "")
+    con.close()
+except Exception:
+    pass
+PY
 } > "$OUT/BACKUP-MANIFEST.txt"
 
 echo "备份完成: $OUT"

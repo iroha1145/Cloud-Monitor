@@ -18,6 +18,14 @@ ENVF="$HUB/.env"
 
 mkdir -p "$CTRL"
 
+refuse_symlink() {
+  local path="$1"
+  if [[ -L "$path" ]]; then
+    echo "拒绝符号链接: $path" >&2
+    return 1
+  fi
+}
+
 compose() {
   if docker compose version >/dev/null 2>&1; then
     docker compose --project-directory "$HUB" "$@"
@@ -33,17 +41,26 @@ iso_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 write_status() {
   local id="$1" state="$2" ref="$3" message="$4"
+  refuse_symlink "$STATUS" || return 1
+  refuse_symlink "$STATUS.tmp" || return 1
   python3 - "$STATUS" "$id" "$state" "$ref" "$message" "$(iso_now)" <<'PY'
-import json, sys
+import json, os, sys
 path, rid, state, ref, message, ts = sys.argv[1:]
+if os.path.islink(path) or os.path.islink(os.path.dirname(path)):
+    raise SystemExit("refusing symlink status path")
 tmp = path + ".tmp"
-with open(tmp, "w", encoding="utf-8") as f:
+if os.path.islink(tmp):
+    raise SystemExit("refusing symlink status tmp")
+flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+if hasattr(os, "O_NOFOLLOW"):
+    flags |= os.O_NOFOLLOW
+fd = os.open(tmp, flags, 0o660)
+with os.fdopen(fd, "w", encoding="utf-8") as f:
     json.dump(
         {"id": rid, "state": state, "ref": ref, "message": message, "updated_at": ts},
         f, ensure_ascii=False,
     )
     f.write("\n")
-import os
 os.replace(tmp, path)
 PY
 }
@@ -54,14 +71,29 @@ json_get() {
 
 valid_ref() {
   local ref="$1"
-  [[ "$ref" =~ ^(main|master|v?[0-9][A-Za-z0-9._-]{0,64})$ ]] || return 1
+  [[ "$ref" =~ ^(main|master|v?[0-9]+(\.[0-9A-Za-z_-]+)*)$ ]] || return 1
   [[ "$ref" != *..* ]] || return 1
+  [[ ! "$ref" =~ ^[0-9a-fA-F]{40}$ ]] || return 1
 }
 
 if [[ ! -f "$REQ" ]]; then
   exit 0
 fi
+if [[ -L "$REQ" || -L "$CTRL" ]]; then
+  echo "拒绝符号链接控制文件" >&2
+  exit 1
+fi
 
+if ! command -v flock >/dev/null 2>&1; then
+  ID="$(json_get "$REQ" id)"
+  REF="$(json_get "$REQ" ref)"
+  [[ -n "$ID" ]] || ID="unknown"
+  write_status "$ID" error "$REF" "宿主机缺少 flock，无法安全串行更新"
+  rm -f "$REQ"
+  exit 1
+fi
+
+refuse_symlink "$LOCK" || exit 1
 exec 9>"$LOCK"
 if ! flock -n 9; then
   echo "已有更新在进行，跳过"
@@ -78,8 +110,14 @@ if ! valid_ref "$REF"; then
 fi
 
 write_status "$ID" running "$REF" "正在拉取 $REF"
+FINAL_STATE=""
 
-cleanup_req() { rm -f "$REQ"; }
+cleanup_req() {
+  rm -f "$REQ"
+  if [[ -z "$FINAL_STATE" ]]; then
+    write_status "$ID" error "$REF" "更新中断，请重试" || true
+  fi
+}
 trap cleanup_req EXIT
 
 git_in() {
@@ -88,6 +126,7 @@ git_in() {
 
 fail() {
   write_status "$ID" error "$REF" "$1"
+  FINAL_STATE=error
   exit 1
 }
 
@@ -105,7 +144,7 @@ if [[ "$REF" == "main" || "$REF" == "master" ]]; then
   git_in checkout -q "$REF" || fail "无法 checkout $REF"
   git_in merge --ff-only "origin/$REF" || fail "无法快进到 origin/$REF"
 else
-  git_in checkout -q --detach "$REF" || fail "无法检出 $REF"
+  git_in checkout -q --detach "refs/tags/$REF" || fail "无法检出标签 $REF"
 fi
 
 VER="dev"
@@ -126,6 +165,7 @@ write_status "$ID" running "$REF" "正在重建容器（$VER $SHA）"
   cd "$HUB"
   export CM_VERSION="$VER" CM_GIT_SHA="$SHA"
   compose up -d --build
-)
+) || fail "容器重建失败（代码已更新，服务未重启）"
 
 write_status "$ID" ok "$REF" "已更新到 $REF（$VER $SHA）。请刷新面板。"
+FINAL_STATE=ok
