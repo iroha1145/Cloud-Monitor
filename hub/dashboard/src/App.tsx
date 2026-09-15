@@ -281,10 +281,11 @@ export default function App({ initialData, initialToken = "", hosted = false, is
           setToast(e instanceof Error ? e.message : "刷新失败，已保留上次数据。");
         }
       }
+    } finally {
+      userRefresh.current = false;
     }
     setTimeout(() => {
       if (version !== requestVersion.current) return;
-      userRefresh.current = false;
       setRefreshState("idle");
     }, 1800);
   };
