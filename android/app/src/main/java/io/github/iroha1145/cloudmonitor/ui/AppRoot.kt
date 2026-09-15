@@ -260,7 +260,14 @@ fun AppRoot(vm: AppViewModel) {
                     }
                 }
                 FloatTipHost(tip)
-                if (state.showUpdate) UpdateDialog(state.demo, state.updateLoading, state.updateError, state.update, vm::closeUpdate)
+                if (state.showUpdate) UpdateDialog(
+                    state.demo,
+                    state.updateLoading,
+                    state.updateError,
+                    state.update,
+                    vm::closeUpdate,
+                    onRefresh = { vm.openUpdate(refresh = true) },
+                )
                 if (logout) AlertDialog(onDismissRequest = { logout = false },
                     title = { Text(if (state.demo) "退出演示？" else "断开服务器连接？") },
                     text = { Text(if (state.demo) "退出后可连接自己的服务器。" else "本机保存的访问密钥将被清除，服务器上的数据会保留。") },

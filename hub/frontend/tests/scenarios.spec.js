@@ -246,8 +246,9 @@ test.describe("§9 History 分页（真实后端 + [拦截] history/daily）", (
     // 第一页 30 行
     await expect(page.locator("#hist-body tr")).toHaveCount(30);
     expect(state.count).toBe(1);
-    // 滚动触发哨兵：慢第二页期间反复滚动，不应重复发请求
+    // 滚动触发哨兵；按钮是同一套 loading 闸门的兜底（IO 已相交时 scrollIntoView 不再回调）
     await page.evaluate(() => document.querySelector("#hist-sentinel").scrollIntoView());
+    await page.locator("#hist-more").click();
     await page.waitForTimeout(150);
     for (let i = 0; i < 4; i++) {
       await page.evaluate(() => {
@@ -1356,5 +1357,148 @@ test.describe("shimmer 扫光（15-shimmer-text 审计回归）", () => {
         ((n.name && n.name.value === "正在检索…") || (n.value && n.value.value === "正在检索…"))
     );
     expect(hits.length, "AX 树中 StaticText「正在检索…」只能有一个（双层结构会得到两个）").toBe(1);
+  });
+});
+
+test.describe("审计回归 L-01..L-16 / G-05（2026-09-15）", () => {
+  test("G-05 / L-08 / L-10 首页资源带版本串，热力图有左右滑动提示，gate-desc 有 id", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator("#gate")).toBeVisible();
+    const hrefs = await page.evaluate(() => ({
+      css: document.querySelector('link[rel="stylesheet"][href*="tm.css"]').getAttribute("href"),
+      js: document.querySelector('script[src*="tm.js"]').getAttribute("src"),
+      desc: document.getElementById("gate-desc") && document.getElementById("gate-desc").id,
+      hmHint: !!document.querySelector(".hm-panel .scroll-hint"),
+    }));
+    expect(hrefs.css).toMatch(/tm\.css\?v=/);
+    expect(hrefs.js).toMatch(/tm\.js\?v=/);
+    expect(hrefs.desc).toBe("gate-desc");
+    expect(hrefs.hmHint).toBe(true);
+  });
+
+  test("L-01 / L-09 已存密钥遇 503（detail 含 token）露出壳并轮询，不误判 ACCESS_TOKEN 未配置", async ({ page, context }) => {
+    await loginWithToken(context);
+    await page.route("**/api/v1/tm/overview*", (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "upstream_unavailable", message: "token-monitor upstream failed" }),
+      })
+    );
+    await page.goto("/");
+    await expect(page.locator("#shell")).toBeVisible();
+    await expect(page.locator("#gate")).toBeHidden();
+    await expect(page.locator("#empty-hero")).toBeHidden();
+    const snap = await page.evaluate(() => ({
+      alive: state.alive,
+      poll: !!state.pollTimer,
+      gateErr: document.getElementById("gate-error").textContent,
+      conn: document.getElementById("conn-text").textContent,
+    }));
+    expect(snap.alive).toBe(true);
+    expect(snap.poll).toBe(true);
+    expect(snap.gateErr).not.toMatch(/ACCESS_TOKEN/);
+    expect(snap.conn).toMatch(/不可用/);
+  });
+
+  test("L-14 200 非 JSON 或缺 totals 视为错误，不显示还没有设备 / 正常", async ({ page, context }) => {
+    await loginWithToken(context);
+    await page.route("**/api/v1/tm/overview*", (route) =>
+      route.fulfill({ status: 200, contentType: "text/html", body: "<html><title>Login</title></html>" })
+    );
+    await page.goto("/");
+    await expect(page.locator("#shell")).toBeVisible();
+    await expect(page.locator("#empty-hero")).toBeHidden();
+    expect(await page.locator("#conn-text").textContent()).not.toBe("正常");
+
+    await page.unroute("**/api/v1/tm/overview*");
+    await page.route("**/api/v1/tm/overview*", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: '{"devices":[]}' })
+    );
+    await page.click("#refresh");
+    await page.waitForTimeout(300);
+    await expect(page.locator("#empty-hero")).toBeHidden();
+    expect(await page.locator("#conn-text").textContent()).not.toBe("正常");
+  });
+
+  test("L-12 订阅 404 为终态，再进配额页不重发", async ({ page, context }) => {
+    await loginWithToken(context);
+    await stubOverview(page, base.payload);
+    let n = 0;
+    await page.route("**/api/v1/tm/subscriptions*", (route) => {
+      n += 1;
+      route.fulfill({ status: 404, contentType: "application/json", body: '{"error":"not_found"}' });
+    });
+    await page.goto("/");
+    await expect(page.locator("#updated")).toContainText("更新于");
+    await page.click('[data-view="quota"].nav-item');
+    await expect.poll(() => page.evaluate(() => state.aux.subs.status)).toBe("unsupported");
+    const first = n;
+    expect(first).toBeGreaterThan(0);
+    await page.click('[data-view="overview"].nav-item');
+    await page.click('[data-view="quota"].nav-item');
+    await page.waitForTimeout(250);
+    expect(n).toBe(first);
+  });
+
+  test("L-13 无设备时 switchView 不得揭开视图", async ({ page, context }) => {
+    await loginWithToken(context);
+    const empty = clone(base.payload);
+    empty.devices = [];
+    await stubOverview(page, empty);
+    await page.goto("/");
+    await expect(page.locator("#empty-hero")).toBeVisible();
+    await expect(page.locator("#view-overview")).toBeHidden();
+    await page.click('[data-view="devices"].nav-item');
+    await expect(page.locator("#empty-hero")).toBeVisible();
+    await expect(page.locator("#view-devices")).toBeHidden();
+    await expect(page.locator("#view-overview")).toBeHidden();
+  });
+
+  test("L-11 visibilitychange 15s 内不重复拉 overview", async ({ page, context }) => {
+    await loginWithToken(context);
+    let n = 0;
+    await page.route("**/api/v1/tm/overview*", async (route) => {
+      n += 1;
+      await fulfillJson(route, base.payload);
+    });
+    await page.goto("/");
+    await expect(page.locator("#updated")).toContainText("更新于");
+    const afterBoot = n;
+    await page.evaluate(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      document.dispatchEvent(new Event("visibilitychange"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await page.waitForTimeout(400);
+    expect(n).toBe(afterBoot);
+  });
+
+  test("L-15 /demo 只清会话存储，不登出 localStorage 里的 PWA 密钥", async ({ page }) => {
+    await page.addInitScript(() => {
+      try { localStorage.setItem("cm_access_token", "pwa-live-token"); } catch (e) { /* noop */ }
+    });
+    await page.goto("/demo");
+    await expect(page.locator("#shell")).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem("cm_access_token"))).toBe("pwa-live-token");
+  });
+
+  test("L-16 activity.daily 含 null 时周/月热力图不抛错", async ({ page, context }) => {
+    const pageErrors = [];
+    page.on("pageerror", (err) => pageErrors.push(err.message));
+    await loginWithToken(context);
+    const p = clone(base.payload);
+    p.activity = Object.assign({}, p.activity || {}, {
+      daily: [null, { day: "2026-09-01", total: 12 }, { day: "2026-09-02", total: 3 }],
+    });
+    await stubOverview(page, p);
+    await page.goto("/");
+    await expect(page.locator("#updated")).toContainText("更新于");
+    await page.click('[data-view="history"].nav-item');
+    await page.click('#act-seg button[data-v="week"]');
+    await expect(page.locator("#hm .hm-week")).toBeVisible();
+    await page.click('#act-seg button[data-v="month"]');
+    await expect(page.locator("#hm .hm-mon-wrap")).toBeVisible();
+    expect(pageErrors.filter((m) => /TypeError/.test(m))).toEqual([]);
   });
 });

@@ -228,6 +228,18 @@ class Database:
 
     # ------------------------------------------------------------ accessors
 
+    def probe_write(self) -> None:
+        """就绪探活：BEGIN IMMEDIATE + ROLLBACK 必须在同一次持锁内完成。
+
+        拆成两次 execute 会在中间释放 RLock，让等待中的写事务复用
+        in_transaction 嵌套分支，随后被探针 ROLLBACK 整体回滚。
+        """
+        with self._lock:
+            if self._conn.in_transaction:
+                return
+            self._conn.execute("BEGIN IMMEDIATE")
+            self._conn.execute("ROLLBACK")
+
     def execute(
         self, sql: str, params: Sequence[Any] = ()
     ) -> sqlite3.Cursor:

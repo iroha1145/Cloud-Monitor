@@ -41,6 +41,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
@@ -307,6 +308,7 @@ def _deltas_for_device(
         ),
     )
     prev_total: int | None = None
+    prev_max: int = 0
     prev_bucket: str | None = None
     prev_day: str | None = None
     for row in rows:
@@ -327,23 +329,27 @@ def _deltas_for_device(
                     "reset": False,
                 }
             )
+            prev_max = value
         else:
             gap_slots = _bucket_gap_slots(prev_bucket, stamp)
             gap = gap_slots > max(GAP_BUCKETS, expected_slots * 2)
-            delta = value - prev_total
-            reset = delta < 0
+            reset = value < prev_total
+            sql_prev = row.get("prev_day_max")
+            seen = int(sql_prev) if sql_prev is not None else prev_max
+            delta = max(0, value - seen)
             out.append(
                 {
                     "device_id": row["device_id"],
                     "bucket_start": stamp,
                     "local_day": local_day,
-                    "delta": 0 if reset else delta,
+                    "delta": delta,
                     "first": False,
                     "gap": gap or reset,
                     "late_start": False,
                     "reset": reset,
                 }
             )
+            prev_max = max(prev_max, value)
         prev_total = value
         prev_bucket = stamp
         prev_day = local_day
@@ -391,13 +397,22 @@ def _coverage_for_device(
 
 
 def _load_fine_buckets(db: Database, start_day: str, end_day: str) -> list[dict]:
+    # H-6：差分在 SQL 用 LAG/窗口算出；只取组装需要的瘦列，避免物化整行快照。
     return db.fetchall(
         """
         SELECT device_id, local_day, bucket_start, today_total, device_time_zone,
-               server_received_at, id
-        FROM tm_snapshot_buckets
-        WHERE local_day >= ? AND local_day <= ?
-        ORDER BY device_id, local_day ASC, bucket_start ASC, server_received_at ASC, id ASC
+               prev_day_max
+        FROM (
+            SELECT device_id, local_day, bucket_start, today_total, device_time_zone,
+                   MAX(today_total) OVER (
+                       PARTITION BY device_id, local_day
+                       ORDER BY bucket_start, server_received_at, id
+                       ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                   ) AS prev_day_max
+            FROM tm_snapshot_buckets
+            WHERE local_day >= ? AND local_day <= ?
+        )
+        ORDER BY device_id, local_day ASC, bucket_start ASC
         """,
         (start_day, end_day),
     )
@@ -425,18 +440,18 @@ def activity_report(
     coverage 按设备求和：expected_total = Σ expected_device，
     observed_total = Σ observed_device，coverage_percent 钳制 0–100。
     """
-    from collections import defaultdict
-    from datetime import timedelta
+    from datetime import date, timedelta
+    from itertools import groupby
 
     local_now, tz = _now_for_dashboard(dashboard_tz, now)
     today_key = local_now.date().isoformat()
-    start_day = (local_now.date() - timedelta(days=FINE_ACTIVITY_DAYS + 1)).isoformat()
+    start_day = (local_now.date() - timedelta(days=FINE_ACTIVITY_DAYS)).isoformat()
     end_day = (local_now.date() + timedelta(days=1)).isoformat()
     rows = _load_fine_buckets(db, start_day, end_day)
 
-    by_device: dict[str, list[dict]] = defaultdict(list)
-    for row in rows:
-        by_device[row["device_id"]].append(row)
+    by_device: dict[str, list[dict]] = {}
+    for device_id, group in groupby(rows, key=lambda row: row["device_id"]):
+        by_device[device_id] = list(group)
 
     hourly: dict[int, int] = {h: 0 for h in range(24)}
     has_today_hourly = False
@@ -510,16 +525,14 @@ def activity_report(
     # 近 7 个仪表盘日（含今日）用 5 分钟差分；更早才用设备本地日锚点。
     # 归档不得覆盖 rollup 窗口，否则「设备本地昨日」会与滚进仪表盘今日的
     # 同一笔 5 分钟用量双计。
-    rollup_start = local_now.date() - timedelta(days=FINE_ACTIVITY_DAYS - 1)
     archive_from = (local_now.date() - timedelta(days=ACTIVITY_DAILY_DAYS)).isoformat()
-    archive_to = (rollup_start - timedelta(days=1)).isoformat()
+    archive_to = (date.fromisoformat(start_day) - timedelta(days=1)).isoformat()
     archive = query_daily_archive(
         db, from_day=archive_from, to_day=archive_to, limit=ACTIVITY_DAILY_DAYS
     )
     daily_map: dict[str, int] = {
         item["day"]: int(item["tokens"] or 0)
         for item in archive["items"]
-        if item["day"] not in fine_daily
     }
     for day, total in fine_daily.items():
         daily_map[day] = total
@@ -926,13 +939,23 @@ class OverviewCache:
     JSON dict——命中时零 HTTP + 零 SQLite + 零 CPU 组装。
     """
 
-    __slots__ = ("_ttl", "_data", "_expires_at", "_generation", "_lock")
+    __slots__ = (
+        "_ttl",
+        "_data",
+        "_expires_at",
+        "_built_at",
+        "_generation",
+        "_lock",
+        "_inflight",
+    )
 
     def __init__(self, ttl_seconds: float = 30.0):
         self._ttl = ttl_seconds
         self._data: Optional[dict] = None
         self._expires_at: float = 0.0
+        self._built_at: float = 0.0
         self._generation = 0
+        self._inflight: asyncio.Future | None = None
         from threading import Lock
 
         self._lock = Lock()
@@ -942,11 +965,16 @@ class OverviewCache:
         with self._lock:
             return self._generation
 
-    def get(self) -> Optional[dict]:
+    def get(self, *, allow_stale: bool = False) -> Optional[dict]:
         import time as _time
 
         with self._lock:
-            if self._data is not None and _time.monotonic() < self._expires_at:
+            if self._data is None:
+                return None
+            now = _time.monotonic()
+            if now < self._expires_at:
+                return self._data
+            if allow_stale and self._built_at and (now - self._built_at) <= (2 * self._ttl):
                 return self._data
             return None
 
@@ -954,17 +982,48 @@ class OverviewCache:
         import time as _time
 
         with self._lock:
-            # A write/delete completed while this overview was being assembled.
-            if generation is not None and generation != self._generation:
-                return
+            now = _time.monotonic()
             self._data = data
-            self._expires_at = _time.monotonic() + self._ttl
+            self._built_at = now
+            # H-4：代数不匹配也替换数据（比旧的新），但立即过期，避免把过期结果当新鲜。
+            if generation is not None and generation != self._generation:
+                self._expires_at = 0.0
+                return
+            self._expires_at = now + self._ttl
 
     def invalidate(self) -> None:
         with self._lock:
             self._generation += 1
-            self._data = None
             self._expires_at = 0.0
+
+    def claim_refresh(self) -> tuple[bool, asyncio.Future | None]:
+        with self._lock:
+            if self._inflight is not None:
+                return False, self._inflight
+            self._inflight = asyncio.get_running_loop().create_future()
+            return True, self._inflight
+
+    def finish_refresh(self, data: dict) -> None:
+        with self._lock:
+            fut = self._inflight
+            self._inflight = None
+        if fut is not None and not fut.done():
+            fut.set_result(data)
+
+    def fail_refresh(self, exc: BaseException) -> None:
+        with self._lock:
+            fut = self._inflight
+            self._inflight = None
+        if fut is not None and not fut.done():
+            fut.set_exception(exc)
+
+    def begin_refresh(self) -> bool:
+        owned, _ = self.claim_refresh()
+        return owned
+
+    def end_refresh(self) -> None:
+        with self._lock:
+            self._inflight = None
 
 
 def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRouter, OverviewCache]:
@@ -978,7 +1037,11 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
 
     def _require_core() -> None:
         if not settings.tm_ingest_secret:
-            raise HTTPException(status_code=404, detail="未启用 token-monitor 接入")
+            from .auth import CodedHTTPException
+
+            raise CodedHTTPException(
+                404, "token_monitor_secret_unconfigured", "未启用 token-monitor 接入"
+            )
 
 
     def _fetch_sync(core: TmCore, path: str) -> tuple[Optional[dict], Optional[str]]:
@@ -1045,9 +1108,22 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         cached = overview_cache.get()
         if cached is not None:
             return cached
-
+        owned, waiter = overview_cache.claim_refresh()
+        if not owned:
+            if waiter is not None:
+                try:
+                    return await waiter
+                except Exception:
+                    stale = overview_cache.get(allow_stale=True)
+                    if stale is not None:
+                        return stale
+                    raise
+            stale = overview_cache.get(allow_stale=True)
+            if stale is not None:
+                return stale
         core = _core(request)
-        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+
         from .tm_proxy import UpstreamUnavailable
 
         def _stats_sync():
@@ -1069,18 +1145,30 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
                 raise HTTPException(status_code=502, detail="tm-core 聚合不可用")
             return data
 
-        stats, (history, history_error), (raw, devices_error) = await asyncio.gather(
-            asyncio.to_thread(_stats_sync),
-            asyncio.to_thread(_fetch_sync, core, "/api/history"),
-            asyncio.to_thread(_fetch_sync, core, "/api/devices"),
-        )
+        def _build() -> dict:
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                f_stats = pool.submit(_stats_sync)
+                f_hist = pool.submit(_fetch_sync, core, "/api/history")
+                f_dev = pool.submit(_fetch_sync, core, "/api/devices")
+                stats = f_stats.result()
+                history, history_error = f_hist.result()
+                raw, devices_error = f_dev.result()
+            raw_devices = raw.get("devices") if isinstance(raw, dict) else None
+            return _assemble_overview(
+                stats, history, history_error, raw_devices, devices_error
+            )
 
-        raw_devices = raw.get("devices") if isinstance(raw, dict) else None
-        overview = _assemble_overview(
-            stats, history, history_error, raw_devices, devices_error
-        )
-        overview_cache.put(overview, generation=generation)
-        return overview
+        try:
+            overview = await asyncio.to_thread(_build)
+            overview_cache.put(overview, generation=generation)
+            overview_cache.finish_refresh(overview)
+            return overview
+        except Exception as exc:
+            overview_cache.fail_refresh(exc)
+            stale = overview_cache.get(allow_stale=True)
+            if stale is not None:
+                return stale
+            raise
 
     @router.get("/api/v1/tm/subscriptions")
     def tm_subscriptions_read(request: Request) -> dict:
@@ -1115,7 +1203,7 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         )
         observed = discover_providers(stats, subs)
         service = request.app.state.provider_status
-        client = request.app.state.http_async
+        client = getattr(request.app.state, "http_provider", request.app.state.http_async)
         envelope = await service.snapshot(client=client, observed=observed)
         if stats_error:
             envelope["partial"] = True

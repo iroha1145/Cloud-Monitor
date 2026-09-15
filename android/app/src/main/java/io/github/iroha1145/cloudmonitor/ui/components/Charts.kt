@@ -64,21 +64,31 @@ fun DailyTrendChart(rows: List<TrendRow>, page: io.github.iroha1145.cloudmonitor
     val cm = CmColorsCurrent
     var metric by page.trendMetric
     var selectedDay by page.trendDay
-    val selected = rows.indexOfFirst { it.day == selectedDay }.takeIf { it >= 0 } ?: rows.lastIndex
-    val row = rows[selected]
     val summary = remember(rows) { summarizeTrend(rows) }
     val cost = metric == "cost" && summary.hasCost
     val color = if (cost) Color(0xFFF09A2F) else Color(0xFF3D9AFF)
     val tip = LocalFloatTip.current
-    val dates = remember(rows) { rows.map { java.time.LocalDate.parse(it.day).toEpochDay() } }
+    val dated = remember(rows) {
+        rows.mapNotNull { row ->
+            runCatching { java.time.LocalDate.parse(row.day) }.getOrNull()?.let { row to it.toEpochDay() }
+        }
+    }
+    if (dated.isEmpty()) return
+    val plotRows = dated.map { it.first }
+    val selected = plotRows.indexOfFirst { it.day == selectedDay }.takeIf { it >= 0 } ?: plotRows.lastIndex
+    val row = plotRows[selected]
+    val dates = dated.map { it.second }
     val first = dates.first()
     val span = (dates.last() - first).coerceAtLeast(1)
-    val values = rows.map { if (cost) it.costUsd ?: 0.0 else it.total }
-    val canDraw = rows.size >= 2 && (!cost || summary.allCosts)
+    val values = plotRows.map { if (cost) it.costUsd ?: 0.0 else it.total }
+    val canDraw = plotRows.size >= 2 && (!cost || summary.allCosts)
     val min = values.minOrNull() ?: 0.0
     val max = values.maxOrNull() ?: 0.0
-    val range = (max - min).coerceAtLeast(max * .1).coerceAtLeast(1.0)
-    fun shortDay(day: String) = "${day.substring(5, 7).toInt()}/${day.takeLast(2).toInt()}"
+    val range = (max - min).coerceAtLeast(kotlin.math.abs(max) * .1).coerceAtLeast(if (cost) 0.01 else 1.0)
+    fun shortDay(day: String): String {
+        val parsed = runCatching { java.time.LocalDate.parse(day) }.getOrNull()
+        return if (parsed != null) "${parsed.monthValue}/${parsed.dayOfMonth}" else day
+    }
     fun showDetails(item: TrendRow) {
         val data = item.components
         tip.show(item.day, listOf(
@@ -96,7 +106,7 @@ fun DailyTrendChart(rows: List<TrendRow>, page: io.github.iroha1145.cloudmonitor
         FlowRow(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp),
             horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(4.dp),
             itemVerticalAlignment = Alignment.CenterVertically) {
-            Text("${shortDay(rows.first().day)} — ${shortDay(rows.last().day)}", color = cm.mute,
+            Text("${shortDay(plotRows.first().day)} — ${shortDay(plotRows.last().day)}", color = cm.mute,
                 fontSize = 11.sp, modifier = Modifier.padding(end = 8.dp))
             WebSegments(listOf("词元用量", "使用费用"), if (cost) 1 else 0,
                 { metric = if (it == 1) "cost" else "tokens" }, tags = listOf("trend-tokens", "trend-cost"),
@@ -105,7 +115,7 @@ fun DailyTrendChart(rows: List<TrendRow>, page: io.github.iroha1145.cloudmonitor
         HorizontalDivider(color = cm.border)
         Box(Modifier.fillMaxWidth().height(260.dp).padding(horizontal = 12.dp)) {
             Canvas(Modifier.fillMaxSize().testTag("trend-chart")
-                .pointerInput(rows, cost) {
+                .pointerInput(plotRows, cost) {
                     fun nearest(x: Float): Int {
                         val progress = ((x / size.width - .025f) / .95f).coerceIn(0f, 1f)
                         val day = first + progress * span
@@ -113,14 +123,14 @@ fun DailyTrendChart(rows: List<TrendRow>, page: io.github.iroha1145.cloudmonitor
                     }
                     detectTapGestures { point ->
                         val index = nearest(point.x)
-                        selectedDay = rows[index].day
-                        showDetails(rows[index])
+                        selectedDay = plotRows[index].day
+                        showDetails(plotRows[index])
                     }
-                }.pointerInput(rows, cost) {
+                }.pointerInput(plotRows, cost) {
                     fun select(x: Float) {
                         val progress = ((x / size.width - .025f) / .95f).coerceIn(0f, 1f)
                         val day = first + progress * span
-                        selectedDay = rows[dates.indices.minBy { kotlin.math.abs(dates[it] - day) }].day
+                        selectedDay = plotRows[dates.indices.minBy { kotlin.math.abs(dates[it] - day) }].day
                     }
                     detectHorizontalDragGestures(onDragStart = { select(it.x) }) { change, _ ->
                         change.consume(); select(change.position.x)
@@ -128,8 +138,8 @@ fun DailyTrendChart(rows: List<TrendRow>, page: io.github.iroha1145.cloudmonitor
                 }.semantics {
                     contentDescription = "每日趋势折线图"
                     stateDescription = "${row.day}，${Format.fmtCompact(row.total)}词元，${row.costUsd?.let(Format::fmtUsd) ?: "费用未提供"}"
-                    progressBarRangeInfo = ProgressBarRangeInfo(selected.toFloat(), 0f..rows.lastIndex.toFloat(), (rows.size - 2).coerceAtLeast(0))
-                    setProgress { value -> selectedDay = rows[value.roundToInt().coerceIn(rows.indices)].day; true }
+                    progressBarRangeInfo = ProgressBarRangeInfo(selected.toFloat(), 0f..plotRows.lastIndex.toFloat(), (plotRows.size - 2).coerceAtLeast(0))
+                    setProgress { value -> selectedDay = plotRows[value.roundToInt().coerceIn(plotRows.indices)].day; true }
                     customActions = listOf(CustomAccessibilityAction("查看当日明细") { showDetails(row); true })
                 }) {
                 val left = size.width * .025f
@@ -141,13 +151,13 @@ fun DailyTrendChart(rows: List<TrendRow>, page: io.github.iroha1145.cloudmonitor
                 drawLine(cm.border.copy(alpha = .55f), Offset(left, bottom + 10.dp.toPx()), Offset(left + plotWidth, bottom + 10.dp.toPx()), 1.dp.toPx())
                 if (canDraw) {
                     val path = Path()
-                    val xs = FloatArray(rows.size) { x(it) }
-                    val ys = FloatArray(rows.size) { y(values[it]).coerceIn(8.dp.toPx(), bottom) }
+                    val xs = FloatArray(plotRows.size) { x(it) }
+                    val ys = FloatArray(plotRows.size) { y(values[it]).coerceIn(8.dp.toPx(), bottom) }
                     addMonotoneCubic(path, xs, ys)
                     drawLine(color.copy(alpha = .2f), Offset(left, y(values.last())), Offset(left + plotWidth, y(values.last())), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx())))
                     drawPath(path, color, style = Stroke(2.25.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-                    drawCircle(cm.card, 5.dp.toPx(), Offset(x(rows.lastIndex), y(values.last())))
-                    drawCircle(color, 3.dp.toPx(), Offset(x(rows.lastIndex), y(values.last())))
+                    drawCircle(cm.card, 5.dp.toPx(), Offset(x(plotRows.lastIndex), y(values.last())))
+                    drawCircle(color, 3.dp.toPx(), Offset(x(plotRows.lastIndex), y(values.last())))
                 }
                 if (selectedDay.isNotBlank()) {
                     drawLine(cm.ink.copy(alpha = .25f), Offset(x(selected), 16.dp.toPx()), Offset(x(selected), bottom), 1.dp.toPx())
@@ -162,24 +172,24 @@ fun DailyTrendChart(rows: List<TrendRow>, page: io.github.iroha1145.cloudmonitor
                 fontSize = 11.sp, color = cm.ink, modifier = Modifier.align(Alignment.TopStart).padding(top = 10.dp).testTag("trend-selection"))
         }
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(shortDay(rows.first().day), color = cm.mute, fontSize = 10.sp)
+            Text(shortDay(plotRows.first().day), color = cm.mute, fontSize = 10.sp)
             Text(shortDay(java.time.LocalDate.ofEpochDay(first + span / 2).toString()), color = cm.mute, fontSize = 10.sp)
-            Text(shortDay(rows.last().day), color = cm.mute, fontSize = 10.sp)
+            Text(shortDay(plotRows.last().day), color = cm.mute, fontSize = 10.sp)
         }
         HorizontalDivider(color = cm.border)
         FlowRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceBetween,
             itemVerticalAlignment = Alignment.CenterVertically) {
             Text("点按或拖动，查看当天明细", color = cm.mute, fontSize = 10.sp)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { selectedDay = rows[selected - 1].day }, enabled = selected > 0, modifier = Modifier.size(48.dp).testTag("trend-previous")) {
+                IconButton(onClick = { selectedDay = plotRows[selected - 1].day }, enabled = selected > 0, modifier = Modifier.size(48.dp).testTag("trend-previous")) {
                     Icon(io.github.iroha1145.cloudmonitor.ui.AppIcons.ChevronLeft, "查看前一天记录", modifier = Modifier.size(16.dp), tint = if (selected > 0) cm.mute else cm.mute.copy(alpha = .3f))
                 }
                 Box(Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).clickable(role = Role.Button, onClickLabel = "查看当日明细") { showDetails(row) }
                     .testTag("trend-details").semantics { contentDescription = "查看当日明细，${row.day}" }.padding(horizontal = 2.dp), contentAlignment = Alignment.Center) {
                     Text(shortDay(row.day), fontSize = 11.sp, color = cm.mute)
                 }
-                IconButton(onClick = { selectedDay = rows[selected + 1].day }, enabled = selected < rows.lastIndex, modifier = Modifier.size(48.dp).testTag("trend-next")) {
-                    Icon(io.github.iroha1145.cloudmonitor.ui.AppIcons.ChevronRight, "查看后一天记录", modifier = Modifier.size(16.dp), tint = if (selected < rows.lastIndex) cm.mute else cm.mute.copy(alpha = .3f))
+                IconButton(onClick = { selectedDay = plotRows[selected + 1].day }, enabled = selected < plotRows.lastIndex, modifier = Modifier.size(48.dp).testTag("trend-next")) {
+                    Icon(io.github.iroha1145.cloudmonitor.ui.AppIcons.ChevronRight, "查看后一天记录", modifier = Modifier.size(16.dp), tint = if (selected < plotRows.lastIndex) cm.mute else cm.mute.copy(alpha = .3f))
                 }
             }
         }

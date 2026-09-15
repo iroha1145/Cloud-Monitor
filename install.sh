@@ -209,6 +209,8 @@ hub_url() {
 
 need_cmd docker
 INSTALL_DIR="$(resolve_install_dir)"
+CURRENT="$(read_mode_file "$INSTALL_DIR")"
+CHOSEN="$(pick_mode "$CURRENT")"
 echo "安装目录：$INSTALL_DIR"
 ensure_repo "$INSTALL_DIR"
 
@@ -220,8 +222,14 @@ upsert_env "$ENVF" CM_VERSION "$(tr -d '[:space:]' <"$INSTALL_DIR/VERSION" 2>/de
 upsert_env "$ENVF" CM_GIT_SHA "$(git -c "safe.directory=$INSTALL_DIR" -C "$INSTALL_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 
 ensure_updater() {
-  mkdir -p "$HUB/update-control"
-  chmod 777 "$HUB/update-control" 2>/dev/null || true
+  mkdir -p "$HUB/update-control" "$HUB/update-runtime"
+  if mkdir -p /run/cloud-monitor 2>/dev/null; then
+    chmod 700 /run/cloud-monitor 2>/dev/null || true
+    upsert_env "$ENVF" CM_UPDATE_RUNTIME_HOST /run/cloud-monitor
+  fi
+  # 容器内 monitor 用户固定为 999；root 监视器仍可写。禁止 0777。
+  chown 999:999 "$HUB/update-control" 2>/dev/null || true
+  chmod 0770 "$HUB/update-control" 2>/dev/null || true
   chmod +x "$HUB/scripts/self-update.sh" "$HUB/scripts/update-watcher.sh" 2>/dev/null || true
   if command -v systemctl >/dev/null 2>&1 && [[ "$(id -u)" == "0" ]] && systemctl list-unit-files >/dev/null 2>&1; then
     local unit="/etc/systemd/system/cloud-monitor-updater.service"
@@ -242,9 +250,6 @@ ensure_updater() {
   echo "已在后台启动宿主机更新监视器（pid $(cat "$pidf")）"
 }
 ensure_updater
-
-CURRENT="$(read_mode_file "$INSTALL_DIR")"
-CHOSEN="$(pick_mode "$CURRENT")"
 
 if [[ "$CHOSEN" == "demo" ]]; then
   upsert_env "$ENVF" CM_DEMO true

@@ -111,7 +111,7 @@
 }
 .sv-button:hover {
   background: var(--hover, #f8f9fc);
-  border-color: #c7cedc;
+  border-color: var(--line-strong);
   box-shadow: 0 1px 2px rgb(30 45 75 / 5%);
 }
 .sv-button:active {
@@ -282,7 +282,7 @@
     box-shadow 0.16s;
 }
 .sv-device-card:hover {
-  border-color: #d4d9e6;
+  border-color: var(--line-strong);
   box-shadow:
     0 5px 12px rgb(25 52 66 / 5%),
     0 18px 34px rgb(25 52 66 / 4%);
@@ -486,7 +486,7 @@
   font-variant-numeric: tabular-nums;
 }
 .sv-device-clients {
-  border-top: 1px solid #eef0f5;
+  border-top: 1px solid var(--line-strong);
   margin-top: 16px;
   padding-top: 14px;
 }
@@ -555,7 +555,7 @@
     var(--primary, #176b7a) 8%,
     var(--surface, #fff)
   );
-  border: 1px solid #d5e5e8;
+  border: 1px solid var(--line-strong);
   color: #176b7a;
   font-weight: 650;
   font-size: 15px;
@@ -783,7 +783,7 @@
     var(--primary, #176b7a) 9%,
     var(--surface, #fff)
   );
-  border: 1px solid #d1e4e8;
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
   padding: 6px 8px;
 }

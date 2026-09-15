@@ -11,7 +11,7 @@
     <link rel="icon" type="image/svg+xml" sizes="any" href="/static/favicon.svg" />
     <meta name="cm-demo" content="on" />
     <script src="/static/theme-boot.js"></script>
-    <link rel="stylesheet" href="/static/tm.css" />
+    <link rel="stylesheet" href="/static/tm.css?v=0.2.0" />
     <style>
       html[data-cm-demo] #logout { display: none; }
     </style>
@@ -30,7 +30,7 @@
           <svg viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="var(--brand-500)"/><path d="M10.2 21.5c-2.5 0-4.5-1.9-4.5-4.3 0-2.4 2-4.3 4.5-4.3.4-1.7 1.7-3.1 3.5-3.6 1.8-.5 3.8-.2 5.2 1 1.4 1.1 2.1 2.9 1.7 4.6h1c1.8 0 3.3 1.5 3.3 3.3s-1.5 3.3-3.3 3.3h-11.4z" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </span>
         <h1 class="gate-title" id="gate-title">云端用量面板</h1>
-        <p class="gate-desc">这是演示站点，使用假数据预览面板。公开演示见 GitHub Pages，实机请用 ACCESS_TOKEN 登录。</p>
+        <p class="gate-desc" id="gate-desc">这是演示站点，使用假数据预览面板。公开演示见 GitHub Pages，实机请用 ACCESS_TOKEN 登录。</p>
         <form id="gate-form" novalidate>
           <label class="field">
             <span class="field-label">访问密钥</span>
@@ -324,6 +324,7 @@
                   <button role="tab" aria-selected="true" tabindex="0" type="button" data-v="month" class="is-active">月</button>
                 </div>
               </div>
+              <p class="scroll-hint" aria-hidden="true">左右滑动查看</p>
               <div class="hm-scroll t-swap-stage">
                 <div class="hm" id="hm" role="tabpanel" aria-label="活动热力图"></div>
               </div>
@@ -418,6 +419,6 @@
     </div>
 
     <script src="/static/mock.js" defer></script>
-    <script src="/static/tm.js" defer></script>
+    <script src="/static/tm.js?v=0.2.0" defer></script>
   </body>
 </html>

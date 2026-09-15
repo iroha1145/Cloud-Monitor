@@ -29,6 +29,7 @@ from hub.tm_provider_status import (
     ProviderStatusService,
     canonical_provider,
     discover_providers,
+    fetch_one_provider,
     fetch_provider_statuses,
     parse_rss_payload,
     parse_status_payload,
@@ -271,6 +272,22 @@ def test_grok_rss_all_resolved_is_operational():
     parsed = parse_rss_payload(STATUS_PAGES["grok"], _grok_rss_ok())
     assert parsed["status"] == "operational"
     assert parsed["error_code"] is None
+
+
+def test_rss_body_is_stream_capped_before_parse():
+    huge = "a" * (512 * 1024 + 64)
+    rss = f"<?xml version='1.0'?><rss><channel><title>{huge}</title></channel></rss>"
+
+    async def run():
+        client, _transport = await _client({STATUS_PAGES["grok"].summary_url: (200, rss)})
+        try:
+            return await fetch_one_provider(client, STATUS_PAGES["grok"], timeout=2.0)
+        finally:
+            await client.aclose()
+
+    parsed, error = asyncio.run(run())
+    assert parsed == {}
+    assert error == "payload_too_large"
 
 
 def test_allowlist_is_fixed_and_has_no_client_url():

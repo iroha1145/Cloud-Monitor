@@ -7,7 +7,7 @@
  * its same-Y live tip flattens the latest day against the dashed reference.
  * Slope rules live in trend-math.ts as the spec Android also follows.
  */
-import { Liveline } from "liveline";
+import { lazy, Suspense } from "react";
 import {
   useEffect,
   useId,
@@ -21,7 +21,13 @@ import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, MoveHorizontal } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { summarizeTrend, type DashboardData, type TrendPoint } from "./data";
+import { usd } from "./money";
+import { indexForSelectedDay } from "./trend-math";
 import "./insight-trend.css";
+
+const Liveline = lazy(() =>
+  import("liveline").then((mod) => ({ default: mod.Liveline })),
+);
 
 const DAY = 86_400;
 const compact = (n: number) =>
@@ -31,10 +37,7 @@ const compact = (n: number) =>
       ? `${(n / 1e4).toFixed(1)} 万`
       : n.toLocaleString("en-US");
 const exact = (n: number) => n.toLocaleString("en-US");
-const money = (n: number | null) =>
-  n === null
-    ? "未提供"
-    : `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const money = (n: number | null) => usd(n);
 const percent = (n: number | null) =>
   n === null ? "未提供" : `${(n * 100).toFixed(1)}%`;
 const shortDay = (day: string) =>
@@ -87,7 +90,7 @@ function DayDetails({ point }: { point: TrendPoint }) {
     },
   ];
   return (
-    <div className="insight-chart-tooltip insight-trend-tooltip">
+    <div className="insight-trend-tooltip">
       <div className="insight-trend-tooltip-title">
         <time dateTime={point.day}>{point.day}</time>
         <span>每日明细</span>
@@ -216,7 +219,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
   const uid = useId();
   const [days, setDays] = useState("30");
   const [metric, setMetric] = useState<"tokens" | "cost">("tokens");
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [detailMode, setDetailMode] = useState<DetailMode>(null);
   const [pointerAnchor, setPointerAnchor] = useState<DetailAnchor | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -234,7 +237,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
     tokenTotal, hasCost, allCosts, costTotal, cacheRate, partialCache,
     cacheDays, cacheSkippedDays,
   } = summarizeTrend(series);
-  const pointIndex = Math.min(selected ?? series.length - 1, series.length - 1);
+  const pointIndex = indexForSelectedDay(series, selectedDay);
   const point = series[pointIndex];
   const firstDay = series[0]?.day;
   const lastDay = series.at(-1)?.day;
@@ -267,10 +270,10 @@ export function InsightTrend({ data }: { data: DashboardData }) {
   }, [series, seriesTimes, metric]);
 
   useEffect(() => {
-    setSelected(null);
+    setSelectedDay(null);
     setPointerAnchor(null);
     setDetailMode(null);
-  }, [days, metric, data.trend]);
+  }, [days, metric]);
   useEffect(() => {
     const dismiss = () => {
       setPointerAnchor(null);
@@ -298,7 +301,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
       return;
     }
     setPlot(stageRef.current?.getBoundingClientRect());
-  }, [detailMode, selected, days, metric]);
+  }, [detailMode, selectedDay, days, metric]);
 
   const setFromPointer = (
     event: PointerEvent<HTMLDivElement>,
@@ -335,15 +338,15 @@ export function InsightTrend({ data }: { data: DashboardData }) {
       y: event.clientY,
       input: event.pointerType === "touch" ? "touch" : "mouse",
     });
-    setSelected(nearest);
+    setSelectedDay(series[nearest]?.day ?? null);
   };
-  const moveDay = (direction: number) =>
-    setSelected((current) =>
-      Math.max(
-        0,
-        Math.min(series.length - 1, (current ?? series.length - 1) + direction),
-      ),
+  const moveDay = (direction: number) => {
+    const next = Math.max(
+      0,
+      Math.min(series.length - 1, pointIndex + direction),
     );
+    setSelectedDay(series[next]?.day ?? null);
+  };
   const handleKey = (event: KeyboardEvent<HTMLElement>) => {
     if (
       !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "Escape"].includes(event.key)
@@ -353,8 +356,8 @@ export function InsightTrend({ data }: { data: DashboardData }) {
     setDetailMode("keyboard");
     setPointerAnchor(null);
     if (event.key === "Escape") setDetailMode(null);
-    else if (event.key === "Home") setSelected(0);
-    else if (event.key === "End") setSelected(series.length - 1);
+    else if (event.key === "Home") setSelectedDay(series[0]?.day ?? null);
+    else if (event.key === "End") setSelectedDay(series.at(-1)?.day ?? null);
     else
       moveDay(
         event.key === "ArrowLeft" || event.key === "ArrowDown" ? -1 : 1,
@@ -365,7 +368,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
     point && firstTime != null
       ? 1.5 + ((seriesTimes[pointIndex] - firstTime) / span) * 97
       : 98.5;
-  const tooltipVisible = detailMode !== null && selected !== null && point;
+  const tooltipVisible = detailMode !== null && selectedDay !== null && point;
   const detailAnchor =
     pointerAnchor ||
     (plot
@@ -527,7 +530,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
                 if (pointerDown.current) return;
                 setDetailMode("keyboard");
                 setPointerAnchor(null);
-                setSelected((current) => current ?? series.length - 1);
+                setSelectedDay((current) => current ?? series.at(-1)?.day ?? null);
               }}
               onBlur={(event) => {
                 if (
@@ -542,6 +545,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
             >
               {canDraw ? (
                 <div className="insight-trend-canvas" aria-hidden="true">
+                  <Suspense fallback={null}>
                   <Liveline
                     key={`${days}-${metric}`}
                     data={chart.points}
@@ -565,6 +569,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
                     }
                     formatTime={() => ""}
                   />
+                  </Suspense>
                 </div>
               ) : (
                 <div className="insight-trend-no-line">

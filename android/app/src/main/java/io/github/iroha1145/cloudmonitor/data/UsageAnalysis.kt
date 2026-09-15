@@ -5,8 +5,15 @@ import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.*
+import java.time.LocalDate
 import kotlin.math.abs
 import kotlin.math.max
+
+private val CALENDAR_DAY = Regex("""^\d{4}-\d{2}-\d{2}$""")
+
+/** Same calendar-day gate as hub/dashboard `sourceDate`: regex plus a real LocalDate. */
+fun isCalendarDay(day: String): Boolean =
+    CALENDAR_DAY.matches(day) && runCatching { LocalDate.parse(day) }.getOrNull()?.toString() == day
 
 /** Availability belongs to each field, not to the entire reported period. */
 data class UsageComponents(
@@ -190,7 +197,7 @@ private fun normalizedDay(day: String, source: JsonObject, models: Map<String, D
 fun analyzeTrend(overview: Overview, history: List<HistoryDay> = emptyList()): List<TrendRow> {
     val archives = history.associateBy { it.day }
     val modelDays = overview.trendModels.associateBy { it.day }
-    return overview.trend.filter { it.day.isNotBlank() }.map { point ->
+    return overview.trend.filter { isCalendarDay(it.day) }.map { point ->
         val own = trendSource(point)
         val archive = archives[point.day]?.let(::historySource)
         val matches = own["total"].counter() != null && archive?.get("tokens").counter() != null &&
@@ -263,7 +270,7 @@ private fun numberMap(values: Map<String, Double>): JsonObject =
 internal fun periodSource(period: PeriodTotals): JsonObject = period.rawUsage ?: buildJsonObject {
     put("capabilities", buildJsonObject { put("tokenComponents", period.capabilities.tokenComponents) })
     if (period.totalTokens.isFinite()) put("totalTokens", period.totalTokens)
-    if (period.costUsd.isFinite()) put("costUsd", period.costUsd)
+    if (period.costUsd?.isFinite() == true) put("costUsd", period.costUsd)
     val capable = period.capabilities.tokenComponents
     mapOf(
         "outputTokens" to period.outputTokens, "cacheReadTokens" to period.cacheReadTokens,
@@ -327,7 +334,7 @@ abstract class UsageJsonSerializer<T>(name: String) : KSerializer<T> {
 object PeriodTotalsSerializer : UsageJsonSerializer<PeriodTotals>("PeriodTotals") {
     override fun read(source: JsonObject) = PeriodTotals(
         capabilities = Capabilities(source["capabilities"].record()["tokenComponents"].flag() == true),
-        totalTokens = count(source["totalTokens"]), costUsd = source["costUsd"].usageNumber() ?: 0.0,
+        totalTokens = count(source["totalTokens"]), costUsd = source["costUsd"].usageNumber(),
         cacheReadTokens = count(source["cacheReadTokens"]), cacheWriteTokens = count(source["cacheWriteTokens"]),
         outputTokens = count(source["outputTokens"]), unclassifiedTokens = count(source["unclassifiedTokens"]),
         timedTokens = count(source["timedTokens"]), timedOutputTokens = count(source["timedOutputTokens"]),
@@ -371,7 +378,8 @@ object HistoryDaySerializer : UsageJsonSerializer<HistoryDay>("HistoryDay") {
 
 /** Calendar range, not the last N records: missing dates are never backfilled. */
 fun trendWindow(rows: List<TrendRow>, days: Int): List<TrendRow> {
-    val end = rows.lastOrNull()?.day?.let(java.time.LocalDate::parse) ?: return emptyList()
+    val dated = rows.filter { isCalendarDay(it.day) }
+    val end = dated.lastOrNull()?.day?.let(LocalDate::parse) ?: return emptyList()
     val floor = end.minusDays(days.coerceAtLeast(1).toLong() - 1).toString()
-    return rows.filter { it.day >= floor && it.day <= end.toString() }
+    return dated.filter { it.day >= floor && it.day <= end.toString() }
 }

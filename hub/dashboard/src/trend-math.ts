@@ -101,3 +101,15 @@ export function smoothTrendPoints(points: TrendSample[]): TrendSample[] {
   result.push(points[points.length - 1]);
   return result;
 }
+
+/** Keep the selected calendar day when the 30-day window slides (W-N8). */
+export function indexForSelectedDay(
+  series: readonly { day: string }[],
+  selectedDay: string | null,
+): number {
+  if (selectedDay) {
+    const found = series.findIndex((item) => item.day === selectedDay);
+    if (found >= 0) return found;
+  }
+  return Math.max(0, series.length - 1);
+}

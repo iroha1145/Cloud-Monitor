@@ -120,12 +120,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _bootstrapped.value = true
                 return@launch
             }
-            sessionToken = if (store.signedIn && !store.demo) store.token else ""
+            sessionToken = try {
+                if (store.signedIn && !store.demo) store.token else ""
+            } catch (_: SecurityException) {
+                ""
+            }
+            val secretsError = store.consumeSecretsError()
             _state.update {
                 it.copy(
                     signedIn = store.signedIn,
                     demo = store.demo,
                     hubUrl = store.hubUrl,
+                    sessionWarning = secretsError,
+                    error = secretsError ?: it.error,
                     encryptionAvailable = store.encryptionAvailable,
                     dark = when (store.darkOverride) {
                         "dark" -> true
@@ -262,7 +269,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         dataJob?.cancel()
         historyJob?.cancel()
         dataJob = viewModelScope.launch {
-            _state.update { it.copy(refreshing = !initial, loading = initial, error = null) }
+            _state.update { it.copy(refreshing = !initial, loading = initial, error = null, historyLoading = false) }
             try {
                 if (demo) {
                     val ov = DemoCatalog.overview(demoRng)
@@ -363,7 +370,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun openUpdate() {
+    fun openUpdate(refresh: Boolean = false) {
         val s = _state.value
         if (!s.signedIn) return
         val gen = sessionGen
@@ -377,7 +384,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val data = if (demo) {
                     DemoCatalog.updateCheck()
                 } else {
-                    withContext(Dispatchers.IO) { hub.systemUpdate(url, token, refresh = true) }
+                    withContext(Dispatchers.IO) { hub.systemUpdate(url, token, refresh = refresh) }
                 }
                 if (!alive(gen)) return@launch
                 _state.update { it.copy(update = data, updateLoading = false, updateError = null) }
@@ -465,10 +472,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 throw e
             } catch (e: ApiException) {
                 if (!alive(gen)) return
-                if (e.status == 401 || e.status == 403) {
-                    applyLoggedOut(gateMessage(e))
-                    return
-                }
                 val st = if (e.status == 404) AuxStatus.Unsupported else AuxStatus.Error
                 _state.update { it.copy(providers = emptyList(), providersStatus = st) }
                 if (st == AuxStatus.Error) failed += "提供商状态"
@@ -497,10 +500,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 throw e
             } catch (e: ApiException) {
                 if (!alive(gen)) return
-                if (e.status == 401 || e.status == 403) {
-                    applyLoggedOut(gateMessage(e))
-                    return
-                }
                 val st = if (e.status == 404) AuxStatus.Unsupported else AuxStatus.Error
                 _state.update { it.copy(subscriptions = null, subsStatus = st) }
                 if (st == AuxStatus.Error) failed += "订阅清单"
@@ -523,10 +522,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 throw e
             } catch (e: ApiException) {
                 if (!alive(gen)) return
-                if (e.status == 401 || e.status == 403) {
-                    applyLoggedOut(gateMessage(e))
-                    return
-                }
                 if (e.status == 404) {
                     applyFallbackHistory(ov, "unsupported")
                 } else {

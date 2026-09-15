@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { AppErrorBoundary, lazyWithReload } from "./chunkLoad";
 import {
   AnimatePresence,
   motion,
@@ -58,26 +59,28 @@ import { loadDashboard, isAuthFailure } from "./api";
 import { MobileNavigation } from "./MobileNavigation";
 import {
   ModelTable,
-  ModelMatrix,
   Overview,
   pct,
   Stats,
 } from "./Overview";
 import "./mobile.css";
 
-const DevicesView = lazy(async () => ({
+const DevicesView = lazyWithReload("devices", async () => ({
   default: (await import("./SecondaryViews")).DevicesView,
 }));
-const HistoryView = lazy(async () => ({
+const HistoryView = lazyWithReload("history", async () => ({
   default: (await import("./SecondaryViews")).HistoryView,
 }));
-const QuotaView = lazy(async () => ({
+const QuotaView = lazyWithReload("quota", async () => ({
   default: (await import("./SecondaryViews")).QuotaView,
 }));
-const ArchivePanel = lazy(async () => ({
+const ArchivePanel = lazyWithReload("archive", async () => ({
   default: (await import("./ArchivePanel")).ArchivePanel,
 }));
-const AppDialogs = lazy(() => import("./AppDialogs"));
+const AppDialogs = lazyWithReload("dialogs", () => import("./AppDialogs"));
+const ModelMatrixView = lazyWithReload("matrix", async () => ({
+  default: (await import("./Overview")).ModelMatrix,
+}));
 
 // Showcase navigation is opt-in for a separate public demo build.
 const SHOWCASE_UI = import.meta.env.VITE_SHOWCASE_UI === "true";
@@ -139,6 +142,8 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     [refreshState, setRefreshState] = useState<ButtonState>("idle");
   const [toast, setToast] = useState("");
   const token = useRef(initialToken);
+  const dataRef = useRef(data);
+  dataRef.current = data;
   const inFlight = useRef<AbortController | null>(null);
   const [refreshWarning, setRefreshWarning] = useState("");
   const requestVersion = useRef(0);
@@ -201,11 +206,17 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     const t = setTimeout(() => setToast(""), 4200);
     return () => clearTimeout(t);
   }, [toast]);
+  const userRefresh = useRef(false);
   useEffect(() => {
     if (data.mode !== "live") return;
-    const cancel = () => { ++requestVersion.current; inFlight.current?.abort(); setRefreshState("idle"); };
+    const cancel = () => {
+      if (userRefresh.current) return;
+      ++requestVersion.current;
+      inFlight.current?.abort();
+      setRefreshState("idle");
+    };
     const update = async () => {
-      if (document.hidden) return;
+      if (document.hidden || userRefresh.current) return;
       inFlight.current?.abort();
       const controller = new AbortController(); inFlight.current = controller;
       setRefreshState("idle");
@@ -213,7 +224,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
       try {
         const next = await loadDashboard(token.current, controller.signal, value => {
           if (version === requestVersion.current) setData(value);
-        });
+        }, dataRef.current);
         if (version === requestVersion.current) { setData(next); setRefreshWarning(""); }
       } catch (error) {
         if (controller.signal.aborted || version !== requestVersion.current) return;
@@ -239,6 +250,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
   };
   const refresh = async () => {
     if (refreshState === "loading") return;
+    userRefresh.current = true;
     setRefreshState("loading");
     const version = ++requestVersion.current;
     inFlight.current?.abort();
@@ -247,7 +259,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
       if (data.mode === "live") {
         const next = await loadDashboard(token.current, controller.signal, value => {
           if (version === requestVersion.current) setData(value);
-        });
+        }, dataRef.current);
         if (version !== requestVersion.current) return;
         setData(next);
       } else {
@@ -261,14 +273,21 @@ export default function App({ initialData, initialToken = "", hosted = false, is
         data.mode === "live" ? "已获取最新用量。" : "示例数据已重新加载。",
       );
     } catch (e) {
-      if (version !== requestVersion.current) return;
-      if (controller.signal.aborted) return;
-      if (isAuthFailure(e) && hosted) { onSignOut?.(); return; }
-      setRefreshState("error");
-      setRefreshWarning(e instanceof Error ? e.message : "刷新失败，已保留上次数据。");
-      setToast(e instanceof Error ? e.message : "刷新失败，已保留上次数据。");
+      if (version === requestVersion.current && !controller.signal.aborted) {
+        if (isAuthFailure(e) && hosted) { onSignOut?.(); }
+        else {
+          setRefreshState("error");
+          setRefreshWarning(e instanceof Error ? e.message : "刷新失败，已保留上次数据。");
+          setToast(e instanceof Error ? e.message : "刷新失败，已保留上次数据。");
+        }
+      }
+    } finally {
+      userRefresh.current = false;
     }
-    setTimeout(() => { if (version === requestVersion.current) setRefreshState("idle"); }, 1800);
+    setTimeout(() => {
+      if (version !== requestVersion.current) return;
+      setRefreshState("idle");
+    }, 1800);
   };
   const connect = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -332,16 +351,29 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     );
     setToast("模型用量表已导出。");
   };
-  const time = new Date(data.generatedAt).toLocaleTimeString("zh-CN", {
-    timeZone: data.timeZone,
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const date = new Date(data.generatedAt).toLocaleDateString("zh-CN", {
-    timeZone: data.timeZone,
-    month: "long",
-    day: "numeric",
-  });
+  let time = "";
+  let date = "";
+  try {
+    time = new Date(data.generatedAt).toLocaleTimeString("zh-CN", {
+      timeZone: data.timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    date = new Date(data.generatedAt).toLocaleDateString("zh-CN", {
+      timeZone: data.timeZone,
+      month: "long",
+      day: "numeric",
+    });
+  } catch {
+    time = new Date(data.generatedAt).toLocaleTimeString("zh-CN", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    date = new Date(data.generatedAt).toLocaleDateString("zh-CN", {
+      month: "long",
+      day: "numeric",
+    });
+  }
   const nav = (
     <>
       <a className="app-brand" href="#overview" aria-label="Cloud Monitor 首页">
@@ -599,14 +631,23 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                       {period === "today"
                         ? date
                         : period === "month"
-                          ? new Date(data.generatedAt).toLocaleDateString(
-                              "zh-CN",
-                              {
-                                timeZone: data.timeZone,
-                                year: "numeric",
-                                month: "long",
-                              },
-                            )
+                          ? (() => {
+                              try {
+                                return new Date(data.generatedAt).toLocaleDateString(
+                                  "zh-CN",
+                                  {
+                                    timeZone: data.timeZone,
+                                    year: "numeric",
+                                    month: "long",
+                                  },
+                                );
+                              } catch {
+                                return new Date(data.generatedAt).toLocaleDateString(
+                                  "zh-CN",
+                                  { year: "numeric", month: "long" },
+                                );
+                              }
+                            })()
                           : "全部历史记录"}
                     </span>
                   </div>
@@ -648,21 +689,27 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                     <>
                       <Stats data={data} period={period} />
                       <ModelTable per={per} full onSelect={setSelected} />
-                      <ModelMatrix per={per} />
+                      <AppErrorBoundary title="模型矩阵已更新，请刷新。">
+                        <Suspense fallback={<div className="page-loading" role="status">正在加载矩阵…</div>}>
+                          <ModelMatrixView per={per} />
+                        </Suspense>
+                      </AppErrorBoundary>
                     </>
                   ) : (
-                    <Suspense fallback={<div className="page-loading" role="status">正在加载…</div>}>
-                      {page === "devices" ? (
-                        <DevicesView data={data} />
-                      ) : page === "quota" ? (
-                        <QuotaView data={data} />
-                      ) : (
-                        <>
-                          <HistoryView data={data} />
-                          <ArchivePanel accessToken={token.current} dataMode={data.mode} fallbackData={data} historyAvailable={data.features?.history_daily} onAuthExpired={onSignOut} />
-                        </>
-                      )}
-                    </Suspense>
+                    <AppErrorBoundary>
+                      <Suspense fallback={<div className="page-loading" role="status">正在加载…</div>}>
+                        {page === "devices" ? (
+                          <DevicesView data={data} />
+                        ) : page === "quota" ? (
+                          <QuotaView data={data} />
+                        ) : (
+                          <>
+                            <HistoryView data={data} />
+                            <ArchivePanel accessToken={token.current} dataMode={data.mode} fallbackData={data} historyAvailable={data.features?.history_daily} onAuthExpired={onSignOut} />
+                          </>
+                        )}
+                      </Suspense>
+                    </AppErrorBoundary>
                   )}
                 </motion.div>
               </AnimatePresence>
@@ -686,6 +733,17 @@ export default function App({ initialData, initialToken = "", hosted = false, is
           <MobileNavigation page={page} onNavigate={go} />
         </div>
         {(searchOpen || settings || notifications || !!selected || design) && (
+          <AppErrorBoundary
+            title="对话框已更新，请刷新。"
+            variant="dialog"
+            onFail={() => {
+              setSearchOpen(false);
+              setSettings(false);
+              setNotifications(false);
+              setDesign(false);
+              setSelected(null);
+            }}
+          >
           <Suspense fallback={null}>
             <AppDialogs
               searchOpen={searchOpen}
@@ -721,6 +779,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
               inFlight={inFlight}
             />
           </Suspense>
+          </AppErrorBoundary>
         )}
         <AnimatePresence>
           {toast && (

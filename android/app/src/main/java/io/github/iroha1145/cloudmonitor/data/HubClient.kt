@@ -1,5 +1,6 @@
 package io.github.iroha1145.cloudmonitor.data
 
+import io.github.iroha1145.cloudmonitor.platform.LocalNetworkAccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.job
 import kotlinx.serialization.json.Json
@@ -12,7 +13,9 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
+import java.net.InetAddress
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLHandshakeException
 import kotlin.coroutines.coroutineContext
 
 class HubClient(
@@ -77,7 +80,7 @@ class HubClient(
                 throw e
             } catch (e: IOException) {
                 if (call.isCanceled()) throw CancellationException("request cancelled", e)
-                throw ApiException(0, "无法连接服务器")
+                throw ApiException(0, connectionFailureMessage(e))
             } catch (e: ApiException) {
                 throw e
             } catch (_: Exception) {
@@ -109,8 +112,11 @@ class HubClient(
                 .writeTimeout(15, TimeUnit.SECONDS)
                 .addNetworkInterceptor { chain ->
                     val url = chain.request().url
-                    if (url.scheme.equals("http", ignoreCase = true) && !isCleartextAllowedHost(url.host)) {
-                        throw ApiException(0, "公网请使用 HTTPS；明文 HTTP 仅允许本机和局域网地址")
+                    if (url.scheme.equals("http", ignoreCase = true)) {
+                        val peer = chain.connection()?.socket()?.inetAddress
+                        if (peer == null || !isCleartextAllowedPeer(peer)) {
+                            throw ApiException(0, "公网请使用 HTTPS；明文 HTTP 仅允许本机和局域网地址")
+                        }
                     }
                     chain.proceed(chain.request())
                 }
@@ -123,11 +129,27 @@ class HubClient(
                 s = "https://$s"
             }
             s = s.trimEnd('/')
+            if (s.endsWith("/tm/overview", ignoreCase = true)) {
+                s = s.dropLast("/tm/overview".length).trimEnd('/')
+            } else if (s.endsWith("/tm", ignoreCase = true)) {
+                s = s.dropLast(3).trimEnd('/')
+            }
             val parsed = s.toHttpUrlOrNull() ?: throw ApiException(0, "面板地址无效")
-            if (parsed.scheme == "http" && !isCleartextAllowedHost(parsed.host)) {
+            if (parsed.scheme == "http" && isObviouslyPublicName(parsed.host)) {
                 throw ApiException(0, "公网请使用 HTTPS；明文 HTTP 仅允许本机和局域网地址")
             }
             return s
+        }
+
+        internal fun connectionFailureMessage(error: Throwable): String {
+            var cur: Throwable? = error
+            while (cur != null) {
+                if (cur is SSLHandshakeException) {
+                    return "证书校验失败，请确认面板使用受信任的 HTTPS 证书"
+                }
+                cur = cur.cause
+            }
+            return "无法连接服务器"
         }
 
         /** 对齐网页 `data.detail || data.error`；FastAPI 的 detail 数组抽 `msg`。 */
@@ -154,11 +176,32 @@ class HubClient(
             return null
         }
 
+        /** Precheck only: reject HTTP for addresses that are already a public IP. Hostnames wait for the peer. */
+        internal fun isObviouslyPublicName(host: String): Boolean = isPublicIpLiteral(host)
+
+        internal fun isPublicIpLiteral(host: String): Boolean {
+            val h = host.trim().lowercase().removePrefix("[").removeSuffix("]").trimEnd('.')
+            if (h.isEmpty()) return false
+            val parts = h.split('.')
+            if (parts.size == 4 && parts.all { it.toIntOrNull() != null }) {
+                return !isCleartextAllowedHost(h)
+            }
+            if (h.contains(':')) {
+                return !isCleartextAllowedHost(h)
+            }
+            return false
+        }
+
+        /** Loopback plus the same LAN ranges as [LocalNetworkAccess.isLocalAddress]. */
+        internal fun isCleartextAllowedPeer(address: InetAddress): Boolean =
+            address.isLoopbackAddress || LocalNetworkAccess.isLocalAddress(address)
+
         internal fun isCleartextAllowedHost(host: String): Boolean {
-            val h = host.trim().lowercase().removePrefix("[").removeSuffix("]")
+            val h = host.trim().lowercase().removePrefix("[").removeSuffix("]").trimEnd('.')
             if (h.isEmpty()) return false
             if (h == "localhost" || h == "::1" || h == "0:0:0:0:0:0:0:1" || h == "10.0.2.2") return true
-            if (h.endsWith(".local")) return true
+            if (h.endsWith(".local") || h.endsWith(".home.arpa")) return true
+            if (!h.contains('.') && !h.contains(':')) return true
             val parts = h.split('.')
             if (parts.size == 4) {
                 val oct = parts.map { it.toIntOrNull() }

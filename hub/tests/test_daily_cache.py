@@ -54,8 +54,9 @@ def test_same_day_last_bucket_supplies_every_component_and_cost(db):
     assert archive["cacheReadTokens"] == 800
     assert archive["cacheWriteTokens"] == 0
     assert archive["unclassifiedTokens"] == 0
-    assert archive["tokenComponentsAvailable"] is True
-    assert archive["componentsPartial"] is False
+    # 组成 850 < 总量 1000 且未分类为 0：标缺口，不得假装组成完整
+    assert archive["tokenComponentsAvailable"] is False
+    assert archive["componentsPartial"] is True
     trend = snapshots.trend_by_day(db)[0]
     assert trend["day"] == day
     assert trend["total"] == archive["tokens"]

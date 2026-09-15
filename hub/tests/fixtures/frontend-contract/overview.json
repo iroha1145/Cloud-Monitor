@@ -2,7 +2,7 @@
   "overview_schema_version": 2,
   "generated_at": "2026-08-25T03:18:15.180Z",
   "pending_outbox": 0,
-  "last_snapshot_success_at": "2026-08-25T03:18:15+00:00",
+  "last_snapshot_success_at": "2026-08-25T03:18:15.000Z",
   "last_snapshot_error": null,
   "snapshot_degraded": false,
   "staleAfterMs": 600000,

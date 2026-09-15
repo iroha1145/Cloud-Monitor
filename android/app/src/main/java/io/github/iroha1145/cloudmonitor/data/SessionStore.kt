@@ -42,19 +42,24 @@ class SessionStore(context: Context) {
             }
             encryptionAvailable = secrets != null
             if (secrets != null && !metaPrefs.contains(KEY_URL)) {
-                metaPrefs.edit()
-                    .putString(KEY_URL, secrets!!.getString(KEY_URL, "").orEmpty())
-                    .putBoolean(KEY_IN, secrets!!.getBoolean(KEY_IN, false))
-                    .putBoolean(KEY_DEMO, secrets!!.getBoolean(KEY_DEMO, false))
-                    .apply()
-                val theme = secrets!!.getString(KEY_THEME, null)
-                if (theme != null) metaPrefs.edit().putString(KEY_THEME, theme).apply()
-                secrets!!.edit()
-                    .remove(KEY_URL)
-                    .remove(KEY_IN)
-                    .remove(KEY_DEMO)
-                    .remove(KEY_THEME)
-                    .apply()
+                try {
+                    metaPrefs.edit()
+                        .putString(KEY_URL, secrets!!.getString(KEY_URL, "").orEmpty())
+                        .putBoolean(KEY_IN, secrets!!.getBoolean(KEY_IN, false))
+                        .putBoolean(KEY_DEMO, secrets!!.getBoolean(KEY_DEMO, false))
+                        .apply()
+                    val theme = secrets!!.getString(KEY_THEME, null)
+                    if (theme != null) metaPrefs.edit().putString(KEY_THEME, theme).apply()
+                    secrets!!.edit()
+                        .remove(KEY_URL)
+                        .remove(KEY_IN)
+                        .remove(KEY_DEMO)
+                        .remove(KEY_THEME)
+                        .apply()
+                } catch (e: SecurityException) {
+                    Log.w(TAG, "encrypted session unreadable during migrate", e)
+                    discardSecrets()
+                }
             }
             if (secrets == null) {
                 metaPrefs.edit().putBoolean(KEY_IN, false).apply()
@@ -78,9 +83,9 @@ class SessionStore(context: Context) {
         set(value) = metaPrefs().edit().putString(KEY_URL, value).apply()
 
     var token: String
-        get() = secrets?.getString(KEY_TOKEN, "").orEmpty()
+        get() = readSecretString(KEY_TOKEN)
         set(value) {
-            secrets?.edit()?.putString(KEY_TOKEN, value)?.apply()
+            writeSecrets { putString(KEY_TOKEN, value) }
         }
 
     var signedIn: Boolean
@@ -99,7 +104,7 @@ class SessionStore(context: Context) {
         demo = demoMode
         if (demoMode) {
             signedIn = true
-            secrets?.edit()?.remove(KEY_TOKEN)?.apply()
+            writeSecrets { remove(KEY_TOKEN) }
         } else if (encryptionAvailable) {
             signedIn = true
             token = accessToken
@@ -117,7 +122,46 @@ class SessionStore(context: Context) {
 
     fun clearToken() {
         ensureSecrets()
-        secrets?.edit()?.remove(KEY_TOKEN)?.apply()
+        writeSecrets { remove(KEY_TOKEN) }
+    }
+
+    private fun readSecretString(key: String): String {
+        val prefs = secrets ?: return ""
+        return try {
+            prefs.getString(key, "").orEmpty()
+        } catch (e: SecurityException) {
+            Log.w(TAG, "encrypted session unreadable", e)
+            discardSecrets()
+            ""
+        }
+    }
+
+    private fun writeSecrets(block: SharedPreferences.Editor.() -> Unit) {
+        val prefs = secrets ?: return
+        try {
+            prefs.edit().apply(block).apply()
+        } catch (e: SecurityException) {
+            Log.w(TAG, "encrypted session write failed", e)
+            discardSecrets()
+        }
+    }
+
+    @Volatile var lastSecretsError: String? = null
+        private set
+
+    fun consumeSecretsError(): String? {
+        val message = lastSecretsError
+        lastSecretsError = null
+        return message
+    }
+
+    private fun discardSecrets() {
+        synchronized(lock) {
+            secrets = null
+            encryptionAvailable = false
+            meta?.edit()?.putBoolean(KEY_IN, false)?.apply()
+            lastSecretsError = "登录凭据无法解密，请重新登录"
+        }
     }
 
     fun clearSecrets() {

@@ -31,6 +31,7 @@ import { MetricTooltip } from "./MetricTooltip";
 import { ActivityPanel } from "./ActivityPanel";
 import { compact as compactNumber } from "./Overview";
 import { escapeCsv, downloadCsv } from "./lib/csv";
+import { usd } from "./money";
 // Last import: mobile overrides must win ties within this async chunk.
 import "./secondary-mobile.css";
 
@@ -41,15 +42,6 @@ export interface SecondaryProps {
 
 const fullNumber = (value: number) =>
   new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
-const usd = (value: number | null) =>
-  value === null
-    ? "未提供"
-    : new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }).format(value);
 const DAY = 86_400_000;
 
 function dateLabel(
@@ -572,9 +564,9 @@ function quotaPercent(quota: Quota): number | null {
 }
 
 function quotaAmount(value: number, quota: Quota): string {
-  if (!quota.currency) return fullNumber(value);
+  if (!quota.currency || quota.currency === "USD") return usd(value);
   try {
-    return new Intl.NumberFormat("zh-CN", {
+    return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: quota.currency,
       maximumFractionDigits: 2,
@@ -587,15 +579,23 @@ function quotaAmount(value: number, quota: Quota): string {
 function quotaGroupStatus(group: Quota[]) {
   if (group.some((quota) => quota.stale))
     return { label: "数据已过期", className: "sv-status-warning" };
-  const unavailable = group.find((quota) => quota.sourceStatus !== "ok");
+  const statusLabel: Record<string, string> = {
+    unauthorized: "授权失效",
+    error: "读取失败",
+    rateLimited: "已达速率限制",
+    sourceRateLimited: "状态源限流",
+    unavailable: "来源暂不可用",
+  };
+  const unavailable = group.find(
+    (quota) =>
+      quota.sourceStatus &&
+      quota.sourceStatus !== "ok" &&
+      quota.sourceStatus !== "disabled" &&
+      quota.sourceStatus !== "notConfigured",
+  );
   if (unavailable)
     return {
-      label:
-        unavailable.sourceStatus === "unauthorized"
-          ? "授权失效"
-          : unavailable.sourceStatus === "error"
-            ? "读取失败"
-            : "等待同步",
+      label: statusLabel[unavailable.sourceStatus || ""] || "等待同步",
       className: "sv-status-warning",
     };
   if (
@@ -708,6 +708,11 @@ function QuotaWindow({ quota, data }: { quota: Quota; data: DashboardData }) {
               ok: "已同步",
               unauthorized: "授权失效",
               error: "读取失败",
+              rateLimited: "已达速率限制",
+              sourceRateLimited: "状态源限流",
+              unavailable: "来源暂不可用",
+              disabled: "已禁用",
+              notConfigured: "未配置",
               unknown: "状态未知",
             } as Record<string, string>
           )[quota.sourceStatus || "unknown"] ||
@@ -811,10 +816,11 @@ function subscriptionInterval(subscription: Subscription) {
 
 function money(amount: number | null, currency: string): string {
   if (amount === null) return "未提供";
+  if (!currency || currency === "USD") return usd(amount);
   try {
-    return new Intl.NumberFormat("zh-CN", {
+    return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: currency || "USD",
+      currency,
       maximumFractionDigits: 2,
     }).format(amount);
   } catch {

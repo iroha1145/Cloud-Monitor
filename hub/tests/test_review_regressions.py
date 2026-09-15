@@ -135,9 +135,9 @@ def test_replay_stops_between_requests_and_keeps_remaining_items_pending(tmp_pat
         for key in ("one", "two"):
             record_pending(db, request_id=key, device_id=key, payload={"deviceId": key})
         result = replay_pending(db, core, should_stop=stop.is_set)
-        assert core.calls == 1
+        assert core.calls == 1  # GET /api/devices only；不再 POST 瘦身载荷
         assert result["stopped_by"] == "shutdown"
-        assert db.fetchone("SELECT COUNT(*) AS n FROM tm_ingest_outbox WHERE state='pending'")["n"] == 1
+        assert db.fetchone("SELECT COUNT(*) AS n FROM tm_ingest_outbox WHERE state='pending'")["n"] == 2
     finally:
         db.close()
 

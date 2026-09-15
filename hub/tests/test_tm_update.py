@@ -51,6 +51,11 @@ def test_parse_ref_rejects_paths():
         assert False
     except ValueError:
         pass
+    try:
+        parse_ref("0123456789abcdef0123456789abcdef01234567")
+        assert False
+    except ValueError:
+        pass
 
 
 def test_check_marks_release_ahead(tmp_path):
@@ -82,6 +87,12 @@ def test_http_requires_access_token(tmp_path):
     with TestClient(app) as client:
         assert client.get("/api/v1/system/update").status_code == 401
         assert client.post("/api/v1/system/update", json={"ref": "main"}).status_code == 401
+        assert client.post("/api/v1/system/update", json=[1, 2, 3]).status_code == 401
+        assert client.post(
+            "/api/v1/system/update",
+            content=b"not-json",
+            headers={"content-type": "application/json"},
+        ).status_code == 401
 
 
 def test_http_check_ok(tmp_path, monkeypatch):

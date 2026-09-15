@@ -286,7 +286,7 @@ object DemoCatalog {
         )
         fun split(p: PeriodTotals, r: Double) = PeriodTotals(
             totalTokens = clamp0(p.totalTokens * r * rng.rand(0.92, 1.08)),
-            costUsd = kotlin.math.round(p.costUsd * r * rng.rand(0.92, 1.08) * 100) / 100.0,
+            costUsd = p.costUsd?.let { kotlin.math.round(it * r * rng.rand(0.92, 1.08) * 100) / 100.0 },
         )
         val devices = devicesRaw.map { d ->
             val recv = utcHour(d.receivedOff, now)

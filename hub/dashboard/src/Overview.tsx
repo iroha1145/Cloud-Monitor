@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { AppErrorBoundary } from "./chunkLoad";
+import { InsightTrend } from "./InsightTrend";
 import {
   ArrowDown,
   ArrowUpRight,
@@ -16,8 +18,8 @@ import {
 import { BrandIcon } from "./BrandIcon";
 export { BrandIcon } from "./BrandIcon";
 import { NumberTicker } from "./components/motion/number-ticker";
-import { InsightTrend } from "./InsightTrend";
 import { MetricTooltip, type MetricDetailRow } from "./MetricTooltip";
+
 import {
   Select,
   SelectContent,
@@ -292,7 +294,7 @@ export function CompositionCard({
           viewBox="0 0 110 110"
           className="composition-ring"
           role="img"
-          aria-label="用量组成环形图"
+          aria-label={`用量组成环形图，总用量 ${count(per.totalTokens)}，缓存占比 ${pct(per.components.cacheRate)}`}
         >
           <circle
             cx="55"
@@ -488,8 +490,9 @@ export function ModelTable({
                   <MetricTooltip
                     title={`${m.name} · 总用量`}
                     rows={[{ label: "完整用量", value: count(m.totalTokens) }]}
+                    focusable
                   >
-                    <span role="img">{compact(m.totalTokens)}</span>
+                    <span>{compact(m.totalTokens)}</span>
                   </MetricTooltip>
                 </td>
                 <td data-label="缓存读取" className="model-read-cell">
@@ -503,8 +506,9 @@ export function ModelTable({
                           : "来源未提供",
                       },
                     ]}
+                    focusable
                   >
-                    <span role="img">
+                    <span>
                       {m.components.cacheReadKnown ? (
                         compact(m.components.cacheRead)
                       ) : (
@@ -520,6 +524,7 @@ export function ModelTable({
                       rows={usageDetails(m)}
                       note={usageNote(m)}
                       strictTouchBounds
+                      focusable
                     >
                       <span
                         className="metric-bar-trigger"
@@ -633,8 +638,13 @@ function Clients({ per }: { per: PeriodUsage }) {
               ]}
               note={usageNote(c)}
               strictTouchBounds
+              focusable
             >
-              <div className="metric-bar-trigger" role="img">
+              <div
+                className="metric-bar-trigger"
+                role="img"
+                aria-label={`${c.name} 用量 ${count(c.totalTokens)}`}
+              >
                 <div
                   className={`client-track ${!c.components.complete ? "is-incomplete" : ""}`}
                   aria-hidden="true"
@@ -687,7 +697,9 @@ export function Overview({
       <Stats data={data} period={period} />
       <div className="overview-layout">
         <div className="overview-primary">
-          <InsightTrend data={data} />
+          <AppErrorBoundary title="用量趋势已更新，请刷新。">
+            <InsightTrend data={data} />
+          </AppErrorBoundary>
           <ModelTable per={per} onSelect={onModel} />
         </div>
         <div className="overview-aside">
@@ -765,10 +777,10 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
                 {models.map((m) => (
                   <th scope="col" key={m.id}>
                     <MetricTooltip
-                      title="模型名称"
+                      title={m.name}
                       rows={[{ label: "完整名称", value: m.name }]}
                     >
-                      <span className="matrix-model-heading" role="img">
+                      <span className="matrix-model-heading">
                         <BrandIcon name={m.name} size={25} />
                         <span>{m.name}</span>
                       </span>
@@ -808,7 +820,6 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
                         >
                           <span
                             className={`matrix-cell level-${level}`}
-                            role="img"
                           >
                             {v === undefined
                               ? "—"

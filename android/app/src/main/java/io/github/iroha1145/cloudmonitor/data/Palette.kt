@@ -148,18 +148,36 @@ val HM_COLORS_DARK = listOf(
 fun trendRows(overview: Overview, now: Long = System.currentTimeMillis()): List<TrendRow> =
     analyzeTrend(overview).takeLast(30)
 
-fun deviceOnline(device: Device, overview: Overview, now: Long = System.currentTimeMillis()): Boolean? {
-    device.stale?.let { return !it }
+enum class DeviceStatus { Online, Delayed, Offline }
+
+private val OFFICIAL_SYNC_MS = setOf(600_000.0, 1_200_000.0, 1_800_000.0)
+
+fun deviceStatusLabel(status: DeviceStatus): String = when (status) {
+    DeviceStatus.Online -> "在线"
+    DeviceStatus.Delayed -> "同步延迟"
+    DeviceStatus.Offline -> "离线"
+}
+
+/** Same online / delayed / offline thresholds as hub/dashboard/src/data.ts. */
+fun deviceStatus(device: Device, overview: Overview, now: Long = System.currentTimeMillis()): DeviceStatus {
+    device.stale?.let { return if (it) DeviceStatus.Offline else DeviceStatus.Online }
     var age = device.ageMs
     if (age == null || !age.isFinite()) {
         val t = Format.parseMillis(device.receivedAt)
-        age = if (t == null) Double.NaN else (now - t).toDouble()
+        age = if (t == null) Double.POSITIVE_INFINITY else (now - t).toDouble().coerceAtLeast(0.0)
     }
-    if (age == null || !age.isFinite()) return null
-    val sync = device.syncUploadIntervalMs
-    val threshold = maxOf(sync * 2, overview.staleAfterMs.toDouble())
-    return age <= threshold
+    val staleAfter = overview.staleAfterMs.toDouble().takeIf { it > 0 } ?: 600_000.0
+    val uploadInterval = device.syncUploadIntervalMs.takeIf { it in OFFICIAL_SYNC_MS } ?: 0.0
+    val deviceStaleAfter = maxOf(staleAfter, uploadInterval * 2)
+    return when {
+        age > maxOf(3_600_000.0, deviceStaleAfter) -> DeviceStatus.Offline
+        age > deviceStaleAfter -> DeviceStatus.Delayed
+        else -> DeviceStatus.Online
+    }
 }
+
+fun deviceOnline(device: Device, overview: Overview, now: Long = System.currentTimeMillis()): Boolean =
+    deviceStatus(device, overview, now) == DeviceStatus.Online
 
 fun hourlyBuckets(overview: Overview): List<HourBucket> {
     val todayKey = overview.dashboardPeriod?.today?.key

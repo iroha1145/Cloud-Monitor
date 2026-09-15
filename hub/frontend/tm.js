@@ -453,6 +453,15 @@ function clientLogoHtml(name) {
   return `<i class="client-logo client-logo-fallback" aria-hidden="true">${ch}</i>`;
 }
 const POLL_MS = 5 * 60 * 1000;
+/* L-11：标签页切回至少隔这么久才重拉 overview，避免连续翻转打爆接口 */
+const VISIBILITY_RELOAD_MIN_MS = 15 * 1000;
+/* L-09：只有稳定错误码才引导「ACCESS_TOKEN 未配置」，不匹配文案里的 token/密钥 */
+const ACCESS_TOKEN_UNCONFIGURED_CODES = new Set([
+  "access_token_unconfigured",
+  "access_token_missing",
+  "token_not_configured",
+]);
+let lastOverviewFetchAt = 0;
 const TREND_TOP_MODELS = 8;
 /* 模型分布图例：超过 COLLAPSE_AT 行时只展开前 TOP 行，其余收进手风琴
    （本月/累计周期真实部署常见 10+ 模型，全量平铺会把面板撑到 700px+） */
@@ -605,10 +614,39 @@ const riseStyle = (i) =>
 
 /* ================= API 层（真实 / 演示双通道） ================= */
 class ApiError extends Error {
-  constructor(status, message) {
+  constructor(status, message, code) {
     super(message);
     this.status = status;
+    this.code = code || "";
   }
+}
+
+function apiErrorMessage(data, status) {
+  if (!data || typeof data !== "object") return "请求失败 " + status;
+  const detail = data.detail;
+  if (typeof detail === "string" && detail) return detail;
+  if (typeof data.message === "string" && data.message) return data.message;
+  if (typeof data.error === "string" && data.error) return data.error;
+  return "请求失败 " + status;
+}
+
+function apiErrorCode(data) {
+  if (!data || typeof data !== "object") return "";
+  if (typeof data.error === "string" && data.error) return data.error;
+  if (typeof data.error_code === "string" && data.error_code) return data.error_code;
+  if (typeof data.code === "string" && data.code) return data.code;
+  if (data.detail && typeof data.detail === "object" && typeof data.detail.error === "string") {
+    return data.detail.error;
+  }
+  return "";
+}
+
+function isAccessTokenUnconfigured(err) {
+  if (!(err instanceof ApiError)) return false;
+  if (ACCESS_TOKEN_UNCONFIGURED_CODES.has(String(err.code || "").trim().toLowerCase())) {
+    return true;
+  }
+  return String(err.message || "").trim() === "服务器未配置访问密钥";
 }
 
 async function apiFetch(path, opts) {
@@ -628,10 +666,27 @@ async function apiFetch(path, opts) {
     if (e && e.name === "AbortError") throw e;
     throw new ApiError(0, "无法连接服务器");
   }
+  /* L-14：非 JSON（反代 200 登录页等）不得当成空 overview */
+  let text = "";
+  try {
+    text = await res.text();
+  } catch (e) {
+    if (e && e.name === "AbortError") throw e;
+    throw new ApiError(res.status || 0, "无法读取服务器响应");
+  }
   let data = {};
-  try { data = await res.json(); } catch (e) { /* 保留默认 */ }
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      throw new ApiError(
+        res.ok ? 502 : res.status,
+        res.ok ? "服务器返回了无法解析的响应" : apiErrorMessage(null, res.status)
+      );
+    }
+  }
   if (!res.ok) {
-    throw new ApiError(res.status, (data && (data.detail || data.error)) || "请求失败 " + res.status);
+    throw new ApiError(res.status, apiErrorMessage(data, res.status), apiErrorCode(data));
   }
   return data;
 }
@@ -645,7 +700,11 @@ const dataApi = {
       if (!window.CM_MOCK) throw new ApiError(0, "演示数据模块未加载");
       return window.CM_MOCK.buildOverview();
     }
-    return apiFetch(OVERVIEW_API, { signal });
+    const data = await apiFetch(OVERVIEW_API, { signal });
+    if (!data || typeof data !== "object" || data.totals == null || typeof data.totals !== "object") {
+      throw new ApiError(502, "服务器返回的用量格式无法识别");
+    }
+    return data;
   },
   async subscriptions(signal) {
     if (state.demo) {
@@ -1035,7 +1094,7 @@ function handleApiError(err) {
     showGate(err.status === 401 ? "密钥不正确，请重新输入。" : "没有访问权限。");
     return;
   }
-  if (err instanceof ApiError && err.status === 500 && /密钥|token/i.test(err.message)) {
+  if (isAccessTokenUnconfigured(err)) {
     setConn("err", "未配置");
     showGate("服务器访问令牌未配置，请先在后端设置 ACCESS_TOKEN。");
     return;
@@ -1058,9 +1117,7 @@ function switchView(view) {
   if (view === state.view && state.booted) return; // 重复点当前项不重播入场动画
   const prev = state.view;
   state.view = view;
-  document.querySelectorAll(".view").forEach((s) => {
-    s.hidden = s.dataset.view !== view;
-  });
+  applyViewVisibility();
   /* page-enter：250ms 方向位移 + cross-blur（from 帧不碰 opacity，防白屏）；
      方向随 VIEW_ORDER（后退加 .page-from-left 从左进）；
      remove → reflow → re-add 保证连续切换可重播 */
@@ -2573,8 +2630,17 @@ function renderHmDay(hm, hourly) {
 }
 
 /* 周：GitHub 风格，最近 12 周 × 7 天（「今天」按仪表盘时区求值） */
+function dailyTotalsMap(daily) {
+  const map = new Map();
+  (daily || []).forEach((r) => {
+    if (!r || r.day == null || r.day === "") return;
+    map.set(r.day, Number(r.total) || 0);
+  });
+  return map;
+}
+
 function renderHmWeek(hm, daily) {
-  const map = new Map((daily || []).map((r) => [r.day, Number(r.total) || 0]));
+  const map = dailyTotalsMap(daily);
   const todayStr = dayKeyTz(new Date(), dashTz());
   const dow = (dowOfKey(todayStr) + 6) % 7; // 周一开头
   const mondayKey = keyAdd(todayStr, -dow);
@@ -2616,7 +2682,7 @@ function renderHmWeek(hm, daily) {
 
 /* 月：本月日历网格 + 右侧本月摘要（月界/近 7 天/周环比均按仪表盘时区的日期键） */
 function renderHmMonth(hm, daily) {
-  const map = new Map((daily || []).map((r) => [r.day, Number(r.total) || 0]));
+  const map = dailyTotalsMap(daily);
   const tz = dashTz();
   const todayStr = dayKeyTz(new Date(), tz);
   const dp = (state.data || {}).dashboard_period || {};
@@ -2897,9 +2963,9 @@ function renderHistoryTable() {
   if (aux.status === "error" && !rows.length) {
     body.innerHTML = `<tr><td colspan="4" class="aux-note err">日归档暂不可用</td></tr>`;
   }
-  const more = !aux.done && aux.status !== "error";
-  sentinel.hidden = !more && aux.status !== "loading";
-  $("#hist-more").textContent = more ? "加载更早记录" : "";
+  const more = !aux.done && (aux.status === "ready" || aux.status === "loading");
+  sentinel.hidden = !more;
+  $("#hist-more").textContent = more && aux.status === "ready" ? "加载更早记录" : "";
 }
 
 function renderHistoryView() {
@@ -2908,17 +2974,25 @@ function renderHistoryView() {
 }
 
 /* ================= 渲染总入口 ================= */
+function hasNoDevices() {
+  return !!(state.data && (state.data.devices || []).length === 0);
+}
+
+function applyViewVisibility() {
+  const empty = hasNoDevices();
+  const hero = $("#empty-hero");
+  if (hero) hero.hidden = !empty;
+  document.querySelectorAll(".view").forEach((s) => {
+    s.hidden = empty || s.dataset.view !== state.view;
+  });
+}
+
 function renderAll() {
   const data = state.data;
   if (!data) return;
   updateTopbar();
-  const devices = data.devices || [];
-  const empty = devices.length === 0;
-  $("#empty-hero").hidden = !empty;
-  document.querySelectorAll(".view").forEach((s) => {
-    s.hidden = empty || s.dataset.view !== state.view;
-  });
-  if (empty) return;
+  applyViewVisibility();
+  if (hasNoDevices()) return;
   rebuildColorMaps(data);
   /* 首载 skeleton → 内容：面板做 cross-fade + cross-blur 400ms reveal（14 的低成本替代） */
   if (state.entryFx) $(".content").classList.add("is-revealing");
@@ -3210,11 +3284,20 @@ async function load(manual) {
   const ctl = new AbortController();
   state.activeRequest = ctl;
   state.loading = true;
+  lastOverviewFetchAt = Date.now();
   const fresh = () => gen === state.requestGeneration && rev === state.tokenRevision; // §3-4
   const refreshBtn = $("#refresh");
   if (manual) beginRefreshSpin(refreshBtn);
   const firstBoot = !state.booted;
+  /* L-01：已存密钥冷启动时 #gate 与 #shell 都 hidden，先露出壳与骨架再请求。
+     密钥门提交过程中保持门可见，才能在慢请求上再次提交（竞态用例）。 */
   if (firstBoot) skeletonAll();
+  const gateEl = $("#gate");
+  const shellEl = $("#shell");
+  const bothHidden = !!(gateEl && shellEl && gateEl.hidden && shellEl.hidden);
+  if (store.token && (bothHidden || (shellEl && !shellEl.hidden))) {
+    hideGate();
+  }
   try {
     // §4：主加载只等 Overview；辅助接口独立异步
     const data = await dataApi.overview(ctl.signal);
@@ -3313,7 +3396,8 @@ async function loadProviderStatus() {
 /* ---------- §4：订阅清单（切到配额页才加载） ---------- */
 async function ensureSubs() {
   const aux = state.aux.subs;
-  if (aux.status === "ready" || aux.status === "empty" || aux.status === "loading") return;
+  /* L-12：404 unsupported 是终态，配额页再进入不得重发 */
+  if (aux.status === "ready" || aux.status === "empty" || aux.status === "loading" || aux.status === "unsupported") return;
   if (aux.aborter) aux.aborter.abort();
   const ctl = new AbortController();
   aux.aborter = ctl;
@@ -3505,7 +3589,8 @@ function resetAux() {
 
 function enterDemo() {
   state.demo = true;
-  store.token = ""; // §12：演示模式不写入 sessionStorage Token
+  /* L-15：只清演示页自己的会话存储，不得双清把已安装 PWA 的 localStorage 密钥登出 */
+  try { sessionStorage.removeItem(TOKEN_KEY); } catch (e) { /* blocked storage */ }
   state.tokenRevision++;
   resetAux();
   const badge = $("#demo-badge");
@@ -3892,7 +3977,26 @@ initSeg("#mx-period-seg", (p) => {
   if (state.data) animateContentSwap($(".mx-scroll"), $("#mx"), dir, renderMatrix);
 });
 
-/* §9：日归档服务端分页滚动加载：IntersectionObserver + 按钮兜底（防重复由 aux.loading 保证） */
+/* §9：日归档服务端分页滚动加载：IntersectionObserver + 滚动/按钮兜底
+   （防重复由 aux.loading 保证）。哨兵带着 rootMargin 已经相交时，
+   scrollIntoView 不再触发 IO；首屏未滚动（scrollY=0）也不自动翻页，
+   避免第一页请求被预取搅乱。用户滚过之后按哨兵位置补拉。 */
+function histSentinelInRange(marginPx) {
+  const el = $("#hist-sentinel");
+  if (!el || el.hidden) return false;
+  const host = $("#view-history");
+  if (host && host.hidden) return false;
+  const r = el.getBoundingClientRect();
+  const vh = window.innerHeight || 0;
+  return r.top < vh + marginPx && r.bottom > -marginPx;
+}
+
+function maybeLoadHistoryBySentinel() {
+  if (!state.alive || state.view !== "history") return;
+  if ((window.scrollY || 0) <= 0) return;
+  if (histSentinelInRange(160)) loadHistoryPage();
+}
+
 $("#hist-more").addEventListener("click", () => loadHistoryPage());
 if ("IntersectionObserver" in window) {
   const io = new IntersectionObserver((entries) => {
@@ -3902,6 +4006,13 @@ if ("IntersectionObserver" in window) {
   }, { rootMargin: "160px" });
   io.observe($("#hist-sentinel"));
 }
+window.addEventListener("scroll", maybeLoadHistoryBySentinel, { passive: true, capture: true });
+document.addEventListener("scroll", maybeLoadHistoryBySentinel, { passive: true, capture: true });
+setInterval(() => {
+  if (state.view === "history" && !state.aux.history.done && !state.aux.history.loading) {
+    maybeLoadHistoryBySentinel();
+  }
+}, 200);
 
 let resizeTimer = null;
 let resizeRaf = 0;
@@ -3929,8 +4040,13 @@ document.addEventListener("visibilitychange", () => {
     stopPolling(); // §3-6：页面隐藏暂停轮询
     return;
   }
-  // §3-7：页面恢复只刷新一次（load 内部中止在途请求，避免并发）
-  if (state.alive && !state.demo) load(false);
+  // §3-7 / L-11：页面恢复刷新一次，但 15s 内重复切回只恢复轮询
+  if (!state.alive || state.demo) return;
+  if (Date.now() - lastOverviewFetchAt < VISIBILITY_RELOAD_MIN_MS) {
+    schedulePoll();
+    return;
+  }
+  load(false);
 });
 
 /* §3-8：页面卸载时中止请求 */

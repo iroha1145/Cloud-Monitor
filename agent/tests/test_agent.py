@@ -27,10 +27,11 @@ import token_monitor_bridge as tm
 
 
 class FakeResponse:
-    def __init__(self, status_code=200, json_body=None, text=""):
+    def __init__(self, status_code=200, json_body=None, text="", headers=None):
         self.status_code = status_code
         self._json = json_body
         self.text = text or (json.dumps(json_body) if json_body_body_ok(json_body) else "")
+        self.headers = headers or {}
 
     def json(self):
         if self._json is None:
@@ -169,6 +170,7 @@ def test_corrupt_state_backed_up_and_refused(tmp_path):
         state.load()
     backups = list(cfg.state_path.parent.glob("state.json.corrupt-*"))
     assert backups, "损坏文件必须被备份"
+    assert cfg.state_path.exists(), "原状态文件必须留在原地，避免重启换身份"
 
 
 def test_state_schema_version_enforced(tmp_path):
@@ -898,9 +900,196 @@ def test_time_round_sort_tolerates_non_numeric_ids():
 
 
 def test_iso_shift_seconds_overlap():
-    """水位线前移 1s 的重叠读取：解析失败原样返回，不阻塞同步。"""
+    """水位线按 busy_timeout 重叠读取：解析失败原样返回，不阻塞同步。"""
+    assert sa.BUSY_TIMEOUT_OVERLAP_SECONDS == 10
     assert (
-        sa._iso_shift_seconds("2026-08-28T00:00:00+00:00", -1)
-        == "2026-08-27T23:59:59+00:00"
+        sa._iso_shift_seconds("2026-08-28T00:00:00+00:00", -sa.BUSY_TIMEOUT_OVERLAP_SECONDS)
+        == "2026-08-27T23:59:50+00:00"
     )
     assert sa._iso_shift_seconds("not-a-date", -1) == "not-a-date"
+
+
+def test_record_int_limit_matches_hub_safe_int():
+    assert sa.MAX_RECORD_INT == 2**53 - 1
+    reason = SyncAgent._record_reject_reason({
+        **rec(2),
+        "input_tokens": 2**53,
+    })
+    assert reason and "input_tokens" in reason
+
+
+def test_time_mode_heartbeat_writes_batch_ok_and_skips_unchanged_users(tmp_path):
+    cfg = make_config(tmp_path, allow_legacy_fallback=True, source_instance_id="stable-src")
+    state = AgentState(cfg.state_path)
+    state.device_id = cfg.device_id
+    session = FakeSession()
+    not_found = requests.HTTPError("404")
+    not_found.response = FakeResponse(404)
+    session.route("GET", "/api/v1/sync/meta", not_found)
+    session.route("GET", "/api/v1/users", FakeResponse(200, {"users": [{"id": "u1", "name": "Alice"}]}))
+    session.route("GET", "/api/v1/records", FakeResponse(200, {"total": 0, "records": []}))
+    session.route("POST", "/api/v1/sync/push", lambda url, kw: ok_push(
+        0, device_id=kw["json"]["device"]["id"], source=kw["json"]["source_instance_id"]
+    ))
+
+    agent = make_agent(cfg, state, session)
+    first = agent.run_once()
+    assert first["mode"] == "time"
+    assert state.data.get("last_batch_ok_at")
+    first_users = [c[2]["json"]["users"] for c in session.calls if c[0] == "POST"]
+    assert len(first_users[0]) == 1
+
+    session.calls.clear()
+    second = agent.run_once()
+    assert second["mode"] == "time"
+    second_users = [c[2]["json"]["users"] for c in session.calls if c[0] == "POST"]
+    assert second_users[0] == []
+
+
+def test_time_mode_shrinks_batch_when_hub_rejects_size(tmp_path):
+    cfg = make_config(
+        tmp_path,
+        allow_legacy_fallback=True,
+        source_instance_id="stable-src",
+        batch_size=4,
+    )
+    state = AgentState(cfg.state_path)
+    state.device_id = cfg.device_id
+    session = FakeSession()
+    not_found = requests.HTTPError("404")
+    not_found.response = FakeResponse(404)
+    session.route("GET", "/api/v1/sync/meta", not_found)
+    session.route("GET", "/api/v1/users", FakeResponse(200, {"users": []}))
+    session.route(
+        "GET",
+        "/api/v1/records",
+        FakeResponse(200, {"total": 4, "records": [rec(1), rec(2), rec(3), rec(4)]}),
+    )
+
+    def push(url, kw):
+        records = kw["json"]["records"]
+        if len(records) > 2:
+            return FakeResponse(400, None, "单次最多 2 条")
+        return ok_push(
+            len(records),
+            device_id=kw["json"]["device"]["id"],
+            source=kw["json"]["source_instance_id"],
+        )
+
+    session.route("POST", "/api/v1/sync/push", push)
+    agent = make_agent(cfg, state, session)
+    summary = agent.run_once()
+    assert summary == {"mode": "time", "fetched": 4, "inserted": 4}
+    sizes = [len(c[2]["json"]["records"]) for c in session.calls if c[0] == "POST"]
+    assert 4 in sizes
+    assert sizes.count(2) == 2
+
+
+def test_bridge_429_exposes_retry_after(tmp_path):
+    cfg = tm_config(tmp_path)
+    agent = StubAgent(cfg, stub_usage())
+    session = FakeSession()
+    session.route(
+        "POST",
+        "/api/ingest",
+        FakeResponse(429, None, "slow down", headers={"Retry-After": "12"}),
+    )
+    with pytest.raises(tm.TransientBridgeError) as caught:
+        tm.push_to_token_monitor(agent, "https://tm.example.com", "secret", session=session)
+    assert caught.value.retry_after == 12.0
+    assert sa.retry_after_seconds({"Retry-After": "3"}) == 3.0
+    assert sa.retry_after_seconds({"Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"}) is None
+    assert sa.retry_after_seconds({"Retry-After": "inf"}) is None
+    assert sa.retry_after_seconds({"Retry-After": "nan"}) is None
+    assert sa.retry_after_seconds({"Retry-After": "99999"}) == 3600.0
+
+
+def test_cursor_regression_latches_until_reset(tmp_path):
+    cfg = make_config(tmp_path, batch_size=10)
+    state = AgentState(cfg.state_path)
+    state.device_id = cfg.device_id
+    state.mode = "cursor"
+    state.source_instance_id = "src-1"
+    state.cursor = 500
+    session = FakeSession()
+    session.route("GET", "/api/v1/sync/meta", FakeResponse(200, {
+        "source_instance_id": "src-1", "max_record_id": 100, "protocol_version": 2
+    }))
+    agent = make_agent(cfg, state, session)
+    with pytest.raises(PermanentConfigError, match="已锁存"):
+        agent.run_once()
+    assert state.data["cursor_regressed_from"] == 500
+    assert state.data["cursor_regressed_to"] == 100
+    session.route("GET", "/api/v1/sync/meta", FakeResponse(200, {
+        "source_instance_id": "src-1", "max_record_id": 800, "protocol_version": 2
+    }))
+    with pytest.raises(PermanentConfigError, match="回退已锁存"):
+        agent.run_once()
+    cfg2 = make_config(tmp_path, batch_size=10, reset_cursor=True)
+    session.route("GET", "/api/v1/users", FakeResponse(200, {"users": []}))
+    session.route("GET", "/api/v1/sync/records", FakeResponse(200, {"records": []}))
+    session.route("POST", "/api/v1/sync/push", lambda url, kw: ok_push(
+        0, device_id=kw["json"]["device"]["id"], source=kw["json"]["source_instance_id"]
+    ))
+    agent2 = make_agent(cfg2, state, session)
+    summary = agent2.run_once()
+    assert summary["mode"] == "cursor"
+    assert state.cursor == 0
+    assert state.data["cursor_regressed_at"] is None
+
+
+def test_state_save_is_serialized_across_threads(tmp_path):
+    state = AgentState(tmp_path / "agent-state.json")
+    state.device_id = "dev"
+
+    def writer(mark: str) -> None:
+        for index in range(40):
+            state.data["last_error"] = f"{mark}-{index}"
+            state.save()
+
+    threads = [
+        __import__("threading").Thread(target=writer, args=("a",)),
+        __import__("threading").Thread(target=writer, args=("b",)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    loaded = json.loads((tmp_path / "agent-state.json").read_text(encoding="utf-8"))
+    assert isinstance(loaded, dict)
+    assert loaded["device_id"] == "dev"
+
+
+def test_cert_verify_failure_is_permanent_other_ssl_is_not():
+    class SSLCertVerificationError(Exception):
+        pass
+
+    verify = requests.exceptions.SSLError("wrap")
+    verify.__cause__ = SSLCertVerificationError("CERTIFICATE_VERIFY_FAILED")
+    assert sa._is_cert_verify_failure(verify) is True
+    transient = requests.exceptions.SSLError("UNEXPECTED_EOF")
+    assert sa._is_cert_verify_failure(transient) is False
+
+
+def test_start_bridge_thread_keeps_running_after_startup_4xx(tmp_path, monkeypatch):
+    cfg = tm_config(
+        tmp_path,
+        token_monitor_hub_url="https://tm.example.com",
+        token_monitor_secret="s" * 32,
+    )
+    state = AgentState(cfg.state_path)
+    state.device_id = "dev-x"
+    agent = make_agent(cfg, state, FakeSession())
+    monkeypatch.setattr(
+        tm,
+        "check_hub_health",
+        lambda *a, **k: (_ for _ in ()).throw(tm.PermanentBridgeError("HTTP 404")),
+    )
+    monkeypatch.setattr(
+        tm,
+        "push_to_token_monitor",
+        lambda *a, **k: {"today": 0, "month": 0, "allTime": 0},
+    )
+    thread = tm.start_bridge_thread(agent)
+    assert thread is not None
+    thread.join(timeout=0.05)

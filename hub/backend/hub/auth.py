@@ -19,10 +19,20 @@ def _constant_eq(a: str, b: str) -> bool:
     return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
 
 
+class CodedHTTPException(HTTPException):
+    """带稳定 error 码的 HTTP 错误，供前端做精确引导（L-09）。"""
+
+    def __init__(self, status_code: int, code: str, message: str):
+        super().__init__(status_code=status_code, detail=message)
+        self.code = code
+
+
 def require_access_token(request: Request, settings: Settings) -> None:
     expected = settings.access_token
     if not expected:
-        raise HTTPException(status_code=500, detail="服务器未配置访问密钥")
+        raise CodedHTTPException(
+            500, "access_token_unconfigured", "服务器未配置访问密钥"
+        )
     if not _constant_eq(_bearer_token(request), expected):
         raise HTTPException(status_code=401, detail="Unauthorized")
 

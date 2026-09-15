@@ -33,10 +33,13 @@ services:
       CM_GIT_SHA: ${CM_GIT_SHA:-unknown}
       CM_GITHUB_REPO: ${CM_GITHUB_REPO:-iroha1145/Cloud-Monitor}
       CM_UPDATE_DIR: /update
+      CM_UPDATE_RUNTIME_DIR: /update-runtime
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+    user: "999:999"
     volumes:
       - cloud-hub-data:/data
       - ./update-control:/update
+      - ${CM_UPDATE_RUNTIME_HOST:-./update-runtime}:/update-runtime:ro
     depends_on:
       tm-core:
         condition: service_healthy

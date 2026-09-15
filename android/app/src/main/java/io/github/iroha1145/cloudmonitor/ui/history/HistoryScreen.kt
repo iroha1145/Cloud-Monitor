@@ -230,8 +230,11 @@ private fun SessionsCard(overview: Overview, zone: String, today: String, modelC
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     fun sessionDay(session: SessionRow): String? = Format.parseMillis(session.lastUsedAt ?: session.startedAt)?.let { Format.dayKeyTz(it, zone) }
+    val clients = listOf("") + overview.sessions.mapNotNull { it.client }.distinct().sorted()
+    val resolvedClient = if (client.isBlank() || client in clients) client else ""
+    SideEffect { if (resolvedClient != client) client = resolvedClient }
     val filtered = overview.sessions.filter { session ->
-        (client.isBlank() || session.client == client) && (!onlyToday || sessionDay(session) == today) &&
+        (resolvedClient.isBlank() || session.client == resolvedClient) && (!onlyToday || sessionDay(session) == today) &&
             (query.isBlank() || listOfNotNull(session.sessionId, session.project, session.client, session.device).plus(session.models.keys).any { it.contains(query.trim(), true) })
     }.sortedByDescending { Format.parseMillis(it.lastUsedAt ?: it.startedAt) ?: 0L }
     val latestRows by rememberUpdatedState(filtered)
@@ -257,8 +260,7 @@ private fun SessionsCard(overview: Overview, zone: String, today: String, modelC
         }
         WebSearchField(query, { query = it; limit = 8 }, label = "搜索会话、项目或模型", placeholder = "搜索会话、项目或模型…",
             modifier = Modifier.fillMaxWidth().testTag("session-search"))
-        val clients = listOf("") + overview.sessions.mapNotNull { it.client }.distinct().sorted()
-        WebSegmentedControl(clients.map { it.ifBlank { "所有客户端" } }, clients.indexOf(client).coerceAtLeast(0), { client = clients[it]; limit = 8 })
+        WebSegmentedControl(clients.map { it.ifBlank { "所有客户端" } }, clients.indexOf(resolvedClient).coerceAtLeast(0), { client = clients[it]; limit = 8 })
         WebPill("仅今天", selected = onlyToday, onClick = { onlyToday = !onlyToday; limit = 8 })
         if (filtered.isEmpty()) EmptyHint(if (overview.sessions.isEmpty()) "尚未上报会话明细" else "没有符合条件的会话")
         else filtered.take(limit).groupBy { sessionDay(it) }.forEach { (day, sessions) ->
@@ -293,12 +295,12 @@ private fun SessionDetail(session: SessionRow, zone: String, modelColors: Map<St
         if (LocalDensity.current.fontScale > 1.5f) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 HistoryMetric("词元用量", Format.fmtCompact(session.tokens))
-                HistoryMetric("估算费用", Format.fmtUsd(session.costUsd))
+                HistoryMetric("估算费用", session.costUsd?.let(Format::fmtUsd) ?: "未提供")
             }
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 HistoryMetric("词元用量", Format.fmtCompact(session.tokens), Modifier.weight(1f))
-                HistoryMetric("估算费用", Format.fmtUsd(session.costUsd), Modifier.weight(1f))
+                HistoryMetric("估算费用", session.costUsd?.let(Format::fmtUsd) ?: "未提供", Modifier.weight(1f))
             }
         }
         if (expanded) {
@@ -354,7 +356,7 @@ private fun sessionsCsv(rows: List<SessionRow>, zone: String): String {
     val lines = mutableListOf(listOf("会话标识", "项目", "客户端", "设备", "开始时间", "最后活动", "时区", "词元用量", "估算费用（美元）", "模型").joinToString(",", transform = ::cell))
     rows.forEach { row ->
         lines += listOf(row.sessionId.orEmpty(), row.project.orEmpty(), row.client.orEmpty(), row.device ?: row.deviceId.orEmpty(),
-            Format.fmtDateTime(row.startedAt, zone), Format.fmtDateTime(row.lastUsedAt, zone), zone, row.tokens.toString(), row.costUsd.toString(),
+            Format.fmtDateTime(row.startedAt, zone), Format.fmtDateTime(row.lastUsedAt, zone), zone, row.tokens.toString(), row.costUsd?.toString().orEmpty(),
             row.models.keys.joinToString("; ")).joinToString(",", transform = ::cell)
     }
     return "\uFEFF" + lines.joinToString("\r\n") + "\r\n"

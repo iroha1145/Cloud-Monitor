@@ -325,8 +325,9 @@ export function normalizeUpdateStatus(value: unknown): UpdateStatus {
 export const isUpdateBusy = (job: UpdateJob): boolean =>
   ["queued", "running"].includes(job.state);
 export function validUpdateRef(ref: string): boolean {
+  if (!ref || ref.length > 66 || /^[0-9a-fA-F]{40}$/.test(ref)) return false;
   return (
-    /^(main|master|v?[0-9][A-Za-z0-9._-]{0,64})$/.test(ref) &&
+    /^(main|master|v?[0-9]+(\.[0-9A-Za-z_-]+)*)$/.test(ref) &&
     !ref.includes("..")
   );
 }
@@ -374,5 +375,14 @@ export async function submitSystemUpdate(
     throw new Error("该版本标识不受支持，请重新检查更新。");
   return normalizeUpdateJob(
     await requestJson("/api/v1/system/update", token, signal, ref),
+  );
+}
+
+export async function cancelSystemUpdate(
+  token: string,
+  signal?: AbortSignal,
+): Promise<UpdateJob> {
+  return normalizeUpdateJob(
+    await requestJson("/api/v1/system/update/cancel", token, signal, ""),
   );
 }

@@ -1,5 +1,8 @@
-/** Quote every cell and neutralize formula prefixes before spreadsheet export. */
+/** Quote every cell. Prefix-neutralize only strings; keep numeric negatives. */
 export function escapeCsv(value: unknown): string {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
   const raw = value === null || value === undefined ? "" : String(value);
   const safe = /^(?:\s*[=+\-@]|[\t\r\n])/.test(raw) ? `'${raw}` : raw;
   return `"${safe.replace(/"/g, '""')}"`;

@@ -9,8 +9,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.staticfiles import StaticFiles as StarletteStaticFiles
 
 from .auth import (
+    CodedHTTPException,
     WriteBinding,
     enforce_device_binding,
     require_access_token,
@@ -32,6 +34,33 @@ from .tm_proxy import bootstrap_tm_layer, build_tm_router
 from .tm_update import UpdateService, build_update_router
 
 
+def _cache_control_for(path: str) -> str:
+    lowered = path.lower()
+    if lowered.endswith((".html",)) or lowered in {"/", "/demo", "/index.html"}:
+        return "no-store"
+    if lowered.endswith("theme-boot.js") or lowered.endswith("manifest.json"):
+        return "no-store"
+    if "/static/app/assets/" in lowered or lowered.startswith("/static/app/assets/"):
+        return "public, max-age=31536000, immutable"
+    if lowered.startswith("/api/") or lowered == "/api":
+        return "no-store"
+    return "no-cache"
+
+
+class SafeStaticFiles(StarletteStaticFiles):
+    async def get_response(self, path: str, scope):
+        normalized = path.replace("\\", "/").lstrip("/").lower()
+        if (
+            normalized == "tests"
+            or normalized.startswith("tests/")
+            or "/tests/" in normalized
+        ):
+            from starlette.responses import PlainTextResponse
+
+            return PlainTextResponse("Not Found", status_code=404)
+        return await super().get_response(path, scope)
+
+
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
     settings = settings or load_settings()
     docs_urls = (
@@ -46,10 +75,16 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         from .tm_proxy import TmBackground
 
         _app.state.http_sync = httpx.Client(
-            timeout=httpx.Timeout(5.0, read=15.0), limits=httpx.Limits(max_connections=5)
+            timeout=httpx.Timeout(5.0, read=15.0), limits=httpx.Limits(max_connections=20)
         )
         _app.state.http_async = httpx.AsyncClient(
-            timeout=httpx.Timeout(5.0, read=None), limits=httpx.Limits(max_connections=5)
+            timeout=httpx.Timeout(5.0, read=15.0), limits=httpx.Limits(max_connections=20)
+        )
+        _app.state.http_sse = httpx.AsyncClient(
+            timeout=httpx.Timeout(5.0, read=None), limits=httpx.Limits(max_connections=64)
+        )
+        _app.state.http_provider = httpx.AsyncClient(
+            timeout=httpx.Timeout(5.0, read=5.0), limits=httpx.Limits(max_connections=20)
         )
         if _app.state.tm_core is not None:
             _app.state.tm_core.bind_client(_app.state.http_sync)
@@ -63,6 +98,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             if _app.state.tm_background is not None:
                 _app.state.tm_background.stop()
             await _app.state.http_async.aclose()
+            await _app.state.http_sse.aclose()
+            await _app.state.http_provider.aclose()
             _app.state.http_sync.close()
             _app.state.db.close()
 
@@ -90,6 +127,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     overview_router, overview_cache = build_tm_overview_router(settings, app.state.db)
     app.state.overview_cache = overview_cache
     app.include_router(overview_router)
+    from .tm_outbox import set_overview_invalidator
+
+    set_overview_invalidator(overview_cache.invalidate)
     app.state.update_service = UpdateService(settings)
     app.include_router(build_update_router(settings, app.state.update_service))
 
@@ -115,18 +155,59 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         )
 
     # 安全响应头（P1-8）：所有响应统一附加，不影响静态 UI 加载
-    @app.middleware("http")
-    async def security_headers(request: Request, call_next):
-        response = await call_next(request)
-        response.headers.setdefault("x-content-type-options", "nosniff")
-        response.headers.setdefault("referrer-policy", "no-referrer")
-        response.headers.setdefault(
-            "content-security-policy",
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';"
-            " img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
-            " base-uri 'none'; form-action 'self'",
+    class SecurityAndCacheMiddleware:
+        def __init__(self, app):
+            self.app = app
+
+        async def __call__(self, scope, receive, send):
+            if scope.get("type") != "http":
+                await self.app(scope, receive, send)
+                return
+            path = scope.get("path") or ""
+
+            async def send_with_headers(message):
+                if message.get("type") == "http.response.start":
+                    headers = list(message.get("headers") or [])
+                    names = {k.lower() for k, _ in headers}
+                    extras = [
+                        (b"x-content-type-options", b"nosniff"),
+                        (b"referrer-policy", b"no-referrer"),
+                        (
+                            b"content-security-policy",
+                            b"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';"
+                            b" img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
+                            b" base-uri 'none'; form-action 'self'",
+                        ),
+                    ]
+                    status = int(message.get("status") or 0)
+                    # H-12：只给 2xx/304 加缓存头，避免 404 被 immutable 锁一年。
+                    if (
+                        b"cache-control" not in names
+                        and (200 <= status < 300 or status == 304)
+                    ):
+                        extras.append(
+                            (b"cache-control", _cache_control_for(path).encode())
+                        )
+                    for key, value in extras:
+                        if key not in names:
+                            headers.append((key, value))
+                    message = {**message, "headers": headers}
+                await send(message)
+
+            await self.app(scope, receive, send_with_headers)
+
+    app.add_middleware(SecurityAndCacheMiddleware)
+
+    @app.exception_handler(CodedHTTPException)
+    async def coded_http_error(_request: Request, exc: CodedHTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error": exc.code,
+                "detail": exc.detail,
+                "message": exc.detail,
+            },
         )
-        return response
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request: Request, exc: RequestValidationError):
@@ -157,13 +238,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @app.get("/api/v1/health")
     def health() -> dict:
-        from .tm_outbox import snapshot_health
-
         return {
             "ok": True,
             "role": "cloud-hub",
             "protocol_version": settings.protocol_version,
-            "snapshot": snapshot_health(app.state.db),
         }
 
     @app.get("/api/v1/health/live")
@@ -183,13 +261,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             components["sqlite_read"] = {"ok": False, "error": "sqlite_unreadable"}
 
         try:
-            from .services import utc_now
-
-            app.state.db.execute(
-                "INSERT INTO tm_meta (key, value) VALUES ('health_probe', ?)"
-                " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                (utc_now(),),
-            )
+            # G-06 / H-1：匿名就绪探测只做可写锁探活，BEGIN/ROLLBACK 同一次持锁。
+            app.state.db.probe_write()
             components["sqlite_write"] = {"ok": True}
         except Exception:  # noqa: BLE001
             components["sqlite_write"] = {"ok": False, "error": "sqlite_unwritable"}
@@ -221,23 +294,48 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         )
 
     @app.post("/api/v1/sync/push")
-    def sync_push(
-        payload: SyncPushRequest,
+    async def sync_push(
+        request: Request,
         db: Database = Depends(db_dep),
         binding: WriteBinding = Depends(ingest_auth),
     ) -> dict:
-        enforce_device_binding(binding, payload.device.id)
-        if len(payload.records) > settings.max_records_per_push:
-            raise HTTPException(
-                status_code=400,
-                detail=f"records 单次最多 {settings.max_records_per_push} 条",
-            )
         try:
-            return apply_sync_push(
-                db, payload, protocol_version=settings.protocol_version
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raw = await request.json()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="请求体不是合法 JSON") from exc
+        from pydantic import ValidationError
+
+        from starlette.concurrency import run_in_threadpool
+
+        def _sync_push() -> dict:
+            try:
+                payload = SyncPushRequest.model_validate(raw)
+            except ValidationError as exc:
+                details = []
+                for error in exc.errors():
+                    item = {key: error[key] for key in ("type", "loc", "msg") if key in error}
+                    loc = item.get("loc")
+                    if isinstance(loc, (list, tuple)) and (not loc or loc[0] != "body"):
+                        item["loc"] = ["body", *loc]
+                    details.append(item)
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "请求体校验失败", "details": details},
+                )
+            enforce_device_binding(binding, payload.device.id)
+            if len(payload.records) > settings.max_records_per_push:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"records 单次最多 {settings.max_records_per_push} 条",
+                )
+            try:
+                return apply_sync_push(
+                    db, payload, protocol_version=settings.protocol_version
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        return await run_in_threadpool(_sync_push)
 
     @app.get("/api/v1/usage", dependencies=[Depends(read_auth)])
     def get_usage(
@@ -304,18 +402,21 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         demo_index = page_dir / "demo.html"
         root_index = demo_index if settings.cm_demo and demo_index.is_file() else live_index
 
-        @app.get("/")
+        def _page(path):
+            return FileResponse(path, headers={"Cache-Control": "no-cache"})
+
+        @app.api_route("/", methods=["GET", "HEAD"])
         def index() -> FileResponse:
             if not root_index.is_file():
                 raise HTTPException(status_code=404, detail="未找到前端页面")
-            return FileResponse(root_index)
+            return _page(root_index)
 
         if (settings.cm_demo or settings.serve_demo_route) and demo_index.is_file():
-            @app.get("/demo", include_in_schema=False)
+            @app.api_route("/demo", methods=["GET", "HEAD"], include_in_schema=False)
             def demo_page() -> FileResponse:
-                return FileResponse(demo_index)
+                return _page(demo_index)
 
-        app.mount("/static", StaticFiles(directory=str(frontend_dir)), name="static")
+        app.mount("/static", SafeStaticFiles(directory=str(frontend_dir)), name="static")
 
     # 旧的 /tm/ 面板已并入 /（云端用量面板）：301 保留书签兼容
     @app.get("/tm", include_in_schema=False)

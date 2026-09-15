@@ -52,6 +52,8 @@
   --green: #16765e;
   --green-tint: #e7f6ef;
   --accent-tint: #edf4fc;
+  --danger: var(--red);
+  --warning: var(--orange);
 }
 .dark {
   color-scheme: dark;
@@ -76,6 +78,8 @@
   --accent-tint: #25374c;
   --tt-bg: #2c3039;
   --tt-fg: #f1f3f5;
+  --danger: var(--red);
+  --warning: var(--orange);
 }
 * {
   box-sizing: border-box;
@@ -572,11 +576,15 @@ h1 {
 }
 .refresh-button {
   font-size: 11px !important;
-  min-height: 30px !important;
   padding: 5px 10px !important;
   background: var(--surface) !important;
   border-color: var(--line-strong) !important;
   box-shadow: 0 1px 2px #0a254005;
+}
+@media (pointer: fine) {
+  .refresh-button {
+    min-height: 30px;
+  }
 }
 .heading-art {
   position: absolute;

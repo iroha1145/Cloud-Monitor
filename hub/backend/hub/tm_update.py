@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import time
 import uuid
@@ -22,7 +23,7 @@ from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from .auth import require_access_token
 from .config import Settings
@@ -31,7 +32,9 @@ log = logging.getLogger("tm-update")
 
 GITHUB_API = "https://api.github.com"
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
-REF_RE = re.compile(r"^(main|master|v?[0-9][A-Za-z0-9._-]{0,64})$")
+REF_RE = re.compile(r"^(main|master|v?[0-9]+(\.[0-9A-Za-z_-]+)*)$")
+SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+STALE_RUNNING_SECONDS = 30 * 60
 CACHE_SECONDS = 60.0
 RELEASE_PAGE = 10
 
@@ -50,15 +53,36 @@ def validate_github_repo(raw: str) -> str:
 
 
 def parse_ref(raw: str) -> str:
-    ref = (raw or "").strip()
-    # REF_RE 锚定 ^ 已排除 "-" 开头，无需再查
-    if not REF_RE.match(ref) or ".." in ref:
+    text = raw or ""
+    ref = text.strip()
+    # 拒绝裸 40 位 SHA，避免把部署降级到任意历史提交。
+    # fullmatch：制表符/后缀不得被 re.match 前缀放过（与 self-update.sh valid_ref 对齐）。
+    if (
+        "\t" in text
+        or len(ref) > 66
+        or SHA_RE.fullmatch(ref)
+        or not REF_RE.fullmatch(ref)
+        or ".." in ref
+    ):
         raise ValueError("非法更新目标")
     return ref
 
 
 def _iso_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _job_age_seconds(updated_at: str) -> float | None:
+    raw = (updated_at or "").strip()
+    if not raw:
+        return None
+    try:
+        ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return max(0.0, (datetime.now(timezone.utc) - ts).total_seconds())
 
 
 def version_key(raw: str) -> tuple[int, ...]:
@@ -130,6 +154,19 @@ class UpdateService:
     def apply_enabled(self) -> bool:
         return self.update_dir is not None
 
+    def status_file(self) -> Path | None:
+        runtime = self.settings.cm_update_runtime_dir
+        if runtime is not None:
+            return runtime / "status.json"
+        d = self.update_dir
+        return None if d is None else d / "status.json"
+
+    def _write_status(self, data: dict[str, Any]) -> None:
+        path = self.status_file()
+        if path is None:
+            raise OSError("no status path")
+        _atomic_write(path, data)
+
     def read_job(self) -> dict[str, Any]:
         d = self.update_dir
         if d is None:
@@ -144,8 +181,11 @@ class UpdateService:
             return {"state": "error", "message": "请求文件无法读取"}
         if pending is not None and not isinstance(pending, dict):
             return {"state": "error", "message": "请求文件格式错误"}
+        status_path = self.status_file()
         try:
-            data = json.loads((d / "status.json").read_text(encoding="utf-8"))
+            if status_path is None:
+                raise FileNotFoundError
+            data = json.loads(status_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             data = {"state": "idle", "message": ""}
         except (OSError, ValueError):
@@ -163,6 +203,15 @@ class UpdateService:
         elif pending is None and data.get("state") == "queued":
             # Recover leftovers from the former status-then-request protocol.
             data = {**data, "state": "error", "message": "上次更新请求未完成提交，请重新提交"}
+        elif pending is None and data.get("state") == "running":
+            updated = str(data.get("updated_at") or "")
+            age = _job_age_seconds(updated)
+            if age is None or age > STALE_RUNNING_SECONDS:
+                data = {
+                    **data,
+                    "state": "error",
+                    "message": "更新超时，容器可能未重建，请重试",
+                }
         state = str(data.get("state") or "idle")
         return {
             "id": str(data.get("id") or ""),
@@ -280,7 +329,7 @@ class UpdateService:
             _atomic_write(d / "request.json", request)
         except OSError as exc:
             try:
-                _atomic_write(d / "status.json", {
+                self._write_status({
                     "id": req_id, "state": "error", "ref": target,
                     "message": "更新请求写入失败", "updated_at": _iso_now(),
                 })
@@ -288,6 +337,38 @@ class UpdateService:
                 pass
             raise HTTPException(status_code=503, detail="更新请求写入失败，请检查更新目录") from exc
         return self.read_job()
+
+    def cancel(self) -> dict[str, Any]:
+        d = self.update_dir
+        if d is None:
+            raise HTTPException(status_code=503, detail="未启用在线更新")
+        with self._apply_lock:
+            job = self.read_job()
+            if job.get("state") == "running":
+                raise HTTPException(
+                    status_code=409,
+                    detail="更新已开始重建，无法中止",
+                )
+            req = d / "request.json"
+            try:
+                if req.exists() or req.is_symlink():
+                    if req.is_symlink():
+                        raise HTTPException(status_code=400, detail="更新请求文件异常")
+                    req.unlink()
+            except OSError as exc:
+                raise HTTPException(status_code=503, detail="无法取消更新请求") from exc
+            job = self.read_job()
+            try:
+                self._write_status({
+                    "id": job.get("id") or "",
+                    "state": "error",
+                    "ref": job.get("ref") or "",
+                    "message": "已取消更新",
+                    "updated_at": _iso_now(),
+                })
+            except OSError:
+                pass
+            return self.read_job()
 
     def _get(self, url: str) -> tuple[int, Any]:
         allowed = f"{GITHUB_API}/repos/{self.settings.cm_github_repo}/"
@@ -341,9 +422,18 @@ def _gh_error(status: int, body: Any) -> str:
 
 
 def _atomic_write(path: Path, data: dict[str, Any]) -> None:
+    if path.is_symlink() or path.parent.is_symlink():
+        raise OSError("refusing to follow symlink")
     tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
     try:
-        tmp.write_text(json.dumps(data, ensure_ascii=False) + "\n", encoding="utf-8")
+        if tmp.exists() or tmp.is_symlink():
+            tmp.unlink()
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(tmp, flags, 0o660)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(data, ensure_ascii=False) + "\n")
         tmp.replace(path)
     finally:
         tmp.unlink(missing_ok=True)
@@ -361,11 +451,26 @@ def build_update_router(settings: Settings, service: UpdateService) -> APIRouter
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @router.post("/update")
-    def post_update(request: Request, body: ApplyBody) -> dict[str, Any]:
+    async def post_update(request: Request) -> dict[str, Any]:
         require_access_token(request, settings)
         try:
-            return service.apply(body.ref)
+            raw = await request.json()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="请求体不是合法 JSON") from exc
+        try:
+            body = ApplyBody.model_validate(raw)
+        except ValidationError as exc:
+            raise HTTPException(status_code=400, detail="请求体校验失败") from exc
+        from starlette.concurrency import run_in_threadpool
+
+        try:
+            return await run_in_threadpool(service.apply, body.ref)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/update/cancel")
+    def cancel_update(request: Request) -> dict[str, Any]:
+        require_access_token(request, settings)
+        return service.cancel()
 
     return router

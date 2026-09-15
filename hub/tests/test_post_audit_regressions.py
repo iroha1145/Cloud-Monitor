@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import json
 
 import httpx
 import pytest
@@ -78,7 +79,7 @@ def test_thirty_minute_interval_is_not_treated_as_five_minute_loss(tmp_path):
     db.close()
 
 
-def test_terminal_4xx_is_rejected_not_replayed_forever(tmp_path):
+def test_replay_does_not_post_when_device_record_is_missing(tmp_path):
     db = db_for(tmp_path)
     record_pending(
         db,
@@ -88,8 +89,9 @@ def test_terminal_4xx_is_rejected_not_replayed_forever(tmp_path):
     )
     result = replay_pending(db, Core(Response(400)))
     row = db.fetchone("SELECT state, attempts FROM tm_ingest_outbox WHERE request_id='r1'")
-    assert result["rejected"] == 1
-    assert row["state"] == "rejected"
+    assert result["rejected"] == 0
+    assert result["failed"] == 1
+    assert row["state"] == "pending"
     assert row["attempts"] == 1
     db.close()
 
@@ -513,3 +515,34 @@ def test_parse_ref_still_rejects_dangerous_refs():
         parse_ref("main..evil")
     with pytest.raises(ValueError):
         parse_ref("not a ref")
+    with pytest.raises(ValueError):
+        parse_ref("0123456789abcdef0123456789abcdef01234567")
+
+
+def test_unavailable_response_falls_back_to_exception_type():
+    from hub.tm_proxy import _unavailable_response
+
+    class Blank(Exception):
+        def __str__(self) -> str:
+            return "   "
+
+    resp = _unavailable_response(Blank())
+    assert resp.status_code == 503
+    body = json.loads(resp.body)
+    assert body["error"] == "upstream_unavailable"
+    assert body["message"] == "Blank"
+
+
+def test_empty_bearer_does_not_fall_back_to_custom_header():
+    from starlette.datastructures import Headers
+    from types import SimpleNamespace
+
+    from conftest import TM_SECRET
+    from hub.tm_proxy import request_tm_secret
+
+    def req(headers: dict) -> SimpleNamespace:
+        return SimpleNamespace(headers=Headers(headers))
+
+    assert request_tm_secret(req({"authorization": "Bearer ", "x-token-monitor-secret": TM_SECRET})) == ""
+    assert request_tm_secret(req({"x-token-monitor-secret": TM_SECRET})) == TM_SECRET
+    assert request_tm_secret(req({"authorization": f"Bearer {TM_SECRET}"})) == TM_SECRET

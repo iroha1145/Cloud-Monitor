@@ -36,17 +36,23 @@ def main() -> int:
         print(f"unhealthy: 存在未解决的永久错误: {state.data['last_permanent_error']}")
         return 1
 
-    last_success = state.data.get("last_success_at")
-    if not last_success:
+    stamps = [state.data.get("last_success_at"), state.data.get("last_batch_ok_at")]
+    parsed: list[datetime] = []
+    for stamp in stamps:
+        if not stamp:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        parsed.append(dt)
+    if not parsed:
         print("unhealthy: 从未成功同步")
         return 1
-    try:
-        dt = datetime.fromisoformat(str(last_success).replace("Z", "+00:00"))
-    except ValueError:
-        print("unhealthy: last_success_at 非法")
-        return 1
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+    dt = max(parsed)
+    last_success = dt.isoformat()
     # 与 sync_agent.load_config 同一解析规则（非法回退 3600、下限 60）：
     # 两侧口径不一致会让容器在 agent 健康时被判 unhealthy
     stale = parse_health_stale_seconds(os.environ.get("HEALTH_STALE_SECONDS"))

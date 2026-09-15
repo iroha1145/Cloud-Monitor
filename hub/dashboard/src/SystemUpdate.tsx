@@ -6,6 +6,7 @@ import {
   isUpdateBusy,
   readUpdateStatus,
   submitSystemUpdate,
+  cancelSystemUpdate,
   validUpdateRef,
   type UpdateJob,
   type UpdateStatus,
@@ -266,6 +267,35 @@ export function SystemUpdate({
       }
     }
   };
+  const cancelJob = async () => {
+    if (dataMode !== "live" || !accessToken || submittingRef.current) return;
+    const revision = context.current;
+    const controller = new AbortController();
+    postController.current = controller;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setError("");
+    try {
+      const job = await cancelSystemUpdate(accessToken, controller.signal);
+      if (controller.signal.aborted || revision !== context.current) return;
+      const current = statusRef.current;
+      if (current) {
+        const next = { ...current, job };
+        statusRef.current = next;
+        setStatus(next);
+      }
+    } catch (failure) {
+      if (controller.signal.aborted || revision !== context.current) return;
+      if (isAuthError(failure)) authCallback.current?.();
+      setError(failure instanceof Error ? failure.message : "无法取消更新。");
+    } finally {
+      if (revision === context.current) {
+        submittingRef.current = false;
+        setSubmitting(false);
+        checkNow(false);
+      }
+    }
+  };
   const targets = status ? availableUpdateTargets(status) : [];
   const jobBusy = !!status && isUpdateBusy(status.job);
   return (
@@ -416,6 +446,16 @@ export function SystemUpdate({
                       {submitting ? "正在提交…" : target.label}
                     </button>
                   ))}
+                  {jobBusy && (
+                    <button
+                      type="button"
+                      className="system-update-button"
+                      disabled={submitting || loading}
+                      onClick={() => void cancelJob()}
+                    >
+                      取消更新
+                    </button>
+                  )}
                   {status.latestRelease?.url && (
                     <a
                       href={status.latestRelease.url}

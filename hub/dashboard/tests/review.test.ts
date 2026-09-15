@@ -61,6 +61,7 @@ test("invalid calendar dates never reach chart timestamp calculations", () => {
 
 
 import {
+  indexForSelectedDay,
   monotoneTrendSlopes,
   smoothTrendPoints,
   TREND_SAMPLES_PER_SEGMENT,
@@ -97,6 +98,16 @@ test("the latest daily point is flattened like Liveline's same-Y tip", () => {
   assert.equal(monotoneTrendSlopes(pair).at(-1), 0);
   assert.ok(monotoneTrendSlopes(rising)[0] > 0);
   assert.ok(monotoneTrendSlopes(pair)[0] > 0);
+});
+
+test("trend selection follows the calendar day when the window slides", () => {
+  const days = (...values: string[]) => values.map((day) => ({ day }));
+  const before = days("2026-08-16", "2026-08-17", "2026-09-13", "2026-09-14");
+  const after = days("2026-08-17", "2026-09-13", "2026-09-14", "2026-09-15");
+  assert.equal(indexForSelectedDay(before, "2026-09-14"), 3);
+  assert.equal(indexForSelectedDay(after, "2026-09-14"), 2);
+  assert.equal(indexForSelectedDay(after, "2026-08-16"), after.length - 1);
+  assert.equal(indexForSelectedDay([], null), 0);
 });
 
 test("large jumps flatten at the vertex instead of folding a corner", () => {

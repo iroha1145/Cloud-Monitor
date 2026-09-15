@@ -25,6 +25,20 @@ class UsageAnalysisTest {
         "Missing checked-in contract fixture $name"
     }.bufferedReader().use { it.readText() }
 
+    @Test fun invalidTrendDaysAreDroppedBeforeChartsParseThem() {
+        val series = rows(
+            complete("2026-09-04", 100, 40, "1"),
+            """{"day":"not-a-day","total":9}""",
+            """{"day":"2026-13-01","total":9}""",
+            """{"day":"2026-02-30","total":9}""",
+            """{"day":"","total":9}""",
+            complete("2026-09-05", 200, 80, "2"),
+        )
+        assertEquals(listOf("2026-09-04", "2026-09-05"), series.map { it.day })
+        assertTrue(series.all { isCalendarDay(it.day) })
+        assertEquals(listOf("2026-09-04", "2026-09-05"), trendWindow(series + TrendRow("bad", 1.0), 7).map { it.day })
+    }
+
     @Test fun trendDateRangeDoesNotPullOldRecordsAcrossMissingDays() {
         val records = listOf("2026-08-29", "2026-08-30", "2026-09-02", "2026-09-05").map { TrendRow(it, 1.0) }
         assertEquals(listOf("2026-08-30", "2026-09-02", "2026-09-05"), trendWindow(records, 7).map { it.day })
@@ -250,6 +264,7 @@ class UsageAnalysisTest {
         assertFalse(parts.cacheReadKnown)
         assertNull(parts.cacheRate)
         assertNull(periodCost(period))
+        assertNull(period.costUsd)
         assertFalse(usageComponents(PeriodTotals(totalTokens = 1000.0)).known)
     }
 
@@ -282,6 +297,13 @@ class UsageAnalysisTest {
             assertEquals(day.costUsd, row.costUsd)
             assertEquals(day.perModel, row.models)
         }
+    }
+
+    @Test fun missingSessionCostIsNotZero() {
+        val missing = json.decodeFromString<Overview>("""{"totals":{},"sessions":[{"key":"s","tokens":10}]}""")
+        assertNull(missing.sessions.single().costUsd)
+        val zero = json.decodeFromString<Overview>("""{"totals":{},"sessions":[{"key":"s","tokens":10,"costUsd":0}]}""")
+        assertEquals(0.0, zero.sessions.single().costUsd!!, 0.0)
     }
 
     @Test fun serializationRoundTripRetainsMissingVersusExplicitNullVersusZero() {

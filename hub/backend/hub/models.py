@@ -7,7 +7,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-MAX_INT = 2**62  # 安全低于 SQLite 64 位上限
+MAX_INT = 2**53 - 1  # JS 安全整数，SUM 也不会溢出 SQLite INTEGER
 MAX_FUTURE_SKEW = timedelta(hours=48)
 
 

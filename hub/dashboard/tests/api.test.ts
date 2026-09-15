@@ -17,9 +17,14 @@ test('overview is delivered before auxiliary requests settle', async () => {
   };
   try {
     let delivered=false;
-    const loaded=loadDashboard('fixture',undefined,() => {delivered=true;});
+    let firstNotices: string[] = [];
+    const loaded=loadDashboard('fixture',undefined,(value) => {
+      delivered=true;
+      firstNotices=value.notices;
+    });
     await new Promise(resolve => setTimeout(resolve,0));
     assert.equal(delivered,true);assert.equal(calls.length,4);
+    assert.ok(!firstNotices.some((notice) => /未载入/.test(notice)));
     release();await loaded;
   } finally {release();globalThis.fetch=original;}
 });

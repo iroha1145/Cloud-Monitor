@@ -9,11 +9,11 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
       - name: 安装依赖（含 pip-audit）
@@ -63,7 +63,7 @@ jobs:
   docker-e2e:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: compose 配置校验
         env:
           API_KEY: ci-placeholder-key-0123456789abcdef
@@ -123,4 +123,13 @@ jobs:
           sse=$(curl -s -N --max-time 3 -H "X-Token-Monitor-Secret: ci-placeholder-tm-0123456789abcdef" http://127.0.0.1:7878/api/stats/stream || true)
           printf '%s\n' "$sse" | head -2
           printf '%s' "$sse" | grep -q 'data:' || { echo "::error::SSE 3 秒内无 data 帧"; docker compose logs; exit 1; }
+          echo "== backup =="
+          mkdir -p /tmp/cm-backup-ci ./update-runtime
+          ./scripts/backup.sh /tmp/cm-backup-ci
+          latest=$(ls -d /tmp/cm-backup-ci/cloud-monitor-backup-* | tail -1)
+          test -s "$latest/cloud-monitor.sqlite3" || { echo "::error::backup sqlite 为空"; exit 1; }
+          test -s "$latest/devices.json" || { echo "::error::backup devices.json 为空"; exit 1; }
+          grep -q 'backup_at:' "$latest/BACKUP-MANIFEST.txt"
+          echo "== restore dry check =="
+          python3 -c "import sqlite3,sys; con=sqlite3.connect(sys.argv[1]); n=con.execute('SELECT COUNT(*) FROM tm_snapshot_buckets').fetchone()[0]; assert n>=1, n" "$latest/cloud-monitor.sqlite3"
           docker compose down
