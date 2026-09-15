@@ -180,7 +180,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
         {view === "day" && hourlyMessage && <p className="cm-activity-empty">{hourlyMessage}</p>}
         {view === "month" && <div className="cm-activity-weekdays" aria-hidden="true">{WEEKDAYS.map((day) => <span key={day}>{day}</span>)}</div>}
         <div className={`cm-activity-grid cm-activity-grid-${view}`} key={view} role="group"
-          aria-label={view === "day" ? "小时用量；方向键移动，回车查看详情" : "每日活动；方向键移动，回车筛选日期"}>
+          aria-label={view === "day" ? "小时用量；方向键移动，回车打开说明" : "每日活动；方向键移动，回车筛选日期"}>
           {view === "month" && Array.from({ length: mondayIndex(`${metadata.month}-01`) }, (_, index) => <span key={`space-${index}`} aria-hidden="true" />)}
           {cells.map((cell, index) => {
             const level = cell.total === null ? "unknown" : cell.total === 0 ? "0"
