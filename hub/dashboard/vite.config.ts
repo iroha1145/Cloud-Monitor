@@ -27,7 +27,9 @@ export default defineConfig(({ command, mode }) => ({
       },
       output: {
         manualChunks(id: string) {
-          if (id.includes("node_modules/liveline")) return "liveline";
+          // Keep liveline inside the lazy InsightTrend chunk so first paint
+          // does not download the chart runtime.
+          if (id.includes("node_modules/liveline")) return;
           if (id.includes("node_modules/motion")) return "motion";
           if (id.includes("node_modules/lucide-react")) return "icons";
           if (id.includes("node_modules")) return "vendor";
