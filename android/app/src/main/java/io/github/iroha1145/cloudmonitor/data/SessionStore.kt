@@ -146,11 +146,21 @@ class SessionStore(context: Context) {
         }
     }
 
+    @Volatile var lastSecretsError: String? = null
+        private set
+
+    fun consumeSecretsError(): String? {
+        val message = lastSecretsError
+        lastSecretsError = null
+        return message
+    }
+
     private fun discardSecrets() {
         synchronized(lock) {
             secrets = null
             encryptionAvailable = false
             meta?.edit()?.putBoolean(KEY_IN, false)?.apply()
+            lastSecretsError = "登录凭据无法解密，请重新登录"
         }
     }
 

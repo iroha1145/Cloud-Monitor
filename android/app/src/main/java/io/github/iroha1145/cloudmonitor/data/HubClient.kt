@@ -129,7 +129,9 @@ class HubClient(
                 s = "https://$s"
             }
             s = s.trimEnd('/')
-            if (s.endsWith("/tm", ignoreCase = true)) {
+            if (s.endsWith("/tm/overview", ignoreCase = true)) {
+                s = s.dropLast("/tm/overview".length).trimEnd('/')
+            } else if (s.endsWith("/tm", ignoreCase = true)) {
                 s = s.dropLast(3).trimEnd('/')
             }
             val parsed = s.toHttpUrlOrNull() ?: throw ApiException(0, "面板地址无效")
@@ -174,8 +176,21 @@ class HubClient(
             return null
         }
 
-        /** Precheck only: reject HTTP for names that are obviously public. LAN hostnames wait for the peer. */
-        internal fun isObviouslyPublicName(host: String): Boolean = !isCleartextAllowedHost(host)
+        /** Precheck only: reject HTTP for addresses that are already a public IP. Hostnames wait for the peer. */
+        internal fun isObviouslyPublicName(host: String): Boolean = isPublicIpLiteral(host)
+
+        internal fun isPublicIpLiteral(host: String): Boolean {
+            val h = host.trim().lowercase().removePrefix("[").removeSuffix("]").trimEnd('.')
+            if (h.isEmpty()) return false
+            val parts = h.split('.')
+            if (parts.size == 4 && parts.all { it.toIntOrNull() != null }) {
+                return !isCleartextAllowedHost(h)
+            }
+            if (h.contains(':')) {
+                return !isCleartextAllowedHost(h)
+            }
+            return false
+        }
 
         /** Loopback plus the same LAN ranges as [LocalNetworkAccess.isLocalAddress]. */
         internal fun isCleartextAllowedPeer(address: InetAddress): Boolean =

@@ -13,14 +13,15 @@ class HubClientTest {
         assertEquals("http://panel.home.arpa", HubClient.normalizeBase("http://panel.home.arpa/tm"))
         assertEquals("http://monitor.local", HubClient.normalizeBase("http://monitor.local"))
         assertEquals("http://192.168.1.20", HubClient.normalizeBase("http://192.168.1.20/"))
+        assertEquals("http://nas.lan:2500", HubClient.normalizeBase("http://nas.lan:2500"))
+        assertEquals("http://192.168.1.20.nip.io", HubClient.normalizeBase("http://192.168.1.20.nip.io"))
+        assertEquals("http://example.com", HubClient.normalizeBase("http://example.com/tm/overview"))
     }
 
     @Test fun normalizeBaseRejectsObviouslyPublicHttp() {
-        val rejected = runCatching { HubClient.normalizeBase("http://example.com") }.exceptionOrNull()
-        assertTrue(rejected is ApiException)
-        assertTrue((rejected as ApiException).message.contains("HTTPS"))
         val publicIp = runCatching { HubClient.normalizeBase("http://8.8.8.8") }.exceptionOrNull()
         assertTrue(publicIp is ApiException)
+        assertTrue((publicIp as ApiException).message.contains("HTTPS"))
     }
 
     @Test fun cleartextPeerRejectsPublicAddressesEvenForLocalNames() {
@@ -30,7 +31,8 @@ class HubClientTest {
         assertFalse(HubClient.isCleartextAllowedPeer(InetAddress.getByName("8.8.8.8")))
         assertFalse(HubClient.isCleartextAllowedHost("evil.example.com"))
         assertTrue(HubClient.isCleartextAllowedHost("panel.local"))
-        assertTrue(HubClient.isObviouslyPublicName("evil.example.com"))
+        assertFalse(HubClient.isObviouslyPublicName("evil.example.com"))
+        assertTrue(HubClient.isObviouslyPublicName("8.8.8.8"))
     }
 
     @Test fun sslHandshakeIsDistinguishedFromGenericIo() {

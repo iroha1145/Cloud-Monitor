@@ -162,7 +162,8 @@ object Format {
         val v = (amountMinor ?: 0) / 100.0
         val code = currency.orEmpty().uppercase(Locale.US)
         val sym = ccy[code] ?: if (code.isNotEmpty()) "$code " else ""
-        return sym + String.format(Locale.US, "%.2f", v)
+        val formatted = String.format(Locale.US, "%.2f", abs(v))
+        return if (v < 0) "-$sym$formatted" else "$sym$formatted"
     }
 
     fun fmtProvider(raw: String?): String {

@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class FormatTest {
-    @Test fun usdUsesFourDecimalsBelowACentAndGroupingAbove() {
+    @Test fun usdUsesTwoDecimalsAndKeepsSignOutsideTheDollar() {
         assertEquals("$0.00", Format.fmtUsd(0.0))
         assertEquals("$0.00", Format.fmtUsd(0.0034))
         assertEquals("-$0.00", Format.fmtUsd(-0.0034))

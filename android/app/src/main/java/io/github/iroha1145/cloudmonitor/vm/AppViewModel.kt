@@ -125,11 +125,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } catch (_: SecurityException) {
                 ""
             }
+            val secretsError = store.consumeSecretsError()
             _state.update {
                 it.copy(
                     signedIn = store.signedIn,
                     demo = store.demo,
                     hubUrl = store.hubUrl,
+                    sessionWarning = secretsError,
+                    error = secretsError ?: it.error,
                     encryptionAvailable = store.encryptionAvailable,
                     dark = when (store.darkOverride) {
                         "dark" -> true
