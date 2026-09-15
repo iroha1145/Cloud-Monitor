@@ -27,7 +27,13 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from sync_agent import AGENT_VERSION, AgentConfig, SyncAgent, utc_now_iso
+from sync_agent import (
+    AGENT_VERSION,
+    AgentConfig,
+    SyncAgent,
+    classify_status,
+    utc_now_iso,
+)
 
 log = logging.getLogger("token-monitor-bridge")
 
@@ -186,9 +192,9 @@ def check_hub_health(session: requests.Session, hub_url: str, timeout: float) ->
         resp = session.get(f"{hub_url.rstrip('/')}{HEALTH_PATH}", timeout=timeout)
     except requests.RequestException as exc:
         raise TransientBridgeError(f"hub health 网络错误: {exc}") from exc
-    if resp.status_code >= 500:
-        raise TransientBridgeError(f"hub health HTTP {resp.status_code}")
     if resp.status_code >= 400:
+        if classify_status(resp.status_code):
+            raise TransientBridgeError(f"hub health HTTP {resp.status_code}")
         raise PermanentBridgeError(f"hub health HTTP {resp.status_code}: {resp.text[:200]}")
     try:
         body = resp.json()
@@ -227,12 +233,12 @@ def push_to_token_monitor(
         },
         timeout=agent.config.request_timeout_seconds,
     )
-    if 400 <= resp.status_code < 500:
+    if resp.status_code >= 400:
+        if classify_status(resp.status_code):
+            raise TransientBridgeError(f"token-monitor hub HTTP {resp.status_code}")
         raise PermanentBridgeError(
             f"token-monitor hub 拒绝 HTTP {resp.status_code}: {resp.text[:300]}"
         )
-    if resp.status_code >= 500:
-        raise TransientBridgeError(f"token-monitor hub HTTP {resp.status_code}")
     return {
         "today": payload["today"]["totalTokens"],
         "month": payload["month"]["totalTokens"],
@@ -240,8 +246,17 @@ def push_to_token_monitor(
     }
 
 
+def _record_bridge_error(agent: SyncAgent, message: str) -> None:
+    agent.state.data["bridge_last_error"] = message
+    agent.state.data["bridge_last_error_at"] = utc_now_iso()
+    try:
+        agent.state.save()
+    except OSError:
+        log.warning("无法写入桥接故障到状态文件")
+
+
 def start_bridge_thread(agent: SyncAgent) -> Optional[threading.Thread]:
-    """配置齐全且通过健康检查时启动后台推送线程；4xx 后自动停用。"""
+    """配置齐全时启动后台推送线程；可重试错误长退避，确定性 4xx 才停用。"""
     config = agent.config
     if not config.token_monitor_hub_url or not config.token_monitor_secret:
         log.info("未配置 TOKEN_MONITOR_HUB_URL / TOKEN_MONITOR_SECRET，桥接停用")
@@ -257,6 +272,7 @@ def start_bridge_thread(agent: SyncAgent) -> Optional[threading.Thread]:
         check_hub_health(bridge_session, config.token_monitor_hub_url, config.request_timeout_seconds)
     except PermanentBridgeError as exc:
         log.error("token-monitor 桥接未启动（健康检查失败，判定为永久错误）: %s", exc)
+        _record_bridge_error(agent, str(exc))
         return None
     except (TransientBridgeError, requests.RequestException) as exc:
         log.warning("token-monitor hub 暂不可达，桥接稍后随周期重试: %s", exc)
@@ -265,6 +281,7 @@ def start_bridge_thread(agent: SyncAgent) -> Optional[threading.Thread]:
     disabled = threading.Event()
 
     def loop() -> None:
+        backoff = interval
         while not disabled.is_set():
             try:
                 summary = push_to_token_monitor(
@@ -273,13 +290,18 @@ def start_bridge_thread(agent: SyncAgent) -> Optional[threading.Thread]:
                     config.token_monitor_secret,
                     session=bridge_session,
                 )
+                agent.state.data["bridge_last_error"] = None
                 log.info("已推送 token-monitor 摘要: %s", json.dumps(summary))
+                backoff = interval
             except PermanentBridgeError as exc:
-                log.error("token-monitor 桥接因 4xx 永久停用: %s", exc)
-                disabled.set()
-            except (TransientBridgeError, requests.RequestException, ValueError) as exc:
+                log.error("token-monitor 桥接因确定性 4xx 进入长退避: %s", exc)
+                _record_bridge_error(agent, str(exc))
+                backoff = max(interval * 12, 3600)
+            except Exception as exc:  # noqa: BLE001 — 线程不得静默退出
                 log.warning("token-monitor 推送失败（下个周期重试）: %s", exc)
-            disabled.wait(interval)
+                _record_bridge_error(agent, str(exc))
+                backoff = min(backoff * 2, 3600)
+            disabled.wait(backoff)
 
     thread = threading.Thread(target=loop, name="token-monitor-bridge", daemon=True)
     thread.start()

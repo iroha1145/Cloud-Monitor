@@ -169,6 +169,7 @@ def test_corrupt_state_backed_up_and_refused(tmp_path):
         state.load()
     backups = list(cfg.state_path.parent.glob("state.json.corrupt-*"))
     assert backups, "损坏文件必须被备份"
+    assert cfg.state_path.exists(), "原状态文件必须留在原地，避免重启换身份"
 
 
 def test_state_schema_version_enforced(tmp_path):
