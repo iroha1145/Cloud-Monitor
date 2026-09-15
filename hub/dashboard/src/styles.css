@@ -576,11 +576,15 @@ h1 {
 }
 .refresh-button {
   font-size: 11px !important;
-  min-height: 30px;
   padding: 5px 10px !important;
   background: var(--surface) !important;
   border-color: var(--line-strong) !important;
   box-shadow: 0 1px 2px #0a254005;
+}
+@media (pointer: fine) {
+  .refresh-button {
+    min-height: 30px;
+  }
 }
 .heading-art {
   position: absolute;

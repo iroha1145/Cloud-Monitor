@@ -44,12 +44,7 @@ const fullNumber = (value: number) =>
 const usd = (value: number | null) =>
   value === null
     ? "未提供"
-    : new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }).format(value);
+    : `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const DAY = 86_400_000;
 
 function dateLabel(

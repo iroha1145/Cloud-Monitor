@@ -10,6 +10,16 @@ export default defineConfig(({ command, mode }) => ({
   build: {
     outDir: mode === "showcase" ? "dist-showcase" : "../frontend/app",
     emptyOutDir: true,
+    modulePreload: {
+      resolveDependencies(_filename, deps) {
+        return deps.filter(
+          (dep) =>
+            !/InsightTrend|SecondaryViews|AppDialogs|ArchivePanel|liveline/.test(
+              dep,
+            ),
+        );
+      },
+    },
     rolldownOptions: {
       input: {
         index: fileURLToPath(new URL("./index.html", import.meta.url)),

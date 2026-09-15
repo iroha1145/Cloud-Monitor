@@ -506,6 +506,7 @@ export function ModelTable({
                           : "来源未提供",
                       },
                     ]}
+                    focusable
                   >
                     <span>
                       {m.components.cacheReadKnown ? (
