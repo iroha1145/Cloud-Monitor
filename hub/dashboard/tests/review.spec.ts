@@ -97,3 +97,39 @@ for (const width of [320, 390, 1440]) {
     });
   }
 }
+
+test("用量趋势静态挂载后能画出曲线并用 day 键选中", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/demo.html#overview");
+  const trend = page.getByRole("region", { name: "用量趋势" });
+  await expect(trend.getByRole("heading", { name: "用量趋势" })).toBeVisible();
+  await expect(trend.locator(".insight-trend-canvas")).toBeVisible();
+  await expect(trend.getByText("用量趋势已更新")).toHaveCount(0);
+  const slider = trend.getByRole("slider");
+  await slider.focus();
+  await slider.press("End");
+  const tooltip = page.locator(".insight-trend-tooltip");
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip.locator("time")).toHaveAttribute("datetime", /\d{4}-\d{2}-\d{2}/);
+  const selectedDay = await tooltip.locator("time").getAttribute("datetime");
+  await slider.press("ArrowLeft");
+  await expect(tooltip.locator("time")).not.toHaveAttribute("datetime", selectedDay!);
+  await slider.press("Escape");
+  await expect(tooltip).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
+test("移动端导航 Escape 后焦点回到打开按钮", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/demo.html#overview");
+  const trigger = page.getByRole("button", { name: "打开导航", exact: true });
+  await trigger.focus();
+  await expect(trigger).toBeFocused();
+  await trigger.press("Enter");
+  const drawer = page.getByRole("dialog", { name: "导航", exact: true });
+  await expect(drawer).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
+  await expect(trigger).toBeFocused();
+});
