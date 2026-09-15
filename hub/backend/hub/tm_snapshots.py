@@ -309,12 +309,14 @@ def write_snapshot(
         source_today = incoming.get("today")
         if not isinstance(source_today, dict):
             source_today = source_periods.get("today") if isinstance(source_periods, dict) else None
-        if (
-            incoming.get("today") is None
-            and not (
-                isinstance(source_periods, dict) and isinstance(source_periods.get("today"), dict)
-            )
-        ):
+        has_today = isinstance(source_today, dict)
+        has_other = any(
+            isinstance(incoming.get(name), dict)
+            or (isinstance(source_periods, dict) and isinstance(source_periods.get(name), dict))
+            for name in ("month", "allTime")
+        )
+        # D-05：不含 today、只带其它周期的载荷不写 0 桶
+        if incoming and not has_today and has_other:
             return None
     # Official normalization fills absent counters with zeros. Only the raw
     # report can prove those zeros, and only while its counters still match the
@@ -461,7 +463,7 @@ def prune_snapshots(db: Database, *, now: Optional[datetime] = None) -> dict:
     if now_dt.tzinfo is None:
         now_dt = now_dt.replace(tzinfo=timezone.utc)
     now_dt = now_dt.astimezone(timezone.utc)
-    full_cutoff = (now_dt.date() - timedelta(days=FULL_RESOLUTION_DAYS + 1)).isoformat()
+    full_cutoff = (now_dt.date() - timedelta(days=FULL_RESOLUTION_DAYS)).isoformat()
     hard_cutoff = utc_z(now_dt - timedelta(days=HARD_RETENTION_DAYS))
     removed = {"full_res": 0, "hard": 0}
     with db.transaction():

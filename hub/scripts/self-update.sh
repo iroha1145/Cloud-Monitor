@@ -71,6 +71,7 @@ json_get() {
 
 valid_ref() {
   local ref="$1"
+  [[ ${#ref} -le 66 ]] || return 1
   [[ "$ref" =~ ^(main|master|v?[0-9]+(\.[0-9A-Za-z_-]+)*)$ ]] || return 1
   [[ "$ref" != *..* ]] || return 1
   [[ ! "$ref" =~ ^[0-9a-fA-F]{40}$ ]] || return 1

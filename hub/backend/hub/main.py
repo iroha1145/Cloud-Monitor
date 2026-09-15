@@ -238,7 +238,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             components["sqlite_read"] = {"ok": False, "error": "sqlite_unreadable"}
 
         try:
-            app.state.db.fetchone("PRAGMA user_version")
+            app.state.db.execute(
+                "INSERT INTO tm_meta(key, value) VALUES('health_probe', '1')"
+                " ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+            )
             components["sqlite_write"] = {"ok": True}
         except Exception:  # noqa: BLE001
             components["sqlite_write"] = {"ok": False, "error": "sqlite_unwritable"}
@@ -277,9 +280,24 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     ) -> dict:
         try:
             raw = await request.json()
-            payload = SyncPushRequest.model_validate(raw)
         except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise HTTPException(status_code=400, detail="请求体不是合法 JSON") from exc
+        from pydantic import ValidationError
+
+        try:
+            payload = SyncPushRequest.model_validate(raw)
+        except ValidationError as exc:
+            details = []
+            for error in exc.errors():
+                item = {key: error[key] for key in ("type", "loc", "msg") if key in error}
+                loc = item.get("loc")
+                if isinstance(loc, (list, tuple)) and (not loc or loc[0] != "body"):
+                    item["loc"] = ["body", *loc]
+                details.append(item)
+            return JSONResponse(
+                status_code=400,
+                content={"error": "请求体校验失败", "details": details},
+            )
         enforce_device_binding(binding, payload.device.id)
         if len(payload.records) > settings.max_records_per_push:
             raise HTTPException(

@@ -366,10 +366,12 @@ def replay_pending(
                     None,
                 )
             if record is None:
-                raise ValueError(
-                    "tm-core missing normalized device "
-                    f"{row['device_id']!r}"
+                mark_failed(
+                    db, row["request_id"],
+                    f"tm-core missing normalized device {row['device_id']!r}",
                 )
+                stats["failed"] += 1
+                continue
             write_snapshot(
                 db,
                 device_id=row["device_id"],

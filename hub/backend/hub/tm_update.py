@@ -55,7 +55,12 @@ def validate_github_repo(raw: str) -> str:
 def parse_ref(raw: str) -> str:
     ref = (raw or "").strip()
     # 拒绝裸 40 位 SHA，避免把部署降级到任意历史提交
-    if SHA_RE.fullmatch(ref) or not REF_RE.match(ref) or ".." in ref:
+    if (
+        len(ref) > 66
+        or SHA_RE.fullmatch(ref)
+        or not REF_RE.match(ref)
+        or ".." in ref
+    ):
         raise ValueError("非法更新目标")
     return ref
 

@@ -325,7 +325,7 @@ export function normalizeUpdateStatus(value: unknown): UpdateStatus {
 export const isUpdateBusy = (job: UpdateJob): boolean =>
   ["queued", "running"].includes(job.state);
 export function validUpdateRef(ref: string): boolean {
-  if (/^[0-9a-fA-F]{40}$/.test(ref)) return false;
+  if (!ref || ref.length > 66 || /^[0-9a-fA-F]{40}$/.test(ref)) return false;
   return (
     /^(main|master|v?[0-9]+(\.[0-9A-Za-z_-]+)*)$/.test(ref) &&
     !ref.includes("..")
