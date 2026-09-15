@@ -3971,7 +3971,25 @@ initSeg("#mx-period-seg", (p) => {
   if (state.data) animateContentSwap($(".mx-scroll"), $("#mx"), dir, renderMatrix);
 });
 
-/* §9：日归档服务端分页滚动加载：IntersectionObserver + 按钮兜底（防重复由 aux.loading 保证） */
+/* §9：日归档服务端分页滚动加载：IntersectionObserver + 滚动/按钮兜底
+   （防重复由 aux.loading 保证）。仅靠 IO 时，哨兵若带着 rootMargin 已在
+   相交态，scrollIntoView / 小幅来回滚不会再回调，第二页就永远不来。 */
+function histSentinelInRange(marginPx) {
+  const el = $("#hist-sentinel");
+  if (!el || el.hidden) return false;
+  const host = $("#view-history");
+  if (host && host.hidden) return false;
+  const r = el.getBoundingClientRect();
+  const vh = window.innerHeight || 0;
+  return r.top < vh + marginPx && r.bottom > -marginPx;
+}
+
+function maybeLoadHistoryBySentinel() {
+  if (state.alive && state.view === "history" && histSentinelInRange(160)) {
+    loadHistoryPage();
+  }
+}
+
 $("#hist-more").addEventListener("click", () => loadHistoryPage());
 if ("IntersectionObserver" in window) {
   const io = new IntersectionObserver((entries) => {
@@ -3981,6 +3999,8 @@ if ("IntersectionObserver" in window) {
   }, { rootMargin: "160px" });
   io.observe($("#hist-sentinel"));
 }
+window.addEventListener("scroll", maybeLoadHistoryBySentinel, { passive: true, capture: true });
+document.addEventListener("scroll", maybeLoadHistoryBySentinel, { passive: true, capture: true });
 
 let resizeTimer = null;
 let resizeRaf = 0;
