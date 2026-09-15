@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import json
 
 import httpx
 import pytest
@@ -516,3 +517,50 @@ def test_parse_ref_still_rejects_dangerous_refs():
         parse_ref("not a ref")
     with pytest.raises(ValueError):
         parse_ref("0123456789abcdef0123456789abcdef01234567")
+
+
+def test_unavailable_response_falls_back_to_exception_type():
+    from hub.tm_proxy import _unavailable_response
+
+    class Blank(Exception):
+        def __str__(self) -> str:
+            return "   "
+
+    resp = _unavailable_response(Blank())
+    assert resp.status_code == 503
+    body = json.loads(resp.body)
+    assert body["error"] == "upstream_unavailable"
+    assert body["message"] == "Blank"
+
+
+def test_empty_bearer_does_not_fall_back_to_custom_header(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from conftest import API_KEY, READ_KEY, TM_SECRET
+    from hub.config import Settings
+    from hub.main import create_app
+
+    settings = Settings(
+        api_key=API_KEY,
+        access_token=READ_KEY,
+        database_path=tmp_path / "auth.db",
+        frontend_dir=tmp_path,
+        max_records_per_push=500,
+        tm_ingest_secret=TM_SECRET,
+    )
+    client = TestClient(create_app(settings))
+    empty_bearer = client.post(
+        "/api/ingest",
+        json={"deviceId": "dev"},
+        headers={
+            "Authorization": "Bearer ",
+            "X-Token-Monitor-Secret": TM_SECRET,
+        },
+    )
+    header_only = client.post(
+        "/api/ingest",
+        json={"deviceId": "dev"},
+        headers={"X-Token-Monitor-Secret": TM_SECRET},
+    )
+    assert empty_bearer.status_code == 401
+    assert header_only.status_code != 401

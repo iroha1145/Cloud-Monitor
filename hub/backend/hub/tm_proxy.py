@@ -28,6 +28,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from .config import Settings
 from .db import Database
 from .tm_outbox import (
+    DETERMINISTIC_FAILURES,
     OutboxFullError,
     drop_pending,
     ensure_schema as ensure_outbox_schema,
@@ -170,12 +171,12 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
         import hmac
 
         secret = settings.tm_ingest_secret
-        header = request.headers.get("x-token-monitor-secret") or ""
         auth = request.headers.get("authorization") or ""
-        bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-        provided = bearer or header
-        if bearer:
-            provided = bearer
+        # 与官方 requestSecret 一致：出现 Bearer 就只看 Bearer，即使值为空。
+        if auth.lower().startswith("bearer "):
+            provided = auth[7:].strip()
+        else:
+            provided = request.headers.get("x-token-monitor-secret") or ""
         if not provided or not hmac.compare_digest(provided.encode(), secret.encode()):
             raise HTTPException(status_code=401, detail="unauthorized")
 
@@ -296,7 +297,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             mark_done(db, request_id)
             set_snapshot_status(db, success=True)
             _wake_replay(request)
-        except (OverflowError, ValueError, UnicodeEncodeError) as exc:
+        except DETERMINISTIC_FAILURES as exc:
             mark_rejected(db, request_id, str(exc))
             set_snapshot_status(db, success=False, error=str(exc))
             log.warning("快照确定性失败（outbox rejected）: %s", exc)
@@ -392,10 +393,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
         try:
             upstream = await async_client.send(upstream_req, stream=True)
         except httpx.HTTPError as exc:
-            return JSONResponse(
-                status_code=503,
-                content={"error": "upstream_unavailable", "message": str(exc)[:200]},
-            )
+            return _unavailable_response(exc)
         if upstream.status_code != 200:
             status = upstream.status_code
             await upstream.aclose()

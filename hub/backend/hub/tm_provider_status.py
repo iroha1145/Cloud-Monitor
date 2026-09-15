@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import logging
 import re
 import time
@@ -601,7 +602,10 @@ async def _get_response(
 ) -> tuple[Optional[httpx.Response], Optional[str]]:
     _safe_url(url)
     try:
-        response = await client.get(url, timeout=timeout, headers=STATUS_FETCH_HEADERS)
+        request = client.build_request(
+            "GET", url, timeout=timeout, headers=STATUS_FETCH_HEADERS
+        )
+        response = await client.send(request, stream=True)
     except httpx.TimeoutException:
         log.warning("provider-status timeout url_host=%s", httpx.URL(url).host)
         return None, "timeout"
@@ -614,8 +618,25 @@ async def _get_response(
             httpx.URL(url).host,
             response.status_code,
         )
+        await response.aclose()
         return None, "http_status"
     return response, None
+
+
+async def _read_capped_body(response: httpx.Response) -> tuple[Optional[bytes], Optional[str]]:
+    chunks: list[bytes] = []
+    total = 0
+    try:
+        async for chunk in response.aiter_bytes():
+            if not chunk:
+                continue
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > MAX_STATUS_BODY_BYTES:
+                return None, "payload_too_large"
+        return b"".join(chunks), None
+    finally:
+        await response.aclose()
 
 
 async def _get_json(
@@ -626,8 +647,11 @@ async def _get_json(
     response, error = await _get_response(client, url, timeout)
     if response is None:
         return None, error
+    raw, error = await _read_capped_body(response)
+    if raw is None:
+        return None, error
     try:
-        data = response.json()
+        data = json.loads(raw)
     except ValueError:
         log.warning("provider-status invalid json url_host=%s", httpx.URL(url).host)
         return None, "invalid_json"
@@ -644,11 +668,11 @@ async def _get_text(
     response, error = await _get_response(client, url, timeout)
     if response is None:
         return None, error
-    content = response.content[: MAX_STATUS_BODY_BYTES + 1]
-    if len(content) > MAX_STATUS_BODY_BYTES:
-        return None, "payload_too_large"
+    raw, error = await _read_capped_body(response)
+    if raw is None:
+        return None, error
     try:
-        text = content.decode("utf-8", errors="replace")
+        text = raw.decode("utf-8", errors="replace")
     except Exception:
         return None, "invalid_json"
     if not text.strip():
@@ -672,7 +696,7 @@ async def fetch_one_provider(
             return {}, error or "network"
         text, error2 = await _get_text(client, page.status_url, timeout)
         if text is not None:
-            return parse_rss_payload(page, text), None
+            return await asyncio.to_thread(parse_rss_payload, page, text), None
         return {}, error2 or error or "network"
     payload, error = await _get_json(client, page.summary_url, timeout)
     if payload is not None:
