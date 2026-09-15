@@ -44,6 +44,9 @@ jobs:
 
       - name: 安装 Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          # 默认还装已下架的 `tools` 包，sdkmanager 会 Failed to find package 'tools'
+          packages: platform-tools
 
       - name: 安装安卓 17 SDK
         working-directory: .
@@ -157,6 +160,8 @@ jobs:
           cache: gradle
           cache-dependency-path: android/gradle/libs.versions.toml
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: platform-tools
       - name: 安装模拟器运行库
         timeout-minutes: 5
         run: |
