@@ -9,11 +9,14 @@ cloud-hub 容器只读、无 git、无 docker。面板只负责：
 from __future__ import annotations
 
 import json
+import fcntl
 import logging
 import os
 import re
+import stat
 import time
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -161,11 +164,49 @@ class UpdateService:
         d = self.update_dir
         return None if d is None else d / "status.json"
 
-    def _write_status(self, data: dict[str, Any]) -> None:
-        path = self.status_file()
-        if path is None:
-            raise OSError("no status path")
-        _atomic_write(path, data)
+    @contextmanager
+    def _coordination_lock(self, *, allow_legacy_enqueue: bool = False):
+        """Share the host's lock without writing its read-only runtime mount."""
+        directory = self.update_dir
+        if directory is None:
+            raise HTTPException(status_code=503, detail="未启用在线更新")
+        runtime = self.settings.cm_update_runtime_dir
+        lock_path = (runtime or directory) / "update.lock"
+        if lock_path.is_symlink() or lock_path.parent.is_symlink():
+            raise HTTPException(status_code=503, detail="更新锁文件异常")
+        flags = os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0)
+        # Without a separate runtime (local development), both sides may use
+        # the writable control directory. Production locks are host-created.
+        if runtime is None:
+            flags |= os.O_CREAT
+        try:
+            fd = os.open(lock_path, flags, 0o640)
+        except (FileNotFoundError, PermissionError) as exc:
+            if allow_legacy_enqueue and runtime is not None:
+                # Older installers left update.lock absent or root-only. Keep
+                # their next upgrade possible; the new host script initializes
+                # the shared lock. Cancellation must fail closed until then.
+                log.warning("旧版宿主更新锁尚不可读；本次仅允许提交更新")
+                yield
+                return
+            raise HTTPException(
+                status_code=503,
+                detail="无法读取宿主更新锁，请用 sudo 重新运行 install.sh",
+            ) from exc
+        except OSError as exc:
+            raise HTTPException(status_code=503, detail="无法读取宿主更新锁") from exc
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise HTTPException(status_code=503, detail="更新锁文件异常")
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise HTTPException(status_code=409, detail="宿主机正在处理更新，无法更改任务") from exc
+            except OSError as exc:
+                raise HTTPException(status_code=503, detail="无法锁定宿主更新任务") from exc
+            yield
+        finally:
+            os.close(fd)
 
     def read_job(self) -> dict[str, Any]:
         d = self.update_dir
@@ -197,6 +238,30 @@ class UpdateService:
             data = {"state": "error", "message": "状态文件无法读取"}
         if not isinstance(data, dict):
             data = {"state": "error", "message": "状态文件格式错误"}
+        if pending is None and not status_unreadable and data.get("state") not in {"running", "unknown"}:
+            # Cancellation is an atomic move of request.json into the writable
+            # control directory. Never write or replace the host's status file.
+            # A new enqueue removes this receipt before publishing its request.
+            try:
+                cancelled = json.loads((d / "cancel.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                cancelled = None
+            if isinstance(cancelled, dict) and cancelled.get("id"):
+                data = {
+                    "id": cancelled["id"], "state": "error",
+                    "ref": cancelled.get("ref") or "", "message": "已取消更新",
+                    "updated_at": cancelled.get("updated_at") or cancelled.get("requested_at") or "",
+                }
+            try:
+                failed = json.loads((d / "publication-error.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                failed = None
+            if isinstance(failed, dict) and failed.get("id"):
+                data = {
+                    "id": failed["id"], "state": "error",
+                    "ref": failed.get("ref") or "", "message": "更新请求写入失败",
+                    "updated_at": failed.get("updated_at") or "",
+                }
         if pending is not None and status_unreadable:
             return {
                 "id": str(pending.get("id") or ""),
@@ -320,7 +385,7 @@ class UpdateService:
 
     def apply(self, ref: str) -> dict[str, Any]:
         # FastAPI runs sync endpoints in multiple threads even with one worker.
-        with self._apply_lock:
+        with self._apply_lock, self._coordination_lock(allow_legacy_enqueue=True):
             return self._enqueue(ref)
 
     def _enqueue(self, ref: str) -> dict[str, Any]:
@@ -332,7 +397,7 @@ class UpdateService:
                 detail="未启用在线更新：请用 install.sh 安装，宿主机才会挂载更新目录并启动监视器",
             )
         job = self.read_job()
-        if job.get("state") in {"queued", "running"} or (d / "request.json").exists():
+        if job.get("state") in {"queued", "running", "unknown"} or (d / "request.json").exists():
             raise HTTPException(status_code=409, detail="已有更新在进行")
         req_id = uuid.uuid4().hex[:16]
         request = {
@@ -341,17 +406,23 @@ class UpdateService:
             "requested_at": _iso_now(),
         }
         try:
+            # Retire old API receipts before publication, so a crash or an
+            # immediately completed new request cannot resurrect an old result.
+            for name in ("cancel.json", "publication-error.json"):
+                (d / name).unlink(missing_ok=True)
             # Publish once. read_job derives queued from this durable request,
             # leaving the watcher's running/finished status untouched.
             _atomic_write(d / "request.json", request)
         except OSError as exc:
             try:
-                self._write_status({
+                _atomic_write(d / "publication-error.json", {
                     "id": req_id, "state": "error", "ref": target,
                     "message": "更新请求写入失败", "updated_at": _iso_now(),
                 })
             except OSError:
-                pass
+                # A completely unwritable control mount still has the HTTP
+                # failure response; the read-only host status is never changed.
+                log.warning("更新请求写入失败，且无法保存失败回执")
             raise HTTPException(status_code=503, detail="更新请求写入失败，请检查更新目录") from exc
         return self.read_job()
 
@@ -359,7 +430,7 @@ class UpdateService:
         d = self.update_dir
         if d is None:
             raise HTTPException(status_code=503, detail="未启用在线更新")
-        with self._apply_lock:
+        with self._apply_lock, self._coordination_lock():
             job = self.read_job()
             if (
                 job.get("state") in {"running", "unknown"}
@@ -370,16 +441,20 @@ class UpdateService:
                     detail="更新已开始重建，无法中止",
                 )
             req = d / "request.json"
+            cancelled = d / "cancel.json"
             try:
                 if req.exists() or req.is_symlink():
-                    if req.is_symlink():
+                    if req.is_symlink() or cancelled.is_symlink() or d.is_symlink():
                         raise HTTPException(status_code=400, detail="更新请求文件异常")
-                    req.unlink()
+                    # One atomic rename both removes the queued job and saves
+                    # its cancellation receipt, even if the process exits next.
+                    req.replace(cancelled)
+                else:
+                    return self.read_job()
             except OSError as exc:
                 raise HTTPException(status_code=503, detail="无法取消更新请求") from exc
-            job = self.read_job()
             try:
-                self._write_status({
+                _atomic_write(cancelled, {
                     "id": job.get("id") or "",
                     "state": "error",
                     "ref": job.get("ref") or "",
@@ -387,7 +462,8 @@ class UpdateService:
                     "updated_at": _iso_now(),
                 })
             except OSError:
-                pass
+                # The renamed request is already a durable cancellation receipt.
+                log.warning("已取消更新，但无法补充取消时间")
             return self.read_job()
 
     def _get(self, url: str) -> tuple[int, Any]:

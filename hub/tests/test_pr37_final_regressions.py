@@ -36,7 +36,7 @@ def test_sequence_survives_outbox_pruning_and_snapshot_deletion(database):
         outbox.mark_done(db, request_id)
     previous = outbox.outbox_ingest_sequence(db, 'b')
     old = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat()
-    db.execute('UPDATE tm_ingest_outbox SET received_at=?', (old,))
+    db.execute('UPDATE tm_ingest_outbox SET received_at=?, terminal_at=?', (old, old))
     assert outbox.prune_done(db) == 2
     outbox.ensure_schema(db)  # reopening/reinitializing must not reset the counter
     outbox.record_pending(db, request_id='c', device_id='dev', payload=usage(total=200))
@@ -101,19 +101,21 @@ def test_rejected_forwarding_cannot_create_a_ghost_snapshot(cloud, monkeypatch):
                           headers={'X-Token-Monitor-Secret': TM_SECRET})
     assert response.status_code == 503
     assert db.fetchone("SELECT COUNT(*) AS n FROM tm_snapshot_buckets WHERE device_id='never-accepted'")['n'] == 0
-    assert outbox.pending_count(db) == 0
+    assert outbox.pending_count(db) == 1
+    assert db.fetchone("SELECT forward_payload_json FROM tm_ingest_outbox WHERE device_id='never-accepted'")['forward_payload_json']
 
 
 def test_ack_storage_failure_returns_retryable_response(cloud, monkeypatch):
-    import hub.tm_proxy as proxy
     outbox.set_snapshot_status(cloud.app.state.db, success=True)
     def unavailable(*args, **kwargs):
         raise sqlite3.OperationalError('temporary acknowledgement storage failure')
-    monkeypatch.setattr(proxy, 'save_normalized', unavailable)
+    monkeypatch.setattr(outbox, 'save_normalized', unavailable)
     response = cloud.post('/api/ingest', json=widget_style_payload('retry-ack'),
                           headers={'X-Token-Monitor-Secret': TM_SECRET})
     assert response.status_code == 503
-    assert cloud.app.state.db.fetchone("SELECT normalized_json FROM tm_ingest_outbox WHERE device_id='retry-ack'") is None
+    row = cloud.app.state.db.fetchone("SELECT normalized_json, forward_payload_json FROM tm_ingest_outbox WHERE device_id='retry-ack'")
+    assert row['normalized_json'] is None
+    assert row['forward_payload_json']
     assert outbox.snapshot_health(cloud.app.state.db)['snapshot_degraded'] is True
 
 
@@ -137,7 +139,7 @@ def test_saved_ack_omits_session_volume_and_keeps_snapshot_fields(database):
 
 @pytest.mark.parametrize('cross_day', [False, True], ids=['same-second', 'cross-day'])
 def test_real_core_replay_preserves_the_acknowledged_total_cost_and_model(cloud, monkeypatch, cross_day):
-    import hub.tm_proxy as proxy
+    import hub.tm_forwarding as forwarding
     db = cloud.app.state.db
     today = datetime.now(timezone.utc).date()
     day_a = today - timedelta(days=1) if cross_day else today
@@ -151,19 +153,24 @@ def test_real_core_replay_preserves_the_acknowledged_total_cost_and_model(cloud,
     second['today'] = {'totalTokens': 100 if cross_day else 200,
                        'costUsd': 1 if cross_day else 2,
                        'models': {'second': 100 if cross_day else 200}}
-    original = proxy.write_snapshot
+    original = forwarding.write_snapshot
     def unavailable(*args, **kwargs):
         raise sqlite3.OperationalError('temporary snapshot failure after acceptance')
     # Force outbox receipt precision to the same second as the successful snapshot.
-    stamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-    monkeypatch.setattr(outbox, 'utc_now', lambda: stamp)
+    receipt = datetime.now(timezone.utc).replace(microsecond=0)
+    queue = forwarding.forwarding_queue(db, max_pending=1000)
+    monkeypatch.setattr(queue, '_clock', lambda: receipt)
     for index, payload in enumerate((first, second)):
         fail = index == (0 if cross_day else 1)
-        monkeypatch.setattr(proxy, 'write_snapshot', unavailable if fail else original)
+        monkeypatch.setattr(forwarding, 'write_snapshot', unavailable if fail else original)
         response = cloud.post('/api/ingest', json=payload,
                               headers={'X-Token-Monitor-Secret': TM_SECRET})
         assert response.status_code == 200
-    monkeypatch.setattr(proxy, 'write_snapshot', original)
+    receipts = db.fetchall("SELECT received_at FROM tm_ingest_outbox WHERE device_id='replay-values'")
+    expected_receipt = snapshots.utc_z(receipt)
+    assert len(receipts) == 2
+    assert [row['received_at'] for row in receipts] == [expected_receipt, expected_receipt]
+    monkeypatch.setattr(forwarding, 'write_snapshot', original)
     result = outbox.replay_pending(db, None)
     assert result['completed'] == 1
     assert result['superseded'] == 0
@@ -179,13 +186,17 @@ def test_real_core_replay_preserves_the_acknowledged_total_cost_and_model(cloud,
         assert json.loads(actual['models_json']) == payload['today']['models']
 
 
-def test_unknown_rows_keep_health_degraded_without_exhausting_ready_queue_capacity(database):
+def test_expired_unknown_rows_release_capacity_and_retain_audit(database):
     db = database
     for index in range(3):
-        outbox.record_pending(db, request_id=f'unknown-{index}', device_id='dev', payload=usage(), max_pending=1)
+        outbox.record_pending(db, request_id=f'unknown-{index}', device_id='dev', payload=usage(), max_pending=3)
+    db.execute("UPDATE tm_ingest_outbox SET received_at='2000-01-01T00:00:00Z'")
+    assert outbox.expire_unconfirmed(db) == 3
     state = outbox.snapshot_health(db)
-    assert state['unconfirmed_outbox'] == state['pending_outbox'] == 3
-    assert state['snapshot_degraded'] is True
+    assert state['unconfirmed_outbox'] == state['pending_outbox'] == 0
+    assert state['expired_unconfirmed_outbox'] == 3
+    assert state['snapshot_degraded'] is False
+    assert outbox.prune_done(db) == 0
     outbox.record_pending(db, request_id='accepted', device_id='dev', payload=usage(), max_pending=1)
     outbox.save_normalized(db, 'accepted', outbox.record_from_payload(usage()))
     with pytest.raises(outbox.OutboxFullError):

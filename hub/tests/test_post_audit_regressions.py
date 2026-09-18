@@ -166,8 +166,8 @@ def test_healthy_path_prunes_expired_done_and_rejected_rows(tmp_path):
     for rid, state in (("old-done", "done"), ("old-rej", "rejected")):
         db.execute(
             "INSERT INTO tm_ingest_outbox (request_id, device_id, payload_json,"
-            " received_at, state) VALUES (?, 'dev', '{}', ?, ?)",
-            (rid, old, state),
+            " received_at, terminal_at, state) VALUES (?, 'dev', '{}', ?, ?, ?)",
+            (rid, old, old, state),
         )
     result = replay_pending(db, Core(Response(200, {"stats": {"devices": []}})))
     assert result["checked"] == 0  # 无 pending，走的正是健康路径
@@ -212,7 +212,7 @@ def test_bootstrap_does_not_mark_legacy_on_upstream_4xx(tmp_path):
             self.text = "denied"
 
         def json(self):
-            return {"stats": {"devices": []}}
+            return {"devices": [], "stats": {"devices": []}}
 
     class StatusCore:
         def __init__(self, status_code):
@@ -391,6 +391,8 @@ def test_bootstrap_marks_device_rejected_on_deterministic_400(tmp_path):
             return {"ok": True}
 
         def request(self, _method, _path, *, json_body=None, **_kwargs):
+            if _method == "GET" and _path == "/api/devices":
+                return SimpleNamespace(status_code=200, json=lambda: {"devices": []})
             self.seen.append(json_body)
             device = str((json_body or {}).get("deviceId") or "")
             body = {"stats": {"devices": []}}
@@ -431,6 +433,8 @@ def test_bootstrap_does_not_reject_device_on_404(tmp_path):
             return {"ok": True}
 
         def request(self, _method, _path, *, json_body=None, **_kwargs):
+            if _method == "GET" and _path == "/api/devices":
+                return SimpleNamespace(status_code=200, json=lambda: {"devices": []})
             return SimpleNamespace(status_code=404, text="not found", json=lambda: {})
 
     db = db_for(tmp_path, "reject-404.sqlite3")

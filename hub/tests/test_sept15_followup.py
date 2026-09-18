@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi import HTTPException
@@ -277,13 +278,15 @@ def test_replay_newer_same_second_usage_overwrites_older_snapshot(tmp_path):
     db = Database(tmp_path / "same-second.sqlite3")
     ensure_schema(db)
     ensure_snapshots(db)
-    stamp = "2026-09-15T08:33:44.000Z"
-    older_snap = "2026-09-15T08:33:44.024Z"
+    moment = datetime.now(timezone.utc).replace(microsecond=0)
+    day = moment.date().isoformat()
+    stamp = moment.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    older_snap = (moment + timedelta(milliseconds=24)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
     first = _usage(
-        "dev", "2026-09-15", 100, cost=1, model="model-100", updated_at=stamp
+        "dev", day, 100, cost=1, model="model-100", updated_at=stamp
     )
     second = _usage(
-        "dev", "2026-09-15", 200, cost=2, model="model-200", updated_at=stamp
+        "dev", day, 200, cost=2, model="model-200", updated_at=stamp
     )
     try:
         record_pending(db, request_id="a", device_id="dev", payload=first)

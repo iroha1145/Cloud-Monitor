@@ -99,7 +99,7 @@ widget 按自己的同步间隔推送，本机不用再装别的。然后打开 
 | 官方端点 | 状态 | 谁处理 |
 |---|---|---|
 | `GET /api/health` | 官方形状（含 hubBuild） | 透传 tm-core；上游不可达时 503 |
-| `POST /api/ingest` | 官方形状（ok / deviceId / stats） | 先校验，再透传，再写快照 |
+| `POST /api/ingest` | 官方形状（ok / deviceId / stats） | 先校验并暂存，按序转发，确认后写快照 |
 | `GET /api/stats` | 支持 | 透传（聚合 / 过期 / stale 跟官方一致） |
 | `GET /api/stats/stream` | SSE（首帧 snapshot、ingest / delete / subscriptions 广播、30s `: hb`） | 按字节透传 |
 | `GET /api/devices` | `{devices:[...]}` | 透传 |
@@ -123,7 +123,8 @@ widget 按自己的同步间隔推送，本机不用再装别的。然后打开 
 - 转发前校验：负数、bool、NaN、Infinity、超 64 位、非法 IANA 时区、原型污染键、数量超限、过度未来时间一律 400。官方只卡 1MiB 体积
 - ASGI receive 层按实际字节限 1MiB（分块、没有或伪造 Content-Length 也算）
 - SQLite 5 分钟桶时间序列，以及上面的 `/api/v1/tm/*` 接口
-- ingest 先写 pending outbox，再转发，再按本次响应里的 `stats.devices` 落快照。快照失败不会悄悄丢掉：outbox 留给后台或启动重放（幂等）。pending 超过默认 1000 条会 503 背压
+- ingest 先保存完整待发送载荷，再按同设备顺序转发，得到本次确认后才按 `stats.devices` 落快照。网络错误、408/425/429/5xx 由后台有界重试，未确认时仍返回失败状态，不冒充成功；`Retry-After` 会保留。快照失败只重放已确认记录，不再向核心重复发送。
+- 活动请求默认最多 1000 条，完整待发送载荷最多 16 MiB；并发入队也计入容量。最多尝试 8 次或保留 1 小时，以先到者为准。失败终结后保留原因，并在网页提示历史可能缺口。详细顺序、幂等窗口和时间边界见 [架构说明](docs/ARCHITECTURE.md#待发送与快照补写的恢复边界)。
 - 官方是单进程；这里是 compose 里 python + node 两个容器
 
 ## 数据怎么留、时区、隐私、备份
@@ -172,6 +173,13 @@ agent 变量见 `agent/.env.example`。
 ## 在线更新
 
 面板顶栏「检索更新」会向 GitHub 拉最新 Release 和 `origin/main` 的 tip，和当前 `CM_VERSION` / `CM_GIT_SHA` 比较。真正升级不在容器里做（cloud-hub 只读、没有 git、也没有 docker.sock），而是把目标 ref 写进 `hub/update-control/request.json`，由宿主机上的 `update-watcher.sh` 调用 `self-update.sh`：`git fetch` + 快进 `main` 或检出 tag，再 `docker compose up -d --build`。
+
+安装脚本需用 `sudo` 运行：宿主状态目录为 `root:999 0750`，共享锁和状态文件为
+`root:999 0640`，容器只读挂载该目录。提交与取消共用宿主文件锁；宿主已经领取
+更新时取消返回 409，取消先取得锁时宿主不会继续执行。取消回执写入可写控制目录，
+重启后仍能显示；提交写入失败也在可写目录留下回执，不改宿主状态文件。
+旧部署若共享锁缺失或不可读，可保留下一次升级提交入口，但取消
+会返回 503 并提示重跑安装脚本；新版宿主脚本也会修复旧锁权限。
 
 用 `install.sh` 安装或再跑一遍即可创建该目录并启动监视器（有 systemd 就用服务，否则 nohup）。只 `docker compose up`、没跑过安装脚本的话，检索仍然可用，点更新会返回 503。演示页（含 GitHub Pages）只走假数据界面，不会改服务器。
 

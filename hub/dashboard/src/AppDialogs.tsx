@@ -70,6 +70,7 @@ export default function AppDialogs({
   notices,
   requestVersion,
   inFlight,
+  returnFocusRef,
 }: {
   searchOpen: boolean;
   setSearchOpen: (value: boolean) => void;
@@ -102,11 +103,12 @@ export default function AppDialogs({
   notices: string[];
   requestVersion: { current: number };
   inFlight: { current: AbortController | null };
+  returnFocusRef: React.RefObject<HTMLElement | null>;
 }) {
   return (
     <>
       <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
-        <DialogContent className="search-dialog">
+        <DialogContent className="search-dialog" returnFocusRef={returnFocusRef}>
           <DialogTitle className="sr-only">快速查找</DialogTitle>
           <DialogDescription className="sr-only">
             搜索页面或模型名称并跳转
@@ -166,7 +168,7 @@ export default function AppDialogs({
           }
         }}
       >
-        <DialogContent className={`settings-dialog ${hosted ? "hosted-settings" : ""}`}>
+        <DialogContent className={`settings-dialog ${hosted ? "hosted-settings" : ""}`} returnFocusRef={returnFocusRef}>
           <DialogHeader>
             <span className="dialog-icon">
               <Link2 size={22} />
@@ -241,7 +243,7 @@ export default function AppDialogs({
       </Dialog>
       {SHOWCASE_UI && (
         <Dialog open={notifications} onOpenChange={setNotifications}>
-          <DialogContent className="notifications-dialog">
+          <DialogContent className="notifications-dialog" returnFocusRef={returnFocusRef}>
             <DialogHeader>
               <DialogTitle>
                 工作区提示 <span className="count-badge">{statusCount}</span>
@@ -286,6 +288,7 @@ export default function AppDialogs({
         }}
       >
         <DialogContent
+          returnFocusRef={returnFocusRef}
           className="model-dialog"
           onOpenAutoFocus={(event) => {
             const content = event.target;
@@ -344,7 +347,7 @@ export default function AppDialogs({
         </DialogContent>
       </Dialog>
       <Dialog open={design} onOpenChange={setDesign}>
-        <DialogContent className="design-dialog">
+        <DialogContent className="design-dialog" returnFocusRef={returnFocusRef}>
           <DialogHeader>
             <span className="dialog-icon">
               <Palette size={23} />

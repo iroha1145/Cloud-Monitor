@@ -8,6 +8,10 @@ if [[ -z "$INSTALL_DIR" || ! -d "$INSTALL_DIR/.git" ]]; then
   echo "用法: self-update.sh <安装目录>" >&2
   exit 2
 fi
+if [[ "$(id -u)" -ne 0 ]]; then
+  echo "在线更新需要 root 权限；请用 sudo 重新运行 install.sh 配置宿主机监视器。" >&2
+  exit 1
+fi
 
 HUB="$INSTALL_DIR/hub"
 CTRL="$HUB/update-control"
@@ -17,13 +21,13 @@ STATUS="$RUNTIME/status.json"
 LOCK="$RUNTIME/update.lock"
 ENVF="$HUB/.env"
 
+if [[ -L "$CTRL" || -L "$RUNTIME" ]]; then
+  echo "拒绝符号链接更新目录" >&2
+  exit 1
+fi
 mkdir -p "$CTRL"
 # 容器 999:999 需要进入目录读 status；0700 会让面板把已在重建的任务误判为排队。
-if [[ "$(id -u)" -eq 0 ]] && install -d -o root -g 999 -m 0750 "$RUNTIME" 2>/dev/null; then
-  :
-elif mkdir -p "$RUNTIME"; then
-  chmod 750 "$RUNTIME" 2>/dev/null || true
-else
+if ! install -d -o root -g 999 -m 0750 "$RUNTIME"; then
   echo "无法创建更新运行时目录: $RUNTIME" >&2
   exit 1
 fi
@@ -67,10 +71,7 @@ if hasattr(os, "O_NOFOLLOW"):
 fd = os.open(tmp, flags, 0o640)
 try:
     os.fchmod(fd, 0o640)
-    try:
-        os.fchown(fd, 0, 999)
-    except OSError:
-        pass
+    os.fchown(fd, 0, 999)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         fd = None
         json.dump(
@@ -116,12 +117,32 @@ if ! command -v flock >/dev/null 2>&1; then
 fi
 
 refuse_symlink "$LOCK" || exit 1
-exec 9>"$LOCK"
-chmod 600 "$LOCK" 2>/dev/null || true
+# Initialize or repair older root-only locks without replacing their inode.
+# The container opens this root:999 file read-only and takes the same flock.
+python3 - "$LOCK" <<'PY'
+import os, stat, sys
+path = sys.argv[1]
+fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NONBLOCK | os.O_NOFOLLOW, 0o640)
+try:
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        raise SystemExit("更新锁必须是普通文件")
+    os.fchown(fd, 0, 999)
+    os.fchmod(fd, 0o640)
+finally:
+    os.close(fd)
+PY
+exec 9<"$LOCK"
 if ! flock -n 9; then
   echo "已有更新在进行，跳过"
   exit 0
 fi
+
+# Cancellation may win while this process is preparing or waiting for the lock.
+# With the shared lock held, absence means cancellation committed: do nothing.
+if [[ ! -f "$REQ" ]]; then
+  exit 0
+fi
+refuse_symlink "$REQ" || exit 1
 
 ID="$(json_get "$REQ" id)"
 REF="$(json_get "$REQ" ref)"

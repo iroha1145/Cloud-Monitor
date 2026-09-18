@@ -52,19 +52,8 @@ class TmBodyLimitMiddleware:
                 if not message.get("more_body"):
                     break
             elif mtype == "http.disconnect":
-                payload = b'{"error":"client_disconnected"}'
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": 499,
-                        "headers": [
-                            (b"content-type", b"application/json"),
-                            (b"content-length", str(len(payload)).encode()),
-                            (b"connection", b"close"),
-                        ],
-                    }
-                )
-                await send({"type": "http.response.body", "body": payload})
+                # The connection is already closed; newer ASGI servers may
+                # raise OSError if we try to send a response at this point.
                 return
 
         if exceeded:

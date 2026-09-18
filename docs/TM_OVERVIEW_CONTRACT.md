@@ -32,6 +32,12 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
   "partial": false,                            // 辅助来源失败时为 true
   "partial_errors": [],                        // 见下方稳定错误码
   "pending_outbox": 0,                         // P0-1 快照健康
+  "unconfirmed_outbox": 0,                     // 尚未得到核心服务确认，包含转发等待项
+  "forwarding_outbox": 0,                      // 已保存完整载荷、等待转发确认
+  "forwarding_bytes": 0,                       // 活动转发载荷的 UTF-8 字节数
+  "expired_unconfirmed_outbox": 0,             // 审计保留期内已隔离的未确认/重试耗尽记录
+  "last_forward_error": null,                  // 运维诊断，网页不直接展示内部错误
+  "last_forward_terminal_reason": null,
   "last_snapshot_success_at": "…",
   "last_snapshot_error": null,
   "snapshot_degraded": false,
@@ -170,9 +176,22 @@ Overview **不得**把 370 天日归档塞进每 5 分钟刷新的 payload。长
 | `devices_badges_unavailable` | 官方 /api/devices 徽章读取失败 |
 | `activity_unavailable` | SQLite 活动计算失败 |
 | `clients_json_corrupt` / `models_json_corrupt` | 日归档 JSON 损坏（history/daily） |
+| `overview_stale` | 刷新失败或超时，暂时显示上次总览；`reason` 为 `refresh_failed` 或 `refresh_timeout` |
 
-`totals` / `devices` 始终完整来自官方 stats（stats 失败整体 502）。
+`totals` / `devices` 来自官方 stats。刷新失败时可暂时返回上次总览，
+但必须设置 `partial: true` 和 `overview_stale`，保留原 `generated_at`；
+不得修改共享缓存中的原始错误列表。默认缓存有效期为 30 秒，旧数据的
+总年龄不超过 60 秒（两倍 `OVERVIEW_CACHE_SECONDS`）。没有可用缓存时，
+上游失败返回 502；刷新或等待超过 20 秒返回 504。
+取消一个等待请求不会取消其他请求的共享结果；刷新持有者取消会释放状态，
+使后续请求能够重新刷新。
 外部状态页失败不得拖垮 Overview 或 Token ingest。
+
+`pending_outbox` 包含 `forwarding_outbox`。页面将二者相减后，才得到
+“等待历史补写”的数量；尚未确认的转发记录不能称为已经接收的快照。
+`expired_unconfirmed_outbox > 0` 时提示旧上报未完成、历史可能有缺口。
+这些终结记录不再占活动队列容量，也不单独令就绪检查长期失败；其载荷摘要、
+原因和终结时间继续保留两小时，供排查。网页不直接展示内部错误字符串。
 
 ## 活动时间口径
 

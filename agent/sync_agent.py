@@ -665,10 +665,8 @@ class SyncAgent:
         self, users: list[dict], records: list[dict], source_instance_id: str
     ) -> dict:
         sent = len(records)
-        last: dict = {"received": 0, "inserted": 0, "duplicates": 0, "conflicts": 0, "users_upserted": 0}
-        user_chunks = [users[i:i + USER_CHUNK] for i in range(0, max(len(users), 1), USER_CHUNK)] if users else [[]]
-        if not users:
-            user_chunks = [[]]
+        combined: dict = {"received": 0, "inserted": 0, "duplicates": 0, "conflicts": 0, "users_upserted": 0}
+        user_chunks = [users[i:i + USER_CHUNK] for i in range(0, len(users), USER_CHUNK)] if users else [[]]
         for index, chunk in enumerate(user_chunks):
             payload = self._push_payload(chunk, records if index == 0 else [], source_instance_id)
             try:
@@ -683,16 +681,20 @@ class SyncAgent:
                 if "单次最多" in str(exc) and records and self.config.batch_size > 1:
                     raise TransientError(f"云端单批上限小于当前批次，将缩批重试: {exc}") from exc
                 raise
-            if chunk:
-                self.state.data["last_users_push_at"] = utc_now_iso()
             device_id = payload["device"]["id"]
-            last = validate_push_response(
+            result = validate_push_response(
                 body,
                 sent=sent if index == 0 else 0,
                 device_id=device_id,
                 source_instance_id=source_instance_id,
             )
-        return last
+            for key in combined:
+                combined[key] += int(result.get(key) or 0)
+        # Only complete user uploads reset the periodic refresh timer. Otherwise
+        # a failed later chunk could make unchanged users look fully refreshed.
+        if users:
+            self.state.data["last_users_push_at"] = utc_now_iso()
+        return combined
 
     @staticmethod
     def _record_wire(r: dict) -> dict:
@@ -1054,7 +1056,7 @@ class SyncAgent:
                     # RUN_ONCE 撞永久错误（401 等）必须非零退出：
                     # cron/CI 的一次性调用不得把配置错误报告成成功
                     raise SystemExit(4) from exc
-            except (TransientError, requests.RequestException, ValueError, AttributeError) as exc:
+            except (TransientError, requests.RequestException, ValueError) as exc:
                 self._record_error("transient", str(exc))
                 log.error("本轮同步失败，下个周期重试: %s", exc)
                 if self.config.run_once:

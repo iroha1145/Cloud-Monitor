@@ -204,7 +204,7 @@ def norm_ts(value: Any) -> str:
     dt = _parse_iso(value)
     if dt is None:
         return utc_z(datetime.now(timezone.utc))
-    return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return utc_z(dt)
 
 
 def bucket_start_of(producer: Optional[datetime]) -> str:
@@ -405,7 +405,7 @@ def write_snapshot(
                 _stringify_dict(today, "clients"),
                 _stringify_dict(today, "models"),
                 tz_name,
-                norm_ts(record.get("updatedAt") or ""),
+                norm_ts(producer_stamp or record.get("updatedAt") or ""),
                 received_at,
                 int(ingest_sequence or 0),
             ),
@@ -863,8 +863,8 @@ def migrate_legacy_tables(db: Database) -> dict:
     return {"migrated": True, "ported_snapshots": ported}
 
 
-def _legacy_rejected_ids(db: Database) -> set[str]:
-    raw = _meta_get(db, "legacy_rejected_devices")
+def _legacy_recorded_ids(db: Database, key: str) -> set[str]:
+    raw = _meta_get(db, key)
     if not raw:
         return set()
     try:
@@ -876,9 +876,21 @@ def _legacy_rejected_ids(db: Database) -> set[str]:
 
 def mark_legacy_rejected(db: Database, device_id: str) -> None:
     """单个旧设备 payload 被官方确定性拒绝（4xx）时记录，回灌不再重试它。"""
-    rejected = _legacy_rejected_ids(db)
+    rejected = _legacy_recorded_ids(db, "legacy_rejected_devices")
     rejected.add(str(device_id))
     _meta_set(db, "legacy_rejected_devices", json.dumps(sorted(rejected)))
+
+
+def mark_legacy_deleted(db: Database, device_id: str) -> None:
+    """Keep the old table as audit evidence without letting it recreate a deleted device."""
+    with db.transaction():
+        deleted = _legacy_recorded_ids(db, "legacy_deleted_devices")
+        deleted.add(str(device_id))
+        _meta_set(db, "legacy_deleted_devices", json.dumps(sorted(deleted)))
+
+
+def legacy_device_deleted(db: Database, device_id: str) -> bool:
+    return str(device_id) in _legacy_recorded_ids(db, "legacy_deleted_devices")
 
 
 def legacy_device_payloads(db: Database) -> list[dict]:
@@ -888,7 +900,7 @@ def legacy_device_payloads(db: Database) -> list[dict]:
     )
     if not exists or _meta_get(db, "legacy_reingested"):
         return []
-    rejected = _legacy_rejected_ids(db)
+    excluded = _legacy_recorded_ids(db, "legacy_rejected_devices") | _legacy_recorded_ids(db, "legacy_deleted_devices")
     rows = db.fetchall("SELECT device_id, payload, last_seen_at FROM tm_devices")
     payloads = []
     for row in rows:
@@ -904,7 +916,7 @@ def legacy_device_payloads(db: Database) -> list[dict]:
             device_key = str(row["device_id"])
         if not device_key:
             continue
-        if device_key in rejected:
+        if device_key in excluded:
             continue
         payloads.append(payload)
     return payloads

@@ -52,10 +52,12 @@ function DialogContent({
   placement = "center",
   onOpenAutoFocus,
   onCloseAutoFocus,
+  returnFocusRef,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
   placement?: "center" | "left"
+  returnFocusRef?: React.RefObject<HTMLElement | null>
 }) {
   const restoreFocus = React.useRef<HTMLElement | null>(null)
   return (
@@ -64,18 +66,25 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         onOpenAutoFocus={(event) => {
-          const active = document.activeElement
-          if (active instanceof HTMLElement) restoreFocus.current = active
+          const active = returnFocusRef?.current || document.activeElement
+          if (active instanceof HTMLElement && active !== document.body) restoreFocus.current = active
           onOpenAutoFocus?.(event)
         }}
         onCloseAutoFocus={(event) => {
-          event.preventDefault()
+          onCloseAutoFocus?.(event)
+          if (event.defaultPrevented) return
+          // A new dialog may replace this one (mobile navigation -> settings).
+          // Its own focus scope now owns focus; do not pull it back outside.
+          if (document.querySelector('[role="dialog"][data-state="open"]')) {
+            event.preventDefault()
+            return
+          }
           const target = restoreFocus.current
           restoreFocus.current = null
-          if (target && typeof target.focus === "function") {
-            target.focus()
+          if (target?.isConnected && target.getClientRects().length) {
+            event.preventDefault()
+            target.focus({ preventScroll: true })
           }
-          onCloseAutoFocus?.(event)
         }}
         className={cn(
           "fixed z-50 grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 sm:max-w-lg",

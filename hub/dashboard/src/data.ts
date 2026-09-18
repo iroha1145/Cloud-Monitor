@@ -853,6 +853,7 @@ const LIMIT_STATUS_NOTICE: Record<string, string | null> = {
 };
 
 const PARTIAL_ERROR_NOTICE: Record<string, string> = {
+  overview_stale: "数据源暂时不可用，正在显示上次总览。",
   history_unavailable: "官方历史记录暂时不可用，趋势可能不完整。",
   devices_badges_unavailable: "设备徽章暂时不可用。",
   activity_unavailable: "活动时间数据暂时不可用。",
@@ -1196,20 +1197,30 @@ export function normalizeOverview(
   );
   const activityData = normalizeActivity(root, features);
   const notices: string[] = [];
+  let hasSpecificPartialNotice = false;
   if (Array.isArray(root.partial_errors)) {
     for (const item of root.partial_errors) {
       const code =
         typeof item === "string" ? item : text(record(item).code);
-      if (code && PARTIAL_ERROR_NOTICE[code])
+      if (code && PARTIAL_ERROR_NOTICE[code]) {
         notices.push(PARTIAL_ERROR_NOTICE[code]);
+        hasSpecificPartialNotice = true;
+      }
     }
   }
-  if (root.partial === true && !notices.some((line) => line.includes("暂时不可用") || line.includes("损坏")))
+  if (root.partial === true && !hasSpecificPartialNotice)
     notices.push("部分辅助数据暂不可用，用量总计仍来自设备上报。");
   if (root.snapshot_degraded === true)
     notices.push("历史快照同步延迟，趋势可能尚未更新。");
-  if (validCounter(root.pending_outbox) && root.pending_outbox > 0)
-    notices.push(`还有 ${root.pending_outbox.toLocaleString("zh-CN")} 条快照等待同步，历史记录可能尚未更新。`);
+  const forwarding = count(root.forwarding_outbox);
+  const pendingSnapshots = Math.max(0, count(root.pending_outbox) - forwarding);
+  if (forwarding > 0)
+    notices.push(`还有 ${forwarding.toLocaleString("zh-CN")} 条上报等待服务恢复后确认，历史记录可能暂未更新。`);
+  if (pendingSnapshots > 0)
+    notices.push(`还有 ${pendingSnapshots.toLocaleString("zh-CN")} 条快照等待同步，历史记录可能尚未更新。`);
+  const expired = count(root.expired_unconfirmed_outbox);
+  if (expired > 0)
+    notices.push(`有 ${expired.toLocaleString("zh-CN")} 条较早的上报未能完成同步，历史记录可能存在缺口。`);
   if (root.stale === true || root.stale_data === true)
     notices.push("当前显示的是上一次数据，可能已经过期。");
   if (normalizedPeriods.today.components.partial)
@@ -1230,7 +1241,9 @@ export function normalizeOverview(
         `${providerName(text(item.provider))} 额度尚未刷新，保留上一次上报。`,
       );
     else if (typeof item.status === "string") {
-      const mapped = LIMIT_STATUS_NOTICE[item.status];
+      const mapped = Object.hasOwn(LIMIT_STATUS_NOTICE, item.status)
+        ? LIMIT_STATUS_NOTICE[item.status]
+        : "额度状态暂时无法识别，等待同步";
       if (mapped)
         notices.push(`${providerName(text(item.provider))} ${mapped}。`);
     }

@@ -85,6 +85,11 @@ jobs:
         run: |
           set -euo pipefail
           cd hub
+          mkdir -p ./update-control
+          sudo chown 999:999 ./update-control
+          sudo chmod 0770 ./update-control
+          sudo install -d -o root -g 999 -m 0750 ./update-runtime
+          sudo install -o root -g 999 -m 0640 /dev/null ./update-runtime/update.lock
           docker compose up -d
           ready=0
           for i in $(seq 1 40); do
@@ -102,6 +107,41 @@ jobs:
           echo "== ready =="
           curl -sf http://127.0.0.1:7878/api/v1/health/ready
           echo ""
+          echo "== update coordination through read-only runtime mount =="
+          docker compose exec -T cloud-hub python - <<'PY'
+          import fcntl, os
+          from pathlib import Path
+          from fastapi import HTTPException
+          from hub.config import load_settings
+          from hub.tm_update import UpdateService
+          settings = load_settings()
+          service = UpdateService(settings)
+          queued = service.apply("main")
+          lock_path = settings.cm_update_runtime_dir / "update.lock"
+          fd = os.open(lock_path, os.O_RDONLY)
+          try:
+              fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+              try:
+                  service.cancel()
+              except HTTPException as exc:
+                  assert exc.status_code == 409, exc
+              else:
+                  raise AssertionError("cancel bypassed the shared updater lock")
+          finally:
+              os.close(fd)
+          cancelled = service.cancel()
+          assert cancelled["id"] == queued["id"]
+          assert cancelled["message"] == "已取消更新"
+          assert not (settings.cm_update_dir / "request.json").exists()
+          assert UpdateService(settings).read_job() == cancelled
+          try:
+              (settings.cm_update_runtime_dir / "must-remain-readonly").write_text("unexpected")
+          except OSError:
+              pass
+          else:
+              raise AssertionError("runtime mount became writable")
+          print("read-only update lock and cancellation receipt OK")
+          PY
           echo "== ingest =="
           ingest=$(curl -sf -X POST http://127.0.0.1:7878/api/ingest \
             -H "X-Token-Monitor-Secret: ci-placeholder-tm-0123456789abcdef" \
@@ -130,6 +170,6 @@ jobs:
           test -s "$latest/cloud-monitor.sqlite3" || { echo "::error::backup sqlite 为空"; exit 1; }
           test -s "$latest/devices.json" || { echo "::error::backup devices.json 为空"; exit 1; }
           grep -q 'backup_at:' "$latest/BACKUP-MANIFEST.txt"
-          echo "== restore dry check =="
+          echo "== backup content verification =="
           python3 -c "import sqlite3,sys; con=sqlite3.connect(sys.argv[1]); n=con.execute('SELECT COUNT(*) FROM tm_snapshot_buckets').fetchone()[0]; assert n>=1, n" "$latest/cloud-monitor.sqlite3"
           docker compose down

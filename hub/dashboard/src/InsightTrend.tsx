@@ -7,7 +7,7 @@
  * its same-Y live tip flattens the latest day against the dashed reference.
  * Slope rules live in trend-math.ts as the spec Android also follows.
  */
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
 import {
   useEffect,
   useId,
@@ -22,10 +22,11 @@ import { ChevronLeft, ChevronRight, MoveHorizontal } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { summarizeTrend, type DashboardData, type TrendPoint } from "./data";
 import { usd } from "./money";
+import { AppErrorBoundary, lazyWithReload } from "./chunkLoad";
 import { indexForSelectedDay } from "./trend-math";
 import "./insight-trend.css";
 
-const Liveline = lazy(() =>
+const Liveline = lazyWithReload("liveline", () =>
   import("liveline").then((mod) => ({ default: mod.Liveline })),
 );
 
@@ -544,33 +545,40 @@ export function InsightTrend({ data }: { data: DashboardData }) {
               }}
             >
               {canDraw ? (
-                <div className="insight-trend-canvas" aria-hidden="true">
-                  <Suspense fallback={null}>
-                  <Liveline
-                    key={`${days}-${metric}`}
-                    data={chart.points}
-                    value={chart.value}
-                    theme={dark ? "dark" : "light"}
-                    color={lineColor}
-                    grid={false}
-                    badge={false}
-                    showValue={false}
-                    pulse={false}
-                    momentum={false}
-                    fill={false}
-                    scrub={false}
-                    paused
-                    window={span / 0.97}
-                    cursor="crosshair"
-                    lineWidth={2.25}
-                    padding={{ top: 38, right: 0, bottom: 24, left: 0 }}
-                    formatValue={(value) =>
-                      metric === "tokens" ? compact(value) : money(value)
-                    }
-                    formatTime={() => ""}
-                  />
-                  </Suspense>
-                </div>
+                <AppErrorBoundary fallback={
+                  <div className="insight-trend-no-line" role="status">
+                    <strong>趋势曲线暂时无法加载</strong>
+                    <span>仍可按日期查看已有明细。</span>
+                  </div>
+                }>
+                  <div className="insight-trend-canvas" aria-hidden="true">
+                    <Suspense fallback={null}>
+                      <Liveline
+                        key={`${days}-${metric}`}
+                        data={chart.points}
+                        value={chart.value}
+                        theme={dark ? "dark" : "light"}
+                        color={lineColor}
+                        grid={false}
+                        badge={false}
+                        showValue={false}
+                        pulse={false}
+                        momentum={false}
+                        fill={false}
+                        scrub={false}
+                        paused
+                        window={span / 0.97}
+                        cursor="crosshair"
+                        lineWidth={2.25}
+                        padding={{ top: 38, right: 0, bottom: 24, left: 0 }}
+                        formatValue={(value) =>
+                          metric === "tokens" ? compact(value) : money(value)
+                        }
+                        formatTime={() => ""}
+                      />
+                    </Suspense>
+                  </div>
+                </AppErrorBoundary>
               ) : (
                 <div className="insight-trend-no-line">
                   <strong>

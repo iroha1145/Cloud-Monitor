@@ -13,15 +13,17 @@
      done，不回灌旧载荷（禁止用 server_received_at 时间戳后备推翻已知顺序）；
    - 否则用本请求保存的规范化记录写快照，
      不读取当前设备、不把今日总量补到另一天；
-   - 无确认的旧 pending 保留并报告降级，但不占已确认队列的处理批次或背压额度。
-5. 已确认 pending 数量上限（默认 1000）触发背压：新 ingest 拒绝为 503；
-   done 记录保留 DONE_RETENTION_HOURS（2 小时）后清理。
+   - 升级前无完整转发载荷、也无确认的 pending 在 5 分钟后隔离，不伪造快照。
+5. 所有待处理项（含正在转发的请求）在同一事务中预占容量，默认上限 1000；
+   终结记录从 terminal_at 起保留 DONE_RETENTION_HOURS（2 小时），不按接收时间删。
+   新请求的完整转发载荷与有界重试由 tm_forwarding 管理，确认后即释放完整载荷。
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional
@@ -35,8 +37,12 @@ log = logging.getLogger("tm-outbox")
 MAX_PENDING_DEFAULT = 1000
 MAX_ATTEMPTS_DEFAULT = 8
 DONE_RETENTION_HOURS = 2
+UNCONFIRMED_GRACE_SECONDS = 5 * 60
 REPLAY_BATCH = 100
-DETERMINISTIC_FAILURES = (OverflowError, ValueError, UnicodeEncodeError, TypeError, ArithmeticError)
+DETERMINISTIC_FAILURES = (
+    OverflowError, ValueError, UnicodeEncodeError, TypeError, ArithmeticError,
+    sqlite3.IntegrityError,
+)
 # 4xx 里仍应重试的状态：限流 / 请求超时 / Too Early。其余 4xx 视为载荷
 # 确定性拒绝（mark_rejected，不再重放）。
 RETRYABLE_CLIENT_ERRORS = frozenset({408, 425, 429})
@@ -54,7 +60,17 @@ CREATE TABLE IF NOT EXISTS tm_ingest_outbox (
     ingest_sequence INTEGER NOT NULL DEFAULT 0,
     snapshot_written INTEGER NOT NULL DEFAULT 0,
     writes_usage INTEGER NOT NULL DEFAULT 1,
-    normalized_json TEXT
+    normalized_json TEXT,
+    terminal_at TEXT,
+    terminal_reason TEXT,
+    forward_payload_json TEXT,
+    forward_payload_bytes INTEGER NOT NULL DEFAULT 0,
+    forward_attempts INTEGER NOT NULL DEFAULT 0,
+    forward_next_at TEXT,
+    forward_expires_at TEXT,
+    forward_inflight_until TEXT,
+    payload_fingerprint TEXT,
+    input_has_timestamp INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_state_time
     ON tm_ingest_outbox(state, received_at);
@@ -68,6 +84,13 @@ CREATE TABLE IF NOT EXISTS tm_ingest_sequence (
 INDEX_DEVICE_DAY_SEQ = """
 CREATE INDEX IF NOT EXISTS idx_outbox_device_day_seq
     ON tm_ingest_outbox(device_id, local_day, ingest_sequence);
+CREATE INDEX IF NOT EXISTS idx_outbox_state_terminal
+    ON tm_ingest_outbox(state, terminal_at);
+CREATE INDEX IF NOT EXISTS idx_outbox_forward_device_seq
+    ON tm_ingest_outbox(device_id, ingest_sequence) WHERE forward_payload_json IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_outbox_payload_identity
+    ON tm_ingest_outbox(device_id, payload_fingerprint)
+    WHERE payload_fingerprint IS NOT NULL AND (input_has_timestamp = 1 OR state = 'pending');
 """
 
 _OUTBOX_COLUMNS = (
@@ -76,11 +99,21 @@ _OUTBOX_COLUMNS = (
     ("snapshot_written", "INTEGER NOT NULL DEFAULT 0"),
     ("writes_usage", "INTEGER NOT NULL DEFAULT 1"),
     ("normalized_json", "TEXT"),
+    ("terminal_at", "TEXT"),
+    ("terminal_reason", "TEXT"),
+    ("forward_payload_json", "TEXT"),
+    ("forward_payload_bytes", "INTEGER NOT NULL DEFAULT 0"),
+    ("forward_attempts", "INTEGER NOT NULL DEFAULT 0"),
+    ("forward_next_at", "TEXT"),
+    ("forward_expires_at", "TEXT"),
+    ("forward_inflight_until", "TEXT"),
+    ("payload_fingerprint", "TEXT"),
+    ("input_has_timestamp", "INTEGER NOT NULL DEFAULT 0"),
 )
 
 
 def is_retryable_http(status_code: int) -> bool:
-    """True = 保留 pending 并重试（5xx 与限流类 4xx）。"""
+    """完整转发队列可重试的上游状态（5xx 与限流类 4xx）。"""
     return status_code in RETRYABLE_CLIENT_ERRORS or status_code >= 500
 
 
@@ -201,6 +234,13 @@ def ensure_schema(db: Database) -> None:
             _backfill_outbox_columns(db)
         # 旧库先 ALTER 加列，再建模；否则 CREATE INDEX 会因缺列中止启动。
         db._conn.executescript(INDEX_DEVICE_DAY_SEQ)
+        # 旧记录没有终结时间，迁移后至少保留一个完整审计窗口。
+        db.execute(
+            "UPDATE tm_ingest_outbox SET terminal_at = ? "
+            "WHERE state IN ('done', 'rejected', 'expired') AND terminal_at IS NULL",
+            (utc_z(datetime.now(timezone.utc)),),
+        )
+    expire_unconfirmed(db)
 
 
 def new_request_id() -> str:
@@ -228,12 +268,15 @@ def record_pending(
     device_id: str,
     payload: dict,
     max_pending: int = MAX_PENDING_DEFAULT,
+    received_at: Optional[str] = None,
 ) -> None:
     with db.transaction():
-        pending = replayable_count(db, max_attempts=MAX_ATTEMPTS_DEFAULT)
+        expire_unconfirmed(db)
+        reject_exhausted_pending(db)
+        pending = pending_count(db)
         if pending >= max_pending:
             raise OutboxFullError(
-                f"待重放队列已达上限 {max_pending}（快照层持续失败？）"
+                f"待处理队列已达上限 {max_pending}，请稍后重试"
             )
         slim = _slim_payload(payload)
         db.execute(
@@ -248,7 +291,7 @@ def record_pending(
                 request_id,
                 device_id,
                 json.dumps(slim, ensure_ascii=False),
-                norm_ts(utc_now()),
+                norm_ts(received_at or utc_now()),
                 _payload_local_day(payload),
                 _next_ingest_sequence(db),
                 _payload_writes_usage(payload),
@@ -325,19 +368,24 @@ def replay_record(row: dict, payload: dict) -> Optional[dict]:
 def mark_done(
     db: Database, request_id: str, *, snapshot_written: Optional[bool] = None
 ) -> None:
+    finished = utc_z(datetime.now(timezone.utc))
     if snapshot_written is None:
         db.execute(
-            "UPDATE tm_ingest_outbox SET state = 'done', last_error = NULL WHERE request_id = ?",
-            (request_id,),
+            "UPDATE tm_ingest_outbox SET state = 'done', last_error = NULL, "
+            "terminal_at = COALESCE(terminal_at, ?), terminal_reason = 'completed', "
+            "forward_payload_json = NULL, forward_payload_bytes = 0 WHERE request_id = ?",
+            (finished, request_id),
         )
         return
     db.execute(
         """
         UPDATE tm_ingest_outbox
-        SET state = 'done', last_error = NULL, snapshot_written = ?
+        SET state = 'done', last_error = NULL, snapshot_written = ?,
+            terminal_at = COALESCE(terminal_at, ?), terminal_reason = 'completed',
+            forward_payload_json = NULL, forward_payload_bytes = 0
         WHERE request_id = ?
         """,
-        (1 if snapshot_written else 0, request_id),
+        (1 if snapshot_written else 0, finished, request_id),
     )
 
 
@@ -389,9 +437,9 @@ def supersede_older_pending(db: Database, device_id: str, request_id: str) -> in
         SELECT request_id, device_id, local_day, ingest_sequence,
                snapshot_written, writes_usage
         FROM tm_ingest_outbox
-        WHERE device_id = ? AND state = 'pending' AND request_id != ?
+        WHERE device_id = ? AND local_day = ? AND state = 'pending' AND request_id != ?
         """,
-        (device_id, request_id),
+        (device_id, saved["local_day"], request_id),
     )
     n = 0
     for old in pending:
@@ -400,10 +448,12 @@ def supersede_older_pending(db: Database, device_id: str, request_id: str) -> in
         db.execute(
             """
             UPDATE tm_ingest_outbox
-            SET state = 'done', last_error = 'superseded_by_newer'
+            SET state = 'done', last_error = 'superseded_by_newer',
+                terminal_at = COALESCE(terminal_at, ?), terminal_reason = 'superseded_by_newer',
+                forward_payload_json = NULL, forward_payload_bytes = 0
             WHERE request_id = ?
             """,
-            (old["request_id"],),
+            (utc_z(datetime.now(timezone.utc)), old["request_id"]),
         )
         n += 1
     return n
@@ -417,10 +467,12 @@ def reject_exhausted_pending(
         """
         UPDATE tm_ingest_outbox
         SET state = 'rejected',
-            last_error = ?
+            last_error = ?, terminal_at = COALESCE(terminal_at, ?),
+            terminal_reason = 'snapshot_attempts_exhausted'
         WHERE state = 'pending' AND attempts >= ?
         """,
-        (f"exceeded {max_attempts} attempts (startup sweep)", max_attempts),
+        (f"exceeded {max_attempts} attempts (startup sweep)",
+         utc_z(datetime.now(timezone.utc)), max_attempts),
     )
     return cur.rowcount or 0
 
@@ -448,10 +500,12 @@ def mark_failed(
         db.execute(
             """
             UPDATE tm_ingest_outbox
-            SET state = 'rejected', last_error = ?
+            SET state = 'rejected', last_error = ?, terminal_at = COALESCE(terminal_at, ?),
+                terminal_reason = 'snapshot_attempts_exhausted'
             WHERE request_id = ?
             """,
-            ((f"exceeded {max_attempts} attempts: {error}")[:500], request_id),
+            ((f"exceeded {max_attempts} attempts: {error}")[:500],
+             utc_z(datetime.now(timezone.utc)), request_id),
         )
 
 
@@ -460,11 +514,94 @@ def mark_rejected(db: Database, request_id: str, error: str) -> None:
     db.execute(
         """
         UPDATE tm_ingest_outbox
-        SET state = 'rejected', attempts = attempts + 1, last_error = ?
+        SET state = 'rejected', attempts = attempts + 1, last_error = ?,
+            terminal_at = COALESCE(terminal_at, ?), terminal_reason = 'rejected',
+            forward_payload_json = NULL, forward_payload_bytes = 0
         WHERE request_id = ?
         """,
-        (error[:500], request_id),
+        (error[:500], utc_z(datetime.now(timezone.utc)), request_id),
     )
+
+
+def _clear_retired_snapshot_error(db: Database, retired: list[dict]) -> None:
+    """Retire only an error attributable to quarantined, unconfirmed input.
+
+    Old versions stored no request id. Their error is attributable only when
+    the exact text survives on an expired row and no confirmed failure remains.
+    The original error stays on the archived row, even after ready recovers.
+    """
+    if not retired or not db.fetchone("SELECT 1 FROM sqlite_master WHERE name='tm_meta'"):
+        return
+    if db.fetchone(
+        "SELECT 1 FROM tm_ingest_outbox WHERE state IN ('pending', 'rejected') AND normalized_json IS NOT NULL LIMIT 1"
+    ):
+        return
+    error = db.fetchone("SELECT value FROM tm_meta WHERE key='last_snapshot_error'")
+    if not error or not error["value"]:
+        return
+    owner = db.fetchone("SELECT value FROM tm_meta WHERE key='last_snapshot_error_request_id'")
+    if owner and owner["value"]:
+        if not any(row["request_id"] == owner["value"] for row in retired):
+            return
+    else:
+        if not any(row.get("last_error") == error["value"] for row in retired):
+            return
+        if db.fetchone(
+            "SELECT 1 FROM tm_ingest_outbox WHERE normalized_json IS NOT NULL "
+            "AND state != 'done' AND last_error IS NOT NULL LIMIT 1"
+        ):
+            return
+    db.execute(
+        "UPDATE tm_meta SET value='' WHERE key IN ('last_snapshot_error', 'last_snapshot_error_request_id')"
+    )
+
+
+def expire_pending(db: Database, request_id: str, reason: str) -> bool:
+    """Quarantine unconfirmed input without claiming upstream rejection/acceptance."""
+    with db.transaction():
+        row = db.fetchone(
+            "SELECT request_id, last_error FROM tm_ingest_outbox "
+            "WHERE request_id=? AND state='pending' AND normalized_json IS NULL",
+            (request_id,),
+        )
+        if row is None:
+            return False
+        db.execute(
+            "UPDATE tm_ingest_outbox SET state='expired', terminal_at=?, terminal_reason=?, "
+            "last_error=COALESCE(last_error, ?), forward_payload_json=NULL, forward_payload_bytes=0 "
+            "WHERE request_id=?",
+            (utc_z(datetime.now(timezone.utc)), reason, reason, request_id),
+        )
+        _clear_retired_snapshot_error(db, [row])
+    _invalidate_overview(db)
+    return True
+
+
+def expire_unconfirmed(db: Database) -> int:
+    """Legacy/crashed requests without a complete forwarding envelope expire after 5m.
+
+    Five minutes exceeds the ordinary upstream connection/read timeouts. New
+    forwarding requests carry their own expiry and are never swept here.
+    """
+    cutoff = utc_z(datetime.now(timezone.utc) - timedelta(seconds=UNCONFIRMED_GRACE_SECONDS))
+    with db.transaction():
+        rows = db.fetchall(
+            "SELECT request_id, last_error FROM tm_ingest_outbox "
+            "WHERE state='pending' AND normalized_json IS NULL AND forward_payload_json IS NULL "
+            "AND (julianday(received_at) <= julianday(?) OR julianday(received_at) IS NULL)",
+            (cutoff,),
+        )
+        for row in rows:
+            db.execute(
+                "UPDATE tm_ingest_outbox SET state='expired', terminal_at=?, "
+                "terminal_reason='unconfirmed_timeout', last_error=COALESCE(last_error, 'unconfirmed_timeout') "
+                "WHERE request_id=?",
+                (utc_z(datetime.now(timezone.utc)), row["request_id"]),
+            )
+        _clear_retired_snapshot_error(db, rows)
+    if rows:
+        _invalidate_overview(db)
+    return len(rows)
 
 
 def purge_device(db: Database, device_id: str) -> int:
@@ -500,13 +637,15 @@ def prune_done(db: Database, *, retention_hours: int = DONE_RETENTION_HOURS) -> 
     cutoff = utc_z(datetime.now(timezone.utc) - timedelta(hours=retention_hours))
     cur = db.execute(
         "DELETE FROM tm_ingest_outbox"
-        " WHERE state IN ('done','rejected') AND received_at < ?",
+        " WHERE state IN ('done','rejected','expired') AND terminal_at < ?",
         (cutoff,),
     )
     return cur.rowcount or 0
 
 
-def set_snapshot_status(db: Database, *, success: bool, error: Optional[str] = None) -> None:
+def set_snapshot_status(
+    db: Database, *, success: bool, error: Optional[str] = None, request_id: Optional[str] = None
+) -> None:
     if success:
         db.execute(
             "INSERT INTO tm_meta (key, value) VALUES ('last_snapshot_success_at', ?)"
@@ -523,6 +662,11 @@ def set_snapshot_status(db: Database, *, success: bool, error: Optional[str] = N
             " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             ((error or "unknown")[:500],),
         )
+    db.execute(
+        "INSERT INTO tm_meta (key, value) VALUES ('last_snapshot_error_request_id', ?)"
+        " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        ("" if success else request_id or "",),
+    )
 
 
 def snapshot_health(db: Database) -> dict:
@@ -538,9 +682,29 @@ def snapshot_health(db: Database) -> dict:
         "SELECT COUNT(*) AS n FROM tm_ingest_outbox "
         "WHERE state='pending' AND normalized_json IS NULL"
     )["n"])
+    expired = int(db.fetchone(
+        "SELECT COUNT(*) AS n FROM tm_ingest_outbox WHERE state='expired'"
+    )["n"])
+    forwarding = db.fetchone(
+        "SELECT COUNT(*) AS n, COALESCE(SUM(forward_payload_bytes), 0) AS bytes "
+        "FROM tm_ingest_outbox WHERE state='pending' AND forward_payload_json IS NOT NULL"
+    )
+    last_forward_error = db.fetchone(
+        "SELECT last_error FROM tm_ingest_outbox WHERE (forward_attempts > 0 OR terminal_reason LIKE 'forward_%') AND state != 'done' "
+        "AND last_error IS NOT NULL ORDER BY ingest_sequence DESC LIMIT 1"
+    )
+    last_forward_terminal = db.fetchone(
+        "SELECT terminal_reason FROM tm_ingest_outbox WHERE (forward_attempts > 0 OR terminal_reason LIKE 'forward_%') "
+        "AND state IN ('expired', 'rejected') ORDER BY terminal_at DESC, ingest_sequence DESC LIMIT 1"
+    )
     return {
         "pending_outbox": pending,
         "unconfirmed_outbox": unconfirmed,
+        "expired_unconfirmed_outbox": expired,
+        "forwarding_outbox": int(forwarding["n"]),
+        "forwarding_bytes": int(forwarding["bytes"]),
+        "last_forward_error": last_forward_error["last_error"] if last_forward_error else None,
+        "last_forward_terminal_reason": last_forward_terminal["terminal_reason"] if last_forward_terminal else None,
         "last_snapshot_success_at": last_success,
         "last_snapshot_error": last_error,
         "snapshot_degraded": pending > 0 or last_error is not None,
@@ -607,6 +771,7 @@ def replay_pending(
     from .tm_snapshots import write_snapshot
     from .tm_validate import is_limits_only_update
 
+    expire_unconfirmed(db)
     reject_exhausted_pending(db)
 
     rows = db.fetchall(
@@ -634,22 +799,34 @@ def replay_pending(
             stats["stopped_by"] = "shutdown"
             break
         try:
-            payload = json.loads(row["payload_json"])
-        except ValueError:
-            mark_rejected(db, row["request_id"], "stored payload is not JSON")
-            stats["rejected"] += 1
-            continue
-        if _superseded(db, row):
-            mark_done(db, row["request_id"])
-            stats["superseded"] += 1
-            continue
-        try:
-            record = replay_record(row, payload)
-            if record is None:
-                # 无法从本请求恢复同一周期数据时保守保留 pending，不借用当前设备。
-                stats["failed"] += 1
-                continue
             with db.transaction():
+                # The batch is only a list of candidates. A concurrent DELETE
+                # or successful write can retire one after it was selected.
+                # Re-read under the same DB transaction that writes the bucket;
+                # deletion then either wins first or purges this write afterward.
+                current = db.fetchone(
+                    "SELECT * FROM tm_ingest_outbox WHERE request_id=? AND state='pending' "
+                    "AND attempts < ? AND normalized_json IS NOT NULL",
+                    (row["request_id"], MAX_ATTEMPTS_DEFAULT),
+                )
+                if current is None:
+                    continue
+                row = current
+                try:
+                    payload = json.loads(row["payload_json"])
+                except ValueError:
+                    mark_rejected(db, row["request_id"], "stored payload is not JSON")
+                    stats["rejected"] += 1
+                    continue
+                if _superseded(db, row):
+                    mark_done(db, row["request_id"])
+                    stats["superseded"] += 1
+                    continue
+                record = replay_record(row, payload)
+                if record is None:
+                    # No current-device fallback may invent this request's data.
+                    stats["failed"] += 1
+                    continue
                 written = write_snapshot(
                     db,
                     device_id=row["device_id"],
@@ -684,7 +861,7 @@ def replay_pending(
                     break
                 mark_failed(db, row["request_id"], str(exc))
                 stats["failed"] += 1
-            set_snapshot_status(db, success=False, error=str(exc))
+            set_snapshot_status(db, success=False, error=str(exc), request_id=row["request_id"])
     # 无条件清理：健康路径下 pending 恒空（ingest 即插即 done），若只在
     # 处理过 pending 后才清，done/rejected 的保留策略就是死代码，库无限增长
     pruned = prune_done(db)

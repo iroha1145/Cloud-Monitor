@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 
 MAX_INT = 2**53 - 1  # JS 安全整数，SUM 也不会溢出 SQLite INTEGER
 MAX_FUTURE_SKEW = timedelta(hours=48)
+MAX_USERS_PER_PUSH = 500
 
 
 class DeviceInfo(BaseModel):
@@ -55,6 +56,6 @@ class RecordIn(BaseModel):
 
 class SyncPushRequest(BaseModel):
     device: DeviceInfo
-    users: list[UserIn] = Field(default_factory=list)
+    users: list[UserIn] = Field(default_factory=list, max_length=MAX_USERS_PER_PUSH)
     records: list[RecordIn] = Field(default_factory=list)
     source_instance_id: str = Field(default="legacy", min_length=1, max_length=128)
