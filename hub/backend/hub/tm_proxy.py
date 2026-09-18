@@ -11,13 +11,15 @@
 
 可靠性（P0-1）: ingest 先记 pending outbox → 转发 → 从响应 stats.devices
 取规范化记录写快照并标记 done（同请求闭环，不再额外 GET /api/devices）；
-快照失败时 outbox 留待重放（官方数据不丢，健康暴露 snapshot_degraded）。
+快照失败时 outbox 留待本地重放；上游暂时失败则保留完整载荷，按设备顺序
+有界重试，返回真实失败或 503 queued，未确认前不承诺 200。
 """
 
 from __future__ import annotations
 
 import logging
 import threading
+import time
 from typing import Optional
 from urllib.parse import quote
 
@@ -28,37 +30,26 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from .config import Settings
 from .db import Database
 from .tm_outbox import (
-    DETERMINISTIC_FAILURES,
+    MAX_PENDING_DEFAULT,
     OutboxFullError,
-    drop_pending,
     ensure_schema as ensure_outbox_schema,
-    mark_done,
-    mark_failed,
-    mark_rejected,
-    new_request_id,
     purge_device as purge_device_outbox,
-    record_pending,
     replay_pending,
     replayable_count,
-    outbox_ingest_sequence,
-    save_normalized,
-    set_snapshot_status,
-    supersede_older_pending,
-    is_retryable_http,
 )
+from .tm_forwarding import DeviceDeletingError, RETRY_BASE_SECONDS, forwarding_queue
 from .tm_snapshots import (
     delete_device_snapshots,
     ensure_schema,
     legacy_device_payloads,
+    legacy_device_deleted,
+    mark_legacy_deleted,
     mark_legacy_reingested,
     mark_legacy_rejected,
     migrate_legacy_tables,
-    write_snapshot,
 )
 from .tm_validate import (
     PayloadValidationError,
-    is_limits_only_update,
-    validate_ingest_payload,
 )
 
 log = logging.getLogger("tm-proxy")
@@ -135,10 +126,13 @@ class TmCore:
 
 
 def _proxy_response(resp: httpx.Response) -> JSONResponse:
+    headers = {}
+    if "Retry-After" in resp.headers:
+        headers["Retry-After"] = resp.headers["Retry-After"]
     try:
-        return JSONResponse(status_code=resp.status_code, content=resp.json())
+        return JSONResponse(status_code=resp.status_code, content=resp.json(), headers=headers)
     except ValueError:
-        return JSONResponse(status_code=502, content={"error": "bad_gateway"})
+        return JSONResponse(status_code=502, content={"error": "bad_gateway"}, headers=headers)
 
 
 def request_tm_secret(request: Request) -> str:
@@ -160,6 +154,7 @@ def _unavailable_response(exc: Exception) -> JSONResponse:
 def build_tm_router(settings: Settings, db: Database) -> APIRouter:
     """路由在调用期从 app.state 取 core（lifespan 绑定共享客户端）。"""
     router = APIRouter()
+    forwarding = forwarding_queue(db, max_pending=settings.tm_outbox_max_pending)
 
     def core_of(request: Request) -> TmCore:
         return request.app.state.tm_core
@@ -171,7 +166,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
 
     def _wake_replay(request: Request) -> None:
         # H-8：空 outbox 不唤醒整轮维护（避免每次成功 ingest 都 WAL checkpoint）。
-        if replayable_count(db) <= 0:
+        if replayable_count(db) <= 0 and not forwarding.has_pending():
             return
         background = getattr(request.app.state, "tm_background", None)
         if background is not None:
@@ -232,113 +227,44 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
         }
         return JSONResponse(status_code=200, content=public or {"ok": True, "role": "hub"})
 
-    def snapshot_health_of(db: Database) -> dict:
-        from .tm_outbox import snapshot_health
-
-        return snapshot_health(db)
-
     # ------------------------------------------------------------ ingest（outbox 闭环）
 
     def _tm_ingest_sync(request: Request, payload: dict) -> JSONResponse:
-        if not isinstance(payload, dict):
-            return JSONResponse(
-                status_code=400, content={"error": "bad_request", "message": "请求体必须是 JSON 对象"}
-            )
         try:
-            validate_ingest_payload(payload)
+            request_id = forwarding.enqueue(payload)
         except PayloadValidationError as exc:
             return JSONResponse(
                 status_code=400, content={"error": "bad_request", "message": str(exc)}
-            )
-        device_id = str(payload.get("deviceId") or payload.get("id") or "")
-        request_id = new_request_id()
-        try:
-            record_pending(
-                db,
-                request_id=request_id,
-                device_id=device_id,
-                payload=payload,
-                max_pending=settings.tm_outbox_max_pending,
             )
         except OutboxFullError as exc:
             return JSONResponse(
                 status_code=503,
                 content={"error": "snapshot_backpressure", "message": str(exc)},
+                headers={"Retry-After": str(RETRY_BASE_SECONDS)},
             )
-
-        try:
-            resp = core_of(request).request("POST", "/api/ingest", json_body=payload)
-        except UpstreamUnavailable as exc:
-            drop_pending(db, request_id)
-            log.warning("tm-core 不可达（不入 outbox，由客户端重试）: %s", exc)
-            # H-3：不可达路径不 wake，避免把正品 pending 的 attempts 烧光。
-            return _unavailable_response(exc)
-        if resp.status_code != 200:
-            # No acceptance acknowledgement: the client owns this retry. Do
-            # not accumulate unreplayable rows for rejected upstream requests.
-            drop_pending(db, request_id)
-            return _proxy_response(resp)
-
-        try:
-            body = resp.json()
-        except ValueError:
-            drop_pending(db, request_id)
-            set_snapshot_status(
-                db, success=False, error="upstream response is not JSON"
+        except DeviceDeletingError as exc:
+            return JSONResponse(
+                status_code=503, content={"error": "device_busy", "message": str(exc)},
+                headers={"Retry-After": str(RETRY_BASE_SECONDS)},
             )
-            _wake_replay(request)
-            return JSONResponse(status_code=502, content={"error": "bad_gateway"})
-
-        normalized_saved = False
-        try:
-            record = next(
-                (
-                    r
-                    for r in (body.get("stats") or {}).get("devices") or []
-                    if str(r.get("deviceId")) == device_id
-                ),
-                None,
-            )
-            if record is None:
-                raise ValueError(
-                    f"tm-core ingest response missing normalized device {device_id!r}"
-                )
-            save_normalized(db, request_id, record)
-            normalized_saved = True
-            with db.transaction():
-                written = write_snapshot(
-                    db,
-                    device_id=device_id,
-                    record=record or {},
-                    incoming=payload,
-                    limits_only=is_limits_only_update(payload),
-                    ingest_sequence=outbox_ingest_sequence(db, request_id),
-                )
-                mark_done(db, request_id, snapshot_written=written is not None)
-                if written is not None:
-                    supersede_older_pending(db, device_id, request_id)
-            set_snapshot_status(db, success=True)
-            _wake_replay(request)
-        except DETERMINISTIC_FAILURES as exc:
-            mark_rejected(db, request_id, str(exc))
-            set_snapshot_status(db, success=False, error=str(exc))
-            log.warning("快照确定性失败（outbox rejected）: %s", exc)
-        except Exception as exc:  # noqa: BLE001 — outbox 兜底，不阻断协议响应
-            mark_failed(db, request_id, str(exc))
-            set_snapshot_status(db, success=False, error=str(exc))
-            log.warning("快照写入失败（outbox 留待重放）: %s", exc)
-            _wake_replay(request)
-        if not normalized_saved:
-            # The upstream may have accepted the request, but replay has no
-            # durable acknowledgement yet. Let the client retry rather than
-            # promising that an unconfirmed raw payload is safely recoverable.
-            drop_pending(db, request_id)
-            return JSONResponse(status_code=503, content={
-                "error": "snapshot_ack_unavailable",
-                "message": "上游已响应，但快照确认未能保存，请稍后重试",
-            })
-        _invalidate_overview(request)
-        return JSONResponse(status_code=200, content=body)
+        device_id = str(payload.get("deviceId") or payload.get("id") or "")
+        attempt = forwarding.process_device(core_of(request), device_id)
+        _wake_replay(request)
+        if attempt.request_id == request_id and attempt.response is not None:
+            return _proxy_response(attempt.response)
+        completed = forwarding.result_for_request(core_of(request), request_id)
+        if completed is not None:
+            attempt = completed
+            if completed.response is not None:
+                return _proxy_response(completed.response)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": attempt.error_code if attempt.request_id == request_id else "upstream_queued",
+                "message": attempt.message if attempt.request_id == request_id else "上报已暂存，等待较早的请求完成",
+            },
+            headers={"Retry-After": str(attempt.retry_after)},
+        )
 
     @router.post("/api/ingest")
     async def tm_ingest(request: Request) -> JSONResponse:
@@ -380,22 +306,29 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
     def tm_delete_device(device_id: str, request: Request) -> JSONResponse:
         tm_auth(request)
         try:
-            resp = core_of(request).request(
-                "DELETE", f"/api/devices/{quote(device_id, safe='')}"
-            )
-        except UpstreamUnavailable as exc:
-            return _unavailable_response(exc)
-        if resp.status_code == 200:
-            deleted = delete_device_snapshots(db, device_id)
-            purged = purge_device_outbox(db, device_id)
-            log.info(
-                "设备 %s 已删除（清理 %d 条快照，%d 条 outbox）",
-                device_id,
-                deleted,
-                purged,
-            )
-            _invalidate_overview(request)
-        return _proxy_response(resp)
+            with forwarding.device_operation(device_id, "delete") as acquired:
+                if not acquired:
+                    return JSONResponse(
+                        status_code=503,
+                        content={"error": "device_busy", "message": "设备正在同步，请稍后重试删除"},
+                        headers={"Retry-After": str(RETRY_BASE_SECONDS)},
+                    )
+                try:
+                    resp = core_of(request).request(
+                        "DELETE", f"/api/devices/{quote(device_id, safe='')}"
+                    )
+                except UpstreamUnavailable as exc:
+                    return _unavailable_response(exc)
+                if resp.status_code == 200:
+                    with db.transaction():
+                        deleted = delete_device_snapshots(db, device_id)
+                        purged = purge_device_outbox(db, device_id)
+                        mark_legacy_deleted(db, device_id)
+                    log.info("设备 %s 已删除（清理 %d 条快照，%d 条 outbox）", device_id, deleted, purged)
+                    _invalidate_overview(request)
+                return _proxy_response(resp)
+        finally:
+            _wake_replay(request)
 
     # ------------------------------------------------------------ subscriptions
 
@@ -484,6 +417,9 @@ class TmBackground:
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        self.forwarding = forwarding_queue(
+            db, max_pending=getattr(settings, "tm_outbox_max_pending", MAX_PENDING_DEFAULT)
+        ) if db is not None else None
 
     def wake(self) -> None:
         self._wake.set()
@@ -513,13 +449,23 @@ class TmBackground:
             bootstrapped = self._bootstrap()
         except Exception as exc:  # Retry transient startup failures next cycle.
             log.warning("tm-core 后台初始化异常: %s", exc)
+        next_maintenance = time.monotonic() + self.settings.tm_background_interval
         while not self._stop.is_set():
-            self._wake.wait(self.settings.tm_background_interval)
+            delay = max(0.1, next_maintenance - time.monotonic())
+            if self.forwarding is not None:
+                delay = self.forwarding.next_delay(delay)
+            self._wake.wait(delay)
             self._wake.clear()
             if self._stop.is_set():
                 break
             try:
-                replay_pending(self.db, self.core, should_stop=self._stop.is_set)
+                if self.forwarding is not None:
+                    self.forwarding.process_due(self.core, should_stop=self._stop.is_set)
+                maintenance_due = time.monotonic() >= next_maintenance
+                if maintenance_due or replayable_count(self.db) > 0:
+                    replay_pending(self.db, self.core, should_stop=self._stop.is_set)
+                if maintenance_due:
+                    next_maintenance = time.monotonic() + self.settings.tm_background_interval
             except Exception as exc:  # noqa: BLE001 — 后台任务不得崩溃进程
                 log.warning("outbox 后台重放异常: %s", exc)
             if not bootstrapped and not self._stop.is_set():
@@ -539,8 +485,36 @@ class TmBackground:
         for payload in legacy_device_payloads(self.db):
             if self._stop.is_set():
                 return False
+            device_key = str(payload.get("deviceId") or "")
             try:
-                resp = self.core.request("POST", "/api/ingest", json_body=payload)
+                with self.forwarding.device_operation(device_key, "bootstrap") as acquired:
+                    if not acquired:
+                        return False
+                    # The list may have been fetched before a successful DELETE.
+                    # Re-check its persistent migration-only tombstone while the
+                    # deletion/forwarding owner cannot change underneath us.
+                    if legacy_device_deleted(self.db, device_key):
+                        continue
+                    # An existing core record is newer authority than a legacy
+                    # migration payload. Hold ownership across this read and
+                    # POST, including foreground enqueue/dispatch races.
+                    if self.db.fetchone(
+                        "SELECT 1 FROM tm_ingest_outbox WHERE device_id=? "
+                        "AND state='pending' AND forward_payload_json IS NOT NULL LIMIT 1",
+                        (device_key,),
+                    ):
+                        return False
+                    existing = self.core.request("GET", "/api/devices")
+                    if existing.status_code != 200:
+                        return False
+                    devices = existing.json().get("devices")
+                    if not isinstance(devices, list):
+                        return False
+                    if any(isinstance(row, dict) and str(row.get("deviceId")) == device_key for row in devices):
+                        continue
+                    if self._stop.is_set():
+                        return False
+                    resp = self.core.request("POST", "/api/ingest", json_body=payload)
             except (UpstreamUnavailable, httpx.HTTPError) as exc:
                 log.warning("v1 设备回灌失败（将随后台周期重试）: %s", exc)
                 return False
@@ -549,7 +523,6 @@ class TmBackground:
                 # 成功。404/405 是路径/方法不兼容、401/403 是密钥配错、
                 # 408/429/5xx 是临时失败——都保持整轮重试，升级/修好后再灌。
                 if resp.status_code in (400, 422):
-                    device_key = str(payload.get("deviceId") or "")
                     if not device_key:
                         # 无法定位设备，无法按设备标记：保守起见保持整轮重试
                         return False

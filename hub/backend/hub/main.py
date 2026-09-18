@@ -254,26 +254,34 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         """就绪探测：SQLite 读写、tm-core、快照/outbox 状态。"""
         components: dict[str, dict] = {}
 
-        try:
-            app.state.db.fetchone("SELECT 1 AS one")
-            components["sqlite_read"] = {"ok": True}
-        except Exception as exc:  # noqa: BLE001
-            components["sqlite_read"] = {"ok": False, "error": "sqlite_unreadable"}
-
-        try:
-            # G-06 / H-1：匿名就绪探测只做可写锁探活，BEGIN/ROLLBACK 同一次持锁。
-            app.state.db.probe_write()
-            components["sqlite_write"] = {"ok": True}
-        except Exception:  # noqa: BLE001
-            components["sqlite_write"] = {"ok": False, "error": "sqlite_unwritable"}
-
         from .tm_outbox import snapshot_health
 
         try:
-            components["snapshot"] = {"ok": True, **snapshot_health(app.state.db)}
-            components["snapshot"]["ok"] = not components["snapshot"]["snapshot_degraded"]
-        except Exception:  # Database failure must remain a structured 503.
-            components["snapshot"] = {"ok": False, "error": "snapshot_unavailable"}
+            # Bound the Python mutex as well as external SQLite write-lock
+            # contention. A normal SELECT alone cannot prove write readiness.
+            with app.state.db.probe_access():
+                try:
+                    app.state.db.fetchone("SELECT 1 AS one")
+                    components["sqlite_read"] = {"ok": True}
+                except Exception:
+                    components["sqlite_read"] = {"ok": False, "error": "sqlite_unreadable"}
+                try:
+                    app.state.db.probe_write()
+                    components["sqlite_write"] = {"ok": True}
+                except Exception:
+                    components["sqlite_write"] = {"ok": False, "error": "sqlite_unwritable"}
+                try:
+                    components["snapshot"] = {"ok": True, **snapshot_health(app.state.db)}
+                    components["snapshot"]["ok"] = not components["snapshot"]["snapshot_degraded"]
+                except Exception:
+                    components["snapshot"] = {"ok": False, "error": "snapshot_unavailable"}
+        except Exception:
+            for name, error in (
+                ("sqlite_read", "sqlite_unreadable"),
+                ("sqlite_write", "sqlite_unwritable"),
+                ("snapshot", "snapshot_unavailable"),
+            ):
+                components.setdefault(name, {"ok": False, "error": error})
 
         if settings.tm_ingest_secret:
             core = app.state.tm_core

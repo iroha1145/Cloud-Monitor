@@ -62,18 +62,18 @@ def seed_bucket(db, device, day, bucket, total, received=None):
 @requires_node
 def test_snapshot_failure_not_silently_lost_then_replayed(node_hub, tmp_path, monkeypatch):
     """快照写入异常 → 200 但健康暴露 degraded；恢复后显式重放补齐。"""
-    import hub.tm_proxy as proxy
+    import hub.tm_forwarding as forwarding
 
     cloud = make_cloud_app(tmp_path, node_hub.url, background=False)
     with cloud:
-        real_write = proxy.write_snapshot
+        real_write = forwarding.write_snapshot
         calls = {"n": 0}
 
         def broken_write(*args, **kwargs):
             calls["n"] += 1
             raise sqlite3.OperationalError("disk I/O error (模拟磁盘满)")
 
-        monkeypatch.setattr(proxy, "write_snapshot", broken_write)
+        monkeypatch.setattr(forwarding, "write_snapshot", broken_write)
         resp = cloud.post(
             "/api/ingest", json=widget_style_payload("dev-ob"), headers=HEADERS
         )
@@ -93,7 +93,7 @@ def test_snapshot_failure_not_silently_lost_then_replayed(node_hub, tmp_path, mo
         assert "snapshot" not in public
         assert public["ok"] is True
 
-        monkeypatch.setattr(proxy, "write_snapshot", real_write)
+        monkeypatch.setattr(forwarding, "write_snapshot", real_write)
         from hub.tm_outbox import replay_pending
 
         stats = replay_pending(db, cloud.app.state.tm_core)
@@ -147,13 +147,18 @@ def test_concurrent_same_device_uploads_no_cross_talk(node_hub, tmp_path):
             try:
                 barrier.wait(timeout=10)
                 payload = widget_style_payload("dev-conc")
-                payload["today"]["totalTokens"] = 1000 + i
+                payload["today"] = {
+                    "totalTokens": 1000 + i,
+                    "costUsd": (1000 + i) / 100,
+                    "models": {f"model-{i}": 1000 + i},
+                }
                 resp = cloud.post("/api/ingest", json=payload, headers=HEADERS)
-                assert resp.status_code == 200
+                assert resp.status_code in (200, 503)
                 body = resp.json()
-                assert any(
-                    d["deviceId"] == "dev-conc" for d in body["stats"]["devices"]
-                )
+                if resp.status_code == 200:
+                    assert any(d["deviceId"] == "dev-conc" for d in body["stats"]["devices"])
+                else:
+                    assert body["error"] == "upstream_queued"
             except Exception as exc:  # noqa: BLE001
                 errors.append(str(exc))
 
@@ -164,22 +169,34 @@ def test_concurrent_same_device_uploads_no_cross_talk(node_hub, tmp_path):
             t.join(timeout=30)
         assert errors == []
         db = cloud.app.state.db
+        from hub.tm_forwarding import forwarding_queue
+        queue = forwarding_queue(db, max_pending=1000)
+        for _ in range(8):
+            queue.process_due(cloud.app.state.tm_core)
+        assert not queue.has_pending()
+        newest = db.fetchone("SELECT payload_json FROM tm_ingest_outbox ORDER BY ingest_sequence DESC LIMIT 1")
+        expected = json.loads(newest["payload_json"])["today"]
         assert db.fetchone(
             "SELECT COUNT(*) n FROM tm_snapshot_buckets WHERE device_id='dev-conc'"
         )["n"] == 1
+        snapshot = db.fetchone("SELECT today_total, today_cost, models_json FROM tm_snapshot_buckets WHERE device_id='dev-conc'")
+        current = next(row for row in cloud.app.state.tm_core.request("GET", "/api/devices").json()["devices"] if row["deviceId"] == "dev-conc")["periods"]["today"]
+        assert snapshot["today_total"] == current["totalTokens"] == expected["totalTokens"]
+        assert snapshot["today_cost"] == current["costUsd"] == expected["costUsd"]
+        assert json.loads(snapshot["models_json"]) == current["models"] == expected["models"]
 
 
 @requires_node
 def test_outbox_backpressure_cap(node_hub, tmp_path, monkeypatch):
     """pending 达上限 → 新 ingest 503 背压。"""
-    import hub.tm_proxy as proxy
+    import hub.tm_forwarding as forwarding
 
     cloud = make_cloud_app(tmp_path, node_hub.url, outbox_max=2, background=False)
     with cloud:
         def broken_write(*args, **kwargs):
             raise sqlite3.OperationalError("disk full")
 
-        monkeypatch.setattr(proxy, "write_snapshot", broken_write)
+        monkeypatch.setattr(forwarding, "write_snapshot", broken_write)
         assert cloud.post("/api/ingest", json=widget_style_payload("bp-1"), headers=HEADERS).status_code == 200
         assert cloud.post("/api/ingest", json=widget_style_payload("bp-2"), headers=HEADERS).status_code == 200
         third = cloud.post("/api/ingest", json=widget_style_payload("bp-3"), headers=HEADERS)
@@ -188,8 +205,8 @@ def test_outbox_backpressure_cap(node_hub, tmp_path, monkeypatch):
 
 
 @requires_node
-def test_ingest_upstream_down_returns_503_pending_dropped(tmp_path):
-    """tm-core 不可达：503 且不新增 pending，避免毒行填满 outbox。"""
+def test_ingest_upstream_down_returns_503_with_bounded_durable_forwarding(tmp_path):
+    """tm-core 不可达：503，保留完整有效请求供有界转发重试。"""
     from conftest import NodeHub
 
     dead = NodeHub(tmp_path / "dead.json")
@@ -204,7 +221,10 @@ def test_ingest_upstream_down_returns_503_pending_dropped(tmp_path):
         db = cloud.app.state.db
         assert db.fetchone(
             "SELECT COUNT(*) n FROM tm_ingest_outbox WHERE state='pending'"
-        )["n"] == 0
+        )["n"] == 1
+        row = db.fetchone("SELECT normalized_json, forward_payload_json FROM tm_ingest_outbox WHERE device_id='dev-503'")
+        assert row["normalized_json"] is None
+        assert row["forward_payload_json"]
 
 
 # ================================================================ P0-2 健康检查

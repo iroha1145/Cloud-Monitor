@@ -16,6 +16,45 @@ const login = async (page: import("@playwright/test").Page) => {
   await expect(page.getByRole("button", { name: "查看 gpt-5.2 详情" })).toBeVisible();
 };
 
+test("queued upload recovers into real history and visible model data after the worker confirms it", async ({ page, request }) => {
+  const readHeaders = { Authorization: `Bearer ${READ_TOKEN}` };
+  const ingestHeaders = { "X-Token-Monitor-Secret": "unit-tm-secret-0123456789abcdef0000" };
+  const deviceId = "recovery-real-device";
+  const control = (operation: string) => request.post(`/__test/forwarding/${operation}`, { headers: readHeaders });
+  expect((await control("block")).status()).toBe(200);
+  try {
+    const stamp = new Date().toISOString();
+    const response = await request.post("/api/ingest", {
+      headers: ingestHeaders,
+      data: {
+        deviceId, hostname: "recovery-fixture", updatedAt: stamp,
+        periodWindows: { timeZone: "UTC", today: { key: stamp.slice(0, 10) } },
+        today: { totalTokens: 4242424, models: { "recovery-check": 4242424 }, clients: { codex: 4242424 } },
+      },
+    });
+    expect(response.status()).toBe(503);
+    await login(page);
+    await expect(page.locator(".workspace-notices")).toContainText("等待服务恢复");
+    await expect(page.getByRole("button", { name: "查看 recovery-check 详情", exact: true })).toHaveCount(0);
+    expect((await control("resume")).status()).toBe(200);
+    await expect.poll(async () => {
+      const overview = await request.get("/api/v1/tm/overview", { headers: readHeaders });
+      return (await overview.json()).forwarding_outbox;
+    }).toBe(0);
+    await page.getByRole("button", { name: "刷新数据", exact: true }).click();
+    await expect(page.getByRole("button", { name: "查看 recovery-check 详情", exact: true })).toBeVisible();
+    await expect(page.locator(".workspace-notices")).not.toContainText("等待服务恢复");
+    const history = await request.get("/api/v1/tm/history/daily", { headers: readHeaders });
+    expect((await history.json()).items.some((row: { perModel?: Record<string, number> }) =>
+      row.perModel?.["recovery-check"] === 4242424)).toBe(true);
+    await page.reload();
+    await expect(page.getByRole("button", { name: "查看 recovery-check 详情", exact: true })).toBeVisible();
+  } finally {
+    await control("resume");
+    await request.delete(`/api/devices/${deviceId}`, { headers: ingestHeaders });
+  }
+});
+
 for (const authentication of ["manual", "restored"] as const) {
   test(`hosted ${authentication} login loads one complete batch and keeps scheduled refreshes`, async ({ page }) => {
     const counts = { overview: 0, subscriptions: 0, "provider-status": 0, daily: 0 };

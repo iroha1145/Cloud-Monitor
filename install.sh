@@ -39,6 +39,13 @@ if [[ -n "$MODE" && "$MODE" != "demo" && "$MODE" != "live" ]]; then
   exit 1
 fi
 
+# The updater publishes root-owned state that container uid/gid 999 can only
+# read. Silently continuing without chown leaves online updates unusable.
+if [[ "$(id -u)" -ne 0 ]]; then
+  echo "安装需要 root 权限，以配置更新目录的 999 组权限；请用 sudo 运行 install.sh。" >&2
+  exit 1
+fi
+
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
     echo "缺少命令: $1" >&2
@@ -58,14 +65,23 @@ compose() {
 }
 
 # 容器以 999:999 读升级状态。root:999 0750 让管理员可写、容器组可进入；
-# 非 root 或宿主机没有 gid 999 时降级，不要让安装失败。
+# 更新锁保留同一 inode：已有 watcher 可能正持锁，不能替换或截断。
 ensure_update_runtime_dir() {
   local dir="$1"
-  if [[ "$(id -u)" -eq 0 ]] && install -d -o root -g 999 -m 0750 "$dir" 2>/dev/null; then
-    return 0
-  fi
-  mkdir -p "$dir" || return 1
-  chmod 750 "$dir" 2>/dev/null || true
+  [[ ! -L "$dir" ]] || return 1
+  install -d -o root -g 999 -m 0750 "$dir" || return 1
+  python3 - "$dir/update.lock" <<'PY'
+import os, stat, sys
+path = sys.argv[1]
+fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NONBLOCK | os.O_NOFOLLOW, 0o640)
+try:
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        raise SystemExit("更新锁必须是普通文件")
+    os.fchown(fd, 0, 999)
+    os.fchmod(fd, 0o640)
+finally:
+    os.close(fd)
+PY
 }
 
 resolve_install_dir() {
@@ -234,13 +250,13 @@ upsert_env "$ENVF" CM_GIT_SHA "$(git -c "safe.directory=$INSTALL_DIR" -C "$INSTA
 
 ensure_updater() {
   mkdir -p "$HUB/update-control"
-  ensure_update_runtime_dir "$HUB/update-runtime" || true
+  ensure_update_runtime_dir "$HUB/update-runtime"
   if ensure_update_runtime_dir /run/cloud-monitor; then
     upsert_env "$ENVF" CM_UPDATE_RUNTIME_HOST /run/cloud-monitor
   fi
   # 容器内 monitor 用户固定为 999；root 监视器仍可写。禁止 0777。
-  chown 999:999 "$HUB/update-control" 2>/dev/null || true
-  chmod 0770 "$HUB/update-control" 2>/dev/null || true
+  chown 999:999 "$HUB/update-control"
+  chmod 0770 "$HUB/update-control"
   chmod +x "$HUB/scripts/self-update.sh" "$HUB/scripts/update-watcher.sh" 2>/dev/null || true
   if command -v systemctl >/dev/null 2>&1 && [[ "$(id -u)" == "0" ]] && systemctl list-unit-files >/dev/null 2>&1; then
     local unit="/etc/systemd/system/cloud-monitor-updater.service"

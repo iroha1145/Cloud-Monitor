@@ -65,6 +65,7 @@ SESSIONS_LIMIT = 100
 GAP_BUCKETS = 2  # 相邻桶间隔超过 2 个槽位视为采样缺口（低覆盖）
 DEFAULT_SAMPLE_INTERVAL_MS = 5 * 60 * 1000
 LATE_START_GRACE_MINUTES = 10  # 本地日开始后 10 分钟内的首桶不算晚启动
+OVERVIEW_REFRESH_TIMEOUT_SECONDS = 20.0
 
 
 def _int(value: Any) -> int:
@@ -1016,6 +1017,9 @@ class OverviewCache:
             self._inflight = None
         if fut is not None and not fut.done():
             fut.set_exception(exc)
+            # A refresh can fail without any followers. Observe the exception
+            # here to avoid an unhandled-Future warning; awaiters still receive it.
+            fut.exception()
 
     def begin_refresh(self) -> bool:
         owned, _ = self.claim_refresh()
@@ -1099,6 +1103,15 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
             )
         return overview
 
+    def _stale_overview(reason: str) -> Optional[dict]:
+        cached = overview_cache.get(allow_stale=True)
+        if cached is None:
+            return None
+        # Do not mutate the cached response or its existing partial errors.
+        errors = [dict(item) for item in cached.get("partial_errors", [])]
+        errors.append({"code": "overview_stale", "source": "cloud-hub", "reason": reason})
+        return {**cached, "partial": True, "partial_errors": errors}
+
     @router.get("/api/v1/tm/overview")
     async def tm_overview(request: Request) -> dict:
         require_access_token(request, settings)
@@ -1112,16 +1125,24 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         if not owned:
             if waiter is not None:
                 try:
-                    return await waiter
-                except Exception:
-                    stale = overview_cache.get(allow_stale=True)
+                    # One client cancelling/timing out must not cancel the
+                    # shared refresh result for every other request.
+                    return await asyncio.wait_for(
+                        asyncio.shield(waiter), OVERVIEW_REFRESH_TIMEOUT_SECONDS
+                    )
+                except Exception as exc:
+                    timed_out = isinstance(exc, TimeoutError) or (
+                        isinstance(exc, HTTPException) and exc.status_code == 504
+                    )
+                    stale = _stale_overview("refresh_timeout" if timed_out else "refresh_failed")
                     if stale is not None:
                         return stale
+                    if isinstance(exc, TimeoutError):
+                        raise HTTPException(504, "总览刷新超时，请稍后重试") from exc
                     raise
-            stale = overview_cache.get(allow_stale=True)
+            stale = _stale_overview("refresh_failed")
             if stale is not None:
                 return stale
-        core = _core(request)
         from concurrent.futures import ThreadPoolExecutor
 
         from .tm_proxy import UpstreamUnavailable
@@ -1159,15 +1180,31 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
             )
 
         try:
-            overview = await asyncio.to_thread(_build)
+            core = _core(request)
+            overview = await asyncio.wait_for(
+                asyncio.to_thread(_build), OVERVIEW_REFRESH_TIMEOUT_SECONDS
+            )
             overview_cache.put(overview, generation=generation)
             overview_cache.finish_refresh(overview)
             return overview
-        except Exception as exc:
-            overview_cache.fail_refresh(exc)
-            stale = overview_cache.get(allow_stale=True)
+        except BaseException as exc:
+            # Cancelling the owner must release the single-flight slot too.
+            # Followers get a retryable failure, not someone else's cancellation.
+            failure = exc
+            if isinstance(exc, asyncio.CancelledError):
+                failure = HTTPException(503, "总览刷新中断，请稍后重试")
+            elif isinstance(exc, TimeoutError):
+                failure = HTTPException(504, "总览刷新超时，请稍后重试")
+            overview_cache.fail_refresh(failure)
+            if not isinstance(exc, Exception):
+                raise
+            stale = _stale_overview(
+                "refresh_timeout" if isinstance(exc, TimeoutError) else "refresh_failed"
+            )
             if stale is not None:
                 return stale
+            if failure is not exc:
+                raise failure from exc
             raise
 
     @router.get("/api/v1/tm/subscriptions")

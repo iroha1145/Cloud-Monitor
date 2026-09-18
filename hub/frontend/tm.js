@@ -3272,14 +3272,18 @@ function updateConn() {
     setConn("ok", "演示模式");
     return;
   }
-  let text;
-  if (state.staleData) text = "数据可能已过期";
-  else if (d.snapshot_degraded) text = "快照历史降级";
-  else if (d.partial) text = "部分数据不可用";
-  else text = "正常";
-  const outbox = Number(d.pending_outbox) || 0;
-  if (outbox > 0) text += ` · 待同步快照 ${outbox} 条`;
-  setConn(text === "正常" ? "ok" : "warn", text);
+  const count = (value) => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+  const forwarding = count(d.forwarding_outbox);
+  const outbox = Math.max(0, count(d.pending_outbox) - forwarding);
+  const expired = count(d.expired_unconfirmed_outbox);
+  const parts = [];
+  if (state.staleData) parts.push("数据可能已过期");
+  else if (d.snapshot_degraded) parts.push("历史同步延迟");
+  else if (d.partial) parts.push("部分数据不可用");
+  if (forwarding > 0) parts.push(`待服务恢复确认 ${forwarding} 条上报`);
+  if (outbox > 0) parts.push(`待同步历史 ${outbox} 条`);
+  if (expired > 0) parts.push(`${expired} 条旧上报未完成，历史可能存在缺口`);
+  setConn(parts.length ? "warn" : "ok", parts.length ? parts.join(" · ") : "正常");
 }
 
 async function load(manual) {
@@ -3472,10 +3476,12 @@ function fallbackHistoryRows() {
 function mapHistoryItem(h) {
   if (!h || !h.day) return null;
   const key = String(h.day).slice(0, 10);
+  const cost = typeof h.costUsd === "number" || (typeof h.costUsd === "string" && h.costUsd.trim())
+    ? Number(h.costUsd) : null;
   return {
     day: key,
     tokens: Number(h.tokens ?? h.total) || 0,
-    costUsd: h.costUsd != null ? Number(h.costUsd) : null,
+    costUsd: cost !== null && Number.isFinite(cost) ? cost : null,
     mix: h.perClient && typeof h.perClient === "object" ? { kind: "client", map: h.perClient } : null,
     mixModel: h.perModel && typeof h.perModel === "object" ? h.perModel : null,
     deviceCount: h.deviceCount != null ? Number(h.deviceCount) : null,
@@ -3529,6 +3535,11 @@ async function refreshHistoryFirstPage() {
       incomingKeys.add(row.day);
     }
     const explicitEmpty = !incoming.length && (res.total_days === 0 || res.has_more === false);
+    // An empty first page cannot supply the promised next page. Keep the last
+    // usable archive instead of clearing it into an unpageable empty state.
+    if (!incoming.length && res.has_more === true && !explicitEmpty) {
+      throw new Error("日归档返回空页，已保留上次记录。");
+    }
     if (explicitEmpty) {
       aux.rows = [];
       aux.seen = new Set();

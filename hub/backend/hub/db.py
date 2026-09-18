@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 import threading
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable, Optional, Sequence
@@ -224,9 +225,45 @@ class Database:
                 self._conn.execute("ROLLBACK")
                 raise
             else:
-                self._conn.execute("COMMIT")
+                try:
+                    self._conn.execute("COMMIT")
+                except BaseException:
+                    # A failed COMMIT can leave the shared connection inside
+                    # its transaction. Later requests must not silently join
+                    # that failed batch or acknowledge uncommitted delivery.
+                    if self._conn.in_transaction:
+                        self._conn.execute("ROLLBACK")
+                    raise
 
     # ------------------------------------------------------------ accessors
+
+    @contextmanager
+    def probe_access(self, timeout_seconds: float = 1.0):
+        """Bound both the process lock and SQLite waits for readiness reads.
+
+        Keep the shared connection locked while temporarily shortening its busy
+        timeout, so application transactions retain their normal wait policy.
+        Long-running probe queries are interrupted by the same deadline.
+        """
+        deadline = time.monotonic() + timeout_seconds
+        if not self._lock.acquire(timeout=timeout_seconds):
+            raise sqlite3.OperationalError("database busy during readiness probe")
+        previous_timeout = None
+        try:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise sqlite3.OperationalError("readiness probe deadline exceeded")
+            previous_timeout = int(self._conn.execute("PRAGMA busy_timeout").fetchone()[0])
+            self._conn.execute(f"PRAGMA busy_timeout = {max(1, int(remaining * 1000))}")
+            self._conn.set_progress_handler(lambda: time.monotonic() >= deadline, 1000)
+            yield self
+        finally:
+            try:
+                if previous_timeout is not None:
+                    self._conn.set_progress_handler(None, 0)
+                    self._conn.execute(f"PRAGMA busy_timeout = {previous_timeout}")
+            finally:
+                self._lock.release()
 
     def probe_write(self) -> None:
         """就绪探活：BEGIN IMMEDIATE + ROLLBACK 必须在同一次持锁内完成。

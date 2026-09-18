@@ -35,6 +35,7 @@ import {
   type UsageEntity,
 } from "./data";
 import { matrixHeatLevel, matrixHeatPeak } from "./matrix-heat";
+import { usd } from "./money";
 
 export const compact = (n: number) =>
   n >= 1e8
@@ -45,7 +46,7 @@ export const compact = (n: number) =>
 export const money = (n: number | null) =>
   n === null
     ? "—"
-    : `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    : usd(n);
 export const pct = (n: number | null) =>
   n === null ? "—" : `${(n * 100).toFixed(1)}%`;
 export const count = (n: number) => n.toLocaleString("en-US");
@@ -372,7 +373,7 @@ export function ModelTable({
   full = false,
 }: {
   per: PeriodUsage;
-  onSelect: (item: UsageEntity) => void;
+  onSelect: (item: UsageEntity, opener: HTMLButtonElement) => void;
   full?: boolean;
 }) {
   const [query, setQuery] = useState(""),
@@ -476,7 +477,7 @@ export function ModelTable({
                 <td className="model-identity-cell">
                   <button
                     className="model-open"
-                    onClick={() => onSelect(m)}
+                    onClick={(event) => onSelect(m, event.currentTarget)}
                     aria-label={`查看 ${m.name} 详情`}
                   >
                     <BrandIcon name={m.name} color={m.color} />
@@ -571,7 +572,7 @@ export function ModelTable({
                 <td className="model-action-cell">
                   <button
                     className="row-arrow"
-                    onClick={() => onSelect(m)}
+                    onClick={(event) => onSelect(m, event.currentTarget)}
                     aria-label={`展开 ${m.name}`}
                   >
                     <ArrowUpRight size={15} />
@@ -689,7 +690,7 @@ export function Overview({
 }: {
   data: DashboardData;
   period: PeriodKey;
-  onModel: (m: UsageEntity) => void;
+  onModel: (m: UsageEntity, opener: HTMLButtonElement) => void;
 }) {
   const per = data.periods[period];
   return (

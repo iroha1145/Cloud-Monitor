@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useRef, useState } from "react";
-import { AppErrorBoundary, lazyWithReload } from "./chunkLoad";
+import { AppErrorBoundary, DialogErrorNotice, lazyWithReload } from "./chunkLoad";
 import {
   AnimatePresence,
   motion,
@@ -65,13 +65,13 @@ import {
 } from "./Overview";
 import "./mobile.css";
 
-const DevicesView = lazyWithReload("devices", async () => ({
+const DevicesView = lazyWithReload("secondary", async () => ({
   default: (await import("./SecondaryViews")).DevicesView,
 }));
-const HistoryView = lazyWithReload("history", async () => ({
+const HistoryView = lazyWithReload("secondary", async () => ({
   default: (await import("./SecondaryViews")).HistoryView,
 }));
-const QuotaView = lazyWithReload("quota", async () => ({
+const QuotaView = lazyWithReload("secondary", async () => ({
   default: (await import("./SecondaryViews")).QuotaView,
 }));
 const ArchivePanel = lazyWithReload("archive", async () => ({
@@ -141,6 +141,17 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     [connecting, setConnecting] = useState(false),
     [refreshState, setRefreshState] = useState<ButtonState>("idle");
   const [toast, setToast] = useState("");
+  const [dialogError, setDialogError] = useState(false);
+  const dialogReturnFocus = useRef<HTMLElement | null>(null);
+  const mobileReturnFocus = useRef<HTMLButtonElement | null>(null);
+  const searchButton = useRef<HTMLButtonElement | null>(null);
+  const rememberDialogOpener = (opener: HTMLElement | null) => {
+    // Buttons inside the closing navigation drawer will be unmounted.
+    dialogReturnFocus.current = opener?.closest(".mobile-nav-dialog")
+      ? mobileReturnFocus.current
+      : opener;
+    setDialogError(false);
+  };
   const token = useRef(initialToken);
   const dataRef = useRef(data);
   dataRef.current = data;
@@ -194,6 +205,10 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
+        if (!document.querySelector('[role="dialog"][data-state="open"]')) {
+          rememberDialogOpener(document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+            ? document.activeElement : searchButton.current);
+        }
         setSearchOpen((v) => !v);
       }
       if (e.key === "Escape") setMobile(false);
@@ -325,13 +340,19 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     setSettings(false);
     setToast("已切换为示例工作区。");
   };
-  const openSettings = () => {
+  const openSettings = (event: React.MouseEvent<HTMLElement>) => {
+    rememberDialogOpener(event.currentTarget);
     setMobile(false);
     setSettings(true);
   };
-  const openDesign = () => {
+  const openDesign = (event: React.MouseEvent<HTMLElement>) => {
+    rememberDialogOpener(event.currentTarget);
     setMobile(false);
     setDesign(true);
+  };
+  const openModel = (model: UsageEntity, opener: HTMLButtonElement) => {
+    rememberDialogOpener(opener);
+    setSelected(model);
   };
   const exportModels = () => {
     const rows = [
@@ -475,7 +496,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
             {nav}
           </aside>
           <Dialog open={mobile} onOpenChange={setMobile}>
-            <DialogContent className="mobile-nav-dialog" placement="left">
+            <DialogContent className="mobile-nav-dialog" placement="left" returnFocusRef={mobileReturnFocus}>
               <DialogTitle className="sr-only">导航</DialogTitle>
               <DialogDescription className="sr-only">
                 切换页面和工作区设置
@@ -490,6 +511,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
               <div className="breadcrumb">
                 <button
                   className="icon-button mobile-menu"
+                  ref={mobileReturnFocus}
                   onClick={() => setMobile(true)}
                   aria-label="打开导航"
                 >
@@ -503,8 +525,9 @@ export default function App({ initialData, initialToken = "", hosted = false, is
               <div className="topbar-actions">
                 <button
                   className="command-search"
+                  ref={searchButton}
                   aria-label="搜索或快速跳转"
-                  onClick={() => setSearchOpen(true)}
+                  onClick={(event) => { rememberDialogOpener(event.currentTarget); setSearchOpen(true); }}
                 >
                   <Search size={16} />
                   <span>搜索或快速跳转</span>
@@ -536,7 +559,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                     variant="dot"
                     size={33}
                     color="orange"
-                    onClick={() => setNotifications(true)}
+                    onClick={(event) => { rememberDialogOpener(event.currentTarget); setNotifications(true); }}
                     aria-label={`查看 ${statusCount} 条工作区提示`}
                   />
                 )}
@@ -683,12 +706,12 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                     <Overview
                       data={data}
                       period={period}
-                      onModel={setSelected}
+                      onModel={openModel}
                     />
                   ) : page === "models" ? (
                     <>
                       <Stats data={data} period={period} />
-                      <ModelTable per={per} full onSelect={setSelected} />
+                      <ModelTable per={per} full onSelect={openModel} />
                       <AppErrorBoundary title="模型矩阵已更新，请刷新。">
                         <Suspense fallback={<div className="page-loading" role="status">正在加载矩阵…</div>}>
                           <ModelMatrixView per={per} />
@@ -723,7 +746,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                   {data.mode === "demo"
                     ? "示例数据，不代表实际账单"
                     : `每 5 分钟自动刷新 · ${data.timeZone}`}
-                  {!hosted && <button onClick={() => setDesign(true)}>
+                  {!hosted && <button onClick={openDesign}>
                     关于这版设计 <ArrowUpRight size={12} />
                   </button>}
                 </span>
@@ -737,6 +760,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
             title="对话框已更新，请刷新。"
             variant="dialog"
             onFail={() => {
+              setDialogError(true);
               setSearchOpen(false);
               setSettings(false);
               setNotifications(false);
@@ -746,6 +770,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
           >
           <Suspense fallback={null}>
             <AppDialogs
+              returnFocusRef={dialogReturnFocus}
               searchOpen={searchOpen}
               setSearchOpen={setSearchOpen}
               settings={settings}
@@ -781,6 +806,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
           </Suspense>
           </AppErrorBoundary>
         )}
+        {dialogError && <DialogErrorNotice onDismiss={() => setDialogError(false)} />}
         <AnimatePresence>
           {toast && (
             <motion.div

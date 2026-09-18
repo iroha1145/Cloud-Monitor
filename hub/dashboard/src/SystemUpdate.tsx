@@ -12,6 +12,7 @@ import {
   type UpdateStatus,
 } from "./restoration-api";
 import "./system-update.css";
+import { splitReleaseNotes } from "./release-notes";
 
 export interface SystemUpdateProps {
   accessToken: string;
@@ -42,10 +43,7 @@ function displayTime(value: string, timeZone?: string) {
 }
 
 function linkifyNotes(notes: string): ReactNode[] {
-  const text = notes
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/__([^_]+)__/g, "$1");
-  return text.split(/(https?:\/\/[^\s)<>"']+)/g).map((part, index) => {
+  return splitReleaseNotes(notes).map((part, index) => {
     if (/^https?:\/\//.test(part)) {
       try {
         const url = new URL(part);
