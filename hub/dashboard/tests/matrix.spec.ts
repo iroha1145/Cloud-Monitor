@@ -24,8 +24,8 @@ async function expectMatrixCellsColored(page: Page) {
     }),
   );
   expect(cells.length).toBeGreaterThan(0);
-  const empty = cells.filter((cell) => cell.text === "—");
-  const used = cells.filter((cell) => cell.text !== "—");
+  const empty = cells.filter((cell) => cell.text === "未提供");
+  const used = cells.filter((cell) => cell.text !== "未提供");
   expect(used.length).toBeGreaterThan(0);
   for (const cell of used) {
     expect(cell.level, cell.text).toBeGreaterThanOrEqual(1);

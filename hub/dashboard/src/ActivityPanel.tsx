@@ -198,9 +198,9 @@ export function ActivityPanel({ data, selected, onSelect }: {
         <div className="cm-activity-range"><span>{metadata.timeZone}</span><span className="cm-activity-legend" aria-label="颜色越深，用量越多">少{[0, 1, 2, 3, 4].map((level) => <i key={level} data-level={level} />)}多</span></div>
         <div className="cm-activity-summary">
           <MetricTooltip title="已上报用量合计" rows={[{ label: "词元用量", value: reported.length ? full(total) : "未上报" }]} note="仅合计已上报的时段，未知记录不计为零。">
-            <span><small>已上报合计</small><strong>{reported.length ? compact(total) : "—"}</strong></span>
+            <span><small>已上报合计</small><strong>{reported.length ? compact(total) : "未提供"}</strong></span>
           </MetricTooltip>
-          <span><small>有活动{view === "day" ? "时段" : "日期"}</small><strong>{reported.length ? `${active} ${view === "day" ? "小时" : "天"}` : "—"}</strong></span>
+          <span><small>有活动{view === "day" ? "时段" : "日期"}</small><strong>{reported.length ? `${active} ${view === "day" ? "小时" : "天"}` : "未提供"}</strong></span>
           <span><small>已上报{view === "day" ? "时段" : "日期"}</small><strong>{reported.length} / {cells.filter((cell) => !cell.future).length}</strong></span>
         </div>
         {missing > 0 && <p className="cm-activity-missing">斜线格表示未上报，与零用量分开显示。</p>}

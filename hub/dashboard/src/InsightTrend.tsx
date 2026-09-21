@@ -649,7 +649,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
                   <ChevronLeft size={14} />
                 </button>
                 <time dateTime={point?.day}>
-                  {point ? shortDay(point.day) : "—"}
+                  {point ? shortDay(point.day) : "未提供"}
                 </time>
                 <button
                   type="button"

@@ -150,7 +150,7 @@ export function Stats({
         </div>
         <div className="stat-value">
           {per.costUsd === null ? (
-            "—"
+            "未提供"
           ) : (
             <NumberTicker
               value={Math.round(per.costUsd * 100)}
@@ -195,7 +195,7 @@ export function Stats({
         </div>
         <div className="stat-value">
           {rate === null ? (
-            "—"
+            "未提供"
           ) : (
             <NumberTicker
               value={Math.round(rate * 1000)}
@@ -320,16 +320,16 @@ export function CompositionCard({
               {(!per.components.known && v.key !== "unclassified") ||
               (v.key === "cacheRead" && !per.components.cacheReadKnown) ||
               (v.key === "cacheWrite" && !per.components.cacheWriteKnown)
-                ? "—"
+                ? "未提供"
                 : compact(v.value)}
             </strong>
             <span>
               {(!per.components.known && v.key !== "unclassified") ||
               (v.key === "cacheRead" && !per.components.cacheReadKnown) ||
               (v.key === "cacheWrite" && !per.components.cacheWriteKnown)
-                ? "—"
+                ? "未提供"
                 : per.components.known && !per.components.complete
-                  ? "—"
+                  ? "未提供"
                   : pct(v.value / sum)}
             </span>
           </div>
@@ -803,7 +803,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
                             className={`matrix-cell level-${level}`}
                           >
                             {v === undefined
-                              ? "—"
+                              ? "未提供"
                               : metric === "tokens"
                                 ? compact(v)
                                 : money(v)}
