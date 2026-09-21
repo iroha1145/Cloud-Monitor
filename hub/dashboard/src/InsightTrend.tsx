@@ -212,7 +212,7 @@ function FloatingDayDetails({
 export function InsightTrend({ data }: { data: DashboardData }) {
   const dark = useDarkMode();
   const uid = useId();
-  const [days, setDays] = useState("30");
+  const [days, setDays] = useState("7");
   const [metric, setMetric] = useState<"tokens" | "cost">("tokens");
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [detailMode, setDetailMode] = useState<DetailMode>(null);
