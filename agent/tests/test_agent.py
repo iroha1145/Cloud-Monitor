@@ -781,6 +781,8 @@ def test_start_bridge_thread_network_error_does_not_raise(tmp_path, monkeypatch)
     thread = tm.start_bridge_thread(agent)
     assert thread is not None
     thread.join(timeout=0.05)
+    # 线程异常不会经 join() 冒泡：必须显式断言它仍存活，否则线程真崩了此测试也过
+    assert thread.is_alive()
 
 
 def test_bridge_push_4xx_permanent_5xx_transient(tmp_path):
@@ -1105,3 +1107,5 @@ def test_start_bridge_thread_keeps_running_after_startup_4xx(tmp_path, monkeypat
     thread = tm.start_bridge_thread(agent)
     assert thread is not None
     thread.join(timeout=0.05)
+    # 线程异常不会经 join() 冒泡：必须显式断言它仍存活，否则线程真崩了此测试也过
+    assert thread.is_alive()
