@@ -3,11 +3,13 @@
 # 由 install.sh 与 hub/scripts/self-update.sh source，不单独执行。
 
 cm_compose() {
-  # 调用方先 cd 到 compose 项目目录，再调用本函数。
+  # 第一个参数固定为 compose 项目目录：目录是显式契约，不依赖调用方记得先 cd。
+  local project_dir="$1"
+  shift
   if docker compose version >/dev/null 2>&1; then
-    docker compose "$@"
+    docker compose --project-directory "$project_dir" "$@"
   elif command -v docker-compose >/dev/null 2>&1; then
-    docker-compose "$@"
+    docker-compose --project-directory "$project_dir" "$@"
   else
     echo "需要 Docker Compose（docker compose 或 docker-compose）" >&2
     return 1

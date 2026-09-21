@@ -54,7 +54,7 @@ need_cmd() {
 }
 
 compose() {
-  cm_compose "$@"
+  cm_compose "$HUB" "$@"
 }
 
 # 容器以 999:999 读升级状态。root:999 0750 让管理员可写、容器组可进入。

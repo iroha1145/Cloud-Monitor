@@ -46,7 +46,7 @@ refuse_symlink() {
 }
 
 compose() {
-  cm_compose "$@"
+  cm_compose "$HUB" "$@"
 }
 
 iso_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
