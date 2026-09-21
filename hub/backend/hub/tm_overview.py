@@ -1103,13 +1103,15 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
                         asyncio.shield(waiter), OVERVIEW_REFRESH_TIMEOUT_SECONDS
                     )
                 except Exception as exc:
-                    timed_out = isinstance(exc, TimeoutError) or (
+                    # asyncio.TimeoutError 在 3.11 起是内置 TimeoutError 的别名，
+                    # 更早版本两者无继承关系——wait_for 抛的是前者，必须按前者判。
+                    timed_out = isinstance(exc, asyncio.TimeoutError) or (
                         isinstance(exc, HTTPException) and exc.status_code == 504
                     )
                     stale = _stale_overview("refresh_timeout" if timed_out else "refresh_failed")
                     if stale is not None:
                         return stale
-                    if isinstance(exc, TimeoutError):
+                    if isinstance(exc, asyncio.TimeoutError):
                         raise HTTPException(504, "总览刷新超时，请稍后重试") from exc
                     raise
             stale = _stale_overview("refresh_failed")
@@ -1165,13 +1167,13 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
             failure = exc
             if isinstance(exc, asyncio.CancelledError):
                 failure = HTTPException(503, "总览刷新中断，请稍后重试")
-            elif isinstance(exc, TimeoutError):
+            elif isinstance(exc, asyncio.TimeoutError):
                 failure = HTTPException(504, "总览刷新超时，请稍后重试")
             overview_cache.fail_refresh(failure)
             if not isinstance(exc, Exception):
                 raise
             stale = _stale_overview(
-                "refresh_timeout" if isinstance(exc, TimeoutError) else "refresh_failed"
+                "refresh_timeout" if isinstance(exc, asyncio.TimeoutError) else "refresh_failed"
             )
             if stale is not None:
                 return stale
