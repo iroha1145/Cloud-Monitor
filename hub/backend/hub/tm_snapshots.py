@@ -93,6 +93,13 @@ def utc_z(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+def utc_seconds_z(dt: datetime) -> str:
+    """秒级精度的同款格式：状态文件与 HTTP 日期等只需要秒的场景。"""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _migrate_timestamp_format(db: Database) -> None:
     """历史版本混存 '+00:00' 秒级文本：统一为毫秒 Z 格式（幂等）。
 

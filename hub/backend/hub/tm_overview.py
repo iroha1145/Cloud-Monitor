@@ -45,7 +45,11 @@ import asyncio
 import json
 import logging
 import math
+import time as _time
+from datetime import date, datetime, timedelta, timezone
+from itertools import groupby
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -54,7 +58,7 @@ from .auth import require_access_token
 from .config import Settings
 from .db import Database
 from .tm_proxy import TmCore
-from .tm_snapshots import HARD_RETENTION_DAYS, query_daily_archive, trend_by_day, valid_day_key
+from .tm_snapshots import HARD_RETENTION_DAYS, query_daily_archive, trend_by_day, utc_z, valid_day_key
 
 log = logging.getLogger("tm-overview")
 
@@ -95,7 +99,6 @@ def trend_models_by_day(db: Database, days: int = TREND_DAYS) -> list[dict]:
     日期范围在窗口函数之前收敛（local_day >= 下界），不加载 370 天全量
     后再在 Python 切 30 天。
     """
-    from datetime import datetime, timedelta, timezone
 
     day_floor = (datetime.now(timezone.utc) - timedelta(days=days + 1)).date().isoformat()
     rows = db.fetchall(
@@ -233,8 +236,6 @@ def merge_trend_with_history(
 
 
 def _now_for_dashboard(dashboard_tz: str, now: Any = None):
-    from datetime import datetime, timezone
-    from zoneinfo import ZoneInfo
 
     tz = ZoneInfo(dashboard_tz)
     if now is None:
@@ -245,7 +246,6 @@ def _now_for_dashboard(dashboard_tz: str, now: Any = None):
 
 
 def _parse_bucket_dt(stamp: Any):
-    from datetime import datetime
 
     if not stamp:
         return None
@@ -255,22 +255,12 @@ def _parse_bucket_dt(stamp: Any):
         return None
 
 
-def _fmt_z(dt) -> Optional[str]:
-    if dt is None:
-        return None
-    from datetime import timezone
-
-    return dt.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-
-
 def _first_bucket_late(stamp: str, local_day: str, tz_name: str) -> bool:
     """首桶是否明显晚于设备本地日开始。
 
     每个设备天然有第一个桶，不得因此把所有有数据的情况标成 low-coverage。
     仅当首桶明显晚于本地日 00:00（超过 10 分钟宽限）才算晚启动。
     """
-    from datetime import datetime, timedelta, timezone
-    from zoneinfo import ZoneInfo
 
     moment = _parse_bucket_dt(stamp)
     if moment is None or not valid_day_key(local_day):
@@ -386,8 +376,8 @@ def _coverage_for_device(
     )
     return {
         "device_id": deltas[0]["device_id"] if deltas else None,
-        "first_sample_at": _fmt_z(min(stamps)) if stamps else None,
-        "last_sample_at": _fmt_z(max(stamps)) if stamps else None,
+        "first_sample_at": utc_z(min(stamps)) if stamps else None,
+        "last_sample_at": utc_z(max(stamps)) if stamps else None,
         "expected_buckets": expected,
         "observed_buckets": observed,
         "gap_count": gap_count,
@@ -441,8 +431,6 @@ def activity_report(
     coverage 按设备求和：expected_total = Σ expected_device，
     observed_total = Σ observed_device，coverage_percent 钳制 0–100。
     """
-    from datetime import date, timedelta
-    from itertools import groupby
 
     local_now, tz = _now_for_dashboard(dashboard_tz, now)
     today_key = local_now.date().isoformat()
@@ -602,11 +590,6 @@ def activity_report(
             "reset_count": sum(d.get("reset_count") or 0 for d in public_diags),
         },
     }
-
-
-def hourly_activity(db: Database, dashboard_tz: str = "UTC", now: Any = None) -> list[dict]:
-    """兼容旧调用：返回 24 小时桶。"""
-    return activity_report(db, dashboard_tz, now=now)["hourly"]
 
 
 def daily_activity(
@@ -905,7 +888,6 @@ def build_overview(
 
 def _dashboard_period(dashboard_tz: str, now: Any = None) -> dict:
     """仪表盘时区的当前 today/month 窗口（供前端展示口径）。"""
-    from datetime import timedelta, timezone
 
     now, tz = _now_for_dashboard(dashboard_tz, now)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -967,7 +949,6 @@ class OverviewCache:
             return self._generation
 
     def get(self, *, allow_stale: bool = False) -> Optional[dict]:
-        import time as _time
 
         with self._lock:
             if self._data is None:
@@ -980,7 +961,6 @@ class OverviewCache:
             return None
 
     def put(self, data: dict, *, generation: int | None = None) -> None:
-        import time as _time
 
         with self._lock:
             now = _time.monotonic()
@@ -1020,14 +1000,6 @@ class OverviewCache:
             # A refresh can fail without any followers. Observe the exception
             # here to avoid an unhandled-Future warning; awaiters still receive it.
             fut.exception()
-
-    def begin_refresh(self) -> bool:
-        owned, _ = self.claim_refresh()
-        return owned
-
-    def end_refresh(self) -> None:
-        with self._lock:
-            self._inflight = None
 
 
 def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRouter, OverviewCache]:
@@ -1232,7 +1204,6 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         from .tm_provider_status import discover_providers
 
         core = _core(request)
-        import asyncio
 
         (stats, stats_error), (subs, subs_error) = await asyncio.gather(
             asyncio.to_thread(_fetch_sync, core, "/api/stats"),

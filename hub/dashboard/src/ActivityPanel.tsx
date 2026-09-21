@@ -2,6 +2,8 @@ import { useId, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { ChevronDown, Info, X } from "lucide-react";
 import { MetricTooltip } from "./MetricTooltip";
+import { compact, full } from "./lib/format";
+import { dayKeyZoned, formatZoned } from "./lib/datetime";
 import type { ActivityCoverage, ActivityMetadata, DashboardData } from "./data";
 import "./ActivityPanel.css";
 
@@ -11,21 +13,12 @@ const VIEWS: ActivityView[] = ["day", "week", "month"];
 const VIEW_LABELS = { day: "日", week: "周", month: "月" };
 const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
 const DAY = 86_400_000;
-const full = (value: number | null) => value === null ? "未提供" : value.toLocaleString("zh-CN");
-const compact = (value: number) => value >= 100_000_000
-  ? `${(value / 100_000_000).toFixed(2)} 亿`
-  : value >= 10_000 ? `${(value / 10_000).toFixed(1)} 万` : full(value);
 const addDay = (day: string, offset: number) =>
   new Date(Date.parse(`${day}T12:00:00Z`) + offset * DAY).toISOString().slice(0, 10);
 const mondayIndex = (day: string) => (new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7;
 
 function fallbackMetadata(data: DashboardData): ActivityMetadata {
-  let today: string | null = null;
-  try {
-    today = new Intl.DateTimeFormat("en-CA", {
-      timeZone: data.timeZone, year: "numeric", month: "2-digit", day: "2-digit",
-    }).format(new Date(data.generatedAt));
-  } catch { /* Older payloads with no usable date keep the calendar unavailable. */ }
+  const today = dayKeyZoned(new Date(data.generatedAt), data.timeZone);
   return {
     timeZone: data.timeZone, today, month: today?.slice(0, 7) || null,
     hourlyDay: today, hourlyStatus: data.hourly.length ? "ready" : "unavailable",
@@ -42,12 +35,10 @@ function samplingMode(value: string | null) {
 
 function stamp(value: string | null, timeZone: string) {
   if (!value) return "未提供";
-  try {
-    return new Intl.DateTimeFormat("zh-CN", {
-      timeZone, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
-      hour12: false,
-    }).format(new Date(value));
-  } catch { return "未提供"; }
+  return formatZoned(new Date(value), timeZone, {
+    month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+    hour12: false,
+  }) ?? "未提供";
 }
 
 function CoverageDetails({ coverage, metadata, data }: {

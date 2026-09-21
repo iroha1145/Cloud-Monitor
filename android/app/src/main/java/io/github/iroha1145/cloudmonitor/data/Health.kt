@@ -57,13 +57,6 @@ fun healthLabel(level: String): String = when (level) {
     else -> "未知"
 }
 
-fun healthBarWidth(level: String): Float = when (level) {
-    "ok" -> 1f
-    "warn" -> 0.62f
-    "crit" -> 0.28f
-    else -> 0.45f
-}
-
 fun healthTools(diag: Diagnostic?): List<HealthTool> {
     if (diag == null) return emptyList()
     return healthEntries(diag.clientHealth).map { (name, value) ->

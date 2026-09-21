@@ -60,7 +60,6 @@ LEGACY_ALIAS_FIELDS = {
     "totalInput": "unclassifiedTokens + cacheReadTokens",
     "totalOutput": "outputTokens",
 }
-COST_ALIASES = ("costUsd", "cost_usd", "cost")
 
 # 周期内必须做数值校验的映射字段（key→数值）
 PERIOD_NUMERIC_MAPS = (
@@ -74,8 +73,6 @@ PERIOD_NUMERIC_MAPS = (
 def _valid_day_key(key: Any) -> bool:
     if not isinstance(key, str) or len(key) != 10:
         return False
-    from datetime import datetime
-
     try:
         datetime.strptime(key, "%Y-%m-%d")
     except ValueError:
@@ -86,8 +83,6 @@ def _valid_day_key(key: Any) -> bool:
 def _valid_month_key(key: Any) -> bool:
     if not isinstance(key, str) or len(key) != 7:
         return False
-    from datetime import datetime
-
     try:
         datetime.strptime(key, "%Y-%m")
     except ValueError:

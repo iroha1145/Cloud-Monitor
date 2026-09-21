@@ -27,6 +27,7 @@ from conftest import (
     make_cloud_app,
     official_payload,
     requires_node,
+    seed_bucket,
     widget_style_payload,
 )
 
@@ -44,16 +45,6 @@ def overview(cloud):
     resp = cloud.get("/api/v1/tm/overview", headers=READ)
     assert resp.status_code == 200, resp.text[:300]
     return resp.json()
-
-
-def seed_bucket(db, device, day, bucket, total, received=None):
-    db.execute(
-        "INSERT INTO tm_snapshot_buckets (device_id, local_day, bucket_start,"
-        " today_total, server_received_at) VALUES (?, ?, ?, ?, ?)"
-        " ON CONFLICT(device_id, local_day, bucket_start) DO UPDATE SET"
-        " today_total=excluded.today_total, server_received_at=excluded.server_received_at",
-        (device, day, bucket, total, received or bucket),
-    )
 
 
 # ================================================================ P0-1 outbox
@@ -692,8 +683,8 @@ def test_out_of_order_late_write_keeps_true_latest(tmp_path):
     db = Database(tmp_path / "ooo.db")
     ensure_schema(db)
     day = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    seed_bucket(db, "d", day, f"{day}T23:55:00.000Z", 900, f"{day}T23:55:30.000Z")
-    seed_bucket(db, "d", day, f"{day}T23:50:00.000Z", 800, f"{day}T23:56:00.000Z")
+    seed_bucket(db, "d", day, f"{day}T23:55:00.000Z", 900, received=f"{day}T23:55:30.000Z")
+    seed_bucket(db, "d", day, f"{day}T23:50:00.000Z", 800, received=f"{day}T23:56:00.000Z")
     trend = {r["day"]: r["total"] for r in trend_by_day(db)}
     assert trend[day] == 900
     db.close()

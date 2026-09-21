@@ -22,6 +22,7 @@ import { ChevronLeft, ChevronRight, MoveHorizontal } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { summarizeTrend, type DashboardData, type TrendPoint } from "./data";
 import { usd } from "./money";
+import { compact, count, pct } from "./lib/format";
 import { AppErrorBoundary, lazyWithReload } from "./chunkLoad";
 import { indexForSelectedDay } from "./trend-math";
 import "./insight-trend.css";
@@ -31,16 +32,9 @@ const Liveline = lazyWithReload("liveline", () =>
 );
 
 const DAY = 86_400;
-const compact = (n: number) =>
-  n >= 1e8
-    ? `${(n / 1e8).toFixed(2)} 亿`
-    : n >= 1e4
-      ? `${(n / 1e4).toFixed(1)} 万`
-      : n.toLocaleString("en-US");
-const exact = (n: number) => n.toLocaleString("en-US");
-const money = (n: number | null) => usd(n);
-const percent = (n: number | null) =>
-  n === null ? "未提供" : `${(n * 100).toFixed(1)}%`;
+const exact = count;
+const money = usd;
+const percent = pct;
 const shortDay = (day: string) =>
   `${Number(day.slice(5, 7))}/${Number(day.slice(8))}`;
 const utcDay = (day: string) => Date.parse(`${day}T00:00:00Z`) / 1000;

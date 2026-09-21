@@ -5,13 +5,12 @@ import json
 import threading
 import time
 
-import httpx
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from conftest import make_settings
 from hub.auth import CodedHTTPException, require_access_token
-from hub.config import Settings
 from hub.db import Database
 from hub.main import create_app
 from hub.tm_outbox import (
@@ -172,8 +171,6 @@ def test_access_token_unconfigured_emits_stable_code(tmp_path):
 
 
 def test_cancel_running_update_is_conflict(tmp_path):
-    from hub import tm_update
-
     directory = tmp_path / "control"
     directory.mkdir()
     (directory / "request.json").write_text(

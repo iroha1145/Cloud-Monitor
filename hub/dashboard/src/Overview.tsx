@@ -36,20 +36,10 @@ import {
 } from "./data";
 import { matrixHeatLevel, matrixHeatPeak } from "./matrix-heat";
 import { usd } from "./money";
+import { compact, compactScale, count, pct } from "./lib/format";
 
-export const compact = (n: number) =>
-  n >= 1e8
-    ? `${(n / 1e8).toFixed(2)} 亿`
-    : n >= 1e4
-      ? `${(n / 1e4).toFixed(1)} 万`
-      : n.toLocaleString("en-US");
-export const money = (n: number | null) =>
-  n === null
-    ? "—"
-    : usd(n);
-export const pct = (n: number | null) =>
-  n === null ? "—" : `${(n * 100).toFixed(1)}%`;
-export const count = (n: number) => n.toLocaleString("en-US");
+const money = usd;
+export { compact, count, money, pct };
 export const composition = [
   { key: "cacheRead", label: "缓存读取", color: "#25a878" },
   { key: "input", label: "非缓存输入", color: "#3d9aff" },
@@ -131,10 +121,7 @@ export function Stats({
 }) {
   const per = data.periods[period],
     rate = per.components.cacheRate;
-  const suffix =
-    per.totalTokens >= 1e8 ? " 亿" : per.totalTokens >= 1e4 ? " 万" : "";
-  const divisor =
-    per.totalTokens >= 1e8 ? 1e8 : per.totalTokens >= 1e4 ? 1e4 : 1;
+  const { divisor, suffix } = compactScale(per.totalTokens);
   const online = data.devices.filter((d) => d.status === "online").length;
   return (
     <section className="stats-row" aria-label="用量摘要">

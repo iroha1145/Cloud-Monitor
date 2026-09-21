@@ -5,7 +5,6 @@ import android.graphics.Shader
 import android.provider.Settings
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -120,17 +119,4 @@ fun rememberGrow(key: Any): Float {
         }
     }
     return grow.value
-}
-
-@Composable
-fun rememberSpin(active: Boolean): Float {
-    val reduced = LocalReducedMotion.current
-    val rot = remember { Animatable(0f) }
-    LaunchedEffect(active, reduced) {
-        if (!active || reduced) return@LaunchedEffect
-        while (true) {
-            rot.animateTo(rot.value + 360f, tween(700, easing = LinearEasing))
-        }
-    }
-    return rot.value
 }

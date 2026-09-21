@@ -20,7 +20,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 
 val Brand = Color(0xFF2672C0)
-val Brand700 = Color(0xFF195A99)
 val Brand50 = Color(0xFFE7F0FA)
 
 @Immutable

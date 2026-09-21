@@ -629,10 +629,6 @@ def replayable_count(db: Database, *, max_attempts: int = MAX_ATTEMPTS_DEFAULT) 
     )
 
 
-def drop_pending(db: Database, request_id: str) -> None:
-    db.execute("DELETE FROM tm_ingest_outbox WHERE request_id = ?", (request_id,))
-
-
 def prune_done(db: Database, *, retention_hours: int = DONE_RETENTION_HOURS) -> int:
     cutoff = utc_z(datetime.now(timezone.utc) - timedelta(hours=retention_hours))
     cur = db.execute(

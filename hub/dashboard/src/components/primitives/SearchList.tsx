@@ -17,33 +17,15 @@ export type SearchListLabels = {
   emptyHint: string;
 };
 
-const ITEMS: SearchItem[] = [
-  "Forecast summer demand",
-  "Find waffle cone suppliers",
-  "Compare seasonal flavors",
-  "Draft flavor launch plan",
-  "Check cold-chain status",
-  "Audit sugar costs",
-  "Retire low sellers",
-];
-
-const LABELS: SearchListLabels = {
-  placeholder: "Search flavors…",
-  ariaLabel: "Search flavors",
-  emptyTitle: "No results found",
-  emptyHint: "Adjust your search to try again",
-};
-
 export default function SearchList({
-  items = ITEMS,
-  labels = LABELS,
+  items,
+  labels,
   onSelect,
 }: {
-  items?: SearchItem[];
-  labels?: SearchListLabels;
-  variant?: string;
+  items: SearchItem[];
+  labels: SearchListLabels;
   onSelect?: (item: SearchItem) => void;
-} = {}) {
+}) {
   const [query, setQuery] = useState("");
   const results = query
     ? items.filter((i) => i.toLowerCase().includes(query.toLowerCase()))

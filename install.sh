@@ -54,34 +54,15 @@ need_cmd() {
 }
 
 compose() {
-  if docker compose version >/dev/null 2>&1; then
-    docker compose "$@"
-  elif command -v docker-compose >/dev/null 2>&1; then
-    docker-compose "$@"
-  else
-    echo "需要 Docker Compose（docker compose 或 docker-compose）" >&2
-    exit 1
-  fi
+  cm_compose "$@"
 }
 
-# 容器以 999:999 读升级状态。root:999 0750 让管理员可写、容器组可进入；
-# 更新锁保留同一 inode：已有 watcher 可能正持锁，不能替换或截断。
+# 容器以 999:999 读升级状态。root:999 0750 让管理员可写、容器组可进入。
 ensure_update_runtime_dir() {
   local dir="$1"
   [[ ! -L "$dir" ]] || return 1
   install -d -o root -g 999 -m 0750 "$dir" || return 1
-  python3 - "$dir/update.lock" <<'PY'
-import os, stat, sys
-path = sys.argv[1]
-fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NONBLOCK | os.O_NOFOLLOW, 0o640)
-try:
-    if not stat.S_ISREG(os.fstat(fd).st_mode):
-        raise SystemExit("更新锁必须是普通文件")
-    os.fchown(fd, 0, 999)
-    os.fchmod(fd, 0o640)
-finally:
-    os.close(fd)
-PY
+  cm_init_update_lock "$dir/update.lock"
 }
 
 resolve_install_dir() {
@@ -240,6 +221,19 @@ CURRENT="$(read_mode_file "$INSTALL_DIR")"
 CHOSEN="$(pick_mode "$CURRENT")"
 echo "安装目录：$INSTALL_DIR"
 ensure_repo "$INSTALL_DIR"
+
+# compose 探测与更新锁初始化和 self-update.sh 共用；优先取脚本自身
+# 目录（与 install.sh 同一信任域），curl 直跑时取克隆完成的安装树。
+SELF_DIR=""
+if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
+  SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
+if [[ -f "$SELF_DIR/hub/scripts/lib.sh" ]]; then
+  # shellcheck source=hub/scripts/lib.sh
+  source "$SELF_DIR/hub/scripts/lib.sh"
+else
+  source "$INSTALL_DIR/hub/scripts/lib.sh"
+fi
 
 HUB="$INSTALL_DIR/hub"
 ENVF="$HUB/.env"

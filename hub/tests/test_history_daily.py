@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 
-import pytest
-
-from conftest import READ_KEY, TM_SECRET, make_cloud_app, requires_node, widget_style_payload
+from conftest import READ_KEY, TM_SECRET, requires_node, seed_bucket as seed
 from hub.db import Database
-from hub.tm_overview import activity_report, daily_activity
+from hub.tm_overview import daily_activity
 from hub.tm_snapshots import (
     HARD_RETENTION_DAYS,
     build_distinct_days_query,
@@ -19,29 +16,6 @@ from hub.tm_snapshots import (
 
 HEADERS = {"X-Token-Monitor-Secret": TM_SECRET}
 READ = {"Authorization": f"Bearer {READ_KEY}"}
-
-
-def seed(db, device, day, bucket, total, cost=0.0, clients=None, models=None, tz="", received=None):
-    db.execute(
-        "INSERT INTO tm_snapshot_buckets (device_id, local_day, bucket_start,"
-        " today_total, today_cost, clients_json, models_json, device_time_zone,"
-        " server_received_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        " ON CONFLICT(device_id, local_day, bucket_start) DO UPDATE SET"
-        " today_total=excluded.today_total, today_cost=excluded.today_cost,"
-        " clients_json=excluded.clients_json, models_json=excluded.models_json,"
-        " server_received_at=excluded.server_received_at",
-        (
-            device,
-            day,
-            bucket,
-            total,
-            cost,
-            json.dumps(clients or {}),
-            json.dumps(models or {}),
-            tz,
-            received or bucket,
-        ),
-    )
 
 
 def test_sql_pagination_not_python_slice(tmp_path):

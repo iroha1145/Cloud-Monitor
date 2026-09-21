@@ -30,6 +30,7 @@ import { BrandIcon } from "./BrandIcon";
 import { MetricTooltip } from "./MetricTooltip";
 import { ActivityPanel } from "./ActivityPanel";
 import { compact as compactNumber } from "./Overview";
+import { dayKeyZoned, formatZoned } from "./lib/datetime";
 import { escapeCsv, downloadCsv } from "./lib/csv";
 import { usd } from "./money";
 // Last import: mobile overrides must win ties within this async chunk.
@@ -52,21 +53,20 @@ function dateLabel(
   if (!value) return "未提供";
   const parsed = new Date(value.length === 10 ? `${value}T12:00:00Z` : value);
   if (!Number.isFinite(parsed.getTime())) return "未提供";
-  try {
-    return new Intl.DateTimeFormat("zh-CN", {
-      timeZone: value.length === 10 ? "UTC" : timeZone,
+  const fallback = () =>
+    parsed
+      .toISOString()
+      .slice(0, withTime ? 16 : 10)
+      .replace("T", " ");
+  return (
+    formatZoned(parsed, value.length === 10 ? "UTC" : timeZone, {
       month: "2-digit",
       day: "2-digit",
       ...(withTime
         ? { hour: "2-digit", minute: "2-digit", hourCycle: "h23" as const }
         : {}),
-    }).format(parsed);
-  } catch {
-    return parsed
-      .toISOString()
-      .slice(0, withTime ? 16 : 10)
-      .replace("T", " ");
-  }
+    }) ?? fallback()
+  );
 }
 
 function detailDateTime(
@@ -74,19 +74,16 @@ function detailDateTime(
   timeZone: string,
 ): string {
   if (!value || !Number.isFinite(Date.parse(value))) return "未提供";
-  try {
-    return new Intl.DateTimeFormat("zh-CN", {
-      timeZone,
+  return (
+    formatZoned(new Date(value), timeZone, {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
       hourCycle: "h23",
-    }).format(new Date(value));
-  } catch {
-    return value;
-  }
+    }) ?? value
+  );
 }
 
 function dateKey(value: string | null, timeZone: string): string | null {
@@ -94,19 +91,7 @@ function dateKey(value: string | null, timeZone: string): string | null {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return null;
-  try {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(parsed);
-    return ["year", "month", "day"]
-      .map((type) => parts.find((part) => part.type === type)?.value)
-      .join("-");
-  } catch {
-    return parsed.toISOString().slice(0, 10);
-  }
+  return dayKeyZoned(parsed, timeZone) ?? parsed.toISOString().slice(0, 10);
 }
 
 function relativeTime(value: string | null, reference: string): string {

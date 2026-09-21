@@ -50,8 +50,3 @@ fun FloatTipHost(controller: FloatTipController) {
         }
     }
 }
-
-@Composable
-fun ToastBanner(text: String?, error: Boolean = false) {
-    if (!text.isNullOrBlank()) Snackbar { Text(text, color = if (error) CmColorsCurrent.crit else CmColorsCurrent.ink) }
-}

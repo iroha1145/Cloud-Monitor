@@ -41,6 +41,36 @@ NODE_AVAILABLE = shutil.which("node") is not None
 requires_node = pytest.mark.skipif(not NODE_AVAILABLE, reason="本机无 node，差分测试需要官方 hub")
 
 
+def make_settings(tmp_path, **overrides) -> Settings:
+    """共享的 Settings 构造：后台线程默认关闭，各文件只声明自己的覆盖项。"""
+    values = dict(
+        api_key=API_KEY,
+        access_token=READ_KEY,
+        database_path=tmp_path / "hub.sqlite3",
+        frontend_dir=tmp_path / "frontend",
+        max_records_per_push=500,
+        tm_background_enabled=False,
+    )
+    values.update(overrides)
+    return Settings(**values)
+
+
+def seed_bucket(db, device, day, bucket, total, *, tz="", received=None, cost=0.0,
+                clients=None, models=None, output=0, cache_read=0, cache_write=0,
+                unclassified=0, recorded=None, all_time=0):
+    """往 tm_snapshot_buckets 播一行的共享 helper。
+
+    列值全部显式给出，同桶重复播种即整行替换（INSERT OR REPLACE）；
+    时区默认值约定为空串（未知时区），需要具体时区的调用方显式传 tz=。
+    """
+    db.execute(
+        "INSERT OR REPLACE INTO tm_snapshot_buckets (device_id, local_day, bucket_start, today_total, today_output, today_cache_read, today_cache_write, today_unclassified, today_components_recorded, today_cost, all_time_total, clients_json, models_json, device_time_zone, server_received_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (device, day, bucket, total, output, cache_read, cache_write, unclassified,
+         recorded, cost, all_time, json.dumps(clients or {}), json.dumps(models or {}),
+         tz, received or bucket),
+    )
+
+
 def free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))

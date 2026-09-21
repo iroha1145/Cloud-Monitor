@@ -8,6 +8,7 @@ import httpx
 import pytest
 from zoneinfo import ZoneInfo
 
+from conftest import seed_bucket
 from hub.db import Database
 from hub.tm_outbox import ensure_schema as ensure_outbox, record_pending, replay_pending, record_from_payload, save_normalized
 from hub.tm_overview import _dashboard_period, activity_report
@@ -44,14 +45,6 @@ def db_for(tmp_path, name="edge.sqlite3"):
     return db
 
 
-def seed(db, device, day, bucket, total, tz="UTC"):
-    db.execute(
-        "INSERT INTO tm_snapshot_buckets (device_id, local_day, bucket_start,"
-        " today_total, device_time_zone, server_received_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (device, day, bucket, total, tz, bucket),
-    )
-
-
 def test_dashboard_period_today_ends_at_next_local_midnight():
     now = dt.datetime(2026, 8, 23, 12, 34, tzinfo=ZoneInfo("Asia/Tokyo"))
     period = _dashboard_period("Asia/Tokyo", now=now)
@@ -63,8 +56,8 @@ def test_dashboard_period_today_ends_at_next_local_midnight():
 def test_thirty_minute_interval_is_not_treated_as_five_minute_loss(tmp_path):
     db = db_for(tmp_path, "interval.sqlite3")
     day = "2026-08-23"
-    seed(db, "slow", day, f"{day}T00:00:00.000Z", 10)
-    seed(db, "slow", day, f"{day}T00:30:00.000Z", 20)
+    seed_bucket(db, "slow", day, f"{day}T00:00:00.000Z", 10, tz="UTC")
+    seed_bucket(db, "slow", day, f"{day}T00:30:00.000Z", 20, tz="UTC")
     report = activity_report(
         db,
         "UTC",

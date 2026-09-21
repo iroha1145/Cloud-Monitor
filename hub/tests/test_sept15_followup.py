@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi import HTTPException
 
-from hub.config import Settings
+from conftest import make_settings
 from hub.db import Database
 from hub.tm_outbox import (
     can_supersede,
@@ -29,15 +29,7 @@ from hub.tm_validate import is_limits_only_update
 
 
 def settings(tmp_path, **overrides):
-    values = dict(
-        api_key="a" * 32,
-        access_token="b" * 32,
-        database_path=tmp_path / "followup.sqlite3",
-        frontend_dir=tmp_path / "frontend",
-        max_records_per_push=500,
-        tm_background_enabled=False,
-    )
-    return Settings(**(values | overrides))
+    return make_settings(tmp_path, database_path=tmp_path / "followup.sqlite3", **overrides)
 
 
 def _usage(

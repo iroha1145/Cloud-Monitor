@@ -17,7 +17,7 @@ import json
 import logging
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from defusedxml import ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
@@ -26,6 +26,8 @@ from typing import Any, Iterable, Optional
 from xml.etree.ElementTree import ParseError
 
 import httpx
+
+from .tm_snapshots import utc_seconds_z
 
 log = logging.getLogger("tm-provider-status")
 
@@ -376,7 +378,7 @@ def _rss_date(raw: Optional[str]) -> Optional[str]:
         dt = parsedate_to_datetime(text)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return utc_seconds_z(dt)
     except (TypeError, ValueError, OverflowError, IndexError):
         return text
 
