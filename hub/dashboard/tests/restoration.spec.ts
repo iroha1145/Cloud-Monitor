@@ -78,7 +78,7 @@ test("mobile archive pages preserve unknowns, negative fees, composition and loa
   await page.goto("/tests/restoration-harness.html");
   const panel = page.locator(".archive-panel");
   await expect(panel.getByText("2026-09-05", { exact: true })).toBeVisible();
-  await expect(panel.getByText("$-0.45", { exact: true })).toBeVisible();
+  await expect(panel.getByText("-$0.45", { exact: true })).toBeVisible();
   await expect(panel.getByText(/包含多个设备时区/)).toBeVisible();
   await panel.locator("summary").first().click();
   await expect(panel.getByText(/覆盖率未提供/)).toBeVisible();

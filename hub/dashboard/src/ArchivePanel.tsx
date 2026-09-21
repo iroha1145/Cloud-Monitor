@@ -12,6 +12,7 @@ import {
   type ArchivePage,
 } from "./restoration-api";
 import { full } from "./lib/format";
+import { usd } from "./money";
 import "./archive-panel.css";
 
 export interface ArchivePanelProps {
@@ -22,10 +23,7 @@ export interface ArchivePanelProps {
   historyAvailable?: boolean;
 }
 const formatCount = full;
-const formatCost = (value: number | null) =>
-  value === null
-    ? "未提供"
-    : `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const formatCost = usd;
 function Composition({
   title,
   values,

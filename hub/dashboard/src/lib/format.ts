@@ -2,20 +2,25 @@
 
 /** 紧凑计数：≥1 亿两位小数、≥1 万一位小数、其余千分位原样。 */
 export function compact(value: number): string {
-  return value >= 1e8
-    ? `${(value / 1e8).toFixed(2)} 亿`
-    : value >= 1e4
-      ? `${(value / 1e4).toFixed(1)} 万`
-      : value.toLocaleString("en-US");
+  if (value >= 1e8) return `${(value / 1e8).toFixed(2)} 亿`;
+  if (value >= 1e4) {
+    const wan = (value / 1e4).toFixed(1);
+    // 9995 万 round 成 10000 万时应滚到 1 亿，而不是显示「10000.0 万」
+    if (Number(wan) >= 10000) return compact(1e8);
+    return `${wan} 万`;
+  }
+  return value.toLocaleString("en-US");
 }
 
 /** NumberTicker 的万/亿缩放对：显示值 = 原值 / divisor，后缀 suffix。 */
 export function compactScale(value: number): { divisor: number; suffix: string } {
-  return value >= 1e8
-    ? { divisor: 1e8, suffix: " 亿" }
-    : value >= 1e4
-      ? { divisor: 1e4, suffix: " 万" }
-      : { divisor: 1, suffix: "" };
+  // 与 compact 同款进位：99,999,500–99,999,999 按 1 亿缩放
+  if (value >= 1e8 || (value >= 1e4 && Number((value / 1e4).toFixed(1)) >= 10000)) {
+    return { divisor: 1e8, suffix: " 亿" };
+  }
+  return value >= 1e4
+    ? { divisor: 1e4, suffix: " 万" }
+    : { divisor: 1, suffix: "" };
 }
 
 /** 精确计数（千分位）。 */
