@@ -83,13 +83,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import io.github.iroha1145.cloudmonitor.EagerSvgDecoderFactory
-import io.github.iroha1145.cloudmonitor.data.Format
 import io.github.iroha1145.cloudmonitor.data.logoAssetPath
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
 import io.github.iroha1145.cloudmonitor.ui.theme.LocalReducedMotion
@@ -139,12 +137,6 @@ fun PanelHead(title: String, sub: String, trailing: @Composable (() -> Unit)? = 
             }
         }
     }
-}
-
-@Composable
-fun CompactNumber(value: Double, size: TextUnit = 32.sp, tight: Boolean = false, color: Color = CmColorsCurrent.ink) {
-    val parts = Format.compactParts(value, tight)
-    Text(parts.n + parts.u, color = color, fontSize = size, fontWeight = FontWeight.SemiBold)
 }
 
 @Composable
@@ -424,51 +416,4 @@ fun ShimmerPanel(height: Dp = 128.dp) {
             .clip(RoundedCornerShape(10.dp))
             .background(brush),
     )
-}
-
-@Composable
-fun ConnFlowTrack(online: Boolean, modifier: Modifier = Modifier) {
-    val reduced = LocalReducedMotion.current
-    val inf = rememberInfiniteTransition(label = "conn")
-    val a by inf.animateFloat(
-        0f, 1f,
-        infiniteRepeatable(tween(2000, easing = LinearEasing), RepeatMode.Restart),
-        label = "flow-a",
-    )
-    val b by inf.animateFloat(
-        0f, 1f,
-        infiniteRepeatable(tween(2000, delayMillis = 660, easing = LinearEasing), RepeatMode.Restart),
-        label = "flow-b",
-    )
-    val c by inf.animateFloat(
-        0f, 1f,
-        infiniteRepeatable(tween(2000, delayMillis = 1330, easing = LinearEasing), RepeatMode.Restart),
-        label = "flow-c",
-    )
-    BoxWithConstraints(
-        modifier
-            .height(2.dp)
-            .clip(RoundedCornerShape(2.dp))
-            .background(if (online) Color(0xFF34D399) else Color(0xFFCFD3DD)),
-    ) {
-        if (online && !reduced) {
-            val w = maxWidth
-            listOf(a, b, c).forEach { t ->
-                val alpha = when {
-                    t < 0.12f -> t / 0.12f
-                    t > 0.88f -> (1f - t) / 0.12f
-                    else -> 1f
-                }
-                Box(
-                    Modifier
-                        .align(Alignment.CenterStart)
-                        .offset(x = w * t * 0.96f)
-                        .size(4.dp)
-                        .graphicsLayer { this.alpha = alpha }
-                        .clip(CircleShape)
-                        .background(Color(0xFF0A7C58)),
-                )
-            }
-        }
-    }
 }

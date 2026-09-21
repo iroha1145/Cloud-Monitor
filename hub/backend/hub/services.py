@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from .db import Database, record_fingerprint
-from .models import DeviceInfo, RecordIn, SyncPushRequest, UserIn
+from .models import DeviceInfo, SyncPushRequest, UserIn
 
 
 def utc_now() -> str:

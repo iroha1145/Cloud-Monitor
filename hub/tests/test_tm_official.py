@@ -330,12 +330,7 @@ def _asgi_call(app, path: str, chunks: list[bytes], method: str = "POST"):
         ],  # 故意不带 content-length
         "client": ("127.0.0.1", 0), "server": ("127.0.0.1", 80),
     }
-    import anyio
 
-    anyio.run(app.__call__, scope, receive, send) if False else None
-    from starlette.testclient import TestClient  # noqa: F401
-
-    # anyio.run 不支持多参数传法，用 asyncio 原生跑
     async def run():
         await app(scope, receive, send)
 

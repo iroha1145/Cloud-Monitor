@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from conftest import READ_KEY, TM_SECRET, requires_node, widget_style_payload
+from conftest import READ_KEY, TM_SECRET, requires_node, seed_bucket, widget_style_payload
 from hub.db import Database
 from hub import tm_snapshots as snapshots
 
@@ -19,21 +19,10 @@ def db():
     database.close()
 
 
-def seed(db, *, device="device", day=None, at="12:00", total=100, output=0,
-         cache_read=0, cache_write=0, unclassified=0, recorded=None,
-         cost=0.0, received=None, all_time=0):
+def seed(db, *, device="device", day=None, at="12:00", total=100, **kw):
+    """按东京时区播种当日桶；day 缺省取今天，at 为 UTC 钟点。"""
     day = day or datetime.now(timezone.utc).date().isoformat()
-    stamp = f"{day}T{at}:00.000Z"
-    db.execute(
-        """INSERT INTO tm_snapshot_buckets (
-            device_id, local_day, bucket_start, today_total, today_output,
-            today_cache_read, today_cache_write, today_unclassified,
-            today_components_recorded, today_cost, all_time_total,
-            server_received_at, device_time_zone
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (device, day, stamp, total, output, cache_read, cache_write, unclassified,
-         recorded, cost, all_time, received or stamp, "Asia/Tokyo"),
-    )
+    seed_bucket(db, device, day, f"{day}T{at}:00.000Z", total, tz="Asia/Tokyo", **kw)
     return day
 
 

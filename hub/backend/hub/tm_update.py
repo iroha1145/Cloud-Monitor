@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from .auth import require_access_token
 from .config import Settings
+from .tm_snapshots import utc_seconds_z
 
 log = logging.getLogger("tm-update")
 
@@ -46,13 +47,6 @@ FetchFn = Callable[[str], tuple[int, Any]]
 
 class ApplyBody(BaseModel):
     ref: str = Field(..., min_length=1, max_length=80)
-
-
-def validate_github_repo(raw: str) -> str:
-    repo = (raw or "").strip()
-    if not REPO_RE.match(repo):
-        raise ValueError("CM_GITHUB_REPO 必须是 owner/name")
-    return repo
 
 
 def parse_ref(raw: str) -> str:
@@ -72,7 +66,7 @@ def parse_ref(raw: str) -> str:
 
 
 def _iso_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return utc_seconds_z(datetime.now(timezone.utc))
 
 
 def _job_age_seconds(updated_at: str) -> float | None:
@@ -497,8 +491,6 @@ class UpdateService:
 
 
 def os_access_write(path: Path) -> bool:
-    import os
-
     return os.access(path, os.W_OK)
 
 

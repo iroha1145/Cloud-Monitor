@@ -12,8 +12,8 @@ import pytest
 from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 
+from conftest import make_settings
 from hub.body_limit import TmBodyLimitMiddleware
-from hub.config import Settings
 from hub.db import Database
 from hub.main import create_app
 from hub.models import MAX_USERS_PER_PUSH
@@ -24,10 +24,7 @@ from hub.tm_snapshots import ensure_schema as ensure_snapshots
 
 
 def settings(tmp_path, **overrides):
-    values = dict(api_key="a" * 32, access_token="b" * 32,
-                  database_path=tmp_path / "audit.sqlite3", frontend_dir=tmp_path / "frontend",
-                  max_records_per_push=500, tm_background_enabled=False)
-    return Settings(**(values | overrides))
+    return make_settings(tmp_path, database_path=tmp_path / "audit.sqlite3", **overrides)
 
 
 class ControlledCore:

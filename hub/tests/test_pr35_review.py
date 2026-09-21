@@ -5,13 +5,12 @@ import json
 import threading
 import time
 
-import httpx
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from conftest import make_settings
 from hub.auth import CodedHTTPException, require_access_token
-from hub.config import Settings
 from hub.db import Database
 from hub.main import create_app
 from hub.tm_outbox import (
@@ -26,21 +25,12 @@ from hub.tm_outbox import (
     supersede_older_pending,
 )
 from hub.tm_overview import OverviewCache
-from hub.tm_proxy import UpstreamUnavailable
 from hub.tm_snapshots import ensure_schema as ensure_snapshots
 from hub.tm_update import UpdateService
 
 
 def settings(tmp_path, **overrides):
-    values = dict(
-        api_key="a" * 32,
-        access_token="b" * 32,
-        database_path=tmp_path / "review.sqlite3",
-        frontend_dir=tmp_path / "frontend",
-        max_records_per_push=500,
-        tm_background_enabled=False,
-    )
-    return Settings(**(values | overrides))
+    return make_settings(tmp_path, database_path=tmp_path / "review.sqlite3", **overrides)
 
 
 def test_probe_write_does_not_rollback_a_concurrent_writer(tmp_path):
@@ -109,18 +99,19 @@ def test_record_pending_does_not_supersede_before_mark_done(tmp_path):
         db.close()
 
 
-def test_unavailable_replay_stops_without_burning_attempts(tmp_path):
+def test_unconfirmed_row_is_not_replayable_and_keeps_its_attempts(tmp_path):
+    """没有 tm-core 持久确认（normalized_json 为空）的行不重放、不计次。
+
+    真正的「不可达中止整轮」覆盖在 test_failure_paths.py：循环内已无
+    core 调用，DeadCore 在这里一次都不会被请求，放同名测试只会空转。
+    """
     db = Database(tmp_path / "replay.sqlite3")
     ensure_schema(db)
     ensure_snapshots(db)
     record_pending(db, request_id="keep", device_id="dev", payload={"deviceId": "dev"})
 
-    class DeadCore:
-        def request(self, *_args, **_kwargs):
-            raise UpstreamUnavailable("tm-core 不可达")
-
     try:
-        result = replay_pending(db, DeadCore())
+        result = replay_pending(db, None)
         assert "stopped_by" not in result
         assert result["checked"] == 0  # no durable upstream acknowledgement
         row = db.fetchone(
@@ -172,8 +163,6 @@ def test_access_token_unconfigured_emits_stable_code(tmp_path):
 
 
 def test_cancel_running_update_is_conflict(tmp_path):
-    from hub import tm_update
-
     directory = tmp_path / "control"
     directory.mkdir()
     (directory / "request.json").write_text(

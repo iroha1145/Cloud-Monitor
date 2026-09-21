@@ -36,20 +36,10 @@ import {
 } from "./data";
 import { matrixHeatLevel, matrixHeatPeak } from "./matrix-heat";
 import { usd } from "./money";
+import { compact, count, pct } from "./lib/format";
 
-export const compact = (n: number) =>
-  n >= 1e8
-    ? `${(n / 1e8).toFixed(2)} 亿`
-    : n >= 1e4
-      ? `${(n / 1e4).toFixed(1)} 万`
-      : n.toLocaleString("en-US");
-export const money = (n: number | null) =>
-  n === null
-    ? "—"
-    : usd(n);
-export const pct = (n: number | null) =>
-  n === null ? "—" : `${(n * 100).toFixed(1)}%`;
-export const count = (n: number) => n.toLocaleString("en-US");
+const money = usd;
+export { compact, count, money, pct };
 export const composition = [
   { key: "cacheRead", label: "缓存读取", color: "#25a878" },
   { key: "input", label: "非缓存输入", color: "#3d9aff" },
@@ -131,10 +121,6 @@ export function Stats({
 }) {
   const per = data.periods[period],
     rate = per.components.cacheRate;
-  const suffix =
-    per.totalTokens >= 1e8 ? " 亿" : per.totalTokens >= 1e4 ? " 万" : "";
-  const divisor =
-    per.totalTokens >= 1e8 ? 1e8 : per.totalTokens >= 1e4 ? 1e4 : 1;
   const online = data.devices.filter((d) => d.status === "online").length;
   return (
     <section className="stats-row" aria-label="用量摘要">
@@ -145,14 +131,8 @@ export function Stats({
         </div>
         <div className="stat-value">
           <NumberTicker
-            value={Math.round((per.totalTokens / divisor) * 100)}
-            format={(n) =>
-              (n / 100).toLocaleString("en-US", {
-                maximumFractionDigits: divisor === 1e4 ? 1 : 2,
-                useGrouping: false,
-              })
-            }
-            suffix={suffix}
+            value={per.totalTokens}
+            format={(n) => compact(n)}
             duration={0.45}
             stagger={0.015}
             startOnView={false}
@@ -170,7 +150,7 @@ export function Stats({
         </div>
         <div className="stat-value">
           {per.costUsd === null ? (
-            "—"
+            "未提供"
           ) : (
             <NumberTicker
               value={Math.round(per.costUsd * 100)}
@@ -215,7 +195,7 @@ export function Stats({
         </div>
         <div className="stat-value">
           {rate === null ? (
-            "—"
+            "未提供"
           ) : (
             <NumberTicker
               value={Math.round(rate * 1000)}
@@ -340,16 +320,16 @@ export function CompositionCard({
               {(!per.components.known && v.key !== "unclassified") ||
               (v.key === "cacheRead" && !per.components.cacheReadKnown) ||
               (v.key === "cacheWrite" && !per.components.cacheWriteKnown)
-                ? "—"
+                ? "未提供"
                 : compact(v.value)}
             </strong>
             <span>
               {(!per.components.known && v.key !== "unclassified") ||
               (v.key === "cacheRead" && !per.components.cacheReadKnown) ||
               (v.key === "cacheWrite" && !per.components.cacheWriteKnown)
-                ? "—"
+                ? "未提供"
                 : per.components.known && !per.components.complete
-                  ? "—"
+                  ? "未提供"
                   : pct(v.value / sum)}
             </span>
           </div>
@@ -823,7 +803,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
                             className={`matrix-cell level-${level}`}
                           >
                             {v === undefined
-                              ? "—"
+                              ? "未提供"
                               : metric === "tokens"
                                 ? compact(v)
                                 : money(v)}

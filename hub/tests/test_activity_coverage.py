@@ -6,18 +6,10 @@ import datetime as dt
 from zoneinfo import ZoneInfo
 
 from hub.db import Database
-from hub.tm_overview import activity_report, daily_activity
-from hub.tm_snapshots import ensure_schema, utc_z
+from hub.tm_overview import activity_report
+from hub.tm_snapshots import ensure_schema
 
-
-def seed(db, device, day, bucket, total, tz="", received=None):
-    db.execute(
-        "INSERT INTO tm_snapshot_buckets (device_id, local_day, bucket_start,"
-        " today_total, device_time_zone, server_received_at) VALUES (?, ?, ?, ?, ?, ?)"
-        " ON CONFLICT(device_id, local_day, bucket_start) DO UPDATE SET"
-        " today_total=excluded.today_total, server_received_at=excluded.server_received_at",
-        (device, day, bucket, total, tz, received or bucket),
-    )
+from conftest import seed_bucket as seed
 
 
 def _db(tmp_path, name="a.db"):

@@ -81,17 +81,6 @@ fun modelBreakdown(period: PeriodTotals, name: String): List<TokenSeg> {
     return if (parts.known) componentSegments(parts) else emptyList()
 }
 
-/** For partial data the caller should use UsageComponents.cacheLabel. */
-fun cacheHitRate(period: PeriodTotals, name: String): Double? =
-    usageComponents(period, "model", name).cacheRate
-
-fun componentsComplete(period: PeriodTotals, segs: List<TokenSeg>): Boolean {
-    val total = period.totalTokens
-    if (total <= 0 || segs.isEmpty()) return true
-    val sum = segs.sumOf { it.value }
-    return kotlin.math.abs(sum - total) <= maxOf(1.0, total * 0.01)
-}
-
 fun matrixAxes(map: Map<String, Map<String, Double>>, top: Int = 8): Pair<List<String>, List<String>> {
     val rowSum = mutableMapOf<String, Double>()
     val colSum = mutableMapOf<String, Double>()
@@ -134,15 +123,6 @@ fun hmLevel(v: Double, max: Double): Int {
     return minOf(5, maxOf(1, kotlin.math.ceil(v / max * 5).toInt()))
 }
 
-val HM_COLORS_LIGHT = listOf(
-    Color(0xFFEDF0F2), Color(0xFFE3F0E8), Color(0xFFB9DCCB),
-    Color(0xFF7EBB9D), Color(0xFF338B6B), Color(0xFF16765E),
-)
-val HM_COLORS_DARK = listOf(
-    Color(0xFF292D34), Color(0xFF203C34), Color(0xFF285C49),
-    Color(0xFF3F8767), Color(0xFF66AE8A), Color(0xFF9AD4B4),
-)
-
 /** Keep the old chart entry point without inventing days or mixing activity totals. */
 @Suppress("UNUSED_PARAMETER")
 fun trendRows(overview: Overview, now: Long = System.currentTimeMillis()): List<TrendRow> =
@@ -178,15 +158,6 @@ fun deviceStatus(device: Device, overview: Overview, now: Long = System.currentT
 
 fun deviceOnline(device: Device, overview: Overview, now: Long = System.currentTimeMillis()): Boolean =
     deviceStatus(device, overview, now) == DeviceStatus.Online
-
-fun hourlyBuckets(overview: Overview): List<HourBucket> {
-    val todayKey = overview.dashboardPeriod?.today?.key
-    val ht = overview.activity.hourlyToday
-    if (ht != null && ht.buckets.isNotEmpty() && (todayKey == null || ht.day == todayKey)) {
-        return ht.buckets
-    }
-    return overview.activity.hourly
-}
 
 fun rankedNames(map: Map<String, Double>): List<String> =
     map.entries.sortedByDescending { it.value }.map { it.key }

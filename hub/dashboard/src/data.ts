@@ -3,6 +3,8 @@
  * All demo records are synthetic. The live adapter consumes the existing v2
  * /api/v1/tm/overview contract without changing aggregation or fetching secrets.
  */
+import { dayKeyZoned, isValidTimeZone } from "./lib/datetime";
+
 export type PeriodKey = "today" | "month" | "allTime";
 export const PERIOD_LABELS: Record<PeriodKey, string> = {
   today: "今日",
@@ -723,16 +725,7 @@ const sourceTimestamp = (value: unknown): string | null =>
 const sourceDateKey = (value: unknown, timeZone: string): string | null => {
   const stamp = sourceTimestamp(value);
   if (!stamp) return null;
-  try {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date(stamp));
-  } catch {
-    return null;
-  }
+  return dayKeyZoned(new Date(stamp), timeZone);
 };
 
 function normalizeActivity(root: JsonRecord, features: DashboardFeatures) {
@@ -833,12 +826,7 @@ function normalizeActivity(root: JsonRecord, features: DashboardFeatures) {
 
 /** Pass API JSON, never credentials. Missing auxiliary data remains unavailable. */
 function safeTimeZone(raw: string): string {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: raw }).format(new Date());
-    return raw;
-  } catch {
-    return "UTC";
-  }
+  return isValidTimeZone(raw) ? raw : "UTC";
 }
 
 const LIMIT_STATUS_NOTICE: Record<string, string | null> = {

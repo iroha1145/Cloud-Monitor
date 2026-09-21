@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 import json
-from typing import Awaitable, Callable, Mapping
+from typing import Mapping
 
 MAX_TM_BODY_BYTES = 1024 * 1024  # 与官方 readJsonBody 的 MAX_JSON_BODY_BYTES 一致
 

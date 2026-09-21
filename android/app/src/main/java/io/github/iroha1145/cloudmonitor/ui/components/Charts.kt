@@ -19,7 +19,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
@@ -191,67 +190,6 @@ fun DailyTrendChart(rows: List<TrendRow>, page: io.github.iroha1145.cloudmonitor
                 IconButton(onClick = { selectedDay = plotRows[selected + 1].day }, enabled = selected < plotRows.lastIndex, modifier = Modifier.size(48.dp).testTag("trend-next")) {
                     Icon(io.github.iroha1145.cloudmonitor.ui.AppIcons.ChevronRight, "查看后一天记录", modifier = Modifier.size(16.dp), tint = if (selected < plotRows.lastIndex) cm.mute else cm.mute.copy(alpha = .3f))
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun QuotaRing(remainPct: Float, level: String, modifier: Modifier = Modifier) {
-    val cm = CmColorsCurrent
-    val color = when (level) { "crit" -> cm.crit; "warn" -> cm.warn; else -> cm.ok }
-    Box(modifier.size(64.dp).semantics { contentDescription = "剩余额度 ${(remainPct * 100).roundToInt()}%" }, contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize()) {
-            val stroke = Stroke(5.dp.toPx(), cap = StrokeCap.Round)
-            val inset = stroke.width / 2
-            val arc = Size(size.width - stroke.width, size.height - stroke.width)
-            drawArc(cm.border, -90f, 360f, false, Offset(inset, inset), arc, style = stroke)
-            drawArc(color, -90f, 360f * remainPct.coerceIn(0f, 1f), false, Offset(inset, inset), arc, style = stroke)
-        }
-        // The adjacent text carries the value at large font scales without squeezing it inside the ring.
-    }
-}
-
-@Composable
-fun HeatCells(values: List<Pair<String, Double>>, columns: Int, showLabel: Boolean, leading: Int = 0) {
-    val cm = CmColorsCurrent
-    val max = values.maxOfOrNull { it.second }?.coerceAtLeast(1.0) ?: 1.0
-    val padded = List(leading.coerceAtLeast(0)) { "" to -1.0 } + values
-    val tip = LocalFloatTip.current
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val cellSize = ((maxWidth - 4.dp * (columns - 1)) / columns).coerceAtLeast(48.dp)
-        Column(Modifier.horizontalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            padded.chunked(columns).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    row.forEach { (label, value) ->
-                        if (value < 0) Spacer(Modifier.size(cellSize))
-                        else {
-                            val level = hmLevel(value, max).coerceIn(cm.hm.indices)
-                            Box(Modifier.size(cellSize).clip(RoundedCornerShape(8.dp)).background(cm.hm[level])
-                                .clickable(role = Role.Button, onClickLabel = "查看用量") { tip.show(label, listOf("词元用量" to Format.fmtInt(value))) }
-                                .semantics { contentDescription = "$label，${Format.fmtCompact(value)}词元" }, contentAlignment = Alignment.Center) {
-                                if (showLabel) Text(label, color = if (cm.hm[level].luminance() > 0.179f) Color.Black else Color.White,
-                                    style = MaterialTheme.typography.labelSmall, modifier = Modifier.clearAndSetSemantics {})
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun SparkBars(values: List<Pair<String, Double>>, modifier: Modifier = Modifier) {
-    val max = values.maxOfOrNull { it.second }?.coerceAtLeast(1.0) ?: 1.0
-    val cm = CmColorsCurrent
-    val tip = LocalFloatTip.current
-    Row(modifier.fillMaxWidth().heightIn(min = 48.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        values.forEach { (day, value) ->
-            Box(Modifier.width(48.dp).height(48.dp).clickable(role = Role.Button) { tip.show(day, listOf("词元用量" to Format.fmtInt(value))) }
-                .semantics { contentDescription = "$day，${Format.fmtCompact(value)}词元" }, contentAlignment = Alignment.BottomCenter) {
-                Box(Modifier.fillMaxWidth().fillMaxHeight((value / max).toFloat().coerceIn(.02f, 1f)).clip(RoundedCornerShape(4.dp))
-                    .background(if (value <= 0) cm.border else cm.brand))
             }
         }
     }

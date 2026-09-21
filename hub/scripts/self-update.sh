@@ -21,6 +21,11 @@ STATUS="$RUNTIME/status.json"
 LOCK="$RUNTIME/update.lock"
 ENVF="$HUB/.env"
 
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+# compose 探测与更新锁初始化与 install.sh 共用。
+# shellcheck source=lib.sh
+source "$SCRIPT_DIR/lib.sh"
+
 if [[ -L "$CTRL" || -L "$RUNTIME" ]]; then
   echo "拒绝符号链接更新目录" >&2
   exit 1
@@ -41,14 +46,7 @@ refuse_symlink() {
 }
 
 compose() {
-  if docker compose version >/dev/null 2>&1; then
-    docker compose --project-directory "$HUB" "$@"
-  elif command -v docker-compose >/dev/null 2>&1; then
-    docker-compose --project-directory "$HUB" "$@"
-  else
-    echo "需要 Docker Compose" >&2
-    return 1
-  fi
+  cm_compose "$HUB" "$@"
 }
 
 iso_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -119,18 +117,7 @@ fi
 refuse_symlink "$LOCK" || exit 1
 # Initialize or repair older root-only locks without replacing their inode.
 # The container opens this root:999 file read-only and takes the same flock.
-python3 - "$LOCK" <<'PY'
-import os, stat, sys
-path = sys.argv[1]
-fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NONBLOCK | os.O_NOFOLLOW, 0o640)
-try:
-    if not stat.S_ISREG(os.fstat(fd).st_mode):
-        raise SystemExit("更新锁必须是普通文件")
-    os.fchown(fd, 0, 999)
-    os.fchmod(fd, 0o640)
-finally:
-    os.close(fd)
-PY
+cm_init_update_lock "$LOCK"
 exec 9<"$LOCK"
 if ! flock -n 9; then
   echo "已有更新在进行，跳过"

@@ -11,6 +11,8 @@ import {
   type ArchiveFallbackData,
   type ArchivePage,
 } from "./restoration-api";
+import { full } from "./lib/format";
+import { usd } from "./money";
 import "./archive-panel.css";
 
 export interface ArchivePanelProps {
@@ -20,12 +22,8 @@ export interface ArchivePanelProps {
   fallbackData?: ArchiveFallbackData;
   historyAvailable?: boolean;
 }
-const formatCount = (value: number | null) =>
-  value === null ? "未提供" : value.toLocaleString("zh-CN");
-const formatCost = (value: number | null) =>
-  value === null
-    ? "未提供"
-    : `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const formatCount = full;
+const formatCost = usd;
 function Composition({
   title,
   values,
