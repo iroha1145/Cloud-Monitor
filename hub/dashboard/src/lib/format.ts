@@ -12,17 +12,6 @@ export function compact(value: number): string {
   return value.toLocaleString("en-US");
 }
 
-/** NumberTicker 的万/亿缩放对：显示值 = 原值 / divisor，后缀 suffix。 */
-export function compactScale(value: number): { divisor: number; suffix: string } {
-  // 与 compact 同款进位：99,999,500–99,999,999 按 1 亿缩放
-  if (value >= 1e8 || (value >= 1e4 && Number((value / 1e4).toFixed(1)) >= 10000)) {
-    return { divisor: 1e8, suffix: " 亿" };
-  }
-  return value >= 1e4
-    ? { divisor: 1e4, suffix: " 万" }
-    : { divisor: 1, suffix: "" };
-}
-
 /** 精确计数（千分位）。 */
 export function count(value: number): string {
   return value.toLocaleString("en-US");

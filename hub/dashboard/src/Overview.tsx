@@ -36,7 +36,7 @@ import {
 } from "./data";
 import { matrixHeatLevel, matrixHeatPeak } from "./matrix-heat";
 import { usd } from "./money";
-import { compact, compactScale, count, pct } from "./lib/format";
+import { compact, count, pct } from "./lib/format";
 
 const money = usd;
 export { compact, count, money, pct };
@@ -121,7 +121,6 @@ export function Stats({
 }) {
   const per = data.periods[period],
     rate = per.components.cacheRate;
-  const { divisor, suffix } = compactScale(per.totalTokens);
   const online = data.devices.filter((d) => d.status === "online").length;
   return (
     <section className="stats-row" aria-label="用量摘要">
@@ -132,14 +131,8 @@ export function Stats({
         </div>
         <div className="stat-value">
           <NumberTicker
-            value={Math.round((per.totalTokens / divisor) * 100)}
-            format={(n) =>
-              (n / 100).toLocaleString("en-US", {
-                maximumFractionDigits: divisor === 1e4 ? 1 : 2,
-                useGrouping: false,
-              })
-            }
-            suffix={suffix}
+            value={per.totalTokens}
+            format={(n) => compact(n)}
             duration={0.45}
             stagger={0.015}
             startOnView={false}
