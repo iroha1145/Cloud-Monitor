@@ -28,6 +28,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional
 
+import httpx
+
 from .db import Database
 from .services import utc_now
 from .tm_snapshots import norm_ts, utc_z
@@ -849,9 +851,9 @@ def replay_pending(
                 mark_rejected(db, row["request_id"], str(exc))
                 stats["rejected"] += 1
             else:
-                if "不可达" in str(exc) or exc.__class__.__name__ in {
-                    "UpstreamUnavailable", "ConnectError", "ConnectTimeout",
-                }:
+                # 防御分支：重放改从 normalized_json 回读后循环内已无 tm-core
+                # 调用；万一底层再引入网络依赖，按类型中止整轮，不看错误文案。
+                if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
                     log.warning("重放中止（tm-core 不可达）: %s", exc)
                     stats["stopped_by"] = "upstream_unavailable"
                     break
