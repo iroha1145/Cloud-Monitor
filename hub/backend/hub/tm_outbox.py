@@ -866,10 +866,11 @@ def replay_pending(
     if pruned:
         try:
             db.execute("PRAGMA incremental_vacuum(500)")
-        except sqlite3.OperationalError:
-            pass
+        except sqlite3.Error as exc:
+            log.warning("outbox 增量回收失败: %s", exc)
     try:
         db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    except sqlite3.OperationalError:
-        pass
+    except sqlite3.Error as exc:
+        # 读事务占着时检查点只返回忙标志、不抛异常；走到这里的是损坏或磁盘错误
+        log.warning("WAL 检查点失败: %s", exc)
     return stats

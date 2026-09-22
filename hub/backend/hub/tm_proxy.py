@@ -450,25 +450,40 @@ class TmBackground:
             bootstrapped = self._bootstrap()
         except Exception as exc:  # Retry transient startup failures next cycle.
             log.warning("tm-core 后台初始化异常: %s", exc)
-        next_maintenance = time.monotonic() + self.settings.tm_background_interval
+        interval = self.settings.tm_background_interval
+        next_maintenance = time.monotonic() + interval
+        backoff = 0.0  # 上一圈出错后的最短等待；成功一圈即清零
         while not self._stop.is_set():
             delay = max(0.1, next_maintenance - time.monotonic())
             if self.forwarding is not None:
-                delay = self.forwarding.next_delay(delay)
-            self._wake.wait(delay)
+                try:
+                    delay = self.forwarding.next_delay(delay)
+                except Exception as exc:  # noqa: BLE001 — 线程退出会让重放与转发静默停摆
+                    log.warning("转发排期读取失败，按维护间隔等待: %s", exc)
+            # 写失败时到期行的排期改不回去，next_delay 会一直报 0.1 秒，所以出错后要退避
+            self._wake.wait(max(delay, backoff))
             self._wake.clear()
             if self._stop.is_set():
                 break
-            try:
-                if self.forwarding is not None:
+            failed = False
+            if self.forwarding is not None:
+                try:
                     self.forwarding.process_due(self.core, should_stop=self._stop.is_set)
-                maintenance_due = time.monotonic() >= next_maintenance
+                except Exception as exc:  # noqa: BLE001 — 后台任务不得崩溃进程
+                    failed = True
+                    log.warning("转发处理异常: %s", exc)
+            # 与转发分开：转发出错不能拖掉到期的重放与清理
+            maintenance_due = time.monotonic() >= next_maintenance
+            try:
                 if maintenance_due or replayable_count(self.db) > 0:
                     replay_pending(self.db, self.core, should_stop=self._stop.is_set)
-                if maintenance_due:
-                    next_maintenance = time.monotonic() + self.settings.tm_background_interval
             except Exception as exc:  # noqa: BLE001 — 后台任务不得崩溃进程
+                failed = True
                 log.warning("outbox 后台重放异常: %s", exc)
+            if maintenance_due:
+                # 必须在 try 之外：维护失败也要排下一次，否则等待时长塌到 0.1 秒空转
+                next_maintenance = time.monotonic() + interval
+            backoff = min(max(backoff * 2, RETRY_BASE_SECONDS), interval) if failed else 0.0
             if not bootstrapped and not self._stop.is_set():
                 try:
                     bootstrapped = self._bootstrap()
