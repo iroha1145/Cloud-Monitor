@@ -15,6 +15,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .services import iso_to_utc
+
 MAX_SAFE_INT = 2**53 - 1
 MIN_TIMESTAMP = datetime(2000, 1, 1, tzinfo=timezone.utc)
 MAX_COST = 1e12
@@ -134,13 +136,10 @@ def _check_cost(value: Any, path: str) -> None:
 def _check_timestamp(value: Any, path: str, *, allow_future: timedelta) -> None:
     if not isinstance(value, str) or not value:
         return  # 缺失交给官方规范化
-    raw = value.strip().replace("Z", "+00:00")
     try:
-        dt = datetime.fromisoformat(raw)
-    except ValueError:
+        dt = iso_to_utc(value)
+    except (ValueError, OverflowError):
         _reject(f"{path}: 非法时间戳 {value!r}")
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
     if dt < MIN_TIMESTAMP:
         _reject(f"{path}: 时间早于 {MIN_TIMESTAMP.date().isoformat()}（{value}）")
     if dt > datetime.now(timezone.utc) + allow_future:

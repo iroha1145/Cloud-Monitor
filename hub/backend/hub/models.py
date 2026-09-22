@@ -40,12 +40,10 @@ class RecordIn(BaseModel):
     @field_validator("created_at")
     @classmethod
     def _valid_created_at(cls, value: str) -> str:
-        raw = value.strip().replace("Z", "+00:00")
         try:
-            dt = datetime.fromisoformat(raw)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            dt = dt.astimezone(timezone.utc)
+            from .services import iso_to_utc
+
+            dt = iso_to_utc(value)
         except (ValueError, OverflowError) as exc:
             # A syntactically valid offset may push UTC outside years 1..9999.
             raise ValueError("created_at 不是合法的 ISO 8601 时间") from exc

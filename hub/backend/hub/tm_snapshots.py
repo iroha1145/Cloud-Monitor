@@ -25,7 +25,7 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from .db import Database
-from .services import utc_now
+from .services import iso_to_utc, utc_now
 
 log = logging.getLogger("tm-snapshots")
 
@@ -148,14 +148,10 @@ def _migrate_timestamp_format(db: Database) -> None:
 def _parse_iso(value: Any) -> Optional[datetime]:
     if not isinstance(value, str) or not value.strip():
         return None
-    raw = value.strip().replace("Z", "+00:00")
     try:
-        dt = datetime.fromisoformat(raw)
-    except ValueError:
+        return iso_to_utc(value)
+    except (ValueError, OverflowError):
         return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt
 
 
 def _valid_day_key(key: Any) -> Optional[str]:

@@ -25,6 +25,7 @@ import httpx
 
 from .db import Database
 from . import tm_outbox as outbox
+from .services import iso_to_utc
 from .tm_snapshots import resolve_local_day, utc_z, write_snapshot
 from .tm_validate import is_limits_only_update, validate_ingest_payload
 
@@ -59,10 +60,9 @@ def _parse_stamp(value: object) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
     try:
-        stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except (ValueError, TypeError):
+        return iso_to_utc(value)
+    except (ValueError, TypeError, OverflowError):
         return None
-    return stamp.replace(tzinfo=timezone.utc) if stamp.tzinfo is None else stamp.astimezone(timezone.utc)
 
 
 def retry_after_seconds(value: str | None, now: datetime) -> float | None:

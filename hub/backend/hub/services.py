@@ -19,18 +19,27 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+def iso_to_utc(raw: str) -> datetime:
+    """Parse an ISO 8601 string into a UTC-aware datetime.
+
+    Handles Z-suffix normalization and naive→UTC attachment.
+    Raises ValueError or OverflowError on malformed or unrepresentable input.
+    """
+    raw = raw.strip().replace("Z", "+00:00")
+    dt = datetime.fromisoformat(raw)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def parse_time(value: Optional[str], *, end_of_day: bool = False) -> Optional[datetime]:
     if not value:
         return None
     raw = value.strip()
     if len(raw) == 10 and raw[4] == "-" and raw[7] == "-":
         raw = raw + ("T23:59:59+00:00" if end_of_day else "T00:00:00+00:00")
-    raw = raw.replace("Z", "+00:00")
     try:
-        dt = datetime.fromisoformat(raw)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc)
+        return iso_to_utc(raw)
     except (ValueError, OverflowError) as exc:
         raise ValueError("时间不是合法或可表示的 ISO 8601 时间") from exc
 
