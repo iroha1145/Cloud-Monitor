@@ -179,7 +179,7 @@ def load_settings() -> Settings:
         from zoneinfo import ZoneInfo
 
         ZoneInfo(dashboard_tz)
-    except Exception as exc:
+    except (KeyError, ValueError) as exc:
         raise ConfigError(f"DASHBOARD_TIME_ZONE 非法 IANA 时区: {dashboard_tz!r}") from exc
 
     device_keys = parse_device_keys(os.environ.get("DEVICE_KEYS_JSON"))

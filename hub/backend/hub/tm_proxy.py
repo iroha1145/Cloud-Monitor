@@ -271,7 +271,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
         tm_auth(request)
         try:
             payload = await request.json()
-        except Exception:
+        except (ValueError, UnicodeDecodeError):
             return JSONResponse(
                 status_code=400, content={"error": "bad_request", "message": "invalid json"}
             )

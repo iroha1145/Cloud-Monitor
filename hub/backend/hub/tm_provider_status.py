@@ -675,7 +675,7 @@ async def _get_text(
         return None, error
     try:
         text = raw.decode("utf-8", errors="replace")
-    except Exception:
+    except (UnicodeDecodeError, LookupError):
         return None, "invalid_json"
     if not text.strip():
         return None, "invalid_json"

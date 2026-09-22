@@ -308,7 +308,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     ) -> dict:
         try:
             raw = await request.json()
-        except Exception as exc:
+        except (ValueError, UnicodeDecodeError) as exc:
             raise HTTPException(status_code=400, detail="请求体不是合法 JSON") from exc
         from pydantic import ValidationError
 

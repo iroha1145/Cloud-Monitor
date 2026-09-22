@@ -866,10 +866,10 @@ def replay_pending(
     if pruned:
         try:
             db.execute("PRAGMA incremental_vacuum(500)")
-        except Exception:  # noqa: BLE001
+        except sqlite3.OperationalError:
             pass
     try:
         db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    except Exception:  # noqa: BLE001
+    except sqlite3.OperationalError:
         pass
     return stats
