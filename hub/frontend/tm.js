@@ -46,15 +46,12 @@ function fmtCompact(v) {
   return p.n + p.u;
 }
 
-function _partsHtml(p) {
+function fmtCompactHtml(v, tight) {
+  const p = compactParts(v, !!tight);
   const inner = p.u
     ? `<span class="num-int">${esc(p.n)}</span><span class="num-unit">${p.u}</span>`
     : `<span class="num-int">${esc(p.n)}</span>`;
   return `<span class="num-compact">${inner}</span>`;
-}
-
-function fmtCompactHtml(v, tight) {
-  return _partsHtml(compactParts(v, !!tight));
 }
 
 function fmtPctParts(ratio) {
@@ -68,10 +65,6 @@ function fmtPctParts(ratio) {
 function fmtPct(ratio) {
   const p = fmtPctParts(ratio);
   return p.n + p.u;
-}
-
-function fmtPctHtml(ratio) {
-  return _partsHtml(fmtPctParts(ratio));
 }
 
 function fmtUsd(v) {
