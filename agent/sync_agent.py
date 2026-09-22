@@ -145,7 +145,6 @@ class AgentConfig:
     allow_legacy_fallback: bool = False
     allow_state_conflict: bool = False
     reset_cursor: bool = False
-    extra: dict = field(default_factory=dict)
 
 
 def load_config(env: Optional[dict[str, str]] = None) -> AgentConfig:
