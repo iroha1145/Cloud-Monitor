@@ -103,9 +103,7 @@ class NodeHub:
             except httpx.HTTPError:
                 time.sleep(0.1)
         else:
-            self.stop()
-            stderr = self.proc.stderr.read().decode() if self.proc.stderr else ""
-            raise RuntimeError("node hub 未能在 10s 内就绪: " + stderr)
+            raise RuntimeError("node hub 未能在 10s 内就绪: " + self.stop())
 
     @property
     def url(self) -> str:
@@ -114,12 +112,20 @@ class NodeHub:
     def headers(self) -> dict:
         return {"X-Token-Monitor-Secret": TM_SECRET}
 
-    def stop(self) -> None:
+    def stop(self) -> str:
+        """终止进程并返回 stderr 余下的内容（启动失败时用来排查）。"""
         self.proc.terminate()
         try:
             self.proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             self.proc.kill()
+            self.proc.wait()
+        # 进程退出后读 stderr 不会阻塞；读完即关，否则留下 ResourceWarning
+        stderr = self.proc.stderr
+        if stderr is None or stderr.closed:
+            return ""
+        with stderr:
+            return stderr.read().decode(errors="replace")
 
 
 def make_cloud_app(
@@ -331,7 +337,9 @@ def live_stack(tmp_path_factory):
         tm_core_url=node.url,
     )
     app = create_app(settings)
-    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
+    # 应用只用 SSE、没有 websocket 路由；ws="none" 让 uvicorn 不去导入已废弃的
+    # websockets.legacy 实现，测试输出里就不再有那两条 DeprecationWarning
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error", ws="none")
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
