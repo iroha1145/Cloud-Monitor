@@ -151,7 +151,7 @@ def _check_tz(name: Any, path: str) -> None:
         return
     try:
         ZoneInfo(name)
-    except (ZoneInfoNotFoundError, ValueError, KeyError):
+    except (ZoneInfoNotFoundError, ValueError, KeyError, OSError):  # 区域名如 Asia 是目录
         _reject(f"{path}: 非法 IANA 时区 {name!r}")
 
 

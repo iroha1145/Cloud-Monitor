@@ -528,6 +528,28 @@ def test_validator_additions_reject(cloud, mutation, fragment):
 
 
 @requires_node
+def test_validator_rejects_region_time_zone_with_400(cloud, monkeypatch):
+    """装了 tzdata 包时 ZoneInfo("Asia") 抛 IsADirectoryError，曾漏出校验、ingest 返回 500。
+    打桩模拟这种环境；异常里带一个服务器路径，确认它不会出现在返回给设备的信息里。"""
+    from hub import tm_validate
+
+    real = tm_validate.ZoneInfo
+
+    def region_is_a_directory(key):
+        if key == "Asia":
+            raise IsADirectoryError(21, "Is a directory", "/srv/tzdata/zoneinfo/Asia")
+        return real(key)
+
+    monkeypatch.setattr(tm_validate, "ZoneInfo", region_is_a_directory)
+    payload = {"deviceId": "dev-v", "today": {"totalTokens": 1}, "periodWindows": {"timeZone": "Asia"}}
+    resp = cloud.post("/api/ingest", json=payload, headers=HEADERS)
+    assert resp.status_code == 400
+    message = resp.json()["message"]
+    assert "IANA 时区" in message
+    assert "/srv/tzdata" not in message
+
+
+@requires_node
 @pytest.mark.parametrize("mutation", [
     {"today": {"cost": 1}},
     {"today": {"cost_usd": 1}},
