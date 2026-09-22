@@ -25,7 +25,7 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from .db import Database
-from .services import iso_to_utc, utc_now
+from .services import parse_iso_datetime, utc_now
 
 log = logging.getLogger("tm-snapshots")
 
@@ -149,8 +149,8 @@ def _parse_iso(value: Any) -> Optional[datetime]:
     if not isinstance(value, str) or not value.strip():
         return None
     try:
-        return iso_to_utc(value)
-    except (ValueError, OverflowError):
+        return parse_iso_datetime(value)
+    except ValueError:
         return None
 
 

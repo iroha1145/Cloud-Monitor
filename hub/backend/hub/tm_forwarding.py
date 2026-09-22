@@ -57,7 +57,9 @@ class ForwardAttempt:
 
 
 def _parse_stamp(value: object) -> datetime | None:
-    if not isinstance(value, str) or not value:
+    if not isinstance(value, str) or not value or value != value.strip():
+        # 共享解析会 strip；这里保持旧行为：首尾空白视为无法解析，
+        # 避免把带空格的 endsAt 当成有效窗口。
         return None
     try:
         return iso_to_utc(value)

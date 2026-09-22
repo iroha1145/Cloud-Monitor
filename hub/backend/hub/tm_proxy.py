@@ -271,7 +271,8 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
         tm_auth(request)
         try:
             payload = await request.json()
-        except (ValueError, UnicodeDecodeError):
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            # json.loads 对深层嵌套抛 RecursionError，仍是客户端正文问题。
             return JSONResponse(
                 status_code=400, content={"error": "bad_request", "message": "invalid json"}
             )

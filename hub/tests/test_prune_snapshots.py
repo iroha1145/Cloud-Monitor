@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from hub.db import Database
-from hub.tm_snapshots import ensure_schema, norm_ts, prune_snapshots, utc_z
+from hub.tm_snapshots import ensure_schema, migrate_legacy_tables, norm_ts, prune_snapshots, utc_z
 
 
 def insert(db, device, day, bucket, total, received=None, rowid=None):
@@ -28,6 +28,28 @@ def kept(db):
         "SELECT id, device_id, local_day, bucket_start, today_total, server_received_at"
         " FROM tm_snapshot_buckets ORDER BY id"
     )
+
+
+def test_legacy_migration_keeps_offset_calendar_day_when_day_missing(tmp_path):
+    db = Database(tmp_path / "legacy.sqlite3")
+    db._conn.executescript(
+        """
+        CREATE TABLE tm_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id TEXT NOT NULL,
+            received_at TEXT NOT NULL,
+            day TEXT NOT NULL,
+            today_total INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO tm_snapshots (device_id, received_at, day, today_total)
+        VALUES ('old-dev', '2026-09-22T01:00:00+09:00', '', 4);
+        """
+    )
+    ensure_schema(db)
+    assert migrate_legacy_tables(db)["ported_snapshots"] == 1
+    row = db.fetchone("SELECT local_day FROM tm_snapshot_buckets")
+    assert row["local_day"] == "2026-09-22"
+    db.close()
 
 
 def test_out_of_order_insert_keeps_latest_bucket_not_max_id(tmp_path):

@@ -71,6 +71,42 @@ def test_read_filters_reject_timezone_conversion_overflow(client, stamp, endpoin
     assert isinstance(response.json()["error"], str)
 
 
+def _deep_json() -> bytes:
+    # 约 20KB，低于同步与 ingest 的正文上限，但超过 json.loads 递归深度。
+    return (b"[" * 10000) + (b"]" * 10000)
+
+
+def test_deeply_nested_json_stays_client_error(tmp_path):
+    settings = Settings(
+        api_key="a" * 32, access_token="b" * 32,
+        database_path=tmp_path / "nested.sqlite3",
+        frontend_dir=tmp_path / "frontend", max_records_per_push=500,
+        tm_background_enabled=False,
+        tm_ingest_secret="c" * 32,
+        tm_core_url="http://127.0.0.1:9",
+    )
+    body = _deep_json()
+    with TestClient(create_app(settings), raise_server_exceptions=False) as client:
+        pushed = client.post("/api/v1/sync/push", content=body, headers={
+            "Authorization": "Bearer " + "a" * 32,
+            "Content-Type": "application/json",
+        })
+        ingested = client.post("/api/ingest", content=body, headers={
+            "X-Token-Monitor-Secret": "c" * 32,
+            "Content-Type": "application/json",
+        })
+        assert pushed.status_code == 400
+        assert pushed.json() == {"error": "请求体不是合法 JSON"}
+        assert ingested.status_code == 400
+        assert ingested.json() == {"error": "bad_request", "message": "invalid json"}
+        follow = client.post("/api/v1/sync/push", json={
+            "device": {"id": "dev"},
+            "records": [{"local_id": 1, "user_id": "u", "created_at": "2026-08-01T00:00:00Z"}],
+        }, headers={"Authorization": "Bearer " + "a" * 32})
+        assert follow.status_code == 200
+        assert client.get("/api/v1/health/live").status_code == 200
+
+
 def test_valid_offset_timestamps_still_roundtrip(client):
     response = client.post("/api/v1/sync/push", json={
         "device": {"id": "dev"}, "records": [{

@@ -308,7 +308,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     ) -> dict:
         try:
             raw = await request.json()
-        except (ValueError, UnicodeDecodeError) as exc:
+        except (ValueError, UnicodeDecodeError, RecursionError) as exc:
+            # json.loads 对深层嵌套抛 RecursionError，仍是客户端正文问题。
             raise HTTPException(status_code=400, detail="请求体不是合法 JSON") from exc
         from pydantic import ValidationError
 

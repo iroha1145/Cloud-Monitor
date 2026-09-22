@@ -847,6 +847,26 @@ def test_deleted_legacy_device_is_skipped_even_after_batch_prefetch(delivery, mo
 
 
 
+@pytest.mark.parametrize("value", [
+    " 2026-09-19T00:00:00Z",
+    "2026-09-19T00:00:00Z ",
+    "2026-09-22T01:00:00+09:00 ",
+])
+def test_forwarding_window_rejects_padded_timestamps(value):
+    from hub.tm_forwarding import _explicit_core_day, _parse_stamp
+    assert _parse_stamp(value) is None
+    assert _explicit_core_day({
+        "periodWindows": {"today": {"key": "2026-09-19", "endsAt": value}},
+    }) is False
+
+
+def test_forwarding_window_keeps_offset_instant():
+    from hub.tm_forwarding import _parse_stamp
+    assert _parse_stamp("2026-09-22T01:00:00+09:00") == datetime(
+        2026, 9, 21, 16, tzinfo=timezone.utc
+    )
+
+
 @pytest.mark.parametrize("value", [123, ["invalid"], {"invalid": "container"}, True, None])
 def test_forwarding_window_helpers_handle_non_string_and_non_mapping_values(value):
     from hub.tm_forwarding import _explicit_core_day, _parse_stamp, _receipt_day
