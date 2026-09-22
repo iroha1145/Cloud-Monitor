@@ -186,7 +186,7 @@ def load_config(env: Optional[dict[str, str]] = None) -> AgentConfig:
     time_zone = get("TIME_ZONE", "Asia/Tokyo") or "Asia/Tokyo"
     try:
         ZoneInfo(time_zone)
-    except (ZoneInfoNotFoundError, ValueError, KeyError) as exc:
+    except (ZoneInfoNotFoundError, ValueError, KeyError, OSError) as exc:  # 区域名如 Asia 是目录
         raise SystemExit(f"TIME_ZONE 非法 IANA 时区: {time_zone!r}") from exc
 
     return AgentConfig(

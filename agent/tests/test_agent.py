@@ -608,6 +608,23 @@ def test_https_enforcement():
     assert_https_allowed("http://cloud.example.com", allow_insecure=True, what="X")
 
 
+def test_load_config_rejects_region_time_zone_cleanly(tmp_path, monkeypatch):
+    """装了 tzdata 包时（例如 Windows 上的 Python），区域名（如 Asia）会让 ZoneInfo
+    抛 IsADirectoryError；仍须给出「TIME_ZONE 非法」的提示。打桩使结果不随环境变化。"""
+    real = sa.ZoneInfo
+
+    def region_is_a_directory(key):
+        if key == "Asia":
+            raise IsADirectoryError(21, "Is a directory", key)
+        return real(key)
+
+    monkeypatch.setattr(sa, "ZoneInfo", region_is_a_directory)
+    base = {"CLOUD_HUB_URL": "https://cloud.example.com", "STATE_PATH": str(tmp_path / "s.json")}
+    for bad in ("Asia", "Nope/Zone"):
+        with pytest.raises(SystemExit, match="TIME_ZONE"):
+            sa.load_config({**base, "TIME_ZONE": bad})
+
+
 def test_load_config_rejects_public_http(tmp_path):
     env = {
         "CLOUD_HUB_URL": "http://cloud.example.com",

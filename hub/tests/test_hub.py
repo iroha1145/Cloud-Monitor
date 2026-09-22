@@ -600,6 +600,28 @@ def test_weak_api_key_rejected_at_startup(monkeypatch, tmp_path):
             load_settings()
 
 
+def test_dashboard_time_zone_region_name_is_a_config_error(monkeypatch, tmp_path):
+    """装了 tzdata 包时，区域名（如 Asia）会让 ZoneInfo 去打开一个目录、抛 IsADirectoryError；
+    仍须给出清晰的配置错误。没装时抛的是 ZoneInfoNotFoundError，所以要打桩，结果才不随环境变化。"""
+    import zoneinfo
+
+    real = zoneinfo.ZoneInfo
+
+    def region_is_a_directory(key):
+        if key == "Asia":
+            raise IsADirectoryError(21, "Is a directory", key)
+        return real(key)
+
+    monkeypatch.setattr(zoneinfo, "ZoneInfo", region_is_a_directory)
+    monkeypatch.setenv("API_KEY", "a" * 32)
+    monkeypatch.setenv("ACCESS_TOKEN", "b" * 32)
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "tz.db"))
+    for bad in ("Asia", "Nope/Zone"):
+        monkeypatch.setenv("DASHBOARD_TIME_ZONE", bad)
+        with pytest.raises(ConfigError, match="DASHBOARD_TIME_ZONE"):
+            load_settings()
+
+
 def test_shared_token_requires_opt_in(monkeypatch, tmp_path):
     monkeypatch.setenv("API_KEY", "a" * 32)
     monkeypatch.setenv("ACCESS_TOKEN", "")
