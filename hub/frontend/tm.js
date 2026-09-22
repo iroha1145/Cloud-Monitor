@@ -46,12 +46,15 @@ function fmtCompact(v) {
   return p.n + p.u;
 }
 
-function fmtCompactHtml(v, tight) {
-  const p = compactParts(v, !!tight);
+function _partsHtml(p) {
   const inner = p.u
     ? `<span class="num-int">${esc(p.n)}</span><span class="num-unit">${p.u}</span>`
     : `<span class="num-int">${esc(p.n)}</span>`;
   return `<span class="num-compact">${inner}</span>`;
+}
+
+function fmtCompactHtml(v, tight) {
+  return _partsHtml(compactParts(v, !!tight));
 }
 
 function fmtPctParts(ratio) {
@@ -68,11 +71,7 @@ function fmtPct(ratio) {
 }
 
 function fmtPctHtml(ratio) {
-  const p = fmtPctParts(ratio);
-  const inner = p.u
-    ? `<span class="num-int">${esc(p.n)}</span><span class="num-unit">${p.u}</span>`
-    : `<span class="num-int">${esc(p.n)}</span>`;
-  return `<span class="num-compact">${inner}</span>`;
+  return _partsHtml(fmtPctParts(ratio));
 }
 
 function fmtUsd(v) {
@@ -211,11 +210,6 @@ const PALETTE = [
 ];
 const OTHER_COLOR = "#95a4ba";
 
-function hexA(hex, a) {
-  const n = parseInt(String(hex).slice(1), 16);
-  if (Number.isNaN(n)) return `rgba(90, 103, 136, ${a})`;
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
-}
 
 /* 跨色相族铺排序（PALETTE 下标）：相邻取色跳到不同色相族，
    保证「前 N 名」拿到的是族间最大化拉开的一组，而不是碰巧全落蓝绿族
