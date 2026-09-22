@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -15,7 +16,7 @@ from fastapi import Request
 
 from conftest import make_settings, seed_bucket, widget_style_payload
 from hub.db import Database
-from hub import tm_outbox as outbox, tm_snapshots as snapshots, tm_update
+from hub import tm_outbox as outbox, tm_proxy, tm_snapshots as snapshots, tm_update
 from hub.tm_forwarding import ForwardingQueue
 from hub.tm_overview import activity_report, build_tm_overview_router
 
@@ -196,3 +197,104 @@ def test_replay_stops_the_round_when_the_floor_raises_connect_error(tmp_path, mo
     assert row["state"] == "pending"
     assert int(row["attempts"] or 0) == 0
     db.close()
+
+
+# ---- 后台维护循环：失败既不能冻结排期，也不能让线程退出 ----
+
+def _loop_harness(tmp_path, monkeypatch, *, rounds=6):
+    """确定性地驱动 TmBackground._loop：假时钟 + 记录每次等待时长，跑满 rounds 圈即停。"""
+    db = _db(tmp_path, "loop.sqlite3")
+    worker = tm_proxy.TmBackground(make_settings(tmp_path, tm_background_interval=300), db, object())
+    clock = SimpleNamespace(now=1000.0)
+    monkeypatch.setattr(tm_proxy, "time", SimpleNamespace(monotonic=lambda: clock.now))
+    delays = []
+
+    def wait(delay):
+        delays.append(delay)
+        clock.now += delay
+        if len(delays) >= rounds:
+            worker._stop.set()
+        return False
+
+    worker._wake = SimpleNamespace(wait=wait, clear=lambda: None, set=lambda: None)
+    return worker, clock, delays
+
+
+def test_failed_maintenance_still_schedules_the_next_one(tmp_path, monkeypatch):
+    worker, _clock, delays = _loop_harness(tmp_path, monkeypatch)
+
+    def replay_on_a_damaged_database(*_args, **_kwargs):
+        raise sqlite3.DatabaseError("database disk image is malformed")
+
+    monkeypatch.setattr(tm_proxy, "replay_pending", replay_on_a_damaged_database)
+    worker._loop()
+    # 排期若被冻结，等待时长会塌到 0.1 秒下限：每秒十次重放、十条警告
+    assert min(delays) >= 299, delays
+
+
+def test_unreadable_forwarding_schedule_keeps_the_worker_alive(tmp_path, monkeypatch, caplog):
+    worker, clock, delays = _loop_harness(tmp_path, monkeypatch)
+    replays = []
+    monkeypatch.setattr(tm_proxy, "replay_pending", lambda *_a, **_k: replays.append(clock.now))
+
+    def unreadable(_default):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(worker.forwarding, "next_delay", unreadable)
+    with caplog.at_level(logging.WARNING, logger="tm-proxy"):
+        worker._loop()  # 读不到转发排期时线程不得退出，否则重放与转发静默停摆
+    assert len(delays) == 6
+    assert min(delays) >= 299, delays
+    assert replays, "维护应按原节奏继续"
+    assert "转发排期" in caplog.text
+
+
+def test_housekeeping_pragma_failure_is_logged_and_contained(tmp_path, monkeypatch, caplog):
+    db = _db(tmp_path)
+    real_execute = db.execute
+    failing = ("PRAGMA INCREMENTAL_VACUUM", "PRAGMA WAL_CHECKPOINT")
+
+    def execute(sql, *args, **kwargs):
+        if sql.strip().upper().startswith(failing):
+            raise sqlite3.DatabaseError("database disk image is malformed")
+        return real_execute(sql, *args, **kwargs)
+
+    monkeypatch.setattr(db, "execute", execute)
+    monkeypatch.setattr(outbox, "prune_done", lambda _db: 1)  # 让增量回收那一步也执行
+    with caplog.at_level(logging.WARNING, logger="tm-outbox"):
+        stats = outbox.replay_pending(db, object())
+    assert stats["checked"] == 0  # 收尾维护失败不得让整轮重放抛出
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 2, [r.getMessage() for r in warnings]
+
+
+def test_forwarding_failure_backs_off_instead_of_spinning(tmp_path, monkeypatch, caplog):
+    worker, _clock, delays = _loop_harness(tmp_path, monkeypatch, rounds=8)
+    monkeypatch.setattr(tm_proxy, "replay_pending", lambda *_a, **_k: None)
+    # 磁盘满或只读：到期行的排期写不回去，next_delay 就一直报它已到期
+    monkeypatch.setattr(worker.forwarding, "next_delay", lambda _default: 0.1)
+
+    def disk_full(*_args, **_kwargs):
+        raise sqlite3.OperationalError("database or disk is full")
+
+    monkeypatch.setattr(worker.forwarding, "process_due", disk_full)
+    with caplog.at_level(logging.WARNING, logger="tm-proxy"):
+        worker._loop()
+    # 出错后每次等待翻倍，封顶维护间隔；不退避就是每 0.1 秒一圈、一条警告
+    assert delays == [0.1, 5, 10, 20, 40, 80, 160, 300], delays
+    assert caplog.text.count("转发处理异常") == len(delays) - 1  # 最后一次等待时收到停止信号
+
+
+def test_forwarding_failure_does_not_skip_due_maintenance(tmp_path, monkeypatch):
+    worker, clock, _delays = _loop_harness(tmp_path, monkeypatch, rounds=3)
+    replays = []
+    monkeypatch.setattr(tm_proxy, "replay_pending", lambda *_a, **_k: replays.append(clock.now))
+
+    def disk_full(*_args, **_kwargs):
+        raise sqlite3.OperationalError("database or disk is full")
+
+    monkeypatch.setattr(worker.forwarding, "process_due", disk_full)
+    worker._loop()
+    # 转发出错不能把到期的重放、清理、检查点一起拖掉
+    assert replays == [1300.0, 1600.0], replays
+
