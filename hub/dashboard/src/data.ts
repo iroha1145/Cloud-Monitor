@@ -1650,8 +1650,9 @@ function sumDemoPeriods(items: PeriodUsage[]): PeriodUsage {
 
 /** Deterministic, anonymous sample; dates follow the dashboard's Tokyo day.
  *  This is the single demo source for the React panel. The legacy native
- *  panel keeps hub/frontend/mock.js as an Overview-API generator only. */
-export function createDemoData(now = new Date()): DashboardData {
+ *  panel keeps hub/frontend/mock.js as an Overview-API generator only.
+ *  `refreshes` adds a little usage to today, so each demo refresh shows new numbers. */
+export function createDemoData(now = new Date(), refreshes = 0): DashboardData {
   const today = dayKey(now);
   const history = Array.from({ length: 90 }, (_, index) => {
     const offset = 89 - index;
@@ -1664,7 +1665,7 @@ export function createDemoData(now = new Date()): DashboardData {
       Math.sin(index * 0.31) * 0.2;
     const tokens =
       offset === 0
-        ? 74_369_365
+        ? 74_369_365 + refreshes * 413_700
         : Math.round(66_000_000 * weight * (weekend ? 0.63 : 1));
     return { day, period: demoPeriod(tokens) };
   });

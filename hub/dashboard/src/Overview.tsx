@@ -16,6 +16,7 @@ import {
   Zap,
 } from "lucide-react";
 import { BrandIcon } from "./BrandIcon";
+import GlideMenu from "./components/primitives/GlideMenu";
 export { BrandIcon } from "./BrandIcon";
 import { NumberTicker } from "./components/motion/number-ticker";
 import { MetricTooltip, type MetricDetailRow } from "./MetricTooltip";
@@ -37,6 +38,7 @@ import {
 import { matrixHeatLevel, matrixHeatPeak } from "./matrix-heat";
 import { usd } from "./money";
 import { compact, count, pct } from "./lib/format";
+import { useSlidingIndicator } from "./lib/hooks/use-sliding-indicator";
 
 const money = usd;
 export { compact, count, money, pct };
@@ -300,8 +302,10 @@ export function CompositionCard({
                   fill="none"
                   stroke={v.color}
                   strokeWidth="10"
-                  strokeDasharray={`${Math.max(0, len - 2.8)} ${270.18}`}
-                  strokeDashoffset={-start}
+                  style={{
+                    strokeDasharray: `${Math.max(0, len - 2.8)} 270.18`,
+                    strokeDashoffset: -start,
+                  }}
                   transform="rotate(-90 55 55)"
                 />
               );
@@ -435,7 +439,11 @@ export function ModelTable({
           </span>
         ))}
       </div>
-      <div className="model-table-scroll">
+      <GlideMenu
+        className="model-table-scroll table-glide-scope"
+        highlightClassName="table-glide"
+        rowSelector="tbody tr"
+      >
         <table className="model-table">
           <thead>
             <tr>
@@ -562,7 +570,7 @@ export function ModelTable({
             ))}
           </tbody>
         </table>
-      </div>
+      </GlideMenu>
       {!models.length && (
         <div className="empty-inline">
           <Search size={22} />
@@ -720,6 +728,7 @@ export function Overview({
 
 export function ModelMatrix({ per }: { per: PeriodUsage }) {
   const [metric, setMetric] = useState<"tokens" | "cost">("tokens");
+  const metricSwitch = useSlidingIndicator<HTMLDivElement>('[aria-pressed="true"]');
   const source = metric === "tokens" ? per.clientModels : per.clientModelCosts;
   const clients = Object.keys(source || {});
   const models = per.models.filter((m) =>
@@ -733,7 +742,8 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
           <h2>客户端 × 模型</h2>
           <p>顺着使用来源，进一步了解每个模型</p>
         </div>
-        <div className="metric-switch">
+        <div className="metric-switch" ref={metricSwitch}>
+          <span data-sliding-indicator aria-hidden="true" />
           <button
             aria-pressed={metric === "tokens"}
             onClick={() => setMetric("tokens")}

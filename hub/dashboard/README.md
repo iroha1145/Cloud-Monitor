@@ -12,7 +12,7 @@ npm ci
 npm run dev
 ```
 
-开发预览地址为 `http://127.0.0.1:5188`，默认显示示例数据。设置中可临时连接当前配置的服务，密钥只保留在该预览页面内存中。`CM_DEV_API` 可指定开发代理目标；默认目标是项目现有部署。用 `VITE_HOSTED=true npm run dev` 检查正式登录入口。
+开发预览地址为 `http://127.0.0.1:5188`，默认显示示例数据；每次点「刷新数据」会给当天加一点示例用量，便于查看数字和用量条的过渡。动效令牌与各处用法见 [references/README.md](references/README.md) 的「动效规范」。设置中可临时连接当前配置的服务，密钥只保留在该预览页面内存中。`CM_DEV_API` 可指定开发代理目标；默认目标是项目现有部署。用 `VITE_HOSTED=true npm run dev` 检查正式登录入口。
 
 ```sh
 npm run build

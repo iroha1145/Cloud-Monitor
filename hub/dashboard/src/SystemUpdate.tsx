@@ -338,7 +338,7 @@ export function SystemUpdate({
           )}
           {loading && !status && (
             <p className="system-update-empty" role="status">
-              正在读取版本与任务状态…
+              <span className="beautiful-loading-text">正在读取版本与任务状态…</span>
             </p>
           )}
           {status && (

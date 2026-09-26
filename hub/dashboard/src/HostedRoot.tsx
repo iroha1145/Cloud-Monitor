@@ -4,6 +4,7 @@ import App from "./App";
 import { loadDashboard, isAuthFailure } from "./api";
 import { clearAccessToken, readAccessToken, saveAccessToken } from "./auth";
 import type { DashboardData } from "./data";
+import { useErrorShake } from "./lib/hooks/use-error-shake";
 import "./hosted.css";
 
 const isolatedDemo = document.documentElement.dataset.cmDemo === "1" || import.meta.env.VITE_SHOWCASE_UI === "true";
@@ -14,6 +15,7 @@ export default function HostedRoot() {
   const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const tokenField = useErrorShake<HTMLInputElement>(error);
   const pending = useRef<AbortController | null>(null);
   const sessionRef = useRef(session);
   sessionRef.current = session;
@@ -69,7 +71,7 @@ export default function HostedRoot() {
       <p>输入访问密钥，连接这台服务器上的用量记录。</p>
       <form onSubmit={(event) => { event.preventDefault(); if (secret.trim() && !busy) void authenticate(secret.trim()); }}>
         <label htmlFor="login-token">访问密钥</label>
-        <input id="login-token" type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} value={secret} onChange={event => setSecret(event.target.value)} placeholder="输入面板访问密钥" required disabled={busy} />
+        <input ref={tokenField} aria-invalid={error ? true : undefined} id="login-token" type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} value={secret} onChange={event => setSecret(event.target.value)} placeholder="输入面板访问密钥" required disabled={busy} />
         {error && <p className="access-error" role="alert">{error}</p>}
         <button type="submit" disabled={busy || !secret.trim()}>{busy ? <><LoaderCircle size={18} className="access-spinner" /> 正在连接</> : <>进入工作台 <ArrowRight size={18} /></>}</button>
       </form>

@@ -79,14 +79,15 @@ export default function SearchList({
         ) : (
           <div className="p-1">
             <GlideMenu className="flex flex-col gap-px" highlightClassName="inset-x-0 rounded-[6px] bg-hover">
-              {results.map((item) => (
+              {results.map((item, index) => (
                 <button
                   key={item}
                   data-menu-row
                   type="button"
                   onClick={() => { setQuery(item); onSelect?.(item); }}
                   className="relative z-10 flex h-8 w-full items-center rounded-[6px] px-2 text-left text-[13px] text-ink"
-                  style={{ animation: "fade-in 200ms ease-out both" }}
+                  // Rows cascade by 20ms (capped) instead of appearing all at once.
+                  style={{ animation: `fade-in 200ms ease-out ${Math.min(index, 8) * 20}ms both` }}
                 >
                   {item}
                 </button>

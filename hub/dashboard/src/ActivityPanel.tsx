@@ -1,9 +1,10 @@
 import { useId, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
 import { ChevronDown, Info, X } from "lucide-react";
 import { MetricTooltip } from "./MetricTooltip";
 import { compact, full } from "./lib/format";
 import { dayKeyZoned, formatZoned } from "./lib/datetime";
+import { useSlidingIndicator } from "./lib/hooks/use-sliding-indicator";
 import type { ActivityCoverage, ActivityMetadata, DashboardData } from "./data";
 import "./ActivityPanel.css";
 
@@ -88,6 +89,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
   const [view, setView] = useState<ActivityView>("month");
   const uid = useId();
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
+  const tabList = useSlidingIndicator<HTMLDivElement>('[aria-selected="true"]');
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const metadata = data.activityMetadata || fallbackMetadata(data);
   const today = metadata.today;
@@ -116,6 +118,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
       return { day, label: String(index + 1), total: dayMap.get(day) ?? null, future: day > today };
     });
   }, [view, today, metadata.month, metadata.hourlyDay, metadata.hourlyStatus, dayMap, hourMap]);
+  const leading = view === "month" && metadata.month ? mondayIndex(`${metadata.month}-01`) : 0;
   const reported = cells.filter((cell) => !cell.future && cell.total !== null);
   const maximum = Math.max(1, ...reported.map((cell) => cell.total || 0));
   const total = reported.reduce((sum, cell) => sum + (cell.total || 0), 0);
@@ -156,7 +159,8 @@ export function ActivityPanel({ data, selected, onSelect }: {
   return <section className="sv-card sv-history-activity cm-activity-panel" aria-labelledby="sv-activity-title">
     <header className="cm-activity-head">
       <div><h2 id="sv-activity-title">活动一览</h2><p>{subtitle}</p></div>
-      <div className="cm-activity-tabs" role="tablist" aria-label="活动时间范围">
+      <div className="cm-activity-tabs" role="tablist" aria-label="活动时间范围" ref={tabList}>
+        <span data-sliding-indicator aria-hidden="true" />
         {VIEWS.map((option, index) => <button key={option} type="button" role="tab"
           id={`${uid}-${option}-tab`} aria-selected={view === option}
           aria-controls={`${uid}-panel`} tabIndex={view === option ? 0 : -1}
@@ -172,13 +176,17 @@ export function ActivityPanel({ data, selected, onSelect }: {
         {view === "month" && <div className="cm-activity-weekdays" aria-hidden="true">{WEEKDAYS.map((day) => <span key={day}>{day}</span>)}</div>}
         <div className={`cm-activity-grid cm-activity-grid-${view}`} key={view} role="group"
           aria-label={view === "day" ? "小时用量；方向键移动，回车打开说明" : "每日活动；方向键移动，回车筛选日期"}>
-          {view === "month" && Array.from({ length: mondayIndex(`${metadata.month}-01`) }, (_, index) => <span key={`space-${index}`} aria-hidden="true" />)}
+          {view === "month" && Array.from({ length: leading }, (_, index) => <span key={`space-${index}`} aria-hidden="true" />)}
           {cells.map((cell, index) => {
+            const at = view === "month" ? index + leading : index;
+            const [column, row] = view === "week" ? [Math.floor(at / 7), at % 7]
+              : view === "day" ? [at % 6, Math.floor(at / 6)] : [at % 7, Math.floor(at / 7)];
+            const entrance = { "--cell-delay": `${(column + row) * 18}ms` } as CSSProperties;
             const level = cell.total === null ? "unknown" : cell.total === 0 ? "0"
               : String(Math.min(4, Math.max(1, Math.ceil(cell.total / maximum * 4))));
             const label = cell.hour === undefined ? cell.day
               : `${cell.day} ${cell.label}:00–${String((cell.hour + 1) % 24).padStart(2, "0")}:00`;
-            if (cell.future) return <span className="cm-activity-cell is-future" key={cell.day}
+            if (cell.future) return <span className="cm-activity-cell is-future" key={cell.day} style={entrance}
               aria-label={`${cell.day}，尚未到来`}>{cell.label}</span>;
             return <MetricTooltip key={cell.hour ?? cell.day} title={label}
               preserveAction={cell.hour === undefined}
@@ -186,7 +194,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
               rows={[{ label: "词元用量", value: cell.total === null ? "未上报" : full(cell.total) }]}
               note={cell.hour === undefined ? "点击日期筛选会话" : `活动时区：${metadata.timeZone}`}>
               <button type="button" className={`cm-activity-cell${selected === cell.day && view !== "day" ? " is-selected" : ""}`}
-                data-level={level} data-day={cell.day} data-hour={cell.hour}
+                data-level={level} data-day={cell.day} data-hour={cell.hour} style={entrance}
                 aria-pressed={cell.hour === undefined ? selected === cell.day : undefined}
                 aria-label={`${label}，${cell.total === null ? "未上报用量" : `${full(cell.total)} 词元`}${cell.hour === undefined ? "，点击筛选会话" : ""}`}
                 ref={(element) => { buttons.current[index] = element; }}
