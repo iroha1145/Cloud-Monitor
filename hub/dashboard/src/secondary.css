@@ -456,7 +456,7 @@
 .sv-device-toggle svg {
   width: 13px;
   height: 13px;
-  transition: transform 0.18s;
+  transition: transform var(--duration-fast) var(--ease-smooth-out);
 }
 .sv-device-toggle[aria-expanded="true"] svg {
   transform: rotate(180deg);
@@ -464,7 +464,7 @@
 .sv-device-detail {
   border-top: 1px solid var(--line, #e9edf3);
   padding: 19px 24px 21px;
-  animation: sv-reveal 0.2s ease-out;
+  animation: sv-reveal var(--duration-fast) var(--ease-smooth-out);
 }
 .sv-detail-grid {
   display: grid;
@@ -609,7 +609,9 @@
   height: 100%;
   border-radius: inherit;
   background: #27847f;
-  transition: width 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Fills from the left when the quota first renders; later values glide. */
+  transition: width var(--duration-slow) var(--ease-smooth-out);
+  animation: t-bar-fill var(--duration-very-slow) var(--ease-smooth-out) backwards;
 }
 .sv-progress.sv-progress-warning > span {
   background: #dba54a;
@@ -888,10 +890,14 @@
   height: 12px;
   flex-shrink: 0;
   color: var(--ink-3, #a6adbe);
-  transition: transform 0.15s;
+  transition: transform var(--duration-fast) var(--ease-smooth-out);
 }
 .sv-session-toggle[aria-expanded="true"] svg {
   transform: rotate(90deg);
+}
+/* Expanded session details enter like the device details. */
+.sv-session-detail .sv-detail-grid {
+  animation: sv-reveal var(--duration-fast) var(--ease-smooth-out);
 }
 .sv-session-detail td {
   background: var(--hover, #f9faff);

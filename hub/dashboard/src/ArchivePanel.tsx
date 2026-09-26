@@ -313,7 +313,7 @@ export function ArchivePanel({
         ))}
       </div>
       <footer className="archive-footer">
-        <span aria-live="polite">
+        <span aria-live="polite" className={loading ? "beautiful-loading-text" : undefined}>
           {loading
             ? visibleRows.length
               ? "正在加载更多归档…"

@@ -121,11 +121,16 @@ test("connection failure stays honest and does not change the demo workspace", a
     .fill("preview-test-invalid-key");
   await page.getByRole("button", { name: "连接并查看真实用量" }).click();
   await expect(page.getByRole("alert")).toContainText("访问密钥不正确");
+  await expect(page.getByLabel("访问密钥", { exact: true })).toHaveAttribute("aria-invalid", "true");
   await page.keyboard.press("Escape");
   await expect(page.getByText("当前展示示例数据")).toBeVisible();
   expect(
     await page.evaluate(() => Object.values(localStorage).join(" ")),
   ).not.toContain("preview-test-invalid-key");
+  await page.getByRole("button", { name: "连接我的数据" }).click();
+  await expect(page.getByLabel("访问密钥", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("访问密钥", { exact: true })).not.toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
 test("desktop and dark appearances have no serious accessibility errors", async ({

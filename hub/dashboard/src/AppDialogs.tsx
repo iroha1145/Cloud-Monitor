@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import {
   Activity,
   ArrowRight,
@@ -32,6 +33,7 @@ import {
   type UsageEntity,
 } from "./data";
 import { SystemUpdate } from "./SystemUpdate";
+import { useErrorShake } from "./lib/hooks/use-error-shake";
 import { BrandIcon, compact, CompositionCard, count, money } from "./Overview";
 
 const SHOWCASE_UI = import.meta.env.VITE_SHOWCASE_UI === "true";
@@ -58,6 +60,8 @@ export default function AppDialogs({
   setConnecting,
   connectError,
   setConnectError,
+  keyRejected,
+  setKeyRejected,
   showDemo,
   data,
   period,
@@ -91,6 +95,8 @@ export default function AppDialogs({
   setConnecting: (value: boolean) => void;
   connectError: string;
   setConnectError: (value: string) => void;
+  keyRejected: boolean;
+  setKeyRejected: (value: boolean) => void;
   showDemo: () => void;
   data: DashboardData;
   period: PeriodKey;
@@ -105,6 +111,11 @@ export default function AppDialogs({
   inFlight: { current: AbortController | null };
   returnFocusRef: React.RefObject<HTMLElement | null>;
 }) {
+  // Keep the closing model on screen while its dialog animates out.
+  const lastModel = useRef(selected);
+  if (selected) lastModel.current = selected;
+  const shownModel = selected ?? lastModel.current;
+  const accessKeyField = useErrorShake<HTMLInputElement>(keyRejected);
   return (
     <>
       <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
@@ -165,6 +176,7 @@ export default function AppDialogs({
             }
             setSecret("");
             setConnectError("");
+            setKeyRejected(false);
           }
         }}
       >
@@ -193,8 +205,11 @@ export default function AppDialogs({
               访问密钥
             </label>
             <input
+              ref={accessKeyField}
               id="access-key"
               className="form-input"
+              aria-invalid={keyRejected || undefined}
+              aria-describedby={connectError ? "access-key-error" : undefined}
               type="password"
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
@@ -207,7 +222,7 @@ export default function AppDialogs({
               密钥只保留在此页面内存中，刷新或关闭后清除。
             </p>
             {connectError && (
-              <p role="alert" className="error-message">
+              <p role="alert" className="error-message" id="access-key-error">
                 {connectError}
               </p>
             )}
@@ -303,29 +318,29 @@ export default function AppDialogs({
             }
           }}
         >
-          {selected && (
+          {shownModel && (
             <>
               <DialogHeader>
                 <BrandIcon
-                  name={selected.name}
-                  color={selected.color}
+                  name={shownModel.name}
+                  color={shownModel.color}
                   size={45}
                 />
-                <DialogTitle>{selected.name}</DialogTitle>
+                <DialogTitle>{shownModel.name}</DialogTitle>
                 <DialogDescription>
-                  {providerName(selected.provider)} · {PERIOD_LABELS[period]}
+                  {providerName(shownModel.provider)} · {PERIOD_LABELS[period]}
                   用量详情
                 </DialogDescription>
               </DialogHeader>
               <div className="model-detail-stats">
                 <div>
                   <span>总用量</span>
-                  <strong>{compact(selected.totalTokens)}</strong>
-                  <small>{count(selected.totalTokens)} Tokens</small>
+                  <strong>{compact(shownModel.totalTokens)}</strong>
+                  <small>{count(shownModel.totalTokens)} Tokens</small>
                 </div>
                 <div>
                   <span>使用费用</span>
-                  <strong>{money(selected.costUsd)}</strong>
+                  <strong>{money(shownModel.costUsd)}</strong>
                   <small>美元 · 已上报费用</small>
                 </div>
               </div>
@@ -333,12 +348,12 @@ export default function AppDialogs({
                 small
                 per={{
                   ...per,
-                  totalTokens: selected.totalTokens,
-                  components: selected.components,
+                  totalTokens: shownModel.totalTokens,
+                  components: shownModel.components,
                 }}
               />
               <p className="detail-note">
-                {selected.components.partial
+                {shownModel.components.partial
                   ? "部分组成尚未识别，已保留可确认的缓存计数。"
                   : "该模型用量组成完整。缓存占比按缓存读取量除以总用量计算。"}
               </p>

@@ -17,7 +17,8 @@
   position: fixed;
   inset: 0 auto 0 0 !important;
   transform: none !important;
-  translate: none !important;
+  /* Not important: the drawer's own slide animates this property. */
+  translate: none;
   scale: 1 !important;
   display: flex;
   flex-direction: column;
@@ -33,7 +34,13 @@
     max(18px, env(safe-area-inset-left, 0px)) !important;
   overflow: hidden !important;
   background: var(--sidebar-bg) !important;
-  animation: mobile-nav-appear 160ms ease-out !important;
+}
+/* Drawer slides in from the edge (panel open 400ms) and leaves faster. */
+[data-slot="dialog-content"].mobile-nav-dialog[data-state="open"] {
+  animation: t-drawer-in var(--duration-slow) var(--ease-smooth-out) !important;
+}
+[data-slot="dialog-content"].mobile-nav-dialog[data-state="closed"] {
+  animation: t-drawer-out var(--duration-fast) var(--ease-smooth-out) forwards !important;
 }
 .mobile-nav-dialog > .mobile-nav-content {
   display: flex;
@@ -71,12 +78,24 @@
   width: 44px;
   height: 44px;
 }
-@keyframes mobile-nav-appear {
+@keyframes t-drawer-in {
   from {
     opacity: 0;
+    translate: -100% 0;
   }
   to {
     opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes t-drawer-out {
+  from {
+    opacity: 1;
+    translate: 0 0;
+  }
+  to {
+    opacity: 0;
+    translate: -100% 0;
   }
 }
 
@@ -171,6 +190,13 @@
     background: var(--nav-active);
     font-weight: 600;
   }
+  .mobile-bottom-nav > [data-sliding-indicator] {
+    border-radius: 8px;
+    background: var(--nav-active);
+  }
+  .mobile-bottom-nav[data-indicator="ready"] a[aria-current="page"] {
+    background: transparent;
+  }
   .mobile-bottom-nav a:focus-visible {
     outline: 2px solid var(--primary);
     outline-offset: -2px;
@@ -222,9 +248,10 @@
     flex-wrap: wrap;
     gap: 9px 12px;
   }
+  /* The desktop height is !important; let touch-size tabs sit inside. */
   .period-tabs {
-    height: 46px;
-    padding: 2px;
+    height: auto !important;
+    padding: 2px !important;
   }
   .period-tabs [role="tab"] {
     min-height: 42px;
@@ -292,6 +319,9 @@
     font-size: 12px;
     white-space: nowrap;
     align-items: center;
+  }
+  .small-tabs {
+    height: auto !important;
   }
   .small-tabs [role="tab"] {
     min-height: 40px;
@@ -685,7 +715,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-slot="dialog-content"].mobile-nav-dialog {
+  [data-slot="dialog-content"].mobile-nav-dialog[data-state] {
     animation: none !important;
   }
 }
@@ -705,5 +735,8 @@
   .metric-switch button,
   .insight-trend-switch button {
     min-height: 44px;
+  }
+  .period-tabs {
+    height: auto !important;
   }
 }

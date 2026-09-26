@@ -91,6 +91,18 @@
   color: var(--ink);
   box-shadow: 0 1px 3px #172c451a;
 }
+.insight-trend-switch {
+  position: relative;
+}
+.insight-trend-switch > [data-sliding-indicator] {
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: 0 1px 3px #172c451a;
+}
+.insight-trend-switch[data-indicator="ready"] button[aria-pressed="true"] {
+  background: transparent;
+  box-shadow: none;
+}
 .insight-trend-switch button:active {
   transform: scale(0.96);
 }

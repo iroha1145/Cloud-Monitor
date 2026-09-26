@@ -57,6 +57,8 @@ import {
 } from "./data";
 import { loadDashboard, isAuthFailure } from "./api";
 import { MobileNavigation } from "./MobileNavigation";
+import { PageSkeleton } from "./PageSkeleton";
+import { DURATION, EASE_SMOOTH_OUT } from "./lib/motion";
 import {
   ModelTable,
   Overview,
@@ -138,6 +140,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
   const [selected, setSelected] = useState<UsageEntity | null>(null),
     [secret, setSecret] = useState("");
   const [connectError, setConnectError] = useState(""),
+    [keyRejected, setKeyRejected] = useState(false),
     [connecting, setConnecting] = useState(false),
     [refreshState, setRefreshState] = useState<ButtonState>("idle");
   const [toast, setToast] = useState("");
@@ -159,6 +162,16 @@ export default function App({ initialData, initialToken = "", hosted = false, is
   const [refreshWarning, setRefreshWarning] = useState("");
   const requestVersion = useRef(0);
   const reduce = useReducedMotion();
+  const toastHidden = reduce
+    ? { opacity: 0, y: 0, scale: 1, filter: "blur(0px)" }
+    : { opacity: 0, y: 16, scale: 0.97, filter: "blur(2px)" };
+  // The status dot rings once for each refresh that delivers a new snapshot.
+  const firstSnapshot = useRef(data.generatedAt);
+  const freshData = data.generatedAt !== firstSnapshot.current;
+  // Dialogs load on first use and stay mounted, so closing can animate out.
+  const [dialogsLoaded, setDialogsLoaded] = useState(false);
+  if (!dialogsLoaded && (searchOpen || settings || notifications || !!selected || design))
+    setDialogsLoaded(true);
   const current = pages.find((p) => p.id === page)!;
   const per = data.periods[period];
   const notices = [...new Set([
@@ -172,9 +185,18 @@ export default function App({ initialData, initialToken = "", hosted = false, is
       ),
   ])];
   const statusCount = notices.length;
+  // Sections rise in after navigation only; the first screen stays still.
+  const [navigated, setNavigated] = useState(false);
+  const pageRef = useRef(page);
+  pageRef.current = page;
   useEffect(() => {
     const onHash = () => {
-      setPage(getPage());
+      const id = location.hash.slice(1);
+      // In-page anchors such as the skip link are not pages.
+      if (id && !pages.some((p) => p.id === id)) return;
+      const next = getPage();
+      if (next !== pageRef.current) setNavigated(true);
+      setPage(next);
       setMobile(false);
       scrollToTop();
     };
@@ -196,9 +218,12 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     return () => preference.removeEventListener("change", changed);
   }, []);
   const toggleTheme = () => {
-    setDark(value => {
-      try { localStorage.setItem("cm_theme", value ? "light" : "dark"); } catch { /* private mode */ }
-      return !value;
+    // A document view transition blocks pointer input while its snapshot animates.
+    // Keep the page interactive and animate only the theme button's icons.
+    setDark(current => {
+      const next = !current;
+      try { localStorage.setItem("cm_theme", next ? "dark" : "light"); } catch { /* private mode */ }
+      return next;
     });
   };
   useEffect(() => {
@@ -222,6 +247,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     return () => clearTimeout(t);
   }, [toast]);
   const userRefresh = useRef(false);
+  const demoRefreshes = useRef(0);
   useEffect(() => {
     if (data.mode !== "live") return;
     const cancel = () => {
@@ -280,7 +306,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
       } else {
         await new Promise((r) => setTimeout(r, 600));
         if (version !== requestVersion.current) return;
-        setData(createDemoData());
+        setData(createDemoData(new Date(), ++demoRefreshes.current));
       }
       setRefreshWarning("");
       setRefreshState("success");
@@ -309,6 +335,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     if (isolatedDemo || hosted || !secret.trim()) return;
     setConnecting(true);
     setConnectError("");
+    setKeyRejected(false);
     const version = ++requestVersion.current;
     inFlight.current?.abort();
     const controller = new AbortController(); inFlight.current = controller;
@@ -322,6 +349,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
       setToast("已连接 Cloud Monitor，正在显示真实用量。");
     } catch (e) {
       if (version !== requestVersion.current) return;
+      setKeyRejected(isAuthFailure(e));
       setConnectError(
         e instanceof Error ? e.message : "连接失败，请稍后重试。",
       );
@@ -336,6 +364,8 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     token.current = "";
     setSecret("");
     setConnectError("");
+    setKeyRejected(false);
+    demoRefreshes.current = 0;
     setData(createDemoData());
     setSettings(false);
     setToast("已切换为示例工作区。");
@@ -550,7 +580,10 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                     aria-label={dark ? "切换浅色模式" : "切换深色模式"}
                     onClick={toggleTheme}
                   >
-                    {dark ? <Sun size={17} /> : <Moon size={17} />}
+                    <span className="icon-swap" aria-hidden="true">
+                      <Sun size={17} data-active={dark} />
+                      <Moon size={17} data-active={!dark} />
+                    </span>
                   </button>
                 </MetricTooltip>
                 {SHOWCASE_UI && (
@@ -604,7 +637,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                 )}
                 <div className="heading-actions">
                   <span className="sync-status">
-                    <i className="status-dot" />
+                    <i className={`status-dot ${freshData ? "is-fresh" : ""}`} key={data.generatedAt} />
                     {data.mode === "demo" ? "示例数据" : `更新于 ${time}`}
                   </span>
                   <StatefulButton
@@ -683,6 +716,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
                   key={page}
+                  className={navigated ? "page-stage" : undefined}
                   id="period-summary"
                   role={
                     page === "overview" || page === "models"
@@ -694,12 +728,14 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                       ? `period-${period}`
                       : undefined
                   }
-                  initial={{ opacity: 0, y: reduce ? 0 : 7 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: reduce ? 0 : -4 }}
-                  transition={{
-                    duration: reduce ? 0 : 0.18,
-                    ease: [0.22, 1, 0.36, 1],
+                  initial={{ opacity: 0 }}
+                  animate={{
+                    opacity: 1,
+                    transition: { duration: reduce ? 0 : DURATION.fast, ease: EASE_SMOOTH_OUT },
+                  }}
+                  exit={{
+                    opacity: 0,
+                    transition: { duration: reduce ? 0 : DURATION.quick, ease: EASE_SMOOTH_OUT },
                   }}
                 >
                   {page === "overview" ? (
@@ -713,14 +749,14 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                       <Stats data={data} period={period} />
                       <ModelTable per={per} full onSelect={openModel} />
                       <AppErrorBoundary title="模型矩阵已更新，请刷新。">
-                        <Suspense fallback={<div className="page-loading" role="status">正在加载矩阵…</div>}>
+                        <Suspense fallback={<PageSkeleton label="正在加载矩阵…" columns={1} height={320} />}>
                           <ModelMatrixView per={per} />
                         </Suspense>
                       </AppErrorBoundary>
                     </>
                   ) : (
                     <AppErrorBoundary>
-                      <Suspense fallback={<div className="page-loading" role="status">正在加载…</div>}>
+                      <Suspense fallback={<PageSkeleton label="正在加载…" summary />}>
                         {page === "devices" ? (
                           <DevicesView data={data} />
                         ) : page === "quota" ? (
@@ -755,12 +791,13 @@ export default function App({ initialData, initialToken = "", hosted = false, is
           </div>
           <MobileNavigation page={page} onNavigate={go} />
         </div>
-        {(searchOpen || settings || notifications || !!selected || design) && (
+        {dialogsLoaded && (
           <AppErrorBoundary
             title="对话框已更新，请刷新。"
             variant="dialog"
             onFail={() => {
               setDialogError(true);
+              setDialogsLoaded(false);
               setSearchOpen(false);
               setSettings(false);
               setNotifications(false);
@@ -790,6 +827,8 @@ export default function App({ initialData, initialToken = "", hosted = false, is
               setConnecting={setConnecting}
               connectError={connectError}
               setConnectError={setConnectError}
+              keyRejected={keyRejected}
+              setKeyRejected={setKeyRejected}
               showDemo={showDemo}
               data={data}
               period={period}
@@ -812,14 +851,20 @@ export default function App({ initialData, initialToken = "", hosted = false, is
             <motion.div
               className="app-toast"
               role="status"
-              initial={{
-                opacity: 0,
-                y: reduce ? 0 : 16,
-                scale: reduce ? 1 : 0.98,
+              initial={toastHidden}
+              animate={{
+                opacity: 1,
+                y: 0,
+                scale: 1,
+                filter: "blur(0px)",
+                // Drop the settled filter so the toast text is not left on a filter layer.
+                transitionEnd: { filter: "none" },
+                transition: { duration: DURATION.medium, ease: EASE_SMOOTH_OUT },
               }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: reduce ? 0 : 8 }}
-              transition={{ duration: 0.18 }}
+              exit={{
+                ...toastHidden,
+                transition: { duration: DURATION.fast, ease: EASE_SMOOTH_OUT },
+              }}
             >
               <Check size={16} />
               <span>{toast}</span>

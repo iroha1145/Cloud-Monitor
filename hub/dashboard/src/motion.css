@@ -1,0 +1,313 @@
+/*
+ * Shared motion recipes, adapted from the transitions.dev catalog: 05 menu
+ * dropdown, 06 modal, 09 icon swap, 12 error shake, 14 skeleton reveal,
+ * 16 tabs sliding, 18 texts reveal, 21 accordion. The motion tokens they read
+ * (--duration-*, --ease-*, ...) sit in styles.css :root next to the colours,
+ * so every stylesheet loaded after it can use them. Motion follows a user
+ * action or a data change; an unchanged refresh replays nothing.
+ */
+
+/* Page entry: sections rise in order after navigation (texts reveal rhythm). */
+.page-stage > * {
+  animation: t-rise var(--duration-medium) var(--ease-smooth-out) backwards;
+}
+.page-stage > :nth-child(2) {
+  animation-delay: var(--duration-stagger);
+}
+.page-stage > :nth-child(3) {
+  animation-delay: calc(var(--duration-stagger) * 2);
+}
+.page-stage > :nth-child(4) {
+  animation-delay: calc(var(--duration-stagger) * 3);
+}
+.page-stage > :nth-child(n + 5) {
+  animation-delay: calc(var(--duration-stagger) * 4);
+}
+@keyframes t-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--distance-base));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Modal open / close: scale up on open, a quicker scale down on close. */
+[data-slot="dialog-overlay"][data-state="open"] {
+  animation: t-fade-in var(--duration-fast) var(--ease-smooth-out);
+}
+[data-slot="dialog-overlay"][data-state="closed"] {
+  animation: t-fade-out var(--duration-quick) var(--ease-smooth-out) forwards;
+}
+[data-slot="dialog-content"][data-state="open"] {
+  animation: t-modal-in var(--duration-fast) var(--ease-smooth-out);
+}
+[data-slot="dialog-content"][data-state="closed"] {
+  animation: t-modal-out var(--duration-quick) var(--ease-smooth-out) forwards;
+}
+@keyframes t-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes t-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes t-modal-in {
+  from {
+    opacity: 0;
+    scale: var(--scale-large);
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes t-modal-out {
+  from {
+    opacity: 1;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: var(--scale-large);
+  }
+}
+
+/* Menu dropdown: selects grow in and settle out more quickly. */
+[data-slot="select-content"][data-state="open"] {
+  animation: t-dropdown-in var(--duration-fast) var(--ease-smooth-out);
+}
+[data-slot="select-content"][data-state="closed"] {
+  animation: t-dropdown-out var(--duration-quick) var(--ease-smooth-out) forwards;
+}
+@keyframes t-dropdown-in {
+  from {
+    opacity: 0;
+    scale: 0.97;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes t-dropdown-out {
+  from {
+    opacity: 1;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: 0.99;
+  }
+}
+
+/* Tabs sliding: one indicator glides to the active option. useSlidingIndicator
+   writes the measured box; the container must be positioned. */
+[data-sliding-indicator] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--indicator-w, 0px);
+  height: var(--indicator-h, 0px);
+  transform: translate(var(--indicator-x, 0px), var(--indicator-y, 0px));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--duration-fast) var(--ease-smooth-out),
+    width var(--duration-fast) var(--ease-smooth-out),
+    height var(--duration-fast) var(--ease-smooth-out);
+}
+[data-indicator="ready"] > [data-sliding-indicator] {
+  opacity: 1;
+}
+[data-indicator="ready"] > :not([data-sliding-indicator]) {
+  position: relative;
+  z-index: 1;
+}
+
+/* Forced colours drop backgrounds; keep the selection visible as an outline. */
+@media (forced-colors: active) {
+  [data-sliding-indicator] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+
+/* Accordion expand for every native disclosure. Browsers without
+   ::details-content keep the instant toggle. */
+details {
+  interpolate-size: allow-keywords;
+}
+details::details-content {
+  /* flow-root keeps child margins inside the clip, so nothing jumps at the end. */
+  display: flow-root;
+  block-size: 0;
+  overflow-y: clip;
+  opacity: 0;
+  transition:
+    block-size var(--duration-fast) var(--ease-smooth-out),
+    opacity var(--duration-fast) var(--ease-smooth-out),
+    content-visibility var(--duration-fast) allow-discrete;
+}
+details[open]::details-content {
+  block-size: auto;
+  opacity: 1;
+}
+
+/* Skeleton loader: a quiet pulse while a view's code or data is on its way. */
+.skeleton-stage {
+  display: grid;
+  gap: 18px;
+  margin-bottom: 22px;
+}
+.skeleton-row {
+  display: grid;
+  grid-template-columns: repeat(var(--skeleton-columns, 3), minmax(0, 1fr));
+  gap: 18px;
+}
+.skeleton-block {
+  display: block;
+  min-height: var(--skeleton-height, 180px);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+  position: relative;
+}
+.skeleton-block::after {
+  content: "";
+  position: absolute;
+  inset: 18px 22px auto;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--hover);
+  box-shadow:
+    0 26px 0 0 var(--hover),
+    0 52px 0 -2px var(--inset);
+  animation: t-skel-pulse 1000ms ease-in-out infinite;
+}
+@keyframes t-skel-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+@media (max-width: 760px) {
+  .skeleton-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .skeleton-row > :nth-child(n + 2) {
+    display: none;
+  }
+}
+
+/* Icon swap: two icons share one slot and trade places with blur + scale. */
+.icon-swap {
+  display: inline-grid;
+  place-items: center;
+}
+.icon-swap > svg {
+  grid-area: 1 / 1;
+  transition:
+    opacity var(--duration-fast) ease-in-out,
+    filter var(--duration-fast) ease-in-out,
+    transform var(--duration-fast) ease-in-out;
+}
+.icon-swap > svg[data-active="false"] {
+  opacity: 0;
+  filter: blur(var(--blur-small));
+  transform: scale(0.25) rotate(-45deg);
+}
+
+/* Sync pulse: the status dot rings once when a refresh brings new data. */
+.status-dot.is-fresh {
+  animation: t-ping var(--duration-very-slow) var(--ease-smooth-out);
+}
+@keyframes t-ping {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in srgb, #34a781 55%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 7px color-mix(in srgb, #34a781 0%, transparent);
+  }
+}
+
+/* Error state shake: a failed key submission nudges its field. */
+.is-shaking {
+  animation: t-shake 280ms linear;
+}
+@keyframes t-shake {
+  0% {
+    transform: translateX(0);
+    animation-timing-function: var(--ease-smooth-out);
+  }
+  28.57% {
+    transform: translateX(6px);
+    animation-timing-function: var(--ease-smooth-out);
+  }
+  57.14% {
+    transform: translateX(-6px);
+    animation-timing-function: var(--ease-smooth-out);
+  }
+  78.57% {
+    transform: translateX(4px);
+    animation-timing-function: var(--ease-smooth-out);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+.form-input[aria-invalid="true"],
+.access-card input[aria-invalid="true"] {
+  border-color: color-mix(in srgb, var(--danger) 70%, var(--line-strong));
+}
+
+/* Press feedback on compact controls (beUI button-base press scale). */
+.plain-button,
+.icon-button,
+.command-search,
+.row-arrow,
+.mobile-bottom-nav a,
+.mobile-bottom-nav a > svg,
+.insight-trend-day-nav button {
+  transition:
+    background-color var(--duration-quick) var(--ease-smooth-out),
+    color var(--duration-quick) var(--ease-smooth-out),
+    transform var(--duration-quick) var(--ease-smooth-out);
+}
+.plain-button:active:not(:disabled),
+.icon-button:active:not(:disabled),
+.command-search:active,
+.row-arrow:active,
+.insight-trend-day-nav button:active:not(:disabled) {
+  transform: scale(0.96);
+}
+/* The tab keeps its 44px target; only the icon dips. */
+.mobile-bottom-nav a:active > svg {
+  transform: scale(0.88);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-stage > *,
+  .skeleton-block::after,
+  .status-dot.is-fresh,
+  .is-shaking {
+    animation: none !important;
+  }
+  [data-sliding-indicator],
+  .icon-swap > svg {
+    transition: none !important;
+  }
+  /* Separate rule: browsers without ::details-content drop the whole list. */
+  details::details-content {
+    transition: none !important;
+  }
+  .icon-swap > svg[data-active="false"] {
+    filter: none;
+    transform: none;
+  }
+}

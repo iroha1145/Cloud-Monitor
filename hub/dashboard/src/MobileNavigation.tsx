@@ -1,5 +1,6 @@
 import { FileClock, Grid2X2, Layers3, Monitor, Wallet } from "lucide-react";
 import { scrollToTop } from "./lib/scroll";
+import { useSlidingIndicator } from "./lib/hooks/use-sliding-indicator";
 
 const destinations = [
   { id: "overview", label: "总览", name: "总览", icon: Grid2X2 },
@@ -18,8 +19,10 @@ export function MobileNavigation({
   page: MobilePageId;
   onNavigate: (page: MobilePageId) => void;
 }) {
+  const ref = useSlidingIndicator<HTMLElement>('a[aria-current="page"]');
   return (
-    <nav className="mobile-bottom-nav" aria-label="移动端主导航">
+    <nav className="mobile-bottom-nav" aria-label="移动端主导航" ref={ref}>
+      <span data-sliding-indicator aria-hidden="true" />
       {destinations.map(({ id, label, name, icon: Icon }) => (
         <a
           key={id}

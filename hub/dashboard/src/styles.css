@@ -54,6 +54,18 @@
   --accent-tint: #edf4fc;
   --danger: var(--red);
   --warning: var(--orange);
+  /* transitions.dev motion tokens; recipes live in motion.css. */
+  --duration-stagger: 40ms;
+  --duration-quick: 150ms;
+  --duration-fast: 250ms;
+  --duration-medium: 350ms;
+  --duration-slow: 400ms;
+  --duration-very-slow: 500ms;
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --distance-base: 8px;
+  --scale-large: 0.96;
+  --blur-small: 2px;
 }
 .dark {
   color-scheme: dark;
@@ -669,6 +681,22 @@ h1 {
   box-shadow: none !important;
   border: 0;
 }
+.period-tabs > [data-sliding-indicator] {
+  border-radius: 7px;
+  background: var(--accent-tint);
+}
+.period-tabs[data-indicator="ready"] [role="tab"][data-state="active"] {
+  background: transparent;
+}
+.period-tabs [role="tab"] {
+  transition:
+    color var(--duration-fast) var(--ease-smooth-out),
+    transform var(--duration-quick) var(--ease-smooth-out);
+}
+.period-tabs [role="tab"]:active,
+.small-tabs [role="tab"]:active {
+  transform: scale(0.96);
+}
 .date-label {
   color: var(--ink-2);
   font-size: 11px;
@@ -848,6 +876,19 @@ h2 {
   background: var(--surface) !important;
   color: var(--ink) !important;
 }
+.small-tabs > [data-sliding-indicator] {
+  border-radius: 7px;
+  background: var(--surface);
+  box-shadow: 0 1px 3px #172c451a;
+}
+.dark .small-tabs > [data-sliding-indicator] {
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.small-tabs[data-indicator="ready"] [role="tab"][data-state="active"] {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
 .chart-toolbar {
   display: flex;
   align-items: center;
@@ -869,6 +910,24 @@ h2 {
   color: var(--primary);
   border-color: var(--primary);
   font-weight: 600;
+}
+.metric-switch {
+  position: relative;
+}
+.metric-switch > [data-sliding-indicator] {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--primary);
+  transform: translate(
+    var(--indicator-x, 0px),
+    calc(var(--indicator-y, 0px) + var(--indicator-h, 0px) - 2px)
+  );
+}
+.metric-switch[data-indicator="ready"] [aria-pressed="true"] {
+  border-color: transparent;
+}
+.metric-switch button {
+  transition: color var(--duration-fast) var(--ease-smooth-out);
 }
 .chart-sum {
   font-size: 9px;
@@ -1086,8 +1145,28 @@ h2 {
 .model-table tbody tr:last-child td {
   border-bottom: 0;
 }
-.model-table tr:hover td {
-  background: color-mix(in srgb, var(--hover) 60%, transparent);
+/* Beautiful UI GlideMenu: one highlight glides between rows under a pointer.
+   The scope spans the whole table, so full rows light up when it scrolls. */
+.table-glide-scope {
+  min-width: 100%;
+}
+@media (min-width: 761px) {
+  .table-glide-scope {
+    width: max-content;
+  }
+}
+.table-glide-scope > .model-table {
+  position: relative;
+}
+.table-glide {
+  left: 0;
+  right: 0;
+  background: color-mix(in srgb, var(--hover) 70%, transparent);
+}
+@media (hover: none), (pointer: coarse) {
+  .table-glide {
+    display: none;
+  }
 }
 .model-open {
   display: flex;
@@ -2433,7 +2512,7 @@ h2 {
     left: 0 !important;
     top: 0 !important;
     transform: none !important;
-    translate: 0 0 !important;
+    translate: 0 0;
     width: 270px !important;
     max-width: 85vw !important;
     height: 100dvh;
@@ -2521,8 +2600,10 @@ h2 {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
     scroll-behavior: auto !important;
   }
   .group\/glide-menu > span {
@@ -2720,6 +2801,69 @@ h2 {
     var(--line) 0 3px,
     var(--surface) 3px 6px
   );
+}
+/* Usage bars fill from the left when they first render: a track-coloured
+   cover slides away (it ignores pointers, so the bar stays tappable). Later
+   value changes glide. Rows cascade by the stagger step. */
+.cache-track:not(.is-incomplete),
+.client-track:not(.is-incomplete) {
+  position: relative;
+}
+.cache-track:not(.is-incomplete)::after,
+.client-track:not(.is-incomplete)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--hover);
+  transform: scaleX(0);
+  transform-origin: right;
+  pointer-events: none;
+  animation: t-bar-cover var(--duration-very-slow) var(--ease-smooth-out) backwards;
+}
+.model-table tbody tr:nth-child(2) .cache-track::after,
+.client-row:nth-child(2) .client-track::after {
+  animation-delay: var(--duration-stagger);
+}
+.model-table tbody tr:nth-child(3) .cache-track::after,
+.client-row:nth-child(3) .client-track::after {
+  animation-delay: calc(var(--duration-stagger) * 2);
+}
+.model-table tbody tr:nth-child(4) .cache-track::after,
+.client-row:nth-child(4) .client-track::after {
+  animation-delay: calc(var(--duration-stagger) * 3);
+}
+.model-table tbody tr:nth-child(n + 5) .cache-track::after,
+.client-row:nth-child(n + 5) .client-track::after {
+  animation-delay: calc(var(--duration-stagger) * 4);
+}
+.cache-track > span,
+.client-track > span {
+  transition: width var(--duration-slow) var(--ease-smooth-out);
+}
+@keyframes t-bar-cover {
+  from {
+    transform: scaleX(1);
+  }
+}
+@keyframes t-bar-fill {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+/* Ring segments draw from their start angle; period changes morph them. */
+.composition-ring circle[style] {
+  transition:
+    stroke-dasharray var(--duration-slow) var(--ease-smooth-out),
+    stroke-dashoffset var(--duration-slow) var(--ease-smooth-out);
+  animation: t-ring-draw var(--duration-very-slow) var(--ease-smooth-out) backwards;
+}
+@keyframes t-ring-draw {
+  from {
+    stroke-dasharray: 0 270.18;
+  }
 }
 .composition-ring {
   overflow: visible;

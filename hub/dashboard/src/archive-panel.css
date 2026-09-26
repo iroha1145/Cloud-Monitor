@@ -127,7 +127,7 @@
 }
 .archive-chevron {
   color: var(--ink-3);
-  transition: transform 0.18s ease;
+  transition: transform var(--duration-fast) var(--ease-smooth-out);
 }
 .archive-day[open] .archive-chevron {
   transform: rotate(180deg);

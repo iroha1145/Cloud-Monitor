@@ -25,6 +25,7 @@ import { usd } from "./money";
 import { compact, count, pct } from "./lib/format";
 import { AppErrorBoundary, lazyWithReload } from "./chunkLoad";
 import { indexForSelectedDay } from "./trend-math";
+import { useSlidingIndicator } from "./lib/hooks/use-sliding-indicator";
 import "./insight-trend.css";
 
 const Liveline = lazyWithReload("liveline", () =>
@@ -219,6 +220,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
   const [pointerAnchor, setPointerAnchor] = useState<DetailAnchor | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const navigationRef = useRef<HTMLSpanElement>(null);
+  const metricSwitch = useSlidingIndicator<HTMLDivElement>('[aria-pressed="true"]');
   const pointerDown = useRef(false);
   const series = useMemo(() => {
     const last = data.trend.at(-1);
@@ -458,10 +460,12 @@ export function InsightTrend({ data }: { data: DashboardData }) {
               : "等待每日记录"}
           </span>
           <div
+            ref={metricSwitch}
             className="insight-trend-switch"
             role="group"
             aria-label="趋势指标"
           >
+            <span data-sliding-indicator aria-hidden="true" />
             <button
               type="button"
               aria-pressed={metric === "tokens"}
