@@ -61,6 +61,7 @@ export default function AppDialogs({
   connectError,
   setConnectError,
   keyRejected,
+  setKeyRejected,
   showDemo,
   data,
   period,
@@ -95,6 +96,7 @@ export default function AppDialogs({
   connectError: string;
   setConnectError: (value: string) => void;
   keyRejected: boolean;
+  setKeyRejected: (value: boolean) => void;
   showDemo: () => void;
   data: DashboardData;
   period: PeriodKey;
@@ -174,6 +176,7 @@ export default function AppDialogs({
             }
             setSecret("");
             setConnectError("");
+            setKeyRejected(false);
           }
         }}
       >

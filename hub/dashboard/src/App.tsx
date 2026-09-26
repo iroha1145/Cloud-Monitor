@@ -828,6 +828,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
               connectError={connectError}
               setConnectError={setConnectError}
               keyRejected={keyRejected}
+              setKeyRejected={setKeyRejected}
               showDemo={showDemo}
               data={data}
               period={period}
