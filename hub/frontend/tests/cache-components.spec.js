@@ -18,7 +18,8 @@ test.beforeAll(async ({ browser }) => {
 
 function overviewWithUnknownInput(sharedModel = false) {
   const native = extractUsageFromTokscale({ entries: [
-    { client: "codex", model: MODEL, input: 20, output: 15, reasoning: 5, cacheRead: 65, cacheWrite: 0 },
+    // v0.62: output 10 + disjoint reasoning 5 preserves this fixture's 15-token output family.
+    { client: "codex", model: MODEL, input: 20, output: 10, reasoning: 5, cacheRead: 65, cacheWrite: 0 },
     { client: "claude", model: "claude-opus-4.6", input: 10, output: 10, cacheRead: 30, cacheWrite: 0 },
   ] });
   const unknownModel = sharedModel ? MODEL : "cursor-unknown";

@@ -2043,3 +2043,13 @@ html[data-theme="dark"] .hist-inc { color: var(--warn-ink); }
 .aux-note { font-size: 12px; color: var(--mute); padding: 10px 0; }
 .aux-note.err { color: var(--crit, #dc2626); }
 .comp-warn { font-size: 11px; color: var(--warn-ink, #b45309); }
+
+/* Additional quota/session evidence uses the existing compact card typography. */
+.sess-state, .sess-context { display: block; margin-top: 5px; font-size: 11px; color: var(--ink-2); white-space: normal; min-width: 150px; max-width: 250px; }
+.sess-context { color: var(--mute); }
+.lim-detail { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.lim-detail strong { font-weight: 600; }
+.lim-detail p, .lim-notice { margin: 4px 0 0; }
+.lim-detail ul { padding-left: 18px; margin: 5px 0 0; }
+.lim-notice { font-size: 12px; color: var(--ink-2); line-height: 1.6; }
+.lim-win-meta, .lim-account, .lim-balance { overflow-wrap: anywhere; }

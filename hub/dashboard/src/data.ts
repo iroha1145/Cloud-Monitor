@@ -124,13 +124,60 @@ export interface Quota {
   plan: string;
   account: string;
   label: string;
+  kind?: string;
   metric: string;
+  limitId?: string | null;
+  additional?: boolean;
+  boundaryKind?: "reset" | "expiry" | "mixed" | null;
+  resetDescription?: string | null;
+  detail?: string | null;
   usedPercent: number | null;
   used: number | null;
   remaining: number | null;
   limit: number | null;
   balanceUsd: number | null;
   balance?: number | null;
+  balanceCurrency?: string | null;
+  balanceTranches?: { amount: number; currency: string | null; expiresAt: string | null }[];
+  balanceDetails?: {
+    requestCount: number | null;
+    quotaGroup: string | null;
+    monthSpend: number | null;
+    allTimeSpend: number | null;
+    expiresAt: string | null;
+  };
+  resetCredits?: {
+    availableCount: number | null;
+    nextExpiresAt: string | null;
+    expirations: string[];
+    grants: {
+      label: string;
+      resetsLeft: number | null;
+      resetsTotal: number | null;
+      startsAt: string | null;
+      endsAt: string | null;
+      clears: string[];
+      usableNow: boolean | null;
+      useRequiresLimit: boolean | null;
+      paused: boolean | null;
+    }[];
+  } | null;
+  adapterId?: string | null;
+  usageSummary?: {
+    period: string;
+    requests: number | null;
+    todayTokens: number | null;
+    weekTokens: number | null;
+    totalTokens: number | null;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    cacheReadTokens: number | null;
+    cacheCreationTokens: number | null;
+    standardCost: number | null;
+    actualCost: number | null;
+    averageDurationMs: number | null;
+  } | null;
+  actionRequired?: string | null;
   sourceDevice?: string;
   resetsAt: string | null;
   currency?: string | null;
@@ -178,6 +225,12 @@ export interface Session {
   costUsd: number | null;
   startedAt: string | null;
   lastUsedAt: string | null;
+  contextTokens?: number | null;
+  contextWindow?: number | null;
+  turnEnded?: boolean | null;
+  archived?: boolean | null;
+  sessionKind?: string | null;
+  deviceStale?: boolean | null;
 }
 
 export interface Provider {
@@ -272,6 +325,47 @@ const optionalNumber = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 const optionalText = (value: unknown): string | null =>
   typeof value === "string" && value.length > 0 ? value : null;
+const optionalBoolean = (value: unknown): boolean | null =>
+  typeof value === "boolean" ? value : null;
+
+function quotaResetCredits(value: unknown): Quota["resetCredits"] {
+  const source = record(value);
+  const count = optionalNumber(source.availableCount);
+  const expirations = list(source.expirations)
+    .map(optionalText)
+    .filter((date): date is string => date !== null);
+  const grants = list(source.grants).map((value) => {
+    const grant = record(value);
+    return {
+      label: text(grant.label),
+      resetsLeft: optionalNumber(grant.resetsLeft),
+      resetsTotal: optionalNumber(grant.resetsTotal),
+      startsAt: optionalText(grant.startsAt),
+      endsAt: optionalText(grant.endsAt),
+      clears: list(grant.clears).map(optionalText).filter((item): item is string => item !== null),
+      usableNow: optionalBoolean(grant.usableNow),
+      useRequiresLimit: optionalBoolean(grant.useRequiresLimit),
+      paused: optionalBoolean(grant.paused),
+    };
+  });
+  const nextExpiresAt = optionalText(source.nextExpiresAt);
+  return count === null && !nextExpiresAt && !expirations.length && !grants.length
+    ? null
+    : { availableCount: count, nextExpiresAt, expirations, grants };
+}
+
+function quotaUsageSummary(value: unknown): Quota["usageSummary"] {
+  if (!isRecord(value)) return null;
+  const fields = [
+    "requests", "todayTokens", "weekTokens", "totalTokens", "inputTokens",
+    "outputTokens", "cacheReadTokens", "cacheCreationTokens", "standardCost",
+    "actualCost", "averageDurationMs",
+  ] as const;
+  const numbers = Object.fromEntries(fields.map((key) => [key, optionalNumber(value[key])])) as
+    Record<(typeof fields)[number], number | null>;
+  if (!text(value.period) && Object.values(numbers).every((number) => number === null)) return null;
+  return { period: text(value.period), ...numbers };
+}
 
 function maskedEmail(value: unknown): string {
   const email = text(value);
@@ -409,7 +503,7 @@ export function providerFor(name: string): string {
   if (/gemini|google/.test(key)) return "google";
   if (/grok|xai/.test(key)) return "xai";
   if (/deepseek/.test(key)) return "deepseek";
-  if (/kimi|moonshot|(?:^|[^a-z0-9])k3(?:[-._]|$)/.test(key)) return "kimi";
+  if (/kimi|moonshot|k2d6-agent|k3-agent|(?:^|[^a-z0-9])k[23](?:[-._]|$)/.test(key)) return "kimi";
   if (/glm|zhipu|\bzai\b/.test(key)) return "glm";
   return "other";
 }
@@ -425,6 +519,16 @@ export function providerName(provider: string): string {
         xai: "xAI",
         deepseek: "DeepSeek",
         kimi: "Kimi",
+        amp: "Amp",
+        factory: "Factory Droid",
+        droid: "Factory Droid",
+        devin: "Devin",
+        omp: "Oh My Pi",
+        mimo: "Xiaomi MiMo",
+        cline: "Cline",
+        typesafe: "TypeSafe",
+        alibaba: "Alibaba Cloud",
+        copilot: "GitHub Copilot",
         glm: "GLM",
         meta: "Meta",
       } as Record<string, string>
@@ -678,6 +782,12 @@ export function normalizePeriod(source: unknown): PeriodUsage {
                   codex: "Codex",
                   claude: "Claude Code",
                   cursor: "Cursor",
+                  amp: "Amp",
+                  droid: "Factory Droid",
+                  omp: "Oh My Pi",
+                  mimo: "Xiaomi MiMo",
+                  devin: "Devin",
+                  copilot: "GitHub Copilot",
                 } as Record<string, string>
               )[id] || id
             : id,
@@ -1014,6 +1124,15 @@ export function normalizeOverview(
   const quotas = list(root.limits).flatMap((value, index) => {
     const item = record(value);
     const balanceObject = record(item.balance);
+    const balanceTranches = list(balanceObject.tranches).flatMap((value) => {
+      const tranche = record(value);
+      const amount = optionalNumber(tranche.amount);
+      return amount === null ? [] : [{
+        amount,
+        currency: optionalText(tranche.currency),
+        expiresAt: optionalText(tranche.expiresAt),
+      }];
+    });
     const balance =
       optionalNumber(item.balance) ??
       optionalNumber(balanceObject.remaining) ??
@@ -1051,7 +1170,15 @@ export function normalizeOverview(
           text(w.name) ||
           text(w.window) ||
           text(w.kind, "使用额度"),
+        kind: text(w.kind),
         metric: text(w.metric, "percentage"),
+        limitId: optionalText(w.limitId),
+        additional: w.additional === true,
+        boundaryKind: ["reset", "expiry", "mixed"].includes(text(w.boundaryKind))
+          ? text(w.boundaryKind) as Quota["boundaryKind"]
+          : null,
+        resetDescription: optionalText(w.resetDescription),
+        detail: optionalText(w.detail),
         usedPercent: validCounter(w.usedPercent)
           ? Math.min(100, w.usedPercent)
           : null,
@@ -1060,14 +1187,26 @@ export function normalizeOverview(
         limit: optionalNumber(w.limit),
         balanceUsd: optionalNumber(item.balanceUsd),
         balance,
+        balanceCurrency: optionalText(balanceObject.currency),
+        balanceTranches,
+        balanceDetails: {
+          requestCount: optionalNumber(balanceObject.requestCount),
+          quotaGroup: optionalText(balanceObject.quotaGroup),
+          monthSpend: optionalNumber(balanceObject.monthSpend),
+          allTimeSpend: optionalNumber(balanceObject.allTimeSpend),
+          expiresAt: optionalText(balanceObject.expiresAt),
+        },
+        resetCredits: quotaResetCredits(item.resetCredits),
+        adapterId: optionalText(item.adapterId),
+        usageSummary: quotaUsageSummary(item.usageSummary),
+        actionRequired: optionalText(item.actionRequired),
         sourceDevice:
           text(item.device) ||
           devices.find((device) => device.id === text(item.sourceDeviceId))
             ?.name ||
           "",
         resetsAt: optionalText(w.resetsAt),
-        currency:
-          optionalText(w.currency) || (w.metric === "spend" ? "USD" : null),
+        currency: optionalText(w.currency),
         showMeter: w.showMeter !== false,
         sourceStatus: text(item.status, "unknown"),
         stale: item.stale === true,
@@ -1159,6 +1298,12 @@ export function normalizeOverview(
       costUsd: optionalNumber(item.costUsd),
       startedAt: optionalText(item.startedAt),
       lastUsedAt: optionalText(item.lastUsedAt),
+      contextTokens: optionalNumber(item.contextTokens),
+      contextWindow: optionalNumber(item.contextWindow),
+      turnEnded: optionalBoolean(item.turnEnded),
+      archived: optionalBoolean(item.archived),
+      sessionKind: optionalText(item.sessionKind),
+      deviceStale: optionalBoolean(item.deviceStale),
     };
   });
   const providers: Provider[] = list(record(extras.providers).providers).map(

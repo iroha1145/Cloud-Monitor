@@ -1690,6 +1690,12 @@
   white-space: nowrap;
   font-size: 13px;
 }
+.sv-progress-label .sv-quota-value {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
 .sv-progress {
   display: block;
   height: 7px;
@@ -1707,6 +1713,39 @@
 .sv-quota-window-foot > span:last-child {
   text-align: left;
 }
+.sv-quota-detail {
+  margin: 5px 0 0;
+  color: var(--ink-2);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.sv-quota-extras {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.sv-quota-extras p { margin: 0; }
+.sv-quota-action { color: var(--danger, #a74845); }
+.sv-quota-reset { display: grid; gap: 2px; }
+.sv-quota-reset strong { color: var(--ink); font-weight: 600; }
+.sv-quota-extras summary { cursor: pointer; min-height: 36px; display: flex; align-items: center; }
+.sv-quota-extras summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.sv-quota-grant { display: grid; gap: 2px; padding: 6px 0; }
+.sv-quota-grant + .sv-quota-grant { border-top: 1px solid var(--line); }
+.sv-quota-summary { margin: 4px 0 0; display: grid; gap: 3px; }
+.sv-quota-summary div { display: flex; justify-content: space-between; gap: 8px; }
+.sv-quota-summary dd { margin: 0; text-align: right; }
+.sv-session-activity { color: var(--primary); }
+.sv-session-context { min-width: 0; }
+.sv-session-context dd { display: grid; gap: 5px; }
+.sv-session-context progress { width: 100%; height: 7px; accent-color: var(--primary); }
 .sv-subscriptions-section {
   min-width: 0;
 }

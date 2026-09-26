@@ -18,6 +18,7 @@ from .auth import (
     resolve_write_binding,
 )
 from .body_limit import TmBodyLimitMiddleware
+from .compression import NegotiatedGZipMiddleware
 from .config import Settings, load_settings
 from .db import Database
 from .models import SyncPushRequest
@@ -143,6 +144,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             "/api/v1/system/update": 4096,
         },
     )
+    # Compress ordinary responses; Starlette excludes text/event-stream so
+    # live stats retain immediate delivery and their no-transform boundary.
+    app.add_middleware(NegotiatedGZipMiddleware, minimum_size=1024, compresslevel=1)
 
     if settings.cors_origins:
         app.add_middleware(
@@ -150,7 +154,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             allow_origins=list(settings.cors_origins),
             # 与路由能力对齐：tm 路由含 PUT /api/subscriptions、DELETE /api/devices/{id}
             allow_methods=["GET", "POST", "PUT", "DELETE"],
-            allow_headers=["Authorization", "Content-Type", "X-Token-Monitor-Secret"],
+            allow_headers=[
+                "Authorization", "Content-Type", "X-Token-Monitor-Secret",
+                "X-Token-Monitor-Response", "X-Token-Monitor-Stream",
+            ],
         )
 
     # 安全响应头（P1-8）：所有响应统一附加，不影响静态 UI 加载

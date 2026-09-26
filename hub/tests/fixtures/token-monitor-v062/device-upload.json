@@ -1,0 +1,348 @@
+{
+  "deviceId": "v062-contract",
+  "hostname": "contract-device",
+  "platform": "darwin-arm64",
+  "agentVersion": "0.62.0",
+  "updatedAt": "$NOW",
+  "historyAvailable": true,
+  "projectsEnabled": true,
+  "trackedClients": [
+    "codex",
+    "mimo",
+    "kilo"
+  ],
+  "periodWindows": {
+    "timeZone": "UTC",
+    "today": {
+      "key": "$TODAY",
+      "endsAt": "$TOMORROW"
+    },
+    "month": {
+      "key": "$MONTH",
+      "endsAt": "$NEXT_MONTH"
+    }
+  },
+  "today": {
+    "capabilities": {
+      "tokenComponents": true,
+      "throughput": true
+    },
+    "totalTokens": 100,
+    "costUsd": 0.25,
+    "outputTokens": 20,
+    "cacheReadTokens": 50,
+    "cacheWriteTokens": 10,
+    "timedTokens": 80,
+    "timedOutputTokens": 20,
+    "timedDurationMs": 2000,
+    "clients": {
+      "codex": 100
+    },
+    "sessions": {
+      "codex:s1": {
+        "client": "codex",
+        "sessionId": "s1",
+        "totalTokens": 100,
+        "inputTokens": 20,
+        "outputTokens": 20,
+        "cacheReadTokens": 50,
+        "cacheWriteTokens": 10,
+        "costUsd": 0.25,
+        "startedAt": "$NOW",
+        "lastUsedAt": "$NOW",
+        "contextTokens": 1234,
+        "contextWindow": 950000,
+        "turnEnded": true,
+        "sessionKind": "background-review",
+        "projectId": "sha256:fixture",
+        "projectLabel": "Fixture",
+        "title": "PRIVATE SESSION TEXT",
+        "preview": "PRIVATE SESSION TEXT",
+        "firstUserMessage": "PRIVATE SESSION TEXT"
+      }
+    }
+  },
+  "month": {
+    "totalTokens": 100,
+    "clients": {
+      "codex": 100
+    }
+  },
+  "allTime": {
+    "totalTokens": 100,
+    "clients": {
+      "codex": 100
+    }
+  },
+  "history": {
+    "daily": [
+      {
+        "date": "$TODAY",
+        "tokens": 100,
+        "cost": 0.25,
+        "tokenComponentsAvailable": true,
+        "cacheReadTokens": 50,
+        "cacheWriteTokens": 10,
+        "outputTokens": 20,
+        "perClient": {
+          "codex": {
+            "tokens": 100,
+            "cost": 0.25,
+            "cacheReadTokens": 50,
+            "cacheWriteTokens": 10,
+            "outputTokens": 20
+          }
+        },
+        "perModel": {}
+      }
+    ],
+    "monthly": [],
+    "summary": {
+      "totalTokens": 100
+    }
+  },
+  "limits": {
+    "updatedAt": "$NOW",
+    "providers": [
+      {
+        "provider": "devin",
+        "accountKey": "fixture:devin",
+        "status": "ok",
+        "updatedAt": "$NOW",
+        "windows": [
+          {
+            "kind": "daily",
+            "label": "Daily",
+            "used": 2,
+            "limit": 10,
+            "remaining": 8,
+            "limitId": "daily-fixture",
+            "boundaryKind": "reset",
+            "detail": "Daily allowance",
+            "resetsAt": "$TOMORROW"
+          }
+        ]
+      },
+      {
+        "provider": "typesafe",
+        "accountKey": "fixture:typesafe",
+        "status": "ok",
+        "updatedAt": "$NOW",
+        "windows": [
+          {
+            "kind": "daily",
+            "label": "Daily",
+            "used": 2,
+            "limit": 10,
+            "remaining": 8,
+            "limitId": "daily-fixture",
+            "boundaryKind": "reset",
+            "detail": "Daily allowance",
+            "resetsAt": "$TOMORROW"
+          }
+        ]
+      },
+      {
+        "provider": "openrouter",
+        "accountKey": "fixture:openrouter",
+        "status": "ok",
+        "updatedAt": "$NOW",
+        "windows": [
+          {
+            "kind": "daily",
+            "label": "Daily",
+            "used": 2,
+            "limit": 10,
+            "remaining": 8,
+            "limitId": "daily-fixture",
+            "boundaryKind": "reset",
+            "detail": "Daily allowance",
+            "resetsAt": "$TOMORROW"
+          }
+        ]
+      },
+      {
+        "provider": "minimax",
+        "accountKey": "fixture:minimax",
+        "status": "ok",
+        "updatedAt": "$NOW",
+        "windows": [
+          {
+            "kind": "daily",
+            "label": "Daily",
+            "used": 2,
+            "limit": 10,
+            "remaining": 8,
+            "limitId": "daily-fixture",
+            "boundaryKind": "reset",
+            "detail": "Daily allowance",
+            "resetsAt": "$TOMORROW"
+          }
+        ]
+      },
+      {
+        "provider": "ollama",
+        "accountKey": "fixture:ollama",
+        "status": "ok",
+        "updatedAt": "$NOW",
+        "windows": [
+          {
+            "kind": "daily",
+            "label": "Daily",
+            "used": 2,
+            "limit": 10,
+            "remaining": 8,
+            "limitId": "daily-fixture",
+            "boundaryKind": "reset",
+            "detail": "Daily allowance",
+            "resetsAt": "$TOMORROW"
+          }
+        ]
+      },
+      {
+        "provider": "alibaba",
+        "accountKey": "fixture:alibaba",
+        "status": "ok",
+        "updatedAt": "$NOW",
+        "windows": [
+          {
+            "kind": "daily",
+            "label": "Daily",
+            "used": 2,
+            "limit": 10,
+            "remaining": 8,
+            "limitId": "daily-fixture",
+            "boundaryKind": "reset",
+            "detail": "Daily allowance",
+            "resetsAt": "$TOMORROW"
+          }
+        ]
+      },
+      {
+        "provider": "volcengine",
+        "accountKey": "fixture:volcengine",
+        "status": "ok",
+        "updatedAt": "$NOW",
+        "windows": [
+          {
+            "kind": "daily",
+            "label": "Daily",
+            "used": 2,
+            "limit": 10,
+            "remaining": 8,
+            "limitId": "daily-fixture",
+            "boundaryKind": "reset",
+            "detail": "Daily allowance",
+            "resetsAt": "$TOMORROW"
+          }
+        ]
+      },
+      {
+        "provider": "cline",
+        "accountKey": "fixture:cline",
+        "status": "ok",
+        "updatedAt": "$NOW",
+        "windows": [
+          {
+            "kind": "daily",
+            "label": "Daily",
+            "used": 2,
+            "limit": 10,
+            "remaining": 8,
+            "limitId": "daily-fixture",
+            "boundaryKind": "reset",
+            "detail": "Daily allowance",
+            "resetsAt": "$TOMORROW"
+          }
+        ]
+      },
+      {
+        "provider": "factory",
+        "accountKey": "fixture:factory",
+        "status": "ok",
+        "updatedAt": "$NOW",
+        "windows": [
+          {
+            "kind": "daily",
+            "label": "Daily",
+            "used": 2,
+            "limit": 10,
+            "remaining": 8,
+            "limitId": "daily-fixture",
+            "boundaryKind": "reset",
+            "detail": "Daily allowance",
+            "resetsAt": "$TOMORROW"
+          }
+        ]
+      },
+      {
+        "provider": "zed",
+        "accountKey": "fixture:zed",
+        "status": "ok",
+        "updatedAt": "$NOW",
+        "windows": [
+          {
+            "kind": "daily",
+            "label": "Daily",
+            "used": 2,
+            "limit": 10,
+            "remaining": 8,
+            "limitId": "daily-fixture",
+            "boundaryKind": "reset",
+            "detail": "Daily allowance",
+            "resetsAt": "$TOMORROW"
+          }
+        ]
+      },
+      {
+        "provider": "claude",
+        "accountKey": "fixture:claude",
+        "status": "ok",
+        "updatedAt": "$NOW",
+        "windows": [],
+        "resetCredits": {
+          "available": 2,
+          "grants": [
+            {
+              "id": "fixture-grant",
+              "label": "Reset coupon",
+              "resetsLeft": 2,
+              "resetsTotal": 3,
+              "startsAt": "$NOW",
+              "endsAt": "$TOMORROW",
+              "clears": [
+                "session",
+                "weekly"
+              ],
+              "usableNow": true,
+              "useRequiresLimit": true,
+              "paused": false
+            }
+          ]
+        }
+      },
+      {
+        "provider": "thirdparty",
+        "adapterId": "new-api",
+        "accountKey": "fixture:thirdparty",
+        "status": "ok",
+        "updatedAt": "$NOW",
+        "windows": [],
+        "usageSummary": {
+          "period": "today",
+          "requests": 4,
+          "todayTokens": 100,
+          "weekTokens": 200,
+          "inputTokens": 20,
+          "outputTokens": 20,
+          "cacheReadTokens": 50,
+          "cacheCreationTokens": 10,
+          "totalTokens": 100,
+          "standardCost": 0.25,
+          "actualCost": 0.2,
+          "averageDurationMs": 500
+        }
+      }
+    ]
+  }
+}

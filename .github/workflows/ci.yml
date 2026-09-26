@@ -27,26 +27,8 @@ jobs:
         run: |
           node --check hub/tm-core/run.js
           node --check hub/tm-core/make_payload.js
-      - name: vendored 核心完整性（SHA-256 manifest 逐文件校验）
-        run: |
-          cd hub/tm-core/vendor
-          grep -qE '^[a-f0-9]{64}  ' MANIFEST.txt || { echo "manifest empty"; exit 1; }
-          python3 - <<'PY'
-          import hashlib, pathlib, sys
-          root = pathlib.Path(".")
-          bad = []
-          for line in (root / "MANIFEST.txt").read_text().splitlines():
-              parts = line.split("  ")
-              if len(parts) != 2 or len(parts[0]) != 64:
-                  continue
-              expected, rel = parts
-              actual = hashlib.sha256((root / rel).read_bytes()).hexdigest()
-              if actual != expected:
-                  bad.append(rel)
-          if bad:
-              sys.exit("MISMATCH: " + ", ".join(bad))
-          print("vendor integrity OK")
-          PY
+      - name: vendored 核心完整性（固定上游版本、完整依赖、逐文件哈希）
+        run: python hub/tm-core/sync_vendor.py --check
       - name: hub 测试（含官方 Node hub 差分与可靠性故障路径）
         run: cd hub && PYTHONPATH=backend python -m pytest tests/ -q
       - name: Cloud 扩展专项（provider-status / history-daily / coverage / prune / fixtures）

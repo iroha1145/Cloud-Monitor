@@ -599,7 +599,7 @@ function Clients({ per }: { per: PeriodUsage }) {
           <div className="client-row" key={c.id}>
             <div className="client-head">
               <span>
-                <BrandIcon name={c.name} color={c.color} size={27} />
+                <BrandIcon name={c.id} color={c.color} size={27} />
                 <strong>{c.name}</strong>
               </span>
               <strong>

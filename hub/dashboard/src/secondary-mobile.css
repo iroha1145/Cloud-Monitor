@@ -127,6 +127,9 @@
   .sv-quota-window + .sv-quota-window {
     padding-top: 16px;
   }
+  .sv-quota-extras summary {
+    min-height: 44px;
+  }
   .sv-history-activity {
     width: 100%;
     max-width: none;

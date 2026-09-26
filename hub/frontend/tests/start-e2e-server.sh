@@ -10,6 +10,15 @@ BASELINE="${CM_BASELINE:-$(cd "$FRONTEND_DIR/../.." && pwd)}"
 E2E_ROOT="${CM_E2E_ROOT:-$HOME/cm-e2e}"
 PORT="${CM_E2E_PORT:-18787}"
 
+# Destructive fixture cleanup must never resolve to the working checkout.
+python3 - "$E2E_ROOT" "$BASELINE" "$FRONTEND_DIR" <<'CHECK_FIXTURE'
+import pathlib
+import sys
+root, baseline, frontend = (pathlib.Path(value).resolve() for value in sys.argv[1:])
+if root == pathlib.Path(root.anchor) or root == baseline or root in baseline.parents or root == frontend or root in frontend.parents:
+    raise SystemExit("E2E_ROOT must be an isolated fixture directory")
+CHECK_FIXTURE
+
 # 基线变更（或首次）时重建 scratch 副本，避免陈旧后端
 STAMP="$E2E_ROOT/.baseline"
 if [ ! -d "$E2E_ROOT/hub/backend" ] || [ "$(cat "$STAMP" 2>/dev/null || true)" != "$BASELINE" ]; then
@@ -24,6 +33,9 @@ cp "$FRONTEND_DIR/index.html" "$FRONTEND_DIR/demo.html" "$FRONTEND_DIR/tm.css" \
    "$E2E_ROOT/hub/frontend/"
 mkdir -p "$E2E_ROOT/hub/frontend/client-logos"
 cp -R "$FRONTEND_DIR/client-logos/." "$E2E_ROOT/hub/frontend/client-logos/"
+# The legacy suite must render the legacy entry points even after a dashboard
+# build exists in the checkout. Remove only the copied build, never the source.
+rm -rf -- "$E2E_ROOT/hub/frontend/app"
 # 基线路径不变时 scratch 里的 backend 会陈旧，每次用当前仓库覆盖
 cp -R "$FRONTEND_DIR/../backend/." "$E2E_ROOT/hub/backend/"
 

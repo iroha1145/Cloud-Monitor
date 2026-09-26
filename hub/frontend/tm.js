@@ -149,14 +149,12 @@ function fmtTimedMs(ms) {
 }
 
 /* 配额窗口 resetsAt 倒计时：「3 小时后重置」 */
-function fmtReset(v) {
+function fmtReset(v, boundaryKind) {
+  if (!v) return "";
   const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return "";
-  const diff = d.getTime() - Date.now();
-  if (diff <= 0) return "即将重置";
-  if (diff < 3600 * 1000) return `${Math.max(1, Math.round(diff / 60000))} 分钟后重置`;
-  if (diff < 24 * 3600 * 1000) return `${Math.round(diff / 3600000)} 小时后重置`;
-  return `${Math.round(diff / 86400000)} 天后重置`;
+  if (!Number.isFinite(d.getTime())) return "";
+  const label = boundaryKind === "expiry" ? "到期于" : boundaryKind === "mixed" ? "额度变化于" : "重置于";
+  return `${label} ${fmtDateTime(v)}${d.getTime() <= Date.now() ? "（时间已过，等待更新）" : ""}`;
 }
 
 /* 订阅金额：amountMinor ÷ 100 + 币种符号 */
@@ -176,6 +174,11 @@ const PROVIDER_NAMES = {
   anthropic: "Anthropic", openai: "OpenAI", cursor: "Cursor",
   google: "Google", gemini: "Gemini", github: "GitHub", copilot: "Copilot",
   zhipu: "智谱", moonshot: "Moonshot", kimi: "Kimi", deepseek: "DeepSeek",
+  claude: "Claude", codex: "Codex", cline: "Cline", factory: "Factory Droid", droid: "Factory Droid",
+  devin: "Devin", typesafe: "TypeSafe", alibaba: "Alibaba Cloud", thirdparty: "第三方服务",
+  opencode: "OpenCode", openrouter: "OpenRouter", workbuddy: "WorkBuddy", zai: "Z.ai / GLM",
+  zaiteam: "GLM Team", mimo: "Xiaomi MiMo", micode: "Xiaomi MiMo", kilo: "Kilo Code",
+  kilocode: "Kilo Code", omp: "Oh My Pi", lmstudio: "LM Studio", unsloth: "Unsloth",
   grok: "SpaceXAI", xai: "SpaceXAI", "grok-web": "SpaceXAI (Web)",
 };
 function fmtProvider(v) {
@@ -371,6 +374,7 @@ const CLIENT_LOGO_DIR = (() => {
 })();
 const CLIENT_LOGO_ALIAS = {
   hermes: "hermes-agent",
+  factory: "droid", kilo: "kilocode",
   grok: "xai",
   xai: "grok",
   micode: "xiaomi",
@@ -390,6 +394,7 @@ const CLIENT_LOGO_ALIAS = {
   volc: "volcengine",
 };
 const CLIENT_LOGO_IDS = new Set([
+  "alibaba", "amp", "devin", "droid", "lmstudio", "omp", "sub2api", "typesafe", "unsloth",
   "antigravity", "cherrystudio", "claude", "cline", "codebuddy", "codex",
   "cohere", "commandcode", "copilot", "cursor", "deepseek", "doubao", "dsh",
   "gemini", "grok", "hermes-agent", "hunyuan", "kilocode", "kimi", "kiro",
@@ -2109,6 +2114,32 @@ function renderMatrix() {
   });
 }
 
+/* Session state follows Token Monitor v0.62's ten-minute activity window. */
+function sessionPresentation(session, devices, now = Date.now()) {
+  const device = (Array.isArray(devices) ? devices : []).find((d) => d.deviceId === session.deviceId);
+  const stale = typeof session.deviceStale === "boolean" ? session.deviceStale : device?.stale;
+  const last = Date.parse(session.lastUsedAt || "");
+  const validTime = Number.isFinite(last) && last <= now;
+  const recent = validTime && now - last <= 10 * 60 * 1000;
+  const explicit = typeof session.turnEnded === "boolean";
+  let status = "状态未提供";
+  if (session.archived === true) status = "闲置";
+  else if (validTime && explicit) {
+    if (!recent || stale === true) status = "闲置";
+    else if (stale === false) status = session.turnEnded ? "已完成" : "运行中";
+  }
+  const used = quotaNumber(session.contextTokens);
+  const window = quotaNumber(session.contextWindow);
+  let context = "上下文未提供";
+  if (used !== null && window !== null && used > 0 && window > 0) {
+    const prefix = recent && stale === false && session.archived !== true ? "" : "上次上报 · ";
+    context = used > window
+      ? `${prefix}上下文超出容量 ${fmtInt(used - window)} tokens`
+      : `${prefix}上下文剩余 ${fmtInt(window - used)} / ${fmtInt(window)} tokens`;
+  }
+  return { status, context, kind: session.sessionKind === "background-review" ? "后台审查" : "" };
+}
+
 /* ---------- 会话明细 ---------- */
 function renderSessions() {
   const panel = $("#sessions-panel");
@@ -2137,6 +2168,7 @@ function renderSessions() {
     const client = String(s.client || "");
     const color = state.clientColors[client] || OTHER_COLOR;
     const sid = String(s.sessionId || "");
+    const live = sessionPresentation(s, data.devices);
     const models = modelNamesOf(s.models);
     const modelsHtml = models.length
       ? models.slice(0, 2).map((m) => `<span class="sess-model">${clientLogoHtml(m)}<span class="sess-model-name">${esc(m)}</span></span>`).join("")
@@ -2149,8 +2181,8 @@ function renderSessions() {
       ? fmtDuration(end - start)
       : "—";
     return `<tr>
-      <td><span class="dev-chip"><i style="background:${color}"></i>${esc(client || "—")}</span></td>
-      <td><span class="sess-id" title="${esc(sid)}">${esc(sid.slice(0, 12))}</span></td>
+      <td><span class="dev-chip"><i style="background:${color}"></i>${esc(fmtProvider(client))}</span></td>
+      <td><span class="sess-id" title="${esc(sid)}">${esc(sid.slice(0, 12))}</span><span class="sess-state">${esc(live.status)}${live.kind ? " · " + esc(live.kind) : ""}</span><span class="sess-context">${esc(live.context)}</span></td>
       <td><span class="sess-models" title="${esc(models.join("、"))}">${modelsHtml}</span></td>
       <td class="num" title="${fmtInt(tokens)} tokens">${fmtCompact(tokens)}</td>
       <td class="num">${fmtUsd(s.costUsd)}</td>
@@ -2365,6 +2397,82 @@ function renderDevicesView() {
   }).join("");
 }
 
+/* Absolute quota values retain the producer's unit; absent currency is never USD. */
+function quotaNumber(value) {
+  if ((typeof value !== "number" && typeof value !== "string") || value === "" || (typeof value === "string" && !value.trim())) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+function quotaAmount(value, currency, unit) {
+  const number = quotaNumber(value);
+  if (number === null) return "未知";
+  const code = String(currency || unit || "").trim().toUpperCase();
+  const countUnits = { CREDITS: "点", CREDIT: "点", POINTS: "点", REQUESTS: "次", REQUEST: "次", COUNT: "次", TOKENS: "tokens", TOKEN: "tokens" };
+  const amount = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 4 }).format(number);
+  if (countUnits[code]) return `${amount} ${countUnits[code]}`;
+  if (!code) return `${amount}（单位未提供）`;
+  if (CCY_SYMBOLS[code]) return `${CCY_SYMBOLS[code]}${number.toFixed(2)} ${code}`;
+  return `${amount} ${code}`;
+}
+function quotaWindowInfo(w) {
+  const metric = String(w.metric || "").toLowerCase();
+  const pct = quotaNumber(w.usedPercent);
+  const remaining = quotaNumber(w.remaining);
+  const used = quotaNumber(w.used);
+  const limit = quotaNumber(w.limit);
+  const amount = (v) => quotaAmount(v, w.currency, w.unit);
+  let text;
+  // A percentage never displaces the actual balance, including a genuine zero.
+  if (metric === "credits" && remaining !== null) text = `剩余 ${amount(remaining)}`;
+  else if (used !== null) text = `已用 ${amount(used)}`;
+  else if (remaining !== null) text = `剩余 ${amount(remaining)}`;
+  else if (pct !== null) text = `已用 ${Math.max(0, Math.min(100, pct)).toFixed(0)}%`;
+  else text = "用量未知";
+  if (limit !== null && (used !== null || remaining !== null)) text += ` / 上限 ${amount(limit)}`;
+  const boundary = fmtReset(w.resetsAt, w.boundaryKind);
+  if (boundary) text += ` · ${boundary}`;
+  if (w.additional === true) text += " · 独立额度";
+  if (w.detail) text += " · " + String(w.detail);
+  return { text, percent: pct !== null && w.showMeter !== false && metric !== "credits" ? Math.max(0, Math.min(100, pct)) : null };
+}
+const ADAPTER_NAMES = { "newapi-account": "New API 账户", "newapi-token": "New API 密钥", sub2api: "Sub2API", custom: "自定义接口" };
+const LIMIT_ACTIONS = {
+  accountVerification: "请在服务商应用中完成账户验证，再刷新额度。",
+  appSessionEncrypted: "本机应用的登录信息已加密，暂时无法读取额度。重新登录不会解除此限制。",
+};
+function resetCreditsHtml(credits) {
+  if (!credits || typeof credits !== "object") return "";
+  const count = quotaNumber(credits.availableCount);
+  const expirations = Array.isArray(credits.expirations) ? credits.expirations : [];
+  const expiry = fmtReset(credits.nextExpiresAt || expirations[0], "expiry");
+  const grants = (Array.isArray(credits.grants) ? credits.grants : []).filter((g) => g && typeof g === "object");
+  if (count === null && !expiry && !grants.length) return "";
+  const rows = grants.map((g) => {
+    const left = quotaNumber(g.resetsLeft), total = quotaNumber(g.resetsTotal);
+    const state = g.paused === true ? "已暂停" : g.usableNow === true ? "当前可用" : g.usableNow === false ? "当前不可用" : "可用状态未提供";
+    const parts = [g.label || "重置券", left === null ? "次数未提供" : `剩余 ${fmtInt(left)} 次${total === null ? "" : " / 共 " + fmtInt(total) + " 次"}`, state];
+    if (g.useRequiresLimit === true) parts.push("达到限额后可使用");
+    if (Array.isArray(g.clears) && g.clears.length) {
+      const names = { session: "会话额度", five_hour: "5 小时额度", weekly: "每周额度", seven_day: "7 天额度", daily: "每日额度", all: "全部额度" };
+      parts.push("适用：" + g.clears.map((v) => names[v] || String(v)).join("、"));
+    }
+    if (g.startsAt && Number.isFinite(Date.parse(g.startsAt))) parts.push("生效于 " + fmtDateTime(g.startsAt));
+    const end = fmtReset(g.endsAt, "expiry");
+    if (end) parts.push(end);
+    return `<li>${esc(parts.join(" · "))}</li>`;
+  }).join("");
+  return `<div class="lim-detail"><strong>重置券${count === null ? "" : " · 剩余 " + fmtInt(count) + " 次"}</strong>${expiry ? `<p>${esc(expiry)}</p>` : ""}${rows ? `<ul>${rows}</ul>` : ""}</div>`;
+}
+function usageSummaryHtml(summary) {
+  if (!summary || typeof summary !== "object") return "";
+  const period = { today: "今日", week: "本周", month: "本月", allTime: "累计" }[summary.period] || "服务商";
+  const fields = [["requests", "请求", "REQUESTS"], ["todayTokens", "今日用量", "TOKENS"], ["weekTokens", "本周用量", "TOKENS"], ["totalTokens", "总用量", "TOKENS"], ["inputTokens", "输入", "TOKENS"], ["outputTokens", "输出", "TOKENS"], ["cacheReadTokens", "缓存读取", "TOKENS"], ["cacheCreationTokens", "缓存写入", "TOKENS"], ["standardCost", "标准费用", ""], ["actualCost", "实际费用", ""]];
+  const parts = fields.filter(([key]) => quotaNumber(summary[key]) !== null).map(([key, label, unit]) => `${label} ${quotaAmount(summary[key], "", unit)}`);
+  const duration = quotaNumber(summary.averageDurationMs);
+  if (duration !== null) parts.push(`平均耗时 ${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(duration / 1000)} 秒`);
+  return parts.length ? `<div class="lim-detail"><strong>${esc(period)}用量摘要</strong><p>${esc(parts.join(" · "))}</p></div>` : "";
+}
+
 /* ================= 渲染层 · 配额与订阅 ================= */
 function ringSvg(pct, lv, animate) {
   const R = 26;
@@ -2396,47 +2504,21 @@ function renderLimits(limits) {
     const provider = String(l.provider || "unknown");
     const plan = l.planLabel ? `<span class="lim-plan">${esc(String(l.planLabel))}</span>` : "";
     let bal = "";
-    if (l.balanceUsd != null && l.balanceUsd !== "" && !Number.isNaN(Number(l.balanceUsd))) {
-      bal = fmtUsd(l.balanceUsd);
-    } else if (typeof l.balance === "number") {
-      bal = fmtCompact(l.balance);
-    } else if (l.balance && typeof l.balance === "object") {
-      const cand = l.balance.remaining ?? l.balance.total ?? l.balance.value ?? l.balance.amount;
-      if (cand != null && !Number.isNaN(Number(cand))) bal = fmtCompact(cand);
+    if (l.balance && typeof l.balance === "object") {
+      const cand = l.balance.amount ?? l.balance.remaining ?? l.balance.value;
+      if (quotaNumber(cand) !== null) bal = quotaAmount(cand, l.balance.currency);
+    } else if (quotaNumber(l.balance) !== null) {
+      bal = quotaAmount(l.balance);
     }
+    if (!bal && quotaNumber(l.balanceUsd) !== null) bal = quotaAmount(l.balanceUsd, "USD");
     const account = [l.accountLabel, l.accountName, l.accountEmail ? maskEmail(l.accountEmail) : ""]
       .filter(Boolean).map(String).join(" · ");
     const wins = (Array.isArray(l.windows) ? l.windows : []).map((w) => {
       if (!w || typeof w !== "object") return "";
       const label = w.label || w.name || w.window || "窗口";
-      const reset = fmtReset(w.resetsAt);
-      const metric = String(w.metric || "").toLowerCase();
-      const hasPct = w.usedPercent != null && Number.isFinite(Number(w.usedPercent));
-      const showMeter = w.showMeter !== false;
-      let meter = "";
-      let meta;
-      if (hasPct && showMeter) {
-        // percentage 窗口：圆环仪表。语义=剩余配额：未使用=整圈绿，
-        // 随使用逐渐减少；颜色按已用量分档（用量越高越红，剩 ≤20% 即红）
-        const used = Math.max(0, Math.min(100, Number(w.usedPercent)));
-        const remain = 100 - used;
-        const lv = used < 60 ? "ok" : used < 80 ? "warn" : "crit";
-        meter = ringSvg(remain, lv, state.entryFx);
-        meta = reset || "已用 " + used.toFixed(0) + "%";
-      } else if (metric === "credits" && w.remaining != null && Number.isFinite(Number(w.remaining))) {
-        // credits 只有余额：显示绝对余额
-        meta = "剩余 " + fmtCompact(w.remaining) +
-          (w.limit != null ? " / 上限 " + fmtCompact(w.limit) : "") + (reset ? " · " + reset : "");
-      } else if (metric === "spend" && w.used != null && Number.isFinite(Number(w.used))) {
-        // 与 credits 分支同规：used 未知时不得渲染成「已用 $0.00」
-        meta = "已用 " + fmtUsd(w.used) + (w.limit != null ? " / " + fmtUsd(w.limit) : "") + (reset ? " · " + reset : "");
-      } else if (hasPct) {
-        // showMeter=false：纯文本百分比，不画仪表
-        meta = "已用 " + Number(w.usedPercent).toFixed(0) + "%" + (reset ? " · " + reset : "");
-      } else {
-        // 没有 usedPercent：不显示 0%
-        meta = reset || "用量未知";
-      }
+      const info = quotaWindowInfo(w);
+      const meter = info.percent === null ? "" : ringSvg(100 - info.percent, info.percent < 60 ? "ok" : info.percent < 80 ? "warn" : "crit", state.entryFx);
+      const meta = info.text;
       return `<div class="lim-win">
         ${meter}
         <div class="lim-win-info">
@@ -2447,11 +2529,15 @@ function renderLimits(limits) {
     }).filter(Boolean).join("");
     return `<article class="lim-card${riseCls()}"${riseStyle(li)}>
       <div class="lim-top">
-        <div class="lim-provider">${clientLogoHtml(provider)}<strong>${esc(fmtProvider(provider))}</strong>${plan}</div>
+        <div class="lim-provider">${clientLogoHtml(provider === "thirdparty" && l.adapterId === "sub2api" ? "sub2api" : provider)}<strong>${esc(fmtProvider(provider))}</strong>${plan}</div>
         ${bal ? `<div class="lim-balance"><span>余额</span><b>${esc(bal)}</b></div>` : ""}
       </div>
       ${account ? `<div class="lim-account" title="${esc(account)}">${esc(account)}</div>` : ""}
+      ${l.adapterId ? `<div class="lim-account">${esc(ADAPTER_NAMES[l.adapterId] || String(l.adapterId))}</div>` : ""}
+      ${LIMIT_ACTIONS[l.actionRequired] ? `<p class="lim-notice">${esc(LIMIT_ACTIONS[l.actionRequired])}</p>` : ""}
       ${wins ? `<div class="lim-wins">${wins}</div>` : ""}
+      ${resetCreditsHtml(l.resetCredits)}
+      ${usageSummaryHtml(l.usageSummary)}
       ${l.device ? `<div class="lim-dev">来源设备 · ${esc(String(l.device))}</div>` : ""}
     </article>`;
   }).join("");
@@ -4155,6 +4241,11 @@ setInterval(() => {
     maybeLoadHistoryBySentinel();
   }
 }, 200);
+
+// Session evidence must age even when the next network poll has not completed.
+setInterval(() => {
+  if (!document.hidden && state.data && state.view === "overview") renderSessions();
+}, 30000);
 
 let resizeTimer = null;
 let resizeRaf = 0;

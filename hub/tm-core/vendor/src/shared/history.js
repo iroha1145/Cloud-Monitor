@@ -2,7 +2,29 @@
 
 // Portable (Node-free) usage-history core. Mirrors usage.js conventions so the
 // Cloudflare Worker can import it. Pure functions only — no I/O.
-const { REASONIX_CLIENT } = require('./reasonixPaths');
+const { REASONIX_CLIENT } = require('./providers/reasonix/paths');
+
+const TOKSCALE_CLIENT_ALIASES = new Map([
+  ['antigravity-cli', 'antigravity'],
+  // `micode` is tokscale's id for MiMo Code, a fossil of the path typo its PR
+  // #784 fixed. Token Monitor's id is `mimo`, so both upstream spellings fold
+  // onto it — including plain `micode`, which is what every device and stored
+  // history record written before the rename still says.
+  ['micode', 'mimo'],
+  ['micode-desktop', 'mimo'],
+  ['kilocode', 'kilo'],
+  ['devin-cli', 'devin'],
+  ['devin-desktop', 'devin']
+]);
+
+// Canonical Token Monitor identity for client ids emitted by Tokscale. Keep
+// this small and exact: product-name heuristics still belong to usage.js, while
+// history and the durable archive need the same raw-id aliases as live usage.
+function normalizeTokscaleClientName(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return null;
+  return TOKSCALE_CLIENT_ALIASES.get(raw) || raw;
+}
 
 function num(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -23,19 +45,25 @@ function normalizeTimeMetrics(value) {
   };
 }
 
-// Additive token components. Existing clients expose reasoning inside `output`,
-// but Reasonix emits it as a disjoint component.
+// Tokscale emits these clients' reasoning as a disjoint JSON bucket. History
+// uses the same reasoning-inclusive public output convention as usage.js.
+const TOKSCALE_DISJOINT_REASONING_CLIENTS = new Set([REASONIX_CLIENT, 'codex', 'droid', 'dsh']);
+
+function hasDisjointReasoning(client) {
+  return TOKSCALE_DISJOINT_REASONING_CLIENTS.has(String(client).trim().toLowerCase());
+}
+
 function sumTokens(breakdown, client = '') {
   if (!breakdown || typeof breakdown !== 'object') return 0;
   return num(breakdown.input) + num(breakdown.output)
     + num(breakdown.cacheRead) + num(breakdown.cacheWrite)
-    + (String(client).trim().toLowerCase() === REASONIX_CLIENT ? num(breakdown.reasoning) : 0);
+    + (hasDisjointReasoning(client) ? num(breakdown.reasoning) : 0);
 }
 
 function sumOutputTokens(breakdown, client = '') {
   if (!breakdown || typeof breakdown !== 'object') return 0;
   return num(breakdown.output)
-    + (String(client).trim().toLowerCase() === REASONIX_CLIENT ? num(breakdown.reasoning) : 0);
+    + (hasDisjointReasoning(client) ? num(breakdown.reasoning) : 0);
 }
 
 function componentValues(value, totalTokens, exact) {
@@ -93,7 +121,7 @@ function parseGraphResult(raw) {
     const clientRows = Array.isArray(row.clients) ? row.clients : [];
     for (const c of clientRows) {
       if (!c || typeof c !== 'object') continue;
-      const client = String(c.client || 'unknown');
+      const client = normalizeTokscaleClientName(c.client) || 'unknown';
       const model = String(c.modelId || c.model || c.model_id || 'unknown');
       const t = sumTokens(c.tokens, client);
       const cst = num(c.cost);
@@ -252,7 +280,8 @@ function computeStreaks(days, todayKey) {
 }
 
 function addPerClient(target, source, includeTokenComponents = false) {
-  for (const [client, v] of Object.entries(source || {})) {
+  for (const [rawClient, v] of Object.entries(source || {})) {
+    const client = normalizeTokscaleClientName(rawClient) || rawClient;
     const t = target[client] || (target[client] = { tokens: 0, cost: 0, messages: 0 });
     t.tokens += num(v.tokens); t.cost += num(v.cost); t.messages += num(v.messages);
     if (includeTokenComponents) {
@@ -274,7 +303,9 @@ function addPerModel(target, source, includeTokenComponents = false) {
       if (num(v.cacheWriteTokens) > 0) t.cacheWriteTokens = num(t.cacheWriteTokens) + num(v.cacheWriteTokens);
       if (num(v.outputTokens) > 0) t.outputTokens = num(t.outputTokens) + num(v.outputTokens);
       const unclassifiedTokens = unclassifiedTokensFor(v);
-      if (unclassifiedTokens > 0) t.unclassifiedTokens = num(t.unclassifiedTokens) + unclassifiedTokens;
+      // Zero is provenance: it distinguishes a known input remainder from an
+      // unknown one when another model makes the merged day inexact.
+      t.unclassifiedTokens = num(t.unclassifiedTokens) + unclassifiedTokens;
     }
   }
 }
@@ -522,7 +553,8 @@ function deviceHistoryRevision(devices) {
 }
 
 module.exports = {
-  num, sumTokens, parseGraphResult, computeIntensities, localDayKey, dayKeyAddDays,
+  hasDisjointReasoning, num, normalizeTokscaleClientName, sumOutputTokens, sumTokens,
+  parseGraphResult, computeIntensities, localDayKey, dayKeyAddDays,
   computeStreaks, monthlyRollup, normalizeHistory, mergeHistories,
   coerceHistory, historyPreview, historyRevision, deviceHistoryRevision
 };
