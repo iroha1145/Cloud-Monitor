@@ -1,2 +1,5 @@
 Client logos vendored from token-monitor (MIT):
 https://github.com/Javis603/token-monitor/tree/main/assets/icons
+
+Additional v0.62.0 icons (alibaba, amp, devin, droid, lmstudio, omp, sub2api, typesafe, unsloth):
+https://github.com/Javis603/token-monitor/tree/dcccfb01557e2786888fd5479552f392ac6c0d32/assets/icons

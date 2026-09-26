@@ -3,7 +3,7 @@ const { defineConfig } = require("@playwright/test");
 
 module.exports = defineConfig({
   testDir: __dirname,
-  testMatch: ["cache-components.spec.js", "e2e-real-backend.spec.js", "scenarios.spec.js", "axe.spec.js", "screenshots.spec.js"],
+  testMatch: ["contract-v062.spec.js", "cache-components.spec.js", "e2e-real-backend.spec.js", "scenarios.spec.js", "axe.spec.js", "screenshots.spec.js"],
   timeout: 30000,
   expect: { timeout: 8000 },
   retries: 0,
@@ -12,6 +12,7 @@ module.exports = defineConfig({
   use: {
     baseURL: `http://127.0.0.1:${process.env.CM_E2E_PORT || 18787}`,
     headless: true,
+    ...(process.env.CM_E2E_BROWSER_CHANNEL ? { channel: process.env.CM_E2E_BROWSER_CHANNEL } : {}),
     viewport: { width: 1440, height: 900 },
     locale: "zh-CN",
   },

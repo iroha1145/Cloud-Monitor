@@ -1,0 +1,50 @@
+{
+  "providers": [
+    "devin",
+    "typesafe",
+    "openrouter",
+    "minimax",
+    "ollama",
+    "alibaba",
+    "volcengine",
+    "cline",
+    "factory",
+    "zed",
+    "claude",
+    "thirdparty"
+  ],
+  "daily": {
+    "kind": "daily",
+    "used": 2,
+    "limit": 10,
+    "remaining": 8,
+    "usedPercent": 20,
+    "remainingPercent": 80,
+    "limitId": "daily-fixture",
+    "boundaryKind": "reset",
+    "detail": "Daily allowance"
+  },
+  "session": {
+    "contextTokens": 1234,
+    "contextWindow": 950000,
+    "turnEnded": true,
+    "sessionKind": "background-review",
+    "projectLabel": "Fixture",
+    "totalTokens": 100
+  },
+  "today": {
+    "totalTokens": 100,
+    "outputTokens": 20,
+    "cacheReadTokens": 50,
+    "cacheWriteTokens": 10,
+    "timedTokens": 80,
+    "timedOutputTokens": 20,
+    "timedDurationMs": 2000
+  },
+  "build": {
+    "coreRevision": 54,
+    "runtimeRevision": 4,
+    "coreBuildId": "sha256:ba091f284abfce80aaca4b4a697b79bb1f55bcdece81c0661b481e20ae8f5a73",
+    "runtimeBuildId": "sha256:f1db81c0d1ede372aaf74c39514e00d19bee54f064dec77e5554c6434eb6ceb0"
+  }
+}

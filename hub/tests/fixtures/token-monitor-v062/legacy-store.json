@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "devices": {
+    "legacy-device": {
+      "deviceId": "legacy-device",
+      "hostname": "legacy",
+      "platform": "darwin",
+      "updatedAt": "$NOW",
+      "receivedAt": "$NOW",
+      "trackedClients": [
+        "$OLD_CLIENT"
+      ],
+      "periods": {
+        "today": {
+          "totalTokens": 100,
+          "costUsd": 1,
+          "clients": {
+            "$OLD_CLIENT": 100
+          },
+          "clientCosts": {
+            "$OLD_CLIENT": 1
+          },
+          "sessions": {},
+          "models": {},
+          "modelCosts": {}
+        },
+        "month": {
+          "totalTokens": 100,
+          "costUsd": 1,
+          "clients": {
+            "$OLD_CLIENT": 100
+          },
+          "clientCosts": {
+            "$OLD_CLIENT": 1
+          },
+          "sessions": {},
+          "models": {},
+          "modelCosts": {}
+        },
+        "allTime": {
+          "totalTokens": 100,
+          "costUsd": 1,
+          "clients": {
+            "$OLD_CLIENT": 100
+          },
+          "clientCosts": {
+            "$OLD_CLIENT": 1
+          },
+          "sessions": {},
+          "models": {},
+          "modelCosts": {}
+        }
+      }
+    }
+  },
+  "subscriptions": {
+    "updatedAt": "",
+    "entries": []
+  },
+  "savedAt": "$NOW"
+}

@@ -42,7 +42,8 @@ function device(id, period) {
 
 function nativePeriod() {
   return extractUsageFromTokscale({ entries: [
-    { client: "codex", model: CODEX_MODEL, input: 20, output: 15, reasoning: 5, cacheRead: 65, cacheWrite: 0 },
+    // v0.62: output 10 + disjoint reasoning 5 preserves this fixture's 15-token output family.
+    { client: "codex", model: CODEX_MODEL, input: 20, output: 10, reasoning: 5, cacheRead: 65, cacheWrite: 0 },
     { client: "claude", model: "claude-opus-4.6", input: 10, output: 10, cacheRead: 30, cacheWrite: 0 },
   ] });
 }
@@ -254,4 +255,14 @@ test("ordinary complete components keep the existing cache-share denominator", (
   assertSegments(breakdown, { input: 20, output: 15, cacheRead: 65 });
   assert.equal(frontend.cacheHitRate(breakdown), 0.65,
     "The dashboard displays cached tokens divided by all tokens, including output");
+});
+
+// Tokscale v0.62 reports Codex output and reasoning as disjoint counters.
+test("Codex disjoint reasoning joins the output family exactly once", () => {
+  const period = extractUsageFromTokscale({ entries: [
+    { client: "codex", model: CODEX_MODEL, input: 20, output: 15, reasoning: 5, cacheRead: 65 },
+  ] });
+  assert.equal(period.totalTokens, 105);
+  assert.equal(period.outputTokens, 20);
+  assertSegments(frontend.componentBreakdown(period), { input: 20, output: 20, cacheRead: 65 });
 });

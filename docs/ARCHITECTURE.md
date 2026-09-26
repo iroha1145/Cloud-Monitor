@@ -241,7 +241,7 @@ today_total 汇总（近似当日用量）。
 widget/agent ──官方同步协议──► Python 网关（鉴权/严格校验/1MiB 实测限流）
                                    │ 转发
                                    ▼
-                          tm-core（vendored 官方 hub @b925865，逐字节未改）
+                          tm-core（官方 v0.62.0 @dcccfb0，逐字节未改）
                             规范化 / 设备合并(含 limitsOnly) / 多设备聚合 /
                             periodWindows 过期 / syncUploadIntervalMs stale /
                             history / limits / SSE 广播 / subscriptions /
@@ -260,6 +260,9 @@ headless agent 风格、官方 mergeDeviceRecord 生成的载荷、partial、
 limits-only、trackedClients 变化、窗口过期、删除）断言：经 Cloud 全链路
 与直连官方 hub 的 stats/devices/history/ingest 响应核心字段等价。
 
+另有固定版本测试 `tests/test_tm_v062_core.py` 和独立提交的 v0.62 载荷/旧存储样例，不通过当前内核生成预期。
+完整依赖与来源哈希由 `tm-core/upstream-v062.json` 固定，`tm-core/sync_vendor.py --check` 校验；生成清单不能替代版本契约检查。
+
 ## 关键语义（全部由官方代码执行，网关不重造）
 
 - **过期**：`isPeriodExpired` —— periodWindows.{today,month}.endsAt 到期即
@@ -271,9 +274,17 @@ limits-only、trackedClients 变化、窗口过期、删除）断言：经 Cloud
   时以组件归一）。
 - **订阅**：条目必须含 provider+startDate（topup 需 topUps）；过期
   baseUpdatedAt → 409 stale_write；非法币种 → 400。
-- **SSE**：首帧 `event: snapshot`，ingest/delete/subscriptions 广播
-  `event: stats`，30s `: hb` 心跳；网关字节级透传并设置
-  x-accel-buffering: no。
+- **SSE**：首帧 `event: snapshot`；请求头 `X-Token-Monitor-Stream: 2` 可启用
+  仅更新设备新鲜度的 `event: freshness`。旧客户端保持完整 `event: stats`。
+  核心合并短时间内的上传广播；删除和订阅变更仍发布完整统计，30s `: hb` 心跳。
+  网关只转发已支持的版本 2，字节级透传、不压缩，设置 `x-accel-buffering: no`。
+- **精简回执**：外部 `X-Token-Monitor-Response: minimal` 不传给内部核心。
+  转发队列收到完整 `stats.devices`、持久保存本请求的规范化记录后，外层才将
+  成功回应裁为 `ok/deviceId`。错误及 Retry-After 保持原状；本地快照写入失败
+  仍由已确认记录重放。`tests/test_tm_v062_gateway.py` 验证这一顺序。
+- **压缩**：普通响应通过 Starlette 标准压缩器处理（1 KiB、level 1），协商前
+  合并重复 Accept-Encoding 头并尊重 q=0；事件流排除在外。跨域允许的新协商头
+  仍仅限配置的来源。
 
 ## 快照分桶（网关自有，官方无此数据）
 

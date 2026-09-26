@@ -669,6 +669,13 @@ def _collect_sessions(stats: dict) -> tuple[dict, list[dict]]:
                 "lastUsedAt": value.get("lastUsedAt"),
                 "device": display,
             }
+            # Keep absent observations absent: an older client has no evidence
+            # that a turn is still running or that its context is empty.
+            for field in ("contextTokens", "contextWindow", "turnEnded", "sessionKind", "archived"):
+                if field in value:
+                    item[field] = value[field]
+            if isinstance(device.get("stale"), bool):
+                item["deviceStale"] = device["stale"]
             item["deviceId"] = device.get("deviceId")
             # sessionId 解析不出来（键无冒号且载荷未带）时回退原始键，
             # 避免多个会话坍缩到同一个 dedup 键互相覆盖

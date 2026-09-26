@@ -125,14 +125,17 @@ class TmCore:
             return None
 
 
-def _proxy_response(resp: httpx.Response) -> JSONResponse:
+def _proxy_response(resp: httpx.Response, *, minimal_ingest: bool = False) -> JSONResponse:
     headers = {}
     if "Retry-After" in resp.headers:
         headers["Retry-After"] = resp.headers["Retry-After"]
     try:
-        return JSONResponse(status_code=resp.status_code, content=resp.json(), headers=headers)
+        content = resp.json()
     except ValueError:
         return JSONResponse(status_code=502, content={"error": "bad_gateway"}, headers=headers)
+    if minimal_ingest and resp.status_code == 200 and isinstance(content, dict) and content.get("ok") is True:
+        content = {key: content[key] for key in ("ok", "deviceId") if key in content}
+    return JSONResponse(status_code=resp.status_code, content=content, headers=headers)
 
 
 def request_tm_secret(request: Request) -> str:
@@ -250,13 +253,16 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
         device_id = str(payload.get("deviceId") or payload.get("id") or "")
         attempt = forwarding.process_device(core_of(request), device_id)
         _wake_replay(request)
+        # The core always returns the full record for durable acknowledgement.
+        # Trim only the external response after the forwarding queue saved it.
+        minimal = request.headers.get("x-token-monitor-response", "").strip().lower() == "minimal"
         if attempt.request_id == request_id and attempt.response is not None:
-            return _proxy_response(attempt.response)
+            return _proxy_response(attempt.response, minimal_ingest=minimal)
         completed = forwarding.result_for_request(core_of(request), request_id)
         if completed is not None:
             attempt = completed
             if completed.response is not None:
-                return _proxy_response(completed.response)
+                return _proxy_response(completed.response, minimal_ingest=minimal)
         return JSONResponse(
             status_code=503,
             content={
@@ -369,10 +375,13 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             request.app.state, "http_sse", request.app.state.http_async
         )
         core = core_of(request)
+        headers = core.headers()
+        if request.headers.get("x-token-monitor-stream", "").strip() == "2":
+            headers["X-Token-Monitor-Stream"] = "2"
         upstream_req = async_client.build_request(
             "GET",
             f"{core.base_url}/api/stats/stream",
-            headers=core.headers(),
+            headers=headers,
         )
         try:
             upstream = await async_client.send(upstream_req, stream=True)

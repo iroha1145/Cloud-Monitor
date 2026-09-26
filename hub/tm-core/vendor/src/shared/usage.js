@@ -1,17 +1,21 @@
 'use strict';
 
 const PERIODS = ['today', 'month', 'allTime'];
-const { aggregateLimits, normalizeLimitsSummary } = require('./limits');
+const { aggregateLimits, normalizeLimitsSummary } = require('./limits/core');
 const { normalizeClientHealth } = require('./clientHealth');
-const { coerceHistory, dayKeyAddDays, localDayKey, mergeHistories } = require('./history');
-const { REASONIX_CLIENT } = require('./reasonixPaths');
-const { filterReasonixSyntheticSessions, isReasonixSyntheticSession } = require('./reasonixSessionGuard');
+const {
+  coerceHistory, dayKeyAddDays, hasDisjointReasoning, localDayKey, mergeHistories,
+  normalizeTokscaleClientName
+} = require('./history');
+const { REASONIX_CLIENT } = require('./providers/reasonix/paths');
+const { filterReasonixSyntheticSessions, isReasonixSyntheticSession } = require('./providers/reasonix/sessionGuard');
 const { canonicalProjectKey, deterministicProjectLabel } = require('./projectKey');
 const { normalizeSyncUploadIntervalMs, staleAfterMsForSyncUpload } = require('./syncUploadInterval');
 const TOKEN_KEYS = ['totalTokens', 'total_tokens', 'totalTokenCount', 'total_token_count', 'tokens', 'tokenCount', 'token_count'];
-// Additive components for a token total. `reasoning` is deliberately excluded for ordinary clients:
-// OpenAI/Codex report reasoning_output_tokens WITHIN output_tokens (tokscale's `output` already
-// includes it). Reasonix is the exception: its `output` and `reasoning` fields are disjoint.
+// Additive components for a token total. `reasoning` is deliberately excluded
+// from the generic fallback because most Tokscale clients either leave it at 0
+// or already include it in output. A small client allowlist below opts into
+// Tokscale's disjoint output/reasoning JSON contract.
 const TOKEN_COMPONENT_KEYS = [
   'input', 'inputTokens', 'input_tokens', 'promptTokens', 'prompt_tokens',
   'output', 'outputTokens', 'output_tokens', 'completionTokens', 'completion_tokens',
@@ -36,7 +40,14 @@ const TIMED_DURATION_KEYS = ['totalDurationMs', 'total_duration_ms', 'timedDurat
 const TIMED_TOKEN_KEYS = ['timedTokens', 'timed_tokens'];
 const STARTED_AT_KEYS = ['startedAt', 'started_at', 'createdAt', 'created_at'];
 const LAST_USED_AT_KEYS = ['lastUsedAt', 'last_used_at', 'updatedAt', 'updated_at', 'lastActivityAt', 'last_activity_at', 'timestamp'];
-const GUI_SECRET_LIMIT_PROVIDERS = new Set(['copilot', 'deepseek', 'minimax']);
+const SESSION_TITLE_KEYS = ['sessionTitle', 'session_title'];
+const SESSION_TITLE_MAX_LENGTH = 160;
+const SESSION_TEXT_KEYS = [
+  'title', 'sessionTitle', 'session_title',
+  'name', 'preview', 'firstUserMessage', 'first_user_message',
+  'customTitle', 'custom_title', 'aiTitle', 'ai_title'
+];
+const GUI_SECRET_LIMIT_PROVIDERS = new Set(['copilot', 'deepseek', 'factory', 'minimax']);
 
 function asNumber(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -79,22 +90,23 @@ function tokenValue(obj) {
   return sum;
 }
 
-// Most clients expose reasoning as a subset of output, so the generic token
-// total intentionally leaves it out. Reasonix stats are different: Tokscale
-// emits output and reasoning as disjoint fields, so only that client adds the
-// separate reasoning component to its token total.
+// Most clients do not expose a separate additive reasoning bucket, so the
+// generic total intentionally leaves it out. Tokscale emits disjoint output
+// and reasoning for these clients; add reasoning only when no explicit total
+// is present.
 function tokenValueForClient(obj, client) {
   const base = tokenValue(obj);
-  if (client !== REASONIX_CLIENT) return base;
+  if (!hasDisjointReasoning(client)) return base;
   const direct = firstNumber(obj, TOKEN_KEYS);
   return direct !== 0 ? base : base + Math.max(0, firstNumber(obj, REASONING_TOKEN_KEYS));
 }
 
-// The public breakdown uses one output-family bucket. Reasonix's independent reasoning
-// component belongs there so cache-hit + cache-miss + output still closes over totalTokens.
+// The public breakdown uses one reasoning-inclusive output-family bucket.
+// Fold Tokscale's independent reasoning component into it so cache-hit +
+// cache-miss + output still closes over totalTokens.
 function outputValueForClient(obj, client) {
   const output = Math.max(0, firstNumber(obj, OUTPUT_TOKEN_KEYS));
-  return client === REASONIX_CLIENT
+  return hasDisjointReasoning(client)
     ? output + Math.max(0, firstNumber(obj, REASONING_TOKEN_KEYS))
     : output;
 }
@@ -113,9 +125,58 @@ function normalizeIsoTimestamp(value) {
   return ms > 0 ? new Date(ms).toISOString() : '';
 }
 
+function normalizeSessionTitle(value) {
+  return Array.from(String(value || '').replace(/\s+/g, ' ').trim())
+    .slice(0, SESSION_TITLE_MAX_LENGTH)
+    .join('');
+}
+
+function normalizeSessionKind(value) {
+  return String(value || '').trim() === 'background-review' ? 'background-review' : '';
+}
+
+function stripSessionTextFromPeriod(period) {
+  if (!period || typeof period !== 'object' || !period.sessions || typeof period.sessions !== 'object') {
+    return period;
+  }
+  const sessions = {};
+  for (const [key, value] of Object.entries(period.sessions)) {
+    if (!value || typeof value !== 'object') {
+      sessions[key] = value;
+      continue;
+    }
+    const session = { ...value };
+    for (const field of SESSION_TEXT_KEYS) delete session[field];
+    sessions[key] = session;
+  }
+  return { ...period, sessions };
+}
+
+// Hub ingress is a trust boundary. Current clients already omit local titles,
+// but the Hub must enforce that privacy contract even for stale, buggy, or
+// custom senders. Preserve non-text classification such as `sessionKind`.
+function stripSessionTextFromDeviceRecord(record) {
+  if (!record || typeof record !== 'object') return record;
+  const stripped = { ...record };
+  for (const periodName of PERIODS) {
+    if (hasOwn(stripped, periodName)) {
+      stripped[periodName] = stripSessionTextFromPeriod(stripped[periodName]);
+    }
+  }
+  if (stripped.periods && typeof stripped.periods === 'object') {
+    stripped.periods = { ...stripped.periods };
+    for (const periodName of PERIODS) {
+      if (hasOwn(stripped.periods, periodName)) {
+        stripped.periods[periodName] = stripSessionTextFromPeriod(stripped.periods[periodName]);
+      }
+    }
+  }
+  return stripped;
+}
+
 function emptyPeriod() {
   return {
-    capabilities: { tokenComponents: true },
+    capabilities: { tokenComponents: true, throughput: true },
     totalTokens: 0,
     costUsd: 0,
     cacheReadTokens: 0,
@@ -163,7 +224,7 @@ function emptyPeriod() {
 }
 
 function normalizeClientName(value) {
-  const raw = String(value || '').trim().toLowerCase();
+  const raw = normalizeTokscaleClientName(value);
   if (!raw) return null;
   if (raw.includes('claude')) return 'claude';
   if (raw.includes('codex')) return 'codex';
@@ -171,15 +232,21 @@ function normalizeClientName(value) {
   if (raw.includes('gemini')) return 'gemini';
   if (raw.includes('cursor')) return 'cursor';
   if (raw.includes('antigravity')) return 'antigravity';
+  if (raw === 'amp') return 'amp';
   if (raw.includes('kimi')) return 'kimi';
   if (raw.includes('qwen')) return 'qwen';
   if (raw.includes('grok')) return 'grok';
+  if (raw === 'droid') return 'droid';
   if (raw.includes('copilot')) return 'copilot';
+  // Oh My Pi before the generic Pi test: its display name contains "Pi" as a
+  // word, so the Pi heuristic would otherwise capture it. Tokscale reports the
+  // id `omp`; these spellings only appear when a caller passes a display name.
+  if (raw === 'omp' || /^oh[\s_-]*my[\s_-]*pi$/.test(raw)) return 'omp';
   if (/\bpi\b/.test(raw)) return 'pi';
   if (raw.includes('zed')) return 'zed';
-  if (raw.includes('kilocode')) return 'kilocode';
+  if (/^kilo[\s_-]*code$/.test(raw)) return 'kilo';
   if (/command[\s_-]*code/.test(raw)) return 'commandcode';
-  if (raw.includes('micode')) return 'micode';
+  if (raw.includes('micode') || raw.includes('mimo')) return 'mimo';
   if (raw.includes('zcode')) return 'zcode';
   if (raw.includes('kiro')) return 'kiro';
   if (raw.includes('codebuddy')) return 'codebuddy';
@@ -188,7 +255,10 @@ function normalizeClientName(value) {
   if (raw.includes('qodercn') || raw === 'qoder-cn' || raw === 'qoder cn') return 'qodercn';
   if (raw.includes('reasonix')) return 'reasonix';
   if (/cherry[\s_-]*studio/.test(raw)) return 'cherrystudio';
+  if (/lm[\s_-]*studio/.test(raw)) return 'lmstudio';
+  if (/^unsloth(?:[\s_-]+(?:studio|api))?$/.test(raw)) return 'unsloth';
   if (raw.includes('dsh')) return 'dsh';
+  if (raw.includes('devin')) return 'devin';
   if (raw.includes('opencode')) return 'opencode';
   if (raw.includes('openclaw') || raw.includes('clawd') || raw.includes('moltbot') || raw.includes('moldbot')) return 'openclaw';
   return raw.replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || null;
@@ -423,8 +493,21 @@ function emptySession(client, id) {
     reasoningTokens: 0,
     startedAt: '',
     lastUsedAt: '',
+    // What the session's context window currently holds and how big it is.
+    // Both are read from the client's own transcript (tokscale reports
+    // neither) and only for a session recent enough to still be open, so 0/0
+    // is the normal value for everything else.
+    contextTokens: 0,
+    contextWindow: 0,
+    // `turnEnded` is deliberately absent here. True once the client's own
+    // transcript said the current turn finished, which is how a session stops
+    // reading as running without waiting out the time window — but a default of
+    // `false` would make "this reading carries no boundary" indistinguishable
+    // from "a turn is in progress", and the former must not clear the latter.
     projectId: '',
     projectLabel: '',
+    title: '',
+    sessionKind: '',
     models: {},
     modelCosts: {},
     providers: {}
@@ -455,6 +538,43 @@ function mergeSession(target, source) {
   } else if (target.projectId === sourceProjectId && !target.projectLabel && source.projectLabel) {
     target.projectLabel = String(source.projectLabel);
   }
+  // Occupancy is a snapshot, not a sum. The two halves move together and must
+  // never be mixed across sources, so a source carrying a window replaces both
+  // and one carrying none leaves both alone.
+  //
+  // A snapshot also has a time, so it is freshest-wins rather than
+  // last-merge-wins. The same session arrives from several periods and devices
+  // (in month and in today, from this device and from a synced one), and
+  // without this the older reading won whenever it happened to be merged last,
+  // which made the gauge depend on iteration order. The source's own
+  // `lastUsedAt` is that time, because the reading is taken from the transcript
+  // the timestamp describes. A tie accepts, since both describe the same bytes,
+  // and a target that has no reading at all takes the source's: absent means
+  // this device never read a transcript, not that the reading is empty.
+  const sourceContextWindow = Math.max(0, Math.round(asNumber(source.contextWindow)));
+  if (sourceContextWindow > 0) {
+    const targetContextWindow = Math.max(0, Math.round(asNumber(target.contextWindow)));
+    if (targetContextWindow <= 0 || sourceLastUsed >= targetLastUsed) {
+      target.contextWindow = sourceContextWindow;
+      target.contextTokens = Math.max(0, Math.round(asNumber(source.contextTokens)));
+    }
+  }
+  // A turn end is a transcript reading, not a sum, so it is freshest-wins: the
+  // same session can appear in several periods, and a turn that started after
+  // one of them was decorated has to be able to clear it. Absent means "this
+  // client reports no boundary", which never overwrites a real reading.
+  if (hasOwn(source, 'turnEnded')) {
+    const sourceEnded = source.turnEnded === true;
+    // Strictly newer wins. At the same timestamp a positive claim beats a
+    // negative one: both readings describe the same bytes, and one of them
+    // found a boundary the other did not have in its window. A negative
+    // reading is also what a client with no evidence sends, so letting it win
+    // on a tie would drop the only real answer available.
+    if (sourceLastUsed > targetLastUsed) target.turnEnded = sourceEnded;
+    else if (sourceEnded && sourceLastUsed === targetLastUsed) target.turnEnded = true;
+  }
+  if (!target.title && source.title) target.title = normalizeSessionTitle(source.title);
+  if (!target.sessionKind && source.sessionKind) target.sessionKind = normalizeSessionKind(source.sessionKind);
   for (const [model, tokens] of Object.entries(source.models || {})) {
     const key = normalizeModelNameForClient(model, target.client);
     if (key) target.models[key] = (target.models[key] || 0) + Math.max(0, Math.round(asNumber(tokens)));
@@ -495,10 +615,13 @@ function sessionFromRow(row) {
   session.costUsd = costValue(row);
   session.messageCount = Math.max(0, Math.round(firstNumber(row, MESSAGE_COUNT_KEYS)));
   Object.assign(session, sessionTokenComponents(row));
+  session.outputTokens = Math.max(0, Math.round(outputValueForClient(row, client)));
   session.startedAt = normalizeIsoTimestamp(firstString(row, STARTED_AT_KEYS));
   session.lastUsedAt = normalizeIsoTimestamp(firstString(row, LAST_USED_AT_KEYS));
   session.projectId = String(row.projectId || row.project_id || '').trim();
   session.projectLabel = String(row.projectLabel || row.project_label || '').trim();
+  session.title = normalizeSessionTitle(firstString(row, SESSION_TITLE_KEYS));
+  session.sessionKind = normalizeSessionKind(row.sessionKind || row.session_kind);
   let model = detectModel(row, client);
   if (client === 'cursor' && model === 'auto') model = 'cursor-auto';
   if (model && session.totalTokens > 0) session.models[model] = (session.models[model] || 0) + session.totalTokens;
@@ -523,8 +646,18 @@ function normalizeSession(input, fallbackKey) {
   session.messageCount = Math.max(0, Math.round(firstNumber(input, MESSAGE_COUNT_KEYS)));
   session.startedAt = normalizeIsoTimestamp(firstString(input, STARTED_AT_KEYS));
   session.lastUsedAt = normalizeIsoTimestamp(firstString(input, LAST_USED_AT_KEYS));
+  session.contextTokens = Math.max(0, Math.round(asNumber(input.contextTokens ?? input.context_tokens ?? 0)));
+  session.contextWindow = Math.max(0, Math.round(asNumber(input.contextWindow ?? input.context_window ?? 0)));
+  // Carried rather than summed, and only when the source actually states it:
+  // `undefined` means "this reading carries no boundary", which is different
+  // from `false` ("a turn is in progress") and must not clear a real reading
+  // when the same session arrives from a source that had no evidence.
+  if (input.turnEnded === true) session.turnEnded = true;
+  else if (input.turnEnded === false) session.turnEnded = false;
   session.projectId = String(input.projectId || input.project_id || '').trim();
   session.projectLabel = String(input.projectLabel || input.project_label || '').trim();
+  session.title = normalizeSessionTitle(input.title || input.sessionTitle || input.session_title);
+  session.sessionKind = normalizeSessionKind(input.sessionKind || input.session_kind);
   if (input.models && typeof input.models === 'object') {
     for (const [model, value] of Object.entries(input.models)) {
       const key = normalizeModelNameForClient(model, client);
@@ -549,7 +682,13 @@ function normalizeSession(input, fallbackKey) {
 
 function normalizePeriod(input, options = {}) {
   const period = emptyPeriod();
-  if (!input || typeof input !== 'object') return period;
+  if (!input || typeof input !== 'object') {
+    // `emptyPeriod()` is also the exact neutral value used by current producers and
+    // merge targets, so it is throughput-capable by construction. Missing wire input
+    // is different: its zero counters are synthetic and must never seed a live delta.
+    period.capabilities.throughput = false;
+    return period;
+  }
   const projectsEnabled = options.projectsEnabled !== false;
   period.totalTokens = Math.max(0, Math.round(asNumber(input.totalTokens ?? input.total_tokens ?? 0)));
   const componentCapability = input.capabilities?.tokenComponents;
@@ -583,6 +722,16 @@ function normalizePeriod(input, options = {}) {
       ?? (period.capabilities.tokenComponents ? 0 : period.totalTokens - knownComponentTokens)
     )))
   );
+  const throughputCapability = input.capabilities?.throughput;
+  const hasThroughputShape = [
+    ['timedTokens', 'timed_tokens'],
+    ['timedOutputTokens', 'timed_output_tokens'],
+    ['timedDurationMs', 'timed_duration_ms']
+  ].every((keys) => keys.some((key) => hasOwn(input, key)));
+  // Older producers did not carry these counters. Preserve that provenance instead of
+  // turning their normalized zero defaults into a baseline for a later all-day delta.
+  period.capabilities.throughput = throughputCapability === true
+    || (throughputCapability !== false && hasThroughputShape);
   period.timedTokens = Math.max(0, Math.round(asNumber(input.timedTokens ?? input.timed_tokens ?? 0)));
   // Capped at outputTokens because the gate makes that a physical bound: output is counted
   // whole or not at all, so a period cannot have timed more output than it produced. The
@@ -764,6 +913,7 @@ function fallbackUsagePeriod(json) {
   // across cache read/write and output. Preserve that distinction through the
   // hub instead of letting normalizePeriod's zero defaults imply a cache miss.
   period.capabilities.tokenComponents = period.totalTokens === 0;
+  period.capabilities.throughput = period.totalTokens === 0;
   period.unclassifiedTokens = period.totalTokens;
   return period;
 }
@@ -1214,6 +1364,8 @@ function aggregateHistory(devices, options = {}) {
 function addPeriodInto(target, source) {
   target.capabilities.tokenComponents = target.capabilities.tokenComponents === true
     && source.capabilities?.tokenComponents === true;
+  target.capabilities.throughput = target.capabilities.throughput === true
+    && source.capabilities?.throughput === true;
   target.totalTokens += source.totalTokens;
   target.costUsd += source.costUsd;
   target.cacheReadTokens += source.cacheReadTokens;
@@ -1401,6 +1553,12 @@ function deltaValue(base, fresh, anchor, key) {
     // while both the durable base and the fresh replacement prove it.
     return base === true && fresh === true;
   }
+  if (key === 'throughput') {
+    // Throughput drives a live delta, so the value being subtracted must also
+    // prove its provenance. Otherwise an unavailable anchor's zero defaults
+    // make the whole fresh Today snapshot look like one new delta.
+    return base === true && fresh === true && anchor === true;
+  }
   if (key === 'startedAt') {
     const baseMs = timestampMs(base);
     const freshMs = timestampMs(fresh);
@@ -1452,5 +1610,6 @@ module.exports = {
   normalizeModelNameForClient,
   normalizeDeviceRecord,
   normalizePeriod,
-  projectRollupFromSessions
+  projectRollupFromSessions,
+  stripSessionTextFromDeviceRecord
 };

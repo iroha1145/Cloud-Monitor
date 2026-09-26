@@ -95,7 +95,10 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
   },
   "limits": [ /* 官方 limits.providers + device 显示名 */ ],
   "sessions": [ { "key": "devId:client:sessionId", "deviceId": "…",
-                   "client": "…", "sessionId": "…", "tokens": 1, … } ],
+                   "client": "…", "sessionId": "…", "tokens": 1,
+                   "contextTokens": 1234, "contextWindow": 128000,
+                   "turnEnded": false, "sessionKind": "background-review",
+                   "deviceStale": false, "archived": false, … } ],
   "sessions_omitted": false,      // deprecated 布尔；权威见 sessions_meta
   "sessions_meta": {
     "sessions_total": 12,
@@ -110,6 +113,18 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
 
 Overview **不得**把 370 天日归档塞进每 5 分钟刷新的 payload。长期历史走
 `/api/v1/tm/history/daily` 分页。
+
+会话新增字段按官方记录有值时传递，不以 false 或 0 填充缺失字段；`deviceStale`
+来自所属设备的官方陈旧判定。已归档会话不显示运行；设备未过期、活动时间距本次
+统计 0–10 分钟、且 `turnEnded` 明确为布尔值时，页面才显示运行中或已完成。
+过期设备/旧活动显示闲置，缺少时间或布尔证据显示状态未提供。上下文是上次上报的
+占用量，缺少有效窗口不计算百分比。不会在本接口新增会话标题或消息正文。
+
+`limits` 继续复制官方完整额度记录，包括每日窗口、`limitId`、`additional`、
+`boundaryKind`、`resetCredits.grants`、`adapterId`、`usageSummary` 和
+`actionRequired`。页面必须区分金额、点数、次数和令牌，不将缺币种的数值当作美元；
+期限按 `boundaryKind` 显示重置、到期或额度变化。未知字段不需要在 Python 增加
+重复的服务商白名单，旧客户端的缺省情况仍能呈现。
 
 ## 用量组成与模型缓存
 

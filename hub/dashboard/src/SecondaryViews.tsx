@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowDownToLine,
@@ -33,6 +33,8 @@ import { compact as compactNumber } from "./Overview";
 import { dayKeyZoned, formatZoned } from "./lib/datetime";
 import { escapeCsv, downloadCsv } from "./lib/csv";
 import { usd } from "./money";
+import { quotaAmount, quotaBalance, quotaBoundaryLabel, quotaHeadline, quotaPercent } from "./quota-presentation";
+import { sessionActivity, sessionContext } from "./session-presentation";
 // Last import: mobile overrides must win ties within this async chunk.
 import "./secondary-mobile.css";
 
@@ -540,30 +542,11 @@ export function DevicesView({ data, onDevice }: SecondaryProps) {
   );
 }
 
-function quotaPercent(quota: Quota): number | null {
-  if (quota.usedPercent !== null)
-    return Math.max(0, Math.min(100, quota.usedPercent));
-  if (quota.limit !== null && quota.limit > 0 && quota.used !== null)
-    return Math.max(0, Math.min(100, (quota.used / quota.limit) * 100));
-  return null;
-}
-
-function quotaAmount(value: number, quota: Quota): string {
-  if (!quota.currency || quota.currency === "USD") return usd(value);
-  try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: quota.currency,
-      maximumFractionDigits: 2,
-    }).format(value);
-  } catch {
-    return `${quota.currency} ${fullNumber(value)}`;
-  }
-}
-
 function quotaGroupStatus(group: Quota[]) {
   if (group.some((quota) => quota.stale))
     return { label: "数据已过期", className: "sv-status-warning" };
+  if (group.some((quota) => quota.actionRequired))
+    return { label: "需要处理", className: "sv-status-warning" };
   const statusLabel: Record<string, string> = {
     unauthorized: "授权失效",
     error: "读取失败",
@@ -608,6 +591,111 @@ function quotaGroupStatus(group: Quota[]) {
   };
 }
 
+const grantWindowNames: Record<string, string> = {
+  five_hour: "5 小时窗口",
+  seven_day: "7 天窗口",
+  seven_day_overage_included: "Fable 周额度",
+  seven_day_opus: "Opus 周额度",
+  seven_day_sonnet: "Sonnet 周额度",
+  seven_day_oauth_apps: "已授权应用周额度",
+  seven_day_cowork: "Cowork 周额度",
+};
+
+function QuotaAccountDetails({ quota, data }: { quota: Quota; data: DashboardData }) {
+  const reset = quota.resetCredits;
+  const usage = quota.usageSummary;
+  const balance = quota.balanceDetails;
+  const action = quota.actionRequired === "accountVerification"
+    ? `需要在 ${providerName(quota.provider)} 中完成账户验证。`
+    : quota.actionRequired === "appSessionEncrypted"
+      ? "应用会话已加密，请在原应用中检查登录状态。"
+      : quota.actionRequired ? "需要在原服务中处理账户状态。" : "";
+  const usageRows: [string, string][] = [];
+  if (usage?.period) {
+    const periodNames: Record<string, string> = { today: "今日", week: "本周", month: "本月", allTime: "累计" };
+    usageRows.push(["统计周期", periodNames[usage.period] || usage.period]);
+  }
+  const addCount = (label: string, value: number | null | undefined) => {
+    if (value !== null && value !== undefined) usageRows.push([label, fullNumber(value)]);
+  };
+  const summaryMoney = (amount: number) => quota.balanceCurrency
+    ? quotaBalance(amount, { balanceCurrency: quota.balanceCurrency })
+    : `${fullNumber(amount)}（单位未提供）`;
+  if (quota.adapterId) usageRows.push(["接口来源", quota.adapterId]);
+  addCount("请求次数", usage?.requests ?? balance?.requestCount);
+  addCount("今日词元", usage?.todayTokens);
+  addCount("本周词元", usage?.weekTokens);
+  addCount("累计词元", usage?.totalTokens);
+  addCount("输入词元", usage?.inputTokens);
+  addCount("输出词元", usage?.outputTokens);
+  addCount("缓存读取", usage?.cacheReadTokens);
+  addCount("缓存写入", usage?.cacheCreationTokens);
+  if (usage?.averageDurationMs != null)
+    usageRows.push(["平均响应", `${fullNumber(usage.averageDurationMs)} 毫秒`]);
+  if (usage?.standardCost != null)
+    usageRows.push(["标准估算费用", summaryMoney(usage.standardCost)]);
+  if (usage?.actualCost != null)
+    usageRows.push(["实际费用", summaryMoney(usage.actualCost)]);
+  if (balance?.monthSpend != null)
+    usageRows.push(["本月支出", summaryMoney(balance.monthSpend)]);
+  if (balance?.allTimeSpend != null)
+    usageRows.push(["累计支出", summaryMoney(balance.allTimeSpend)]);
+  if (balance?.quotaGroup) usageRows.push(["额度组", balance.quotaGroup]);
+  if (balance?.expiresAt)
+    usageRows.push(["账户额度到期", detailDateTime(balance.expiresAt, data.timeZone)]);
+  const tranches = quota.balanceTranches || [];
+  if (!action && !reset && !usageRows.length && !tranches.length) return null;
+  return (
+    <div className="sv-quota-extras">
+      {action && <p className="sv-quota-action">{action}</p>}
+      {reset && (
+        <div className="sv-quota-reset">
+          <strong>可用重置次数：{reset.availableCount === null ? "未提供" : fullNumber(reset.availableCount)}</strong>
+          {reset.nextExpiresAt && <span>最近到期：{dateLabel(reset.nextExpiresAt, data.timeZone, true)}</span>}
+          {(reset.grants.length > 0 || reset.expirations.length > 1) && (
+            <details>
+              <summary>查看重置额度明细</summary>
+              {reset.grants.map((grant, index) => (
+                <div className="sv-quota-grant" key={index}>
+                  <strong>{grant.label || `额度 ${index + 1}`}</strong>
+                  <span>{grant.resetsLeft === null ? "剩余次数未提供" : `剩余 ${fullNumber(grant.resetsLeft)} 次`}
+                    {grant.resetsTotal !== null ? ` / 共 ${fullNumber(grant.resetsTotal)} 次` : ""}</span>
+                  {grant.endsAt && <span>到期：{detailDateTime(grant.endsAt, data.timeZone)}</span>}
+                  {grant.clears.length > 0 && <span>可重置：{grant.clears.map((id) => grantWindowNames[id] || id.replaceAll("_", " ")).join("、")}</span>}
+                  {grant.paused === true && <span>当前暂停使用</span>}
+                  {grant.useRequiresLimit === true && <span>达到额度上限后可用</span>}
+                  {grant.usableNow === false && grant.paused !== true && <span>当前不可使用</span>}
+                </div>
+              ))}
+              {reset.grants.length === 0 && reset.expirations.map((date, index) => (
+                <div className="sv-quota-grant" key={date}>第 {index + 1} 次到期：{detailDateTime(date, data.timeZone)}</div>
+              ))}
+            </details>
+          )}
+        </div>
+      )}
+      {tranches.length > 0 && (
+        <details>
+          <summary>查看预付额度明细（{tranches.length} 笔）</summary>
+          {tranches.map((grant, index) => (
+            <div className="sv-quota-grant" key={index}>
+              {quotaBalance(grant.amount, { balanceCurrency: grant.currency })} · {grant.expiresAt ? `到期 ${detailDateTime(grant.expiresAt, data.timeZone)}` : "到期时间未提供"}
+            </div>
+          ))}
+        </details>
+      )}
+      {usageRows.length > 0 && (
+        <details>
+          <summary>{quota.provider === "thirdparty" ? "第三方接口使用摘要" : "服务使用摘要"}</summary>
+          <dl className="sv-quota-summary">
+            {usageRows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
+          </dl>
+        </details>
+      )}
+    </div>
+  );
+}
+
 function QuotaWindow({ quota, data }: { quota: Quota; data: DashboardData }) {
   const percent = quotaPercent(quota);
   const color =
@@ -620,28 +708,8 @@ function QuotaWindow({ quota, data }: { quota: Quota; data: DashboardData }) {
     quota.resetsAt !== null &&
     new Date(quota.resetsAt).getTime() < new Date(data.generatedAt).getTime();
   const isBalance = quota.metric === "balance";
-  const percentageHeadline =
-    quota.usedPercent !== null ||
-    (quota.metric === "percentage" && percent !== null);
-  const headline = isBalance
-    ? {
-        value:
-          quota.balanceUsd !== null
-            ? usd(quota.balanceUsd)
-            : quota.balance != null
-              ? fullNumber(quota.balance)
-              : "未提供",
-        label: "",
-      }
-    : percentageHeadline && percent !== null
-      ? { value: `${fullNumber(percent)}%`, label: "已用" }
-      : quota.remaining !== null
-        ? { value: quotaAmount(quota.remaining, quota), label: "剩余" }
-        : quota.used !== null
-          ? { value: quotaAmount(quota.used, quota), label: "已用" }
-          : quota.balanceUsd !== null
-            ? { value: usd(quota.balanceUsd), label: "余额" }
-            : { value: "未提供", label: "" };
+  const headline = quotaHeadline(quota);
+  const boundary = quotaBoundaryLabel(quota.boundaryKind);
   const detailRows: { label: string; value: string }[] = [
     { label: "服务", value: providerName(quota.provider) },
     { label: "账户", value: quota.account || "未提供" },
@@ -672,7 +740,7 @@ function QuotaWindow({ quota, data }: { quota: Quota; data: DashboardData }) {
       value:
         quota.balanceUsd !== null
           ? usd(quota.balanceUsd)
-          : fullNumber(quota.balance!),
+          : quotaBalance(quota.balance!, quota),
     });
   if (
     percent === null &&
@@ -682,7 +750,7 @@ function QuotaWindow({ quota, data }: { quota: Quota; data: DashboardData }) {
   )
     detailRows.push({ label: "使用情况", value: "未提供" });
   detailRows.push(
-    { label: "重置时间", value: detailDateTime(quota.resetsAt, data.timeZone) },
+    { label: quota.resetsAt ? `${boundary}时间` : "期限", value: detailDateTime(quota.resetsAt, data.timeZone) },
     { label: "来源设备", value: quota.sourceDevice || "未提供" },
     {
       label: "同步状态",
@@ -713,7 +781,7 @@ function QuotaWindow({ quota, data }: { quota: Quota; data: DashboardData }) {
     percent !== null && quota.usedPercent === null
       ? "百分比按已用额度与上限计算。"
       : "",
-    expired ? "重置时间已过，等待来源更新。" : "",
+    expired ? `${boundary}时间已过，等待来源更新。` : "",
     `时间按 ${data.timeZone} 显示。`,
   ]
     .filter(Boolean)
@@ -727,7 +795,7 @@ function QuotaWindow({ quota, data }: { quota: Quota; data: DashboardData }) {
       <div className="sv-quota-window sv-detail-trigger">
         <div className="sv-progress-label">
           <span>{quota.label}</span>
-          <strong>
+          <strong className="sv-quota-value">
             {headline.value}
             {headline.label && <small>{headline.label}</small>}
           </strong>
@@ -751,26 +819,33 @@ function QuotaWindow({ quota, data }: { quota: Quota; data: DashboardData }) {
         <div className="sv-quota-window-foot">
           <span>
             {isBalance
-              ? "账户余额"
-              : quota.limit !== null && !percentageHeadline
+              ? quota.balanceCurrency?.toUpperCase() === "CREDITS" ? "账户点数" : "账户余额"
+              : quota.limit !== null && quota.metric !== "percentage" && quota.metric !== "credits" && quota.metric !== "spend"
                 ? `上限 ${quotaAmount(quota.limit, quota)}`
-                : percentageHeadline && percent !== null
+                : quota.metric === "credits" && quota.limit !== null
+                  ? `上限 ${quotaAmount(quota.limit, quota)}${percent !== null ? ` · 已用 ${fullNumber(percent)}%` : ""}`
+                  : quota.metric === "spend" && quota.limit !== null
+                    ? `上限 ${quotaAmount(quota.limit, quota)}${percent !== null ? ` · 已用 ${fullNumber(percent)}%` : ""}`
+                    : percent !== null
                   ? `剩余 ${fullNumber(100 - percent)}%`
                   : quota.used !== null
                     ? "已上报使用金额"
                     : quota.remaining !== null
                       ? "已上报剩余额度"
                       : "用量未提供"}
-            {quota.used !== null && !isBalance && percentageHeadline && (
+            {quota.used !== null && !isBalance && quota.metric === "percentage" && (
               <> · 已用 {quotaAmount(quota.used, quota)}</>
             )}
           </span>
           <span>
             {quota.resetsAt
-              ? `${expired ? "重置时间已过，等待同步" : "重置于"} ${dateLabel(quota.resetsAt, data.timeZone, true)}`
-              : "重置时间未提供"}
+              ? `${expired ? `${boundary}时间已过，等待同步` : `${boundary}于`} ${dateLabel(quota.resetsAt, data.timeZone, true)}`
+              : quota.resetDescription || (quota.metric === "credits" ? "期限未提供" : `${boundary}时间未提供`)}
           </span>
         </div>
+        {quota.detail && (quota.provider === "kimi" || (quota.showMeter === false && headline.value === "未提供")) && (
+          <p className="sv-quota-detail">{quota.detail}</p>
+        )}
       </div>
     </MetricTooltip>
   );
@@ -988,11 +1063,11 @@ export function QuotaView({ data }: SecondaryProps) {
                       {(first.balanceUsd !== null || first.balance != null) &&
                         !group.some((quota) => quota.metric === "balance") && (
                           <div className="sv-quota-balance">
-                            <span>账户余额</span>
+                            <span>{first.balanceCurrency?.toUpperCase() === "CREDITS" ? "账户点数" : "账户余额"}</span>
                             <strong>
                               {first.balanceUsd !== null
                                 ? usd(first.balanceUsd)
-                                : fullNumber(first.balance!)}
+                                : quotaBalance(first.balance!, first)}
                             </strong>
                           </div>
                         )}
@@ -1044,6 +1119,7 @@ export function QuotaView({ data }: SecondaryProps) {
                       <QuotaWindow key={quota.id} quota={quota} data={data} />
                     ))}
                   </div>
+                  <QuotaAccountDetails quota={first} data={data} />
                 </article>
               );
             })}
@@ -1139,6 +1215,15 @@ export function HistoryView({ data }: SecondaryProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [exported, setExported] = useState(false);
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    const update = () => setClock(Date.now());
+    const timer = window.setInterval(update, 30_000);
+    document.addEventListener("visibilitychange", update);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", update); };
+  }, []);
+  const generatedAtMs = Date.parse(data.generatedAt);
+  const activityReference = new Date(Math.max(clock, Number.isFinite(generatedAtMs) ? generatedAtMs : 0)).toISOString();
   const clients = [
     ...new Set(data.sessions.map((session) => session.client)),
   ].sort();
@@ -1329,8 +1414,10 @@ export function HistoryView({ data }: SecondaryProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {displayed.map((session) => (
-                    <Fragment key={session.id}>
+                  {displayed.map((session) => {
+                    const activity = sessionActivity(session, activityReference);
+                    const context = sessionContext(session);
+                    return <Fragment key={session.id}>
                       <tr>
                         <td data-label="会话">
                           <button
@@ -1348,7 +1435,7 @@ export function HistoryView({ data }: SecondaryProps) {
                               {session.name || "未命名会话"}
                               <ChevronRight aria-hidden="true" />
                             </strong>
-                            <small>{session.project || "项目未提供"}</small>
+                            <small>{session.project || "项目未提供"} · <span className="sv-session-activity">{activity}</span>{session.archived === true ? " · 已归档" : ""}</small>
                           </button>
                         </td>
                         <td data-label="客户端">
@@ -1422,6 +1509,17 @@ export function HistoryView({ data }: SecondaryProps) {
                                 <dt>来源设备</dt>
                                 <dd>{session.device || "未提供"}</dd>
                               </div>
+                              {session.sessionKind && <div><dt>会话类型</dt><dd>{session.sessionKind}</dd></div>}
+                              <div><dt>活动状态</dt><dd>{activity}</dd></div>
+                              {context && (
+                                <div className="sv-session-context">
+                                  <dt>上次上报的上下文</dt>
+                                  <dd>
+                                    <span>{fullNumber(session.contextTokens!)} / {fullNumber(session.contextWindow!)} 词元 · 已用 {context.used}% · 剩余 {context.remaining}%</span>
+                                    <progress max={100} value={context.used} aria-label="上次上报的上下文已用比例" />
+                                  </dd>
+                                </div>
+                              )}
                               <div>
                                 <dt>开始时间</dt>
                                 <dd>
@@ -1442,8 +1540,8 @@ export function HistoryView({ data }: SecondaryProps) {
                           </td>
                         </tr>
                       )}
-                    </Fragment>
-                  ))}
+                    </Fragment>;
+                  })}
                 </tbody>
               </table>
             </div>

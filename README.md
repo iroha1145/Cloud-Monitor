@@ -96,12 +96,16 @@ widget 按自己的同步间隔推送，本机不用再装别的。然后打开 
 
 ## 协议支持
 
+内置服务端固定为 Token Monitor **v0.62.0**（`dcccfb01557e2786888fd5479552f392ac6c0d32`），源码保持上游原样。
+本次对齐新增服务商和每日额度、Claude 重置券明细、第三方用量摘要，以及会话上下文和处理状态。
+MiMo、Kilo 的旧工具名会统一到新名称，避免旧设备累计量再次加入。网页仍兼容未提供新字段的旧客户端。
+
 | 官方端点 | 状态 | 谁处理 |
 |---|---|---|
 | `GET /api/health` | 官方形状（含 hubBuild） | 透传 tm-core；上游不可达时 503 |
-| `POST /api/ingest` | 官方形状（ok / deviceId / stats） | 先校验并暂存，按序转发，确认后写快照 |
+| `POST /api/ingest` | 默认完整回应；请求头 `X-Token-Monitor-Response: minimal` 可取精简回应 | 内部始终保存完整确认，再向客户端返回 ok / deviceId |
 | `GET /api/stats` | 支持 | 透传（聚合 / 过期 / stale 跟官方一致） |
-| `GET /api/stats/stream` | SSE（首帧 snapshot、ingest / delete / subscriptions 广播、30s `: hb`） | 按字节透传 |
+| `GET /api/stats/stream` | SSE（首帧 snapshot、更新广播、30s `: hb`）；请求头 `X-Token-Monitor-Stream: 2` 启用 freshness 事件 | 按字节透传；旧客户端继续收到完整 stats |
 | `GET /api/devices` | `{devices:[...]}` | 透传 |
 | `DELETE /api/devices/:id` | `{ok,deviceId}` | 透传，并清 SQLite 快照 |
 | `GET /api/history` | 支持 | 透传 |
@@ -117,6 +121,8 @@ widget 按自己的同步间隔推送，本机不用再装别的。然后打开 
 
 协议本身不另搞一套。tm-core 是官方代码的逐字节副本：规范化、设备合并（含 limitsOnly）、聚合、`periodWindows` 过期、按 `syncUploadIntervalMs` 判 stale、SSE、订阅、`devices.json` 原子写。差分测试对同一载荷序列断言两边输出等价。
 
+固定版本校验可运行 `python3 hub/tm-core/sync_vendor.py --check`；从已下载的同版官方源码恢复使用 `--source <源码目录>`。校验包含固定提交、完整依赖、许可证与文件哈希，不会自动联网追随上游主分支。版本专用样例和回归覆盖旧数据启动、新字段、工具改名及升级后的持久化。
+
 网关多出来的是防护和面板用的数据：
 
 - `TOKEN_MONITOR_SECRET` 与 OpenWebUI 链路密钥隔离（TM 密钥写不了记录，反过来也不行）
@@ -126,6 +132,9 @@ widget 按自己的同步间隔推送，本机不用再装别的。然后打开 
 - ingest 先保存完整待发送载荷，再按同设备顺序转发，得到本次确认后才按 `stats.devices` 落快照。网络错误、408/425/429/5xx 由后台有界重试，未确认时仍返回失败状态，不冒充成功；`Retry-After` 会保留。快照失败只重放已确认记录，不再向核心重复发送。
 - 活动请求默认最多 1000 条，完整待发送载荷最多 16 MiB；并发入队也计入容量。最多尝试 8 次或保留 1 小时，以先到者为准。失败终结后保留原因，并在网页提示历史可能缺口。详细顺序、幂等窗口和时间边界见 [架构说明](docs/ARCHITECTURE.md#待发送与快照补写的恢复边界)。
 - 官方是单进程；这里是 compose 里 python + node 两个容器
+- 普通响应超过 1 KiB 时按客户端接受的编码压缩；实时事件流保持不压缩、不缓冲。
+
+升级云端需先备份两个数据卷，再通过现有云监控更新流程发布。本机 Token Monitor 升级不会替换云端内核。若曾使用旧名称上传 MiMo 或 Kilo，升级后应核对工具累计量和历史快照；过去已写入的快照不会自动扣减，也不会因本次升级被清空。
 
 ## 数据怎么留、时区、隐私、备份
 
