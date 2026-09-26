@@ -39,7 +39,7 @@ Rare UI 通知铃依赖 `motion`、`@radix-ui/react-slot` 和 `@/lib/utils` 的 
 
 标题进入采用官方 `StreamingText.tsx` 中的 `fade-up 350ms cubic-bezier(0.23,1,0.32,1)`，副说明延后 90 毫秒；刷新进行中才显示官方 `LoadingState.tsx` 的文字高光，保持 1.4 秒周期，归档与系统更新的读取提示沿用同一高光。两个原始文件保留在 `beautifului/`。用量蓝 `#3d9aff`、输出橙 `#f09a2f`、缓存绿 `#25a878` 取自 Insight Cards 与 Filter Table 的实际用色；文字和底色采用其冷中性色，并提高辅助文字对比度。
 
-时长与缓动统一取自 Transitions.dev 官方令牌，写在 `src/motion.css` 的 `:root`（`--duration-*`、`--ease-smooth-out` 等），`src/lib/motion.ts` 为 motion/react 提供同一组数值。各处用法：
+时长与缓动统一取自 Transitions.dev 官方令牌，写在 `src/styles.css` 的 `:root`（`--duration-*`、`--ease-smooth-out` 等），各处配方在 `src/motion.css`，`src/lib/motion.ts` 为 motion/react 提供同一组数值。各处用法：
 
 | 交互 | 配方 | 节奏 |
 | --- | --- | --- |
@@ -56,7 +56,7 @@ Rare UI 通知铃依赖 `motion`、`@radix-ui/react-slot` 和 `@/lib/utils` 的 
 | 用量条与环形图 | — | 首次出现时从左填充 500ms，行间隔 40ms；周期切换时宽度和环段过渡 400ms |
 | 活动热力图 | beUI heat calendar | 切换日/周/月时格子沿对角线依次弹出，每格延后 18ms；指针悬停的格子放大 1.14 倍 |
 | 模型表 | Beautiful UI GlideMenu | 一块高亮在行间滑动，只在可悬停的设备上启用 |
-| 连接失败 | 12 error shake | 访问密钥输入框 280ms 左右抖动，边框转为警示色 |
+| 密钥被拒绝 | 12 error shake | 用户提交的密钥被服务端拒绝（401/403）时，输入框 280ms 左右抖动并标为无效；网络错误、自动登录失败和会话过期只显示文字 |
 
 只在用户操作或数据状态变化时触发。同步状态点在每次拿到新快照时闪一圈；数值没变时，数字和用量条不会重播动画。示例数据每次点「刷新数据」会给当天加一点用量，用来检查数字滚动和用量条过渡。减少动画设置下，页面区块、骨架脉动、抖动和主题扩散全部关闭，其余动效时长和延迟压到接近 0。
 

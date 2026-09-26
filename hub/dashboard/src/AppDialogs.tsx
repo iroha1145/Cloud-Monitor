@@ -60,6 +60,7 @@ export default function AppDialogs({
   setConnecting,
   connectError,
   setConnectError,
+  keyRejected,
   showDemo,
   data,
   period,
@@ -93,6 +94,7 @@ export default function AppDialogs({
   setConnecting: (value: boolean) => void;
   connectError: string;
   setConnectError: (value: string) => void;
+  keyRejected: boolean;
   showDemo: () => void;
   data: DashboardData;
   period: PeriodKey;
@@ -111,7 +113,7 @@ export default function AppDialogs({
   const lastModel = useRef(selected);
   if (selected) lastModel.current = selected;
   const shownModel = selected ?? lastModel.current;
-  const accessKeyField = useErrorShake<HTMLInputElement>(connectError);
+  const accessKeyField = useErrorShake<HTMLInputElement>(keyRejected);
   return (
     <>
       <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
@@ -203,7 +205,8 @@ export default function AppDialogs({
               ref={accessKeyField}
               id="access-key"
               className="form-input"
-              aria-invalid={connectError ? true : undefined}
+              aria-invalid={keyRejected || undefined}
+              aria-describedby={connectError ? "access-key-error" : undefined}
               type="password"
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
@@ -216,7 +219,7 @@ export default function AppDialogs({
               密钥只保留在此页面内存中，刷新或关闭后清除。
             </p>
             {connectError && (
-              <p role="alert" className="error-message">
+              <p role="alert" className="error-message" id="access-key-error">
                 {connectError}
               </p>
             )}

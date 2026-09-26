@@ -54,6 +54,18 @@
   --accent-tint: #edf4fc;
   --danger: var(--red);
   --warning: var(--orange);
+  /* transitions.dev motion tokens; recipes live in motion.css. */
+  --duration-stagger: 40ms;
+  --duration-quick: 150ms;
+  --duration-fast: 250ms;
+  --duration-medium: 350ms;
+  --duration-slow: 400ms;
+  --duration-very-slow: 500ms;
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --distance-base: 8px;
+  --scale-large: 0.96;
+  --blur-small: 2px;
 }
 .dark {
   color-scheme: dark;
@@ -1133,7 +1145,16 @@ h2 {
 .model-table tbody tr:last-child td {
   border-bottom: 0;
 }
-/* Beautiful UI GlideMenu: one highlight glides between rows under a pointer. */
+/* Beautiful UI GlideMenu: one highlight glides between rows under a pointer.
+   The scope spans the whole table, so full rows light up when it scrolls. */
+.table-glide-scope {
+  min-width: 100%;
+}
+@media (min-width: 761px) {
+  .table-glide-scope {
+    width: max-content;
+  }
+}
 .table-glide-scope > .model-table {
   position: relative;
 }

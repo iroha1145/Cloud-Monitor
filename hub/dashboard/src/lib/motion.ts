@@ -1,6 +1,6 @@
 /**
  * transitions.dev motion tokens for motion/react code, in seconds. They mirror
- * the CSS custom properties in motion.css so JS- and CSS-driven motion share
+ * the CSS custom properties in styles.css :root so JS- and CSS-driven motion share
  * one rhythm.
  */
 export const DURATION = {

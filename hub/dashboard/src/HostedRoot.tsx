@@ -15,7 +15,9 @@ export default function HostedRoot() {
   const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const tokenField = useErrorShake<HTMLInputElement>(error);
+  // Only a key the user submitted and the server rejected shakes and turns red.
+  const [keyRejected, setKeyRejected] = useState(false);
+  const tokenField = useErrorShake<HTMLInputElement>(keyRejected);
   const pending = useRef<AbortController | null>(null);
   const sessionRef = useRef(session);
   sessionRef.current = session;
@@ -27,11 +29,11 @@ export default function HostedRoot() {
     setError("请重新输入访问密钥。");
     setBusy(false);
   }, []);
-  const authenticate = useCallback(async (value: string) => {
+  const authenticate = useCallback(async (value: string, submitted = false) => {
     pending.current?.abort();
     const controller = new AbortController();
     pending.current = controller;
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setKeyRejected(false);
     try {
       const data = await loadDashboard(value, controller.signal);
       if (controller.signal.aborted) return;
@@ -40,7 +42,10 @@ export default function HostedRoot() {
       setSession({ token: value, data });
     } catch (error) {
       if (controller.signal.aborted) return;
-      if (isAuthFailure(error)) clearAccessToken();
+      if (isAuthFailure(error)) {
+        clearAccessToken();
+        setKeyRejected(submitted);
+      }
       setError(error instanceof Error ? error.message : "连接未完成，请稍后重试。");
     } finally {
       if (!controller.signal.aborted) setBusy(false);
@@ -69,10 +74,10 @@ export default function HostedRoot() {
       <div className="access-symbol"><LockKeyhole size={26} /></div>
       <h1 id="access-heading">查看你的用量</h1>
       <p>输入访问密钥，连接这台服务器上的用量记录。</p>
-      <form onSubmit={(event) => { event.preventDefault(); if (secret.trim() && !busy) void authenticate(secret.trim()); }}>
+      <form onSubmit={(event) => { event.preventDefault(); if (secret.trim() && !busy) void authenticate(secret.trim(), true); }}>
         <label htmlFor="login-token">访问密钥</label>
-        <input ref={tokenField} aria-invalid={error ? true : undefined} id="login-token" type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} value={secret} onChange={event => setSecret(event.target.value)} placeholder="输入面板访问密钥" required disabled={busy} />
-        {error && <p className="access-error" role="alert">{error}</p>}
+        <input ref={tokenField} aria-invalid={keyRejected || undefined} aria-describedby={error ? "login-error" : undefined} id="login-token" type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} value={secret} onChange={event => setSecret(event.target.value)} placeholder="输入面板访问密钥" required disabled={busy} />
+        {error && <p className="access-error" id="login-error" role="alert">{error}</p>}
         <button type="submit" disabled={busy || !secret.trim()}>{busy ? <><LoaderCircle size={18} className="access-spinner" /> 正在连接</> : <>进入工作台 <ArrowRight size={18} /></>}</button>
       </form>
       <small>浏览器标签页关闭后清除密钥。安装为独立应用时，会在此设备保存登录。</small>

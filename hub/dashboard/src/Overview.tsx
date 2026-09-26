@@ -439,138 +439,140 @@ export function ModelTable({
           </span>
         ))}
       </div>
-      <GlideMenu
-        className="model-table-scroll table-glide-scope"
-        highlightClassName="table-glide"
-        rowSelector="tbody tr"
-      >
-        <table className="model-table">
-          <thead>
-            <tr>
-              <th>模型</th>
-              <th>
-                总用量 <ArrowDown size={11} />
-              </th>
-              <th>缓存读取</th>
-              <th>缓存占比</th>
-              <th>费用</th>
-              <th>
-                <span className="sr-only">详情</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {(full ? models : models.slice(0, 5)).map((m) => (
-              <tr key={m.id}>
-                <td className="model-identity-cell">
-                  <button
-                    className="model-open"
-                    onClick={(event) => onSelect(m, event.currentTarget)}
-                    aria-label={`查看 ${m.name} 详情`}
-                  >
-                    <BrandIcon name={m.name} color={m.color} />
-                    <span>
-                      <strong>{m.name}</strong>
-                      <small>{providerName(m.provider)}</small>
-                    </span>
-                  </button>
-                </td>
-                <td data-label="总用量" className="model-total-cell">
-                  <MetricTooltip
-                    title={`${m.name} · 总用量`}
-                    rows={[{ label: "完整用量", value: count(m.totalTokens) }]}
-                    focusable
-                  >
-                    <span>{compact(m.totalTokens)}</span>
-                  </MetricTooltip>
-                </td>
-                <td data-label="缓存读取" className="model-read-cell">
-                  <MetricTooltip
-                    title={`${m.name} · 缓存读取`}
-                    rows={[
-                      {
-                        label: "完整用量",
-                        value: m.components.cacheReadKnown
-                          ? count(m.components.cacheRead)
-                          : "来源未提供",
-                      },
-                    ]}
-                    focusable
-                  >
-                    <span>
-                      {m.components.cacheReadKnown ? (
-                        compact(m.components.cacheRead)
-                      ) : (
-                        <span className="unknown">未提供</span>
-                      )}
-                    </span>
-                  </MetricTooltip>
-                </td>
-                <td data-label="缓存占比" className="model-cache-cell">
-                  <div className="cache-rate">
+      <div className="model-table-scroll">
+        <GlideMenu
+          className="table-glide-scope"
+          highlightClassName="table-glide"
+          rowSelector="tbody tr"
+        >
+          <table className="model-table">
+            <thead>
+              <tr>
+                <th>模型</th>
+                <th>
+                  总用量 <ArrowDown size={11} />
+                </th>
+                <th>缓存读取</th>
+                <th>缓存占比</th>
+                <th>费用</th>
+                <th>
+                  <span className="sr-only">详情</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {(full ? models : models.slice(0, 5)).map((m) => (
+                <tr key={m.id}>
+                  <td className="model-identity-cell">
+                    <button
+                      className="model-open"
+                      onClick={(event) => onSelect(m, event.currentTarget)}
+                      aria-label={`查看 ${m.name} 详情`}
+                    >
+                      <BrandIcon name={m.name} color={m.color} />
+                      <span>
+                        <strong>{m.name}</strong>
+                        <small>{providerName(m.provider)}</small>
+                      </span>
+                    </button>
+                  </td>
+                  <td data-label="总用量" className="model-total-cell">
                     <MetricTooltip
-                      title={`${m.name} · 用量明细`}
-                      rows={usageDetails(m)}
-                      note={usageNote(m)}
-                      strictTouchBounds
+                      title={`${m.name} · 总用量`}
+                      rows={[{ label: "完整用量", value: count(m.totalTokens) }]}
                       focusable
                     >
-                      <span
-                        className="metric-bar-trigger"
-                        role="img"
-                        aria-label={
-                          m.components.complete
-                            ? composition
-                                .map(
-                                  (part) =>
-                                    `${part.label} ${count(m.components[part.key])}`,
-                                )
-                                .join("，")
-                            : "组成记录不足，无法绘制准确比例"
-                        }
-                      >
-                        <span
-                          className={`cache-track ${!m.components.complete ? "is-incomplete" : ""}`}
-                          aria-hidden="true"
-                        >
-                          {m.components.complete &&
-                            composition.map((part) => (
-                              <span
-                                key={part.key}
-                                style={{
-                                  width: `${m.totalTokens ? (m.components[part.key] / m.totalTokens) * 100 : 0}%`,
-                                  background: part.color,
-                                }}
-                              />
-                            ))}
-                        </span>
+                      <span>{compact(m.totalTokens)}</span>
+                    </MetricTooltip>
+                  </td>
+                  <td data-label="缓存读取" className="model-read-cell">
+                    <MetricTooltip
+                      title={`${m.name} · 缓存读取`}
+                      rows={[
+                        {
+                          label: "完整用量",
+                          value: m.components.cacheReadKnown
+                            ? count(m.components.cacheRead)
+                            : "来源未提供",
+                        },
+                      ]}
+                      focusable
+                    >
+                      <span>
+                        {m.components.cacheReadKnown ? (
+                          compact(m.components.cacheRead)
+                        ) : (
+                          <span className="unknown">未提供</span>
+                        )}
                       </span>
                     </MetricTooltip>
-                    <span>{pct(m.components.cacheRate)}</span>
-                  </div>
-                  {m.components.partial && (
-                    <small className="partial-label">
-                      {m.components.cacheReadKnown ? "已识别部分" : "组成未知"}
-                    </small>
-                  )}
-                </td>
-                <td data-label="使用费用" className="money-cell">
-                  {money(m.costUsd)}
-                </td>
-                <td className="model-action-cell">
-                  <button
-                    className="row-arrow"
-                    onClick={(event) => onSelect(m, event.currentTarget)}
-                    aria-label={`展开 ${m.name}`}
-                  >
-                    <ArrowUpRight size={15} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </GlideMenu>
+                  </td>
+                  <td data-label="缓存占比" className="model-cache-cell">
+                    <div className="cache-rate">
+                      <MetricTooltip
+                        title={`${m.name} · 用量明细`}
+                        rows={usageDetails(m)}
+                        note={usageNote(m)}
+                        strictTouchBounds
+                        focusable
+                      >
+                        <span
+                          className="metric-bar-trigger"
+                          role="img"
+                          aria-label={
+                            m.components.complete
+                              ? composition
+                                  .map(
+                                    (part) =>
+                                      `${part.label} ${count(m.components[part.key])}`,
+                                  )
+                                  .join("，")
+                              : "组成记录不足，无法绘制准确比例"
+                          }
+                        >
+                          <span
+                            className={`cache-track ${!m.components.complete ? "is-incomplete" : ""}`}
+                            aria-hidden="true"
+                          >
+                            {m.components.complete &&
+                              composition.map((part) => (
+                                <span
+                                  key={part.key}
+                                  style={{
+                                    width: `${m.totalTokens ? (m.components[part.key] / m.totalTokens) * 100 : 0}%`,
+                                    background: part.color,
+                                  }}
+                                />
+                              ))}
+                          </span>
+                        </span>
+                      </MetricTooltip>
+                      <span>{pct(m.components.cacheRate)}</span>
+                    </div>
+                    {m.components.partial && (
+                      <small className="partial-label">
+                        {m.components.cacheReadKnown ? "已识别部分" : "组成未知"}
+                      </small>
+                    )}
+                  </td>
+                  <td data-label="使用费用" className="money-cell">
+                    {money(m.costUsd)}
+                  </td>
+                  <td className="model-action-cell">
+                    <button
+                      className="row-arrow"
+                      onClick={(event) => onSelect(m, event.currentTarget)}
+                      aria-label={`展开 ${m.name}`}
+                    >
+                      <ArrowUpRight size={15} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </GlideMenu>
+      </div>
       {!models.length && (
         <div className="empty-inline">
           <Search size={22} />

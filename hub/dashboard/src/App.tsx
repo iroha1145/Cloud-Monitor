@@ -141,6 +141,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
   const [selected, setSelected] = useState<UsageEntity | null>(null),
     [secret, setSecret] = useState("");
   const [connectError, setConnectError] = useState(""),
+    [keyRejected, setKeyRejected] = useState(false),
     [connecting, setConnecting] = useState(false),
     [refreshState, setRefreshState] = useState<ButtonState>("idle");
   const [toast, setToast] = useState("");
@@ -187,10 +188,16 @@ export default function App({ initialData, initialToken = "", hosted = false, is
   const statusCount = notices.length;
   // Sections rise in after navigation only; the first screen stays still.
   const [navigated, setNavigated] = useState(false);
+  const pageRef = useRef(page);
+  pageRef.current = page;
   useEffect(() => {
     const onHash = () => {
-      setNavigated(true);
-      setPage(getPage());
+      const id = location.hash.slice(1);
+      // In-page anchors such as the skip link are not pages.
+      if (id && !pages.some((p) => p.id === id)) return;
+      const next = getPage();
+      if (next !== pageRef.current) setNavigated(true);
+      setPage(next);
       setMobile(false);
       scrollToTop();
     };
@@ -232,7 +239,17 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     root.setProperty("--theme-x", `${x}px`);
     root.setProperty("--theme-y", `${y}px`);
     root.setProperty("--theme-r", `${Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))}px`);
-    document.startViewTransition(apply);
+    // Colour transitions stay off until the wipe ends, so the revealed theme
+    // is already settled rather than fading inside the circle.
+    const html = document.documentElement;
+    html.dataset.themeSwitching = "";
+    const settle = () => {
+      delete html.dataset.themeSwitching;
+    };
+    const transition = document.startViewTransition(apply);
+    transition.finished.then(settle, settle);
+    // A second toggle mid-wipe skips this one, which rejects its ready promise.
+    transition.ready.catch(() => {});
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -343,6 +360,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     if (isolatedDemo || hosted || !secret.trim()) return;
     setConnecting(true);
     setConnectError("");
+    setKeyRejected(false);
     const version = ++requestVersion.current;
     inFlight.current?.abort();
     const controller = new AbortController(); inFlight.current = controller;
@@ -356,6 +374,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
       setToast("已连接 Cloud Monitor，正在显示真实用量。");
     } catch (e) {
       if (version !== requestVersion.current) return;
+      setKeyRejected(isAuthFailure(e));
       setConnectError(
         e instanceof Error ? e.message : "连接失败，请稍后重试。",
       );
@@ -370,6 +389,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     token.current = "";
     setSecret("");
     setConnectError("");
+    setKeyRejected(false);
     demoRefreshes.current = 0;
     setData(createDemoData());
     setSettings(false);
@@ -832,6 +852,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
               setConnecting={setConnecting}
               connectError={connectError}
               setConnectError={setConnectError}
+              keyRejected={keyRejected}
               showDemo={showDemo}
               data={data}
               period={period}
@@ -860,6 +881,8 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                 y: 0,
                 scale: 1,
                 filter: "blur(0px)",
+                // Drop the settled filter so the toast text is not left on a filter layer.
+                transitionEnd: { filter: "none" },
                 transition: { duration: DURATION.medium, ease: EASE_SMOOTH_OUT },
               }}
               exit={{
