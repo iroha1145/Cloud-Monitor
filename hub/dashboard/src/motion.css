@@ -223,31 +223,6 @@ details[open]::details-content {
   transform: scale(0.25) rotate(-45deg);
 }
 
-/* Theme switch (beUI theme toggle): the new theme opens as a circle from
-   the toggle button through the View Transitions API. */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-  mix-blend-mode: normal;
-}
-::view-transition-new(root) {
-  animation: t-theme-wipe var(--duration-very-slow) var(--ease-smooth-out);
-}
-@keyframes t-theme-wipe {
-  from {
-    clip-path: circle(0 at var(--theme-x, 50%) var(--theme-y, 0));
-  }
-  to {
-    clip-path: circle(var(--theme-r, 150vmax) at var(--theme-x, 50%) var(--theme-y, 0));
-  }
-}
-
-[data-theme-switching] :not(.icon-swap > svg),
-[data-theme-switching] ::before,
-[data-theme-switching] ::after {
-  transition: none !important;
-}
-
 /* Sync pulse: the status dot rings once when a refresh brings new data. */
 .status-dot.is-fresh {
   animation: t-ping var(--duration-very-slow) var(--ease-smooth-out);

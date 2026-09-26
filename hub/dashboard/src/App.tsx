@@ -1,5 +1,4 @@
 import { Suspense, useEffect, useRef, useState } from "react";
-import { flushSync } from "react-dom";
 import { AppErrorBoundary, DialogErrorNotice, lazyWithReload } from "./chunkLoad";
 import {
   AnimatePresence,
@@ -218,38 +217,14 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     preference.addEventListener("change", changed);
     return () => preference.removeEventListener("change", changed);
   }, []);
-  const toggleTheme = (event: React.MouseEvent<HTMLButtonElement>) => {
-    const next = !dark;
-    const apply = () => {
+  const toggleTheme = () => {
+    // A document view transition blocks pointer input while its snapshot animates.
+    // Keep the page interactive and animate only the theme button's icons.
+    setDark(current => {
+      const next = !current;
       try { localStorage.setItem("cm_theme", next ? "dark" : "light"); } catch { /* private mode */ }
-      // The new-theme snapshot is taken right after this callback returns.
-      document.documentElement.classList.toggle("dark", next);
-      document.documentElement.dataset.theme = next ? "dark" : "light";
-      flushSync(() => setDark(next));
-    };
-    if (reduce || !document.startViewTransition) {
-      apply();
-      return;
-    }
-    // beUI theme toggle: the new theme wipes out from the button as a circle.
-    const box = event.currentTarget.getBoundingClientRect();
-    const x = box.left + box.width / 2,
-      y = box.top + box.height / 2;
-    const root = document.documentElement.style;
-    root.setProperty("--theme-x", `${x}px`);
-    root.setProperty("--theme-y", `${y}px`);
-    root.setProperty("--theme-r", `${Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))}px`);
-    // Colour transitions stay off until the wipe ends, so the revealed theme
-    // is already settled rather than fading inside the circle.
-    const html = document.documentElement;
-    html.dataset.themeSwitching = "";
-    const settle = () => {
-      delete html.dataset.themeSwitching;
-    };
-    const transition = document.startViewTransition(apply);
-    transition.finished.then(settle, settle);
-    // A second toggle mid-wipe skips this one, which rejects its ready promise.
-    transition.ready.catch(() => {});
+      return next;
+    });
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
