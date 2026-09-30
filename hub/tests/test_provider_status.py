@@ -511,7 +511,8 @@ def test_invalid_json_and_non_200_unknown_not_500():
 def _install_transport(cloud, mapping, delay=0.0):
     transport = MapTransport(mapping, delay=delay)
     client = httpx.AsyncClient(transport=transport, timeout=5.0)
-    cloud.app.state.http_async = client
+    cloud.portal.call(cloud.app.state.http_provider.aclose)
+    cloud.app.state.http_provider = client
     cloud.app.state.provider_status = ProviderStatusService(
         cache_seconds=300, timeout_seconds=2.5
     )
@@ -556,7 +557,7 @@ def test_endpoint_today_usage_not_subscription_only(cloud):
         },
     )
     assert put.status_code == 200, put.text[:300]
-    _install_transport(cloud, _ok_map())
+    transport = _install_transport(cloud, _ok_map())
     resp = cloud.get("/api/v1/tm/provider-status", headers=READ)
     assert resp.status_code == 200, resp.text[:400]
     body = resp.json()
@@ -566,6 +567,10 @@ def test_endpoint_today_usage_not_subscription_only(cloud):
     assert "openai" in by and "codex" in by["openai"]["observed_as"]
     assert "cursor" not in by  # 仅订阅、今日无上报 → 不出卡
     assert by["openai"]["status"] == "operational"  # ChatGPT 中断未污染 API
+    assert set(transport.urls) == {
+        STATUS_PAGES["anthropic"].summary_url,
+        STATUS_PAGES["openai"].summary_url,
+    }
     features = cloud.get("/api/v1/tm/overview", headers=READ).json()["features"]
     assert features["provider_status"] is True
     assert features["history_daily"] is True
