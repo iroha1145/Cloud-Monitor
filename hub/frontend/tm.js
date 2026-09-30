@@ -179,6 +179,7 @@ const PROVIDER_NAMES = {
   opencode: "OpenCode", openrouter: "OpenRouter", workbuddy: "WorkBuddy", zai: "Z.ai / GLM",
   zaiteam: "GLM Team", mimo: "Xiaomi MiMo", micode: "Xiaomi MiMo", kilo: "Kilo Code",
   kilocode: "Kilo Code", omp: "Oh My Pi", lmstudio: "LM Studio", unsloth: "Unsloth",
+  muse: "Muse Code", stepfun: "StepFun",
   grok: "SpaceXAI", xai: "SpaceXAI", "grok-web": "SpaceXAI (Web)",
 };
 function fmtProvider(v) {
@@ -379,6 +380,9 @@ const CLIENT_LOGO_ALIAS = {
   xai: "grok",
   micode: "xiaomi",
   mimo: "xiaomi",
+  muse: "meta",
+  musecode: "meta",
+  "muse-code": "meta",
   zcode: "zai",
   zaiteam: "zai",
   thirdparty: "newapi",
@@ -400,7 +404,7 @@ const CLIENT_LOGO_IDS = new Set([
   "gemini", "grok", "hermes-agent", "hunyuan", "kilocode", "kimi", "kiro",
   "meta", "minimax", "mistral", "moonshot", "newapi", "ollama", "openclaw",
   "opencode", "openrouter", "pi", "proma", "qoder", "qodercn", "qwen",
-  "reasonix", "trae", "volcengine", "workbuddy", "xai", "xiaomi", "zai", "zed",
+  "reasonix", "stepfun", "trae", "volcengine", "workbuddy", "xai", "xiaomi", "zai", "zed",
 ]);
 /* 模型名 → 厂商图标（对齐 token-monitor usageCharts.modelVendorFor，openai 用 codex 标） */
 function modelVendorId(name) {

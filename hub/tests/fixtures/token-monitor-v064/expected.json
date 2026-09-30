@@ -1,0 +1,46 @@
+{
+  "build": {
+    "coreRevision": 64,
+    "runtimeRevision": 4,
+    "coreBuildId": "sha256:10252c17e59ce9f56628cd91902895895d75a2e11f08b4df88ad056d21ec956c",
+    "runtimeBuildId": "sha256:f1db81c0d1ede372aaf74c39514e00d19bee54f064dec77e5554c6434eb6ceb0"
+  },
+  "today": {
+    "totalTokens": 1410,
+    "costUsd": 0.49,
+    "cacheReadTokens": 800,
+    "outputTokens": 150
+  },
+  "clients": {
+    "cursor": 10,
+    "zcode": 1060,
+    "opencode": 130,
+    "muse": 50,
+    "codex": 100,
+    "grok": 60
+  },
+  "clientOutputs": {
+    "zcode": 60,
+    "opencode": 30,
+    "muse": 10,
+    "codex": 40,
+    "grok": 10
+  },
+  "cursorModels": {
+    "cursor-auto": 10
+  },
+  "stepfunWindows": [
+    [
+      "session",
+      20
+    ],
+    [
+      "weekly",
+      40
+    ]
+  ],
+  "legacyModels": {
+    "cursor-auto": 30,
+    "default": 11
+  }
+}

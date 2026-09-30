@@ -3,3 +3,6 @@ https://github.com/Javis603/token-monitor/tree/main/assets/icons
 
 Additional v0.62.0 icons (alibaba, amp, devin, droid, lmstudio, omp, sub2api, typesafe, unsloth):
 https://github.com/Javis603/token-monitor/tree/dcccfb01557e2786888fd5479552f392ac6c0d32/assets/icons
+
+StepFun icon from v0.64.0; Muse Code uses the existing Meta mark as upstream does:
+https://github.com/Javis603/token-monitor/tree/9ad1ca2f6ec27e497eb38fffe7d9533aec0d3c38/assets/icons

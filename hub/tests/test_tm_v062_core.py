@@ -2,35 +2,15 @@
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import httpx
 import pytest
 
-from conftest import HUB_ROOT, NodeHub, requires_node
-
-FIXTURES = Path(__file__).parent / "fixtures" / "token-monitor-v062"
+from conftest import NodeHub, load_tm_contract_fixture, requires_node
 
 
 def load_fixture(name: str, **replacements):
-    now = datetime.now(timezone.utc).replace(microsecond=0)
-    tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0)
-    next_month = (now.replace(day=28) + timedelta(days=4)).replace(day=1, hour=0, minute=0, second=0)
-    values = {
-        "$NOW": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-        "$TODAY": now.strftime("%Y-%m-%d"),
-        "$TOMORROW": tomorrow.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-        "$MONTH": now.strftime("%Y-%m"),
-        "$NEXT_MONTH": next_month.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-        **replacements,
-    }
-    text = (FIXTURES / name).read_text()
-    for token, value in values.items():
-        text = text.replace(token, value)
-    return json.loads(text)
+    return load_tm_contract_fixture("v062", name, **replacements)
 
 
 def assert_fields(actual: dict, expected: dict):
@@ -43,15 +23,6 @@ def upload(hub, payload):
     body = response.json()
     assert body["ok"] is True
     return next(device for device in body["stats"]["devices"] if device["deviceId"] == payload["deviceId"])
-
-
-def test_v062_vendor_matches_reviewed_pin_and_complete_closure():
-    result = subprocess.run(
-        [sys.executable, str(HUB_ROOT / "tm-core" / "sync_vendor.py"), "--check"],
-        capture_output=True, text=True, check=True,
-    )
-    assert "dcccfb01557e2786888fd5479552f392ac6c0d32" in result.stdout
-    assert "20 source files" in result.stdout
 
 
 @requires_node
@@ -119,10 +90,11 @@ def test_v062_old_store_alias_is_replaced_not_double_counted(tmp_path, old_clien
 
 
 @requires_node
-def test_v062_old_plain_upload_and_build_identity_remain_compatible(node_hub):
+def test_v062_old_plain_upload_and_runtime_identity_remain_compatible(node_hub):
     expected = load_fixture("expected.json")
     health = httpx.get(node_hub.url + "/api/health").json()
-    assert_fields(health["hubBuild"], expected["build"])
+    # The shared core evolves, while the Node adapter remains the same.
+    assert_fields(health["hubBuild"], {key: value for key, value in expected["build"].items() if key.startswith("runtime")})
     # Legacy clients do not send new capability or protocol-negotiation headers.
     payload = {"deviceId": "old-agent", "today": {"totalTokens": 9, "clients": {"codex": 9}},
                "allTime": {"totalTokens": 90, "clients": {"codex": 90}}}

@@ -525,6 +525,8 @@ export function providerName(provider: string): string {
         devin: "Devin",
         omp: "Oh My Pi",
         mimo: "Xiaomi MiMo",
+        muse: "Muse Code",
+        stepfun: "StepFun",
         cline: "Cline",
         typesafe: "TypeSafe",
         alibaba: "Alibaba Cloud",
@@ -786,6 +788,7 @@ export function normalizePeriod(source: unknown): PeriodUsage {
                   droid: "Factory Droid",
                   omp: "Oh My Pi",
                   mimo: "Xiaomi MiMo",
+                  muse: "Muse Code",
                   devin: "Devin",
                   copilot: "GitHub Copilot",
                 } as Record<string, string>

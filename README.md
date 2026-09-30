@@ -4,14 +4,14 @@
 
 **假数据演示（不用装）：** https://iroha1145.github.io/Cloud-Monitor/
 
-官方 hub 按固定提交 `b925865` 原样放进 tm-core 容器，协议行为跟官方一致。前面是 Python 网关：鉴权、校验、1MiB 实测限流，并把快照写入 SQLite。官方 `devices.json` 只留每台设备最新状态，没有历史点；长期趋势和日归档是我们自己补的。
+官方 hub 按固定提交 `9ad1ca2`（v0.64.0）原样放进 tm-core 容器，协议行为跟官方一致。前面是 Python 网关：鉴权、校验、1MiB 实测限流，并把快照写入 SQLite。官方 `devices.json` 只留每台设备最新状态，没有历史点；长期趋势和日归档是我们自己补的。
 
 另有一条 [OpenWebUI-Monitor](https://github.com/iroha1145/OpenWebUI-Monitor) 记录同步（纯 API，没有独立页面）。两条链路密钥分开，互碰不到。
 
 ```
 ┌───────────── 本机 ─────────────┐      ┌────────── 云端（docker compose）──────────┐
 │ token-monitor widget           │ 原生  │ ┌────────────────────────────────────┐   │
-│  hub = 服务器                  │──────►│ │ tm-core（官方 hub @b925865，未改）  │   │
+│  hub = 服务器                  │──────►│ │ tm-core（官方 hub @9ad1ca2，未改）  │   │
 │  密钥 = TOKEN_MONITOR_SECRET   │ 协议  │ │ 规范化 / 合并 / 聚合 / 过期 / SSE  │   │
 │  widget：实时 / 10 / 20 / 30 分 │      │ │ devices.json（官方原生持久化）     │   │
 │  headless agent 默认 5 分钟     │      │ └──────────────△─────────────────────┘   │
@@ -96,9 +96,9 @@ widget 按自己的同步间隔推送，本机不用再装别的。然后打开 
 
 ## 协议支持
 
-内置服务端固定为 Token Monitor **v0.62.0**（`dcccfb01557e2786888fd5479552f392ac6c0d32`），源码保持上游原样。
-本次对齐新增服务商和每日额度、Claude 重置券明细、第三方用量摘要，以及会话上下文和处理状态。
-MiMo、Kilo 的旧工具名会统一到新名称，避免旧设备累计量再次加入。网页仍兼容未提供新字段的旧客户端。
+内置服务端固定为 Token Monitor **v0.64.0**（`9ad1ca2f6ec27e497eb38fffe7d9533aec0d3c38`），源码保持上游原样。
+支持 StepFun 的 Coding Plan 与 Token Plan 配额、Muse Code 用量，以及新版 Antigravity、Qoder 的来源诊断。网页沿用上游的 StepFun 图标和 Muse Code 标识。
+Cursor 的 Auto/default 模型按官方规则归并到 cursor-auto，同时保留其它工具的同名模型；MiMo、Kilo 的旧工具名继续归并。旧客户端仍可上报，v0.62 的每日额度、Claude 重置券、第三方用量摘要和会话上下文字段保持兼容。
 
 | 官方端点 | 状态 | 谁处理 |
 |---|---|---|

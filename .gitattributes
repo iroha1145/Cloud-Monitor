@@ -1,0 +1,3 @@
+# Preserve the exact upstream bytes used by the vendor integrity manifest.
+hub/tm-core/vendor/src/** -text
+hub/tm-core/vendor/LICENSE-token-monitor -text
