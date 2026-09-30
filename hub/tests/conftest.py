@@ -172,6 +172,23 @@ def _utc_iso(dt) -> str:
     )
 
 
+def load_tm_contract_fixture(version: str, name: str, **replacements):
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0)
+    next_month = (now.replace(day=28) + timedelta(days=4)).replace(day=1, hour=0, minute=0, second=0)
+    values = {
+        "$NOW": _utc_iso(now), "$TODAY": now.strftime("%Y-%m-%d"),
+        "$TOMORROW": _utc_iso(tomorrow), "$MONTH": now.strftime("%Y-%m"),
+        "$NEXT_MONTH": _utc_iso(next_month), "$WEEK_RESET": _utc_iso(now + timedelta(days=7)),
+        **replacements,
+    }
+    source = HUB_ROOT / "tests" / "fixtures" / f"token-monitor-{version}" / name
+    text = source.read_text(encoding="utf-8")
+    for token, value in values.items():
+        text = text.replace(token, value)
+    return json.loads(text)
+
+
 def _period_windows(tz: str, day: str | None = None) -> dict:
     """按当前时间生成有效周期窗口（不硬编码日期，避免随墙钟过期）。"""
     zone = ZoneInfo(tz)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify or restore the byte-for-byte, pinned v0.62.0 Hub dependency closure.
+"""Verify or restore the byte-for-byte, pinned v0.64.0 Hub dependency closure.
 
 The lock is deliberately committed separately from the generated vendor manifest.
 No downloads or npm installation are performed. A future release needs a reviewed
@@ -15,7 +15,7 @@ import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-PIN = "dcccfb01557e2786888fd5479552f392ac6c0d32"
+PIN = "9ad1ca2f6ec27e497eb38fffe7d9533aec0d3c38"
 REQUIRE = re.compile(r"require\(['\"]([^'\"]+)['\"]\)")
 
 
@@ -47,7 +47,7 @@ def closure(root: Path, entries: list[str]) -> set[str]:
             ) if p.is_file()), None)
             if resolved is None:
                 raise ValueError(f"Unresolved dependency: {relative}: {target}")
-            pending.append(str(resolved.resolve().relative_to(root.resolve())))
+            pending.append(resolved.resolve().relative_to(root.resolve()).as_posix())
     return found
 
 
@@ -59,8 +59,8 @@ def manifest(lock: dict) -> str:
 
 
 def verify(root: Path, lock: dict, *, vendor: bool) -> None:
-    if lock["commit"] != PIN or lock["release"] != "v0.62.0":
-        raise ValueError("The reviewed v0.62.0 source pin was changed")
+    if lock["commit"] != PIN or lock["release"] != "v0.64.0":
+        raise ValueError("The reviewed v0.64.0 source pin was changed")
     expected = set(lock["files"])
     actual = closure(root, lock["entries"])
     if actual != expected:
@@ -72,7 +72,7 @@ def verify(root: Path, lock: dict, *, vendor: bool) -> None:
     if digest(license_path) != lock["licenseSha256"]:
         raise ValueError("Upstream license hash differs")
     if vendor:
-        installed = {str(p.relative_to(root)) for p in (root / "src").rglob("*") if p.is_file()}
+        installed = {p.relative_to(root).as_posix() for p in (root / "src").rglob("*") if p.is_file()}
         if installed != expected:
             raise ValueError(f"Unexpected vendor source files: {sorted(installed ^ expected)}")
         if (root / "MANIFEST.txt").read_text() != manifest(lock):
@@ -83,9 +83,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--check", action="store_true")
-    mode.add_argument("--source", type=Path, help="Extracted official v0.62.0 source directory")
+    mode.add_argument("--source", type=Path, help="Extracted official v0.64.0 source directory")
     args = parser.parse_args()
-    lock = json.loads((ROOT / "upstream-v062.json").read_text())
+    lock = json.loads((ROOT / "upstream-v064.json").read_text())
     target = ROOT / "vendor"
     if args.source:
         source = args.source.resolve()
@@ -94,14 +94,14 @@ def main() -> None:
             raise ValueError("Source must be separate from the destination vendor directory")
         verify(source, lock, vendor=False)  # Finish every check before writing.
         for path in (target / "src").rglob("*"):
-            if path.is_file() and str(path.relative_to(target)) not in lock["files"]:
+            if path.is_file() and path.relative_to(target).as_posix() not in lock["files"]:
                 path.unlink()
         for relative in lock["files"]:
             destination = target / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source / relative, destination)
         shutil.copyfile(source / "LICENSE", target / "LICENSE-token-monitor")
-        (target / "MANIFEST.txt").write_text(manifest(lock))
+        (target / "MANIFEST.txt").write_text(manifest(lock), encoding="utf-8", newline="\n")
     verify(target, lock, vendor=True)
     print(f"Verified {lock['release']} ({PIN}): {len(lock['files'])} source files and MIT license")
 

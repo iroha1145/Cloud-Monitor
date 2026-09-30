@@ -1,2 +1,5 @@
 Client logos vendored from token-monitor (MIT):
 https://github.com/Javis603/token-monitor/tree/main/assets/icons
+
+StepFun icon from v0.64.0; Muse Code uses the existing Meta mark as upstream does:
+https://github.com/Javis603/token-monitor/tree/9ad1ca2f6ec27e497eb38fffe7d9533aec0d3c38/assets/icons

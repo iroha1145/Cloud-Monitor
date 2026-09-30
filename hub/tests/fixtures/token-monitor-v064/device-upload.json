@@ -1,0 +1,860 @@
+{
+  "deviceId": "synthetic-v064",
+  "hostname": "Synthetic audit device",
+  "updatedAt": "$NOW",
+  "trackedClients": [
+    "cursor",
+    "zcode",
+    "opencode",
+    "muse",
+    "codex",
+    "grok"
+  ],
+  "syncUploadIntervalMs": 300000,
+  "periodWindows": {
+    "timeZone": "Etc/UTC",
+    "today": {
+      "key": "$TODAY",
+      "endsAt": "$TOMORROW"
+    },
+    "month": {
+      "key": "$MONTH",
+      "endsAt": "$NEXT_MONTH"
+    }
+  },
+  "today": {
+    "capabilities": {
+      "tokenComponents": true,
+      "throughput": true
+    },
+    "totalTokens": 1410,
+    "costUsd": 0.49,
+    "cacheReadTokens": 800,
+    "cacheWriteTokens": 0,
+    "outputTokens": 150,
+    "unclassifiedTokens": 0,
+    "timedTokens": 0,
+    "timedOutputTokens": 0,
+    "timedDurationMs": 0,
+    "clients": {
+      "cursor": 10,
+      "zcode": 1060,
+      "opencode": 130,
+      "muse": 50,
+      "codex": 100,
+      "grok": 60
+    },
+    "clientCosts": {
+      "cursor": 0.03,
+      "zcode": 0.1,
+      "opencode": 0.2,
+      "muse": 0.05,
+      "codex": 0.1,
+      "grok": 0.01
+    },
+    "clientCacheReads": {
+      "zcode": 800
+    },
+    "clientCacheWrites": {},
+    "clientOutputs": {
+      "zcode": 60,
+      "opencode": 30,
+      "muse": 10,
+      "codex": 40,
+      "grok": 10
+    },
+    "clientUnclassifiedTokens": {},
+    "models": {
+      "cursor-auto": 10,
+      "glm-5.2": 1060,
+      "gpt-5": 280,
+      "grok-4": 60
+    },
+    "modelCosts": {
+      "cursor-auto": 0.03,
+      "glm-5.2": 0.1,
+      "gpt-5": 0.35,
+      "grok-4": 0.01
+    },
+    "modelCacheReads": {
+      "glm-5.2": 800
+    },
+    "modelCacheWrites": {},
+    "modelOutputs": {
+      "glm-5.2": 60,
+      "gpt-5": 80,
+      "grok-4": 10
+    },
+    "modelUnclassifiedTokens": {},
+    "clientModels": {
+      "cursor": {
+        "cursor-auto": 10
+      },
+      "zcode": {
+        "glm-5.2": 1060
+      },
+      "opencode": {
+        "gpt-5": 130
+      },
+      "muse": {
+        "gpt-5": 50
+      },
+      "codex": {
+        "gpt-5": 100
+      },
+      "grok": {
+        "grok-4": 60
+      }
+    },
+    "clientModelCosts": {
+      "cursor": {
+        "cursor-auto": 0.03
+      },
+      "zcode": {
+        "glm-5.2": 0.1
+      },
+      "opencode": {
+        "gpt-5": 0.2
+      },
+      "muse": {
+        "gpt-5": 0.05
+      },
+      "codex": {
+        "gpt-5": 0.1
+      },
+      "grok": {
+        "grok-4": 0.01
+      }
+    },
+    "sessions": {
+      "cursor:cursor-auto": {
+        "client": "cursor",
+        "sessionId": "cursor-auto",
+        "totalTokens": 3,
+        "costUsd": 0.01,
+        "messageCount": 0,
+        "inputTokens": 3,
+        "outputTokens": 0,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "startedAt": "",
+        "lastUsedAt": "$NOW",
+        "contextTokens": 0,
+        "contextWindow": 0,
+        "projectId": "",
+        "projectLabel": "",
+        "sessionKind": "",
+        "models": {
+          "cursor-auto": 3
+        },
+        "modelCosts": {
+          "cursor-auto": 0.01
+        },
+        "providers": {}
+      },
+      "cursor:cursor-default": {
+        "client": "cursor",
+        "sessionId": "cursor-default",
+        "totalTokens": 7,
+        "costUsd": 0.02,
+        "messageCount": 0,
+        "inputTokens": 7,
+        "outputTokens": 0,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "startedAt": "",
+        "lastUsedAt": "$NOW",
+        "contextTokens": 0,
+        "contextWindow": 0,
+        "projectId": "",
+        "projectLabel": "",
+        "sessionKind": "",
+        "models": {
+          "cursor-auto": 7
+        },
+        "modelCosts": {
+          "cursor-auto": 0.02
+        },
+        "providers": {}
+      },
+      "zcode:zcode": {
+        "client": "zcode",
+        "sessionId": "zcode",
+        "totalTokens": 1060,
+        "costUsd": 0.1,
+        "messageCount": 0,
+        "inputTokens": 200,
+        "outputTokens": 60,
+        "cacheReadTokens": 800,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 10,
+        "startedAt": "",
+        "lastUsedAt": "$NOW",
+        "contextTokens": 0,
+        "contextWindow": 0,
+        "projectId": "",
+        "projectLabel": "",
+        "sessionKind": "",
+        "models": {
+          "glm-5.2": 1060
+        },
+        "modelCosts": {
+          "glm-5.2": 0.1
+        },
+        "providers": {}
+      },
+      "opencode:opencode": {
+        "client": "opencode",
+        "sessionId": "opencode",
+        "totalTokens": 130,
+        "costUsd": 0.2,
+        "messageCount": 0,
+        "inputTokens": 100,
+        "outputTokens": 30,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 10,
+        "startedAt": "",
+        "lastUsedAt": "$NOW",
+        "contextTokens": 0,
+        "contextWindow": 0,
+        "projectId": "",
+        "projectLabel": "",
+        "sessionKind": "",
+        "models": {
+          "gpt-5": 130
+        },
+        "modelCosts": {
+          "gpt-5": 0.2
+        },
+        "providers": {}
+      },
+      "muse:muse": {
+        "client": "muse",
+        "sessionId": "muse",
+        "totalTokens": 50,
+        "costUsd": 0.05,
+        "messageCount": 0,
+        "inputTokens": 40,
+        "outputTokens": 10,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 5,
+        "startedAt": "",
+        "lastUsedAt": "$NOW",
+        "contextTokens": 0,
+        "contextWindow": 0,
+        "projectId": "",
+        "projectLabel": "",
+        "sessionKind": "",
+        "models": {
+          "gpt-5": 50
+        },
+        "modelCosts": {
+          "gpt-5": 0.05
+        },
+        "providers": {}
+      },
+      "codex:codex": {
+        "client": "codex",
+        "sessionId": "codex",
+        "totalTokens": 100,
+        "costUsd": 0.1,
+        "messageCount": 0,
+        "inputTokens": 60,
+        "outputTokens": 40,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 10,
+        "startedAt": "",
+        "lastUsedAt": "$NOW",
+        "contextTokens": 1234,
+        "contextWindow": 128000,
+        "projectId": "",
+        "projectLabel": "",
+        "sessionKind": "background-review",
+        "models": {
+          "gpt-5": 100
+        },
+        "modelCosts": {
+          "gpt-5": 0.1
+        },
+        "providers": {},
+        "turnEnded": false
+      },
+      "grok:grok": {
+        "client": "grok",
+        "sessionId": "grok",
+        "totalTokens": 60,
+        "costUsd": 0.01,
+        "messageCount": 0,
+        "inputTokens": 50,
+        "outputTokens": 10,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "startedAt": "",
+        "lastUsedAt": "$NOW",
+        "contextTokens": 0,
+        "contextWindow": 0,
+        "projectId": "",
+        "projectLabel": "",
+        "sessionKind": "",
+        "models": {
+          "grok-4": 60
+        },
+        "modelCosts": {
+          "grok-4": 0.01
+        },
+        "providers": {}
+      }
+    }
+  },
+  "month": {
+    "capabilities": {
+      "tokenComponents": true,
+      "throughput": true
+    },
+    "totalTokens": 1410,
+    "costUsd": 0.49,
+    "cacheReadTokens": 800,
+    "cacheWriteTokens": 0,
+    "outputTokens": 150,
+    "unclassifiedTokens": 0,
+    "timedTokens": 0,
+    "timedOutputTokens": 0,
+    "timedDurationMs": 0,
+    "clients": {
+      "cursor": 10,
+      "zcode": 1060,
+      "opencode": 130,
+      "muse": 50,
+      "codex": 100,
+      "grok": 60
+    },
+    "clientCosts": {
+      "cursor": 0.03,
+      "zcode": 0.1,
+      "opencode": 0.2,
+      "muse": 0.05,
+      "codex": 0.1,
+      "grok": 0.01
+    },
+    "clientCacheReads": {
+      "zcode": 800
+    },
+    "clientCacheWrites": {},
+    "clientOutputs": {
+      "zcode": 60,
+      "opencode": 30,
+      "muse": 10,
+      "codex": 40,
+      "grok": 10
+    },
+    "clientUnclassifiedTokens": {},
+    "models": {
+      "cursor-auto": 10,
+      "glm-5.2": 1060,
+      "gpt-5": 280,
+      "grok-4": 60
+    },
+    "modelCosts": {
+      "cursor-auto": 0.03,
+      "glm-5.2": 0.1,
+      "gpt-5": 0.35,
+      "grok-4": 0.01
+    },
+    "modelCacheReads": {
+      "glm-5.2": 800
+    },
+    "modelCacheWrites": {},
+    "modelOutputs": {
+      "glm-5.2": 60,
+      "gpt-5": 80,
+      "grok-4": 10
+    },
+    "modelUnclassifiedTokens": {},
+    "clientModels": {
+      "cursor": {
+        "cursor-auto": 10
+      },
+      "zcode": {
+        "glm-5.2": 1060
+      },
+      "opencode": {
+        "gpt-5": 130
+      },
+      "muse": {
+        "gpt-5": 50
+      },
+      "codex": {
+        "gpt-5": 100
+      },
+      "grok": {
+        "grok-4": 60
+      }
+    },
+    "clientModelCosts": {
+      "cursor": {
+        "cursor-auto": 0.03
+      },
+      "zcode": {
+        "glm-5.2": 0.1
+      },
+      "opencode": {
+        "gpt-5": 0.2
+      },
+      "muse": {
+        "gpt-5": 0.05
+      },
+      "codex": {
+        "gpt-5": 0.1
+      },
+      "grok": {
+        "grok-4": 0.01
+      }
+    },
+    "sessions": {
+      "cursor:cursor-auto": {
+        "client": "cursor",
+        "sessionId": "cursor-auto",
+        "totalTokens": 3,
+        "costUsd": 0.01,
+        "messageCount": 0,
+        "inputTokens": 3,
+        "outputTokens": 0,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "startedAt": "",
+        "lastUsedAt": "$NOW",
+        "contextTokens": 0,
+        "contextWindow": 0,
+        "projectId": "",
+        "projectLabel": "",
+        "sessionKind": "",
+        "models": {
+          "cursor-auto": 3
+        },
+        "modelCosts": {
+          "cursor-auto": 0.01
+        },
+        "providers": {}
+      },
+      "cursor:cursor-default": {
+        "client": "cursor",
+        "sessionId": "cursor-default",
+        "totalTokens": 7,
+        "costUsd": 0.02,
+        "messageCount": 0,
+        "inputTokens": 7,
+        "outputTokens": 0,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "startedAt": "",
+        "lastUsedAt": "$NOW",
+        "contextTokens": 0,
+        "contextWindow": 0,
+        "projectId": "",
+        "projectLabel": "",
+        "sessionKind": "",
+        "models": {
+          "cursor-auto": 7
+        },
+        "modelCosts": {
+          "cursor-auto": 0.02
+        },
+        "providers": {}
+      },
+      "zcode:zcode": {
+        "client": "zcode",
+        "sessionId": "zcode",
+        "totalTokens": 1060,
+        "costUsd": 0.1,
+        "messageCount": 0,
+        "inputTokens": 200,
+        "outputTokens": 60,
+        "cacheReadTokens": 800,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 10,
+        "startedAt": "",
+        "lastUsedAt": "$NOW",
+        "contextTokens": 0,
+        "contextWindow": 0,
+        "projectId": "",
+        "projectLabel": "",
+        "sessionKind": "",
+        "models": {
+          "glm-5.2": 1060
+        },
+        "modelCosts": {
+          "glm-5.2": 0.1
+        },
+        "providers": {}
+      },
+      "opencode:opencode": {
+        "client": "opencode",
+        "sessionId": "opencode",
+        "totalTokens": 130,
+        "costUsd": 0.2,
+        "messageCount": 0,
+        "inputTokens": 100,
+        "outputTokens": 30,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 10,
+        "startedAt": "",
+        "lastUsedAt": "$NOW",
+        "contextTokens": 0,
+        "contextWindow": 0,
+        "projectId": "",
+        "projectLabel": "",
+        "sessionKind": "",
+        "models": {
+          "gpt-5": 130
+        },
+        "modelCosts": {
+          "gpt-5": 0.2
+        },
+        "providers": {}
+      },
+      "muse:muse": {
+        "client": "muse",
+        "sessionId": "muse",
+        "totalTokens": 50,
+        "costUsd": 0.05,
+        "messageCount": 0,
+        "inputTokens": 40,
+        "outputTokens": 10,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 5,
+        "startedAt": "",
+        "lastUsedAt": "$NOW",
+        "contextTokens": 0,
+        "contextWindow": 0,
+        "projectId": "",
+        "projectLabel": "",
+        "sessionKind": "",
+        "models": {
+          "gpt-5": 50
+        },
+        "modelCosts": {
+          "gpt-5": 0.05
+        },
+        "providers": {}
+      },
+      "codex:codex": {
+        "client": "codex",
+        "sessionId": "codex",
+        "totalTokens": 100,
+        "costUsd": 0.1,
+        "messageCount": 0,
+        "inputTokens": 60,
+        "outputTokens": 40,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 10,
+        "startedAt": "",
+        "lastUsedAt": "$NOW",
+        "contextTokens": 1234,
+        "contextWindow": 128000,
+        "projectId": "",
+        "projectLabel": "",
+        "sessionKind": "background-review",
+        "models": {
+          "gpt-5": 100
+        },
+        "modelCosts": {
+          "gpt-5": 0.1
+        },
+        "providers": {},
+        "turnEnded": false
+      },
+      "grok:grok": {
+        "client": "grok",
+        "sessionId": "grok",
+        "totalTokens": 60,
+        "costUsd": 0.01,
+        "messageCount": 0,
+        "inputTokens": 50,
+        "outputTokens": 10,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "startedAt": "",
+        "lastUsedAt": "$NOW",
+        "contextTokens": 0,
+        "contextWindow": 0,
+        "projectId": "",
+        "projectLabel": "",
+        "sessionKind": "",
+        "models": {
+          "grok-4": 60
+        },
+        "modelCosts": {
+          "grok-4": 0.01
+        },
+        "providers": {}
+      }
+    }
+  },
+  "allTime": {
+    "capabilities": {
+      "tokenComponents": true,
+      "throughput": true
+    },
+    "totalTokens": 1410,
+    "costUsd": 0.49,
+    "cacheReadTokens": 800,
+    "cacheWriteTokens": 0,
+    "outputTokens": 150,
+    "unclassifiedTokens": 0,
+    "timedTokens": 0,
+    "timedOutputTokens": 0,
+    "timedDurationMs": 0,
+    "clients": {
+      "cursor": 10,
+      "zcode": 1060,
+      "opencode": 130,
+      "muse": 50,
+      "codex": 100,
+      "grok": 60
+    },
+    "clientCosts": {
+      "cursor": 0.03,
+      "zcode": 0.1,
+      "opencode": 0.2,
+      "muse": 0.05,
+      "codex": 0.1,
+      "grok": 0.01
+    },
+    "clientCacheReads": {
+      "zcode": 800
+    },
+    "clientCacheWrites": {},
+    "clientOutputs": {
+      "zcode": 60,
+      "opencode": 30,
+      "muse": 10,
+      "codex": 40,
+      "grok": 10
+    },
+    "clientUnclassifiedTokens": {},
+    "models": {
+      "cursor-auto": 10,
+      "glm-5.2": 1060,
+      "gpt-5": 280,
+      "grok-4": 60
+    },
+    "modelCosts": {
+      "cursor-auto": 0.03,
+      "glm-5.2": 0.1,
+      "gpt-5": 0.35,
+      "grok-4": 0.01
+    },
+    "modelCacheReads": {
+      "glm-5.2": 800
+    },
+    "modelCacheWrites": {},
+    "modelOutputs": {
+      "glm-5.2": 60,
+      "gpt-5": 80,
+      "grok-4": 10
+    },
+    "modelUnclassifiedTokens": {},
+    "clientModels": {
+      "cursor": {
+        "cursor-auto": 10
+      },
+      "zcode": {
+        "glm-5.2": 1060
+      },
+      "opencode": {
+        "gpt-5": 130
+      },
+      "muse": {
+        "gpt-5": 50
+      },
+      "codex": {
+        "gpt-5": 100
+      },
+      "grok": {
+        "grok-4": 60
+      }
+    },
+    "clientModelCosts": {
+      "cursor": {
+        "cursor-auto": 0.03
+      },
+      "zcode": {
+        "glm-5.2": 0.1
+      },
+      "opencode": {
+        "gpt-5": 0.2
+      },
+      "muse": {
+        "gpt-5": 0.05
+      },
+      "codex": {
+        "gpt-5": 0.1
+      },
+      "grok": {
+        "grok-4": 0.01
+      }
+    },
+    "projects": {}
+  },
+  "clientHealth": {
+    "version": 1,
+    "observedAt": "$NOW",
+    "clients": {
+      "muse": {
+        "source": {
+          "checkedCount": 1,
+          "detectedCount": 1,
+          "checks": [
+            {
+              "id": "muse-sessions",
+              "exists": true
+            }
+          ]
+        },
+        "collection": {
+          "state": "ok"
+        },
+        "data": {
+          "liveTokens": 1
+        }
+      },
+      "antigravity": {
+        "source": {
+          "checkedCount": 1,
+          "detectedCount": 1,
+          "checks": [
+            {
+              "id": "antigravity-extension-data",
+              "exists": true
+            }
+          ]
+        },
+        "collection": {
+          "state": "ok"
+        },
+        "data": {
+          "liveTokens": 1
+        }
+      },
+      "qodercn": {
+        "source": {
+          "checkedCount": 1,
+          "detectedCount": 1,
+          "checks": [
+            {
+              "id": "qodercn-projects",
+              "exists": true
+            }
+          ]
+        },
+        "collection": {
+          "state": "ok"
+        },
+        "data": {
+          "liveTokens": 1
+        }
+      }
+    }
+  },
+  "limits": {
+    "updatedAt": "$NOW",
+    "refreshMs": 300000,
+    "providers": [
+      {
+        "provider": "stepfun",
+        "accountKey": "synthetic-stepfun",
+        "accountLabel": "Coding Plan",
+        "planLabel": "",
+        "accountName": "",
+        "accountEmail": "",
+        "workspaceKind": "",
+        "status": "ok",
+        "source": "web",
+        "sourceDetail": "",
+        "updatedAt": "$NOW",
+        "windows": [
+          {
+            "kind": "session",
+            "label": "5-hour",
+            "used": null,
+            "limit": null,
+            "remaining": null,
+            "usedPercent": 20,
+            "remainingPercent": 80,
+            "resetsAt": "$TOMORROW",
+            "windowMinutes": 300,
+            "resetDescription": "",
+            "detail": "",
+            "currency": null,
+            "showMeter": true
+          },
+          {
+            "kind": "weekly",
+            "label": "Weekly",
+            "used": null,
+            "limit": null,
+            "remaining": null,
+            "usedPercent": 40,
+            "remainingPercent": 60,
+            "resetsAt": "$WEEK_RESET",
+            "windowMinutes": 10080,
+            "resetDescription": "",
+            "detail": "",
+            "currency": null,
+            "showMeter": true
+          }
+        ],
+        "balanceUsd": null,
+        "balance": null,
+        "resetCredits": null,
+        "region": ""
+      },
+      {
+        "provider": "codex",
+        "accountKey": "synthetic-codex",
+        "accountLabel": "",
+        "planLabel": "Pro More",
+        "accountName": "",
+        "accountEmail": "",
+        "workspaceKind": "",
+        "status": "ok",
+        "source": "oauth",
+        "sourceDetail": "",
+        "updatedAt": "$NOW",
+        "windows": [
+          {
+            "kind": "weekly",
+            "label": "",
+            "used": null,
+            "limit": null,
+            "remaining": null,
+            "usedPercent": 40,
+            "remainingPercent": 60,
+            "resetsAt": "$WEEK_RESET",
+            "windowMinutes": null,
+            "resetDescription": "",
+            "detail": "",
+            "currency": null,
+            "showMeter": true
+          }
+        ],
+        "balanceUsd": null,
+        "balance": null,
+        "resetCredits": null,
+        "region": ""
+      }
+    ]
+  }
+}

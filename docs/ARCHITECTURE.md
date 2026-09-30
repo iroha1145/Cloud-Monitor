@@ -241,7 +241,7 @@ today_total 汇总（近似当日用量）。
 widget/agent ──官方同步协议──► Python 网关（鉴权/严格校验/1MiB 实测限流）
                                    │ 转发
                                    ▼
-                          tm-core（官方 v0.62.0 @dcccfb0，逐字节未改）
+                          tm-core（官方 v0.64.0 @9ad1ca2，逐字节未改）
                             规范化 / 设备合并(含 limitsOnly) / 多设备聚合 /
                             periodWindows 过期 / syncUploadIntervalMs stale /
                             history / limits / SSE 广播 / subscriptions /
@@ -260,8 +260,8 @@ headless agent 风格、官方 mergeDeviceRecord 生成的载荷、partial、
 limits-only、trackedClients 变化、窗口过期、删除）断言：经 Cloud 全链路
 与直连官方 hub 的 stats/devices/history/ingest 响应核心字段等价。
 
-另有固定版本测试 `tests/test_tm_v062_core.py` 和独立提交的 v0.62 载荷/旧存储样例，不通过当前内核生成预期。
-完整依赖与来源哈希由 `tm-core/upstream-v062.json` 固定，`tm-core/sync_vendor.py --check` 校验；生成清单不能替代版本契约检查。
+固定版本测试 `tests/test_tm_v064_core.py` 验证 v0.64 的 StepFun、Cursor 旧库归并、来源诊断和上报数据；`tests/test_tm_v062_core.py` 继续验证旧客户端载荷。样例与预期独立提交，不通过当前内核生成预期。
+完整依赖与来源哈希由 `tm-core/upstream-v064.json` 固定，`tm-core/sync_vendor.py --check` 校验；生成清单不能替代版本契约检查。Git 保留 vendor 原始字节，跨平台检出不能改变来源哈希。
 
 ## 关键语义（全部由官方代码执行，网关不重造）
 

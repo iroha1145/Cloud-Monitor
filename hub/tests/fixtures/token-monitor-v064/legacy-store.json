@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "devices": {
+    "legacy-cursor": {
+      "deviceId": "legacy-cursor",
+      "hostname": "Legacy cursor fixture",
+      "updatedAt": "$NOW",
+      "receivedAt": "$NOW",
+      "trackedClients": [
+        "cursor",
+        "claude"
+      ],
+      "periods": {
+        "today": {
+          "totalTokens": 41,
+          "costUsd": 0.41,
+          "clients": {
+            "cursor": 30,
+            "claude": 11
+          },
+          "models": {
+            "auto": 10,
+            "default": 31
+          },
+          "clientModels": {
+            "cursor": {
+              "auto": 10,
+              "default": 20
+            },
+            "claude": {
+              "default": 11
+            }
+          },
+          "modelCosts": {
+            "auto": 0.1,
+            "default": 0.31
+          },
+          "clientModelCosts": {
+            "cursor": {
+              "auto": 0.1,
+              "default": 0.2
+            },
+            "claude": {
+              "default": 0.11
+            }
+          },
+          "modelCacheReads": {
+            "default": 5
+          }
+        },
+        "month": {
+          "totalTokens": 41,
+          "costUsd": 0.41,
+          "clients": {
+            "cursor": 30,
+            "claude": 11
+          },
+          "models": {
+            "auto": 10,
+            "default": 31
+          },
+          "clientModels": {
+            "cursor": {
+              "auto": 10,
+              "default": 20
+            },
+            "claude": {
+              "default": 11
+            }
+          },
+          "modelCosts": {
+            "auto": 0.1,
+            "default": 0.31
+          },
+          "clientModelCosts": {
+            "cursor": {
+              "auto": 0.1,
+              "default": 0.2
+            },
+            "claude": {
+              "default": 0.11
+            }
+          },
+          "modelCacheReads": {
+            "default": 5
+          }
+        },
+        "allTime": {
+          "totalTokens": 41,
+          "costUsd": 0.41,
+          "clients": {
+            "cursor": 30,
+            "claude": 11
+          },
+          "models": {
+            "auto": 10,
+            "default": 31
+          },
+          "clientModels": {
+            "cursor": {
+              "auto": 10,
+              "default": 20
+            },
+            "claude": {
+              "default": 11
+            }
+          },
+          "modelCosts": {
+            "auto": 0.1,
+            "default": 0.31
+          },
+          "clientModelCosts": {
+            "cursor": {
+              "auto": 0.1,
+              "default": 0.2
+            },
+            "claude": {
+              "default": 0.11
+            }
+          },
+          "modelCacheReads": {
+            "default": 5
+          }
+        }
+      }
+    }
+  }
+}

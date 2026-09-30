@@ -11,6 +11,8 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
 不重造官方聚合。官方 `/api/ingest` `/api/stats` `/api/history` SSE 订阅
 行为不得因本扩展改变。
 
+当前内核固定为 Token Monitor v0.64.0。StepFun 的 5 小时、每周和 Token Plan 窗口通过 `limits` 原样传递；Token Plan 未提供实际点数余额时，网页只展示上报的用量比例。Muse Code 使用 `muse` 客户端标识，客户端用量与会话仍沿用现有结构。
+
 鉴权：面板与 Cloud 扩展一律 `Authorization: Bearer ACCESS_TOKEN`。
 `TOKEN_MONITOR_SECRET` 不能读这些端点。Token Monitor 未启用 → 404。
 
