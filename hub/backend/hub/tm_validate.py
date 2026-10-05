@@ -102,50 +102,59 @@ def _reject(message: str) -> None:
     raise PayloadValidationError(message)
 
 
-def _check_int(value: Any, path: str) -> int:
+def _path_text(path: Any) -> str:
+    """把 _walk 的惰性路径展开成 $.a.b[0] 形式；字符串路径原样返回。"""
+    steps = []
+    while isinstance(path, tuple):
+        path, step = path
+        steps.append(f"[{step}]" if isinstance(step, int) else f".{step}")
+    return path + "".join(reversed(steps))
+
+
+def _check_int(value: Any, path: Any) -> int:
     if isinstance(value, bool):
-        _reject(f"{path}: 布尔值不是合法 token 数")
+        _reject(f"{_path_text(path)}: 布尔值不是合法 token 数")
     if isinstance(value, float):
         if not math.isfinite(value):
-            _reject(f"{path}: 非有限数值")
+            _reject(f"{_path_text(path)}: 非有限数值")
         if not value.is_integer():
-            _reject(f"{path}: token 数必须为整数（得到 {value}）")
+            _reject(f"{_path_text(path)}: token 数必须为整数（得到 {value}）")
         value = int(value)
     if not isinstance(value, int):
-        _reject(f"{path}: token 数必须是数字（得到 {type(value).__name__}）")
+        _reject(f"{_path_text(path)}: token 数必须是数字（得到 {type(value).__name__}）")
     if value < 0:
-        _reject(f"{path}: 负数不被接受（{value}）")
+        _reject(f"{_path_text(path)}: 负数不被接受（{value}）")
     if value > MAX_INT:
-        _reject(f"{path}: 超出 2^53-1 安全整数范围（{value}）")
+        _reject(f"{_path_text(path)}: 超出 2^53-1 安全整数范围（{value}）")
     return value
 
 
-def _check_cost(value: Any, path: str) -> None:
+def _check_cost(value: Any, path: Any) -> None:
     if value is None:
         return
     if isinstance(value, bool):
-        _reject(f"{path}: 布尔值不是合法金额")
+        _reject(f"{_path_text(path)}: 布尔值不是合法金额")
     if not isinstance(value, (int, float)):
-        _reject(f"{path}: 金额必须是数字")
+        _reject(f"{_path_text(path)}: 金额必须是数字")
     if not math.isfinite(float(value)):
-        _reject(f"{path}: NaN/Infinity 不被接受")
+        _reject(f"{_path_text(path)}: NaN/Infinity 不被接受")
     if float(value) < 0:
-        _reject(f"{path}: 负金额不被接受")
+        _reject(f"{_path_text(path)}: 负金额不被接受")
     if float(value) > MAX_COST:
-        _reject(f"{path}: 金额超出合理上限")
+        _reject(f"{_path_text(path)}: 金额超出合理上限")
 
 
-def _check_timestamp(value: Any, path: str, *, allow_future: timedelta) -> None:
+def _check_timestamp(value: Any, path: Any, *, allow_future: timedelta) -> None:
     if not isinstance(value, str) or not value:
         return  # 缺失交给官方规范化
     try:
         dt = iso_to_utc(value)
     except (ValueError, OverflowError):
-        _reject(f"{path}: 非法时间戳 {value!r}")
+        _reject(f"{_path_text(path)}: 非法时间戳 {value!r}")
     if dt < MIN_TIMESTAMP:
-        _reject(f"{path}: 时间早于 {MIN_TIMESTAMP.date().isoformat()}（{value}）")
+        _reject(f"{_path_text(path)}: 时间早于 {MIN_TIMESTAMP.date().isoformat()}（{value}）")
     if dt > datetime.now(timezone.utc) + allow_future:
-        _reject(f"{path}: 时间过度超前（{value}）")
+        _reject(f"{_path_text(path)}: 时间过度超前（{value}）")
 
 
 def _check_tz(name: Any, path: str) -> None:
@@ -163,48 +172,52 @@ def _is_token_key(key: str) -> bool:
     )
 
 
-def _walk(value: Any, path: str, depth: int) -> None:
-    """通用遍历：深度、原型键、键长、token/金额叶子、时间戳。"""
+def _walk(value: Any, path: Any, depth: int) -> None:
+    """通用遍历：深度、原型键、键长、token/金额叶子、时间戳。
+
+    path 是 (父路径, 键或下标) 的嵌套二元组，只在拒绝时才由 _path_text 拼成字符串；
+    大载荷里每个键都先拼一遍路径串的开销比校验本身还大。
+    """
     if depth > MAX_DEPTH:
-        _reject(f"{path}: JSON 嵌套超过 {MAX_DEPTH} 层")
+        _reject(f"{_path_text(path)}: JSON 嵌套超过 {MAX_DEPTH} 层")
     if isinstance(value, dict):
         for key, item in value.items():
             if not isinstance(key, str):
-                _reject(f"{path}: 非字符串键 {key!r}")
+                _reject(f"{_path_text(path)}: 非字符串键 {key!r}")
             if key in PROTOTYPE_KEYS:
-                _reject(f"{path}.{key}: 原型敏感键被拒绝")
+                _reject(f"{_path_text(path)}.{key}: 原型敏感键被拒绝")
             if len(key) > LIMITS["generic_key"]:
-                _reject(f"{path}.{key}: 键过长（>{LIMITS['generic_key']}）")
-            child = f"{path}.{key}"
+                _reject(f"{_path_text(path)}.{key}: 键过长（>{LIMITS['generic_key']}）")
+            child = (path, key)
             if _is_token_key(key):
                 if isinstance(item, bool):
-                    _reject(f"{child}: 布尔值不是合法 token 数")
+                    _reject(f"{_path_text(child)}: 布尔值不是合法 token 数")
                 if isinstance(item, (int, float)):
                     _check_int(item, child)
                 elif item is not None and not isinstance(item, (dict, list)):
-                    _reject(f"{child}: token 数必须是数字")
+                    _reject(f"{_path_text(child)}: token 数必须是数字")
             elif key in ("costUsd", "balanceUsd", "usedPercent"):
                 _check_cost(item, child)
             elif key in ("updatedAt", "receivedAt", "startedAt", "lastUsedAt"):
                 if item is not None and not isinstance(item, str):
-                    _reject(f"{child}: 时间戳必须是字符串")
+                    _reject(f"{_path_text(child)}: 时间戳必须是字符串")
                 else:
                     _check_timestamp(item, child, allow_future=MAX_INGEST_FUTURE_SKEW)
             elif key == "resetsAt":
                 if item is not None and not isinstance(item, str):
-                    _reject(f"{child}: 时间戳必须是字符串")
+                    _reject(f"{_path_text(child)}: 时间戳必须是字符串")
                 else:
                     _check_timestamp(item, child, allow_future=MAX_RESET_SKEW)
             elif key == "date" and item is not None:
                 if not isinstance(item, str) or valid_day_key(item[:10]) is None:
-                    _reject(f"{child}: 非法日期 {item!r}")
+                    _reject(f"{_path_text(child)}: 非法日期 {item!r}")
             _walk(item, child, depth + 1)
     elif isinstance(value, list):
         for i, item in enumerate(value):
-            _walk(item, f"{path}[{i}]", depth + 1)
+            _walk(item, (path, i), depth + 1)
     elif isinstance(value, float):
         if not math.isfinite(value):
-            _reject(f"{path}: NaN/Infinity 不被接受")
+            _reject(f"{_path_text(path)}: NaN/Infinity 不被接受")
 
 
 def _periods_of(payload: dict) -> dict:
