@@ -558,6 +558,14 @@ def test_validator_accepts_official_cost_aliases(cloud, mutation):
     payload.update(mutation)
     resp = cloud.post("/api/ingest", json=payload, headers=HEADERS)
     assert resp.status_code == 200, mutation
+    # 校验层把别名改写成 costUsd 后再暂存、转发
+    stored = cloud.app.state.db.fetchone(
+        "SELECT payload_json FROM tm_ingest_outbox WHERE device_id='dev-cost'"
+    )
+    assert json.loads(stored["payload_json"])["today"]["costUsd"] == 1
+    devices = cloud.app.state.tm_core.request("GET", "/api/devices").json()["devices"]
+    device = next(row for row in devices if row["deviceId"] == "dev-cost")
+    assert device["periods"]["today"]["costUsd"] == 1
 
 
 def test_validator_accepts_all_official_payload_shapes():

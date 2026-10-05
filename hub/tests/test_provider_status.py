@@ -700,10 +700,14 @@ def test_tm_core_down_does_not_take_ingest(tmp_path, node_hub):
     cloud = make_cloud_app(tmp_path, "http://127.0.0.1:9", background=False)
     with cloud:
         ingest = cloud.post("/api/ingest", json=widget_style_payload("d"), headers=HEADERS)
-        # tm-core 不可达：ingest 503，但 provider-status 不得 500
+        # tm-core 不可达：ingest 暂存并返回 503；provider-status 照常 200，只标 partial
         resp = cloud.get("/api/v1/tm/provider-status", headers=READ)
-        assert resp.status_code != 500
-        assert ingest.status_code in {200, 503}
+        assert ingest.status_code == 503
+        assert ingest.json()["error"] == "upstream_unavailable"
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["partial"] is True
+        assert body["errors"] == [{"error_code": "stats_unavailable", "source": "tm-core"}]
 
 
 def test_refuses_non_allowlisted_url():

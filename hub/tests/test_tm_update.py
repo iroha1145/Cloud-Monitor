@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from hub.main import create_app
@@ -40,22 +41,16 @@ def test_version_key_orders():
     assert version_gt("v0.2.0", "0.1.0") is True
 
 
-def test_parse_ref_rejects_paths():
-    try:
-        parse_ref("../etc/passwd")
-        assert False
-    except ValueError:
-        pass
-    try:
-        parse_ref("origin/main")
-        assert False
-    except ValueError:
-        pass
-    try:
-        parse_ref("0123456789abcdef0123456789abcdef01234567")
-        assert False
-    except ValueError:
-        pass
+@pytest.mark.parametrize("ref", [
+    "../etc/passwd",
+    "origin/main",
+    "0123456789abcdef0123456789abcdef01234567",
+    # 全数字的 40 位 SHA 能通过 REF_RE（形似版本号），只有 SHA_RE 能拦住
+    "1234567890123456789012345678901234567890",
+])
+def test_parse_ref_rejects_paths_and_bare_shas(ref):
+    with pytest.raises(ValueError):
+        parse_ref(ref)
 
 
 def test_check_marks_release_ahead(tmp_path):
