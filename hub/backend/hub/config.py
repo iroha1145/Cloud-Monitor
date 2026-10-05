@@ -4,6 +4,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 # 同步协议版本：v2 = source_instance_id + 指纹冲突检测 + 游标心跳
 PROTOCOL_VERSION = 2
@@ -166,8 +167,6 @@ def load_settings() -> Settings:
 
     dashboard_tz = (os.environ.get("DASHBOARD_TIME_ZONE") or "Asia/Tokyo").strip()
     try:
-        from zoneinfo import ZoneInfo
-
         ZoneInfo(dashboard_tz)
     except (KeyError, ValueError, OSError) as exc:  # 区域名如 Asia 是目录：IsADirectoryError
         raise ConfigError(f"DASHBOARD_TIME_ZONE 非法 IANA 时区: {dashboard_tz!r}") from exc

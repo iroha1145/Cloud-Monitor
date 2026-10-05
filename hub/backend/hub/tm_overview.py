@@ -46,18 +46,22 @@ import json
 import logging
 import math
 import time as _time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from itertools import groupby
+from threading import Lock
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from .auth import require_access_token
+from .auth import CodedHTTPException, require_access_token
 from .config import Settings
 from .db import Database
-from .tm_proxy import TmCore
+from .tm_outbox import snapshot_health
+from .tm_provider_status import discover_providers
+from .tm_proxy import TmCore, UpstreamUnavailable
 from .tm_snapshots import (
     BUCKET_MS,
     HARD_RETENTION_DAYS,
@@ -828,8 +832,6 @@ def build_overview(
     }
     dashboard_period = _dashboard_period(dashboard_time_zone, now=now)
 
-    from .tm_outbox import snapshot_health
-
     overview = {
         "overview_schema_version": 2,
         "generated_at": stats.get("updatedAt") or stats.get("generatedAt"),
@@ -914,8 +916,6 @@ class OverviewCache:
         self._built_at: float = 0.0
         self._generation = 0
         self._inflight: asyncio.Future | None = None
-        from threading import Lock
-
         self._lock = Lock()
 
     @property
@@ -988,8 +988,6 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
 
     def _require_core() -> None:
         if not settings.tm_ingest_secret:
-            from .auth import CodedHTTPException
-
             raise CodedHTTPException(
                 404, "token_monitor_secret_unconfigured", "未启用 token-monitor 接入"
             )
@@ -997,8 +995,6 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
 
     def _fetch_sync(core: TmCore, path: str) -> tuple[Optional[dict], Optional[str]]:
         """同步辅助读取（测试 TestClient 回退）。"""
-        from .tm_proxy import UpstreamUnavailable
-
         try:
             resp = core.request("GET", path)
         except (httpx.HTTPError, UpstreamUnavailable) as exc:
@@ -1088,7 +1084,6 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
                 if isinstance(exc, asyncio.TimeoutError):
                     raise HTTPException(504, "总览刷新超时，请稍后重试") from exc
                 raise
-        from concurrent.futures import ThreadPoolExecutor
 
         def _stats_sync():
             data, _error = _fetch_sync(core, "/api/stats")
@@ -1158,8 +1153,6 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         _require_core()
         if not settings.provider_status_enabled:
             raise HTTPException(status_code=404, detail="provider-status 未启用")
-
-        from .tm_provider_status import discover_providers
 
         core = _core(request)
 

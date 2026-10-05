@@ -27,7 +27,7 @@ from zoneinfo import ZoneInfo
 from .db import Database
 from .models import MAX_INT
 from .services import parse_iso_datetime, utc_now
-from .tm_validate import valid_day_key
+from .tm_validate import PayloadValidationError, valid_day_key
 
 log = logging.getLogger("tm-snapshots")
 
@@ -347,8 +347,6 @@ def write_snapshot(
             received_at=record.get("receivedAt"),
         )
     except (OverflowError, ValueError) as exc:
-        from .tm_validate import PayloadValidationError
-
         raise PayloadValidationError(f"无法解析本地日: {exc}") from exc
     producer = _parse_iso(producer_stamp) or _parse_iso(record.get("updatedAt")) or _parse_iso(record.get("receivedAt"))
     received_at = force_received_at or record.get("receivedAt") or utc_now()

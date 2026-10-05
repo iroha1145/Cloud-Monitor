@@ -30,7 +30,8 @@ from typing import Callable, Optional
 
 from .db import Database
 from .services import utc_now
-from .tm_snapshots import norm_ts, now_z, utc_z
+from .tm_snapshots import norm_ts, now_z, resolve_local_day, utc_z
+from .tm_validate import is_limits_only_update
 
 log = logging.getLogger("tm-outbox")
 
@@ -129,8 +130,6 @@ def _as_flag(value: object) -> bool:
 
 
 def _payload_local_day(payload: dict) -> str:
-    from .tm_snapshots import resolve_local_day
-
     if not isinstance(payload, dict):
         return ""
     windows = payload.get("periodWindows")
@@ -146,8 +145,6 @@ def _payload_local_day(payload: dict) -> str:
 
 
 def _payload_writes_usage(payload: dict) -> int:
-    from .tm_validate import is_limits_only_update
-
     return 0 if is_limits_only_update(payload) else 1
 
 
@@ -757,8 +754,8 @@ def replay_pending(
     should_stop: Callable[[], bool] | None = None,
 ) -> dict:
     """重放未完成项，返回统计。返回值含 stopped_by 表示因停机提前中止（下轮继续）。"""
+    # 故意在调用时才取 write_snapshot：测试替换 tm_snapshots.write_snapshot 来注入写入故障
     from .tm_snapshots import write_snapshot
-    from .tm_validate import is_limits_only_update
 
     expire_unconfirmed(db)
     reject_exhausted_pending(db)

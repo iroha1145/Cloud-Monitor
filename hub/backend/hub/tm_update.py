@@ -27,6 +27,7 @@ from urllib.parse import quote
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, ValidationError
+from starlette.concurrency import run_in_threadpool
 
 from .auth import require_access_token
 from .config import Settings
@@ -543,7 +544,6 @@ def build_update_router(settings: Settings, service: UpdateService) -> APIRouter
             body = ApplyBody.model_validate(raw)
         except ValidationError as exc:
             raise HTTPException(status_code=400, detail="请求体校验失败") from exc
-        from starlette.concurrency import run_in_threadpool
 
         try:
             return await run_in_threadpool(service.apply, body.ref)

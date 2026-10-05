@@ -26,8 +26,9 @@ from urllib.parse import quote
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
-from .auth import constant_eq
+from .auth import CodedHTTPException, constant_eq
 from .config import Settings
 from .db import Database
 from .tm_outbox import (
@@ -35,6 +36,7 @@ from .tm_outbox import (
     OutboxFullError,
     ensure_schema as ensure_outbox_schema,
     purge_device as purge_device_outbox,
+    reject_exhausted_pending,
     replay_pending,
     replayable_count,
 )
@@ -167,8 +169,6 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
 
     def tm_auth(request: Request) -> None:
         if not settings.tm_ingest_secret:
-            from .auth import CodedHTTPException
-
             raise CodedHTTPException(
                 404,
                 "token_monitor_secret_unconfigured",
@@ -269,8 +269,6 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             return JSONResponse(
                 status_code=400, content={"error": "bad_request", "message": "invalid json"}
             )
-        from starlette.concurrency import run_in_threadpool
-
         return await run_in_threadpool(_tm_ingest_sync, request, payload)
 
     # ------------------------------------------------------------ 只读透传（统一 503）
@@ -340,7 +338,6 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             return JSONResponse(
                 status_code=400, content={"error": "bad_request", "message": "invalid json"}
             )
-        from starlette.concurrency import run_in_threadpool
 
         def _put() -> JSONResponse:
             try:
@@ -422,8 +419,6 @@ class TmBackground:
         self._wake.set()
 
     def start(self) -> None:
-        from .tm_outbox import reject_exhausted_pending
-
         try:
             reject_exhausted_pending(self.db)
         except Exception as exc:  # noqa: BLE001
