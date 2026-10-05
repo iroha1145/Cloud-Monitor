@@ -53,8 +53,7 @@ def main() -> int:
         return 1
     dt = max(parsed)
     last_success = dt.isoformat()
-    # 与 sync_agent.load_config 同一解析规则（非法回退 3600、下限 60）：
-    # 两侧口径不一致会让容器在 agent 健康时被判 unhealthy
+    # 非法值回退 3600、下限 60（见 sync_agent.parse_health_stale_seconds）
     stale = parse_health_stale_seconds(os.environ.get("HEALTH_STALE_SECONDS"))
     age = (datetime.now(timezone.utc) - dt).total_seconds()
     if age > stale:

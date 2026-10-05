@@ -37,7 +37,6 @@ import requests
 
 AGENT_VERSION = "cloud-monitor-agent/2.0.0"
 STATE_SCHEMA_VERSION = 2
-PROTOCOL_VERSION = 2
 MAX_POST_ATTEMPTS = 3
 DEGRADED_INTERVAL_MULTIPLIER = 10
 # 与云端 hub/backend/hub/models.py 的 MAX_FUTURE_SKEW / MAX_INT 保持一致
@@ -89,10 +88,9 @@ def _env_bool(raw: str | None) -> bool:
 
 
 def parse_health_stale_seconds(raw: str | None) -> float:
-    """HEALTH_STALE_SECONDS 统一解析：非法回退 3600、下限 60。
+    """HEALTH_STALE_SECONDS 解析：非法回退 3600、下限 60。
 
-    load_config 与 healthcheck.py 共用，两侧阈值口径不一致会让容器
-    在 agent 明明健康时被判 unhealthy（或反之）。
+    只有 healthcheck.py 用这个阈值；agent 本身只负责把成功时间写进状态文件。
     """
     try:
         return max(float(str(raw or "").strip() or 3600.0), 60.0)
@@ -135,8 +133,6 @@ class AgentConfig:
     state_path: Path
     request_timeout_seconds: float
     run_once: bool = False
-    allow_insecure_http: bool = False
-    health_stale_seconds: float = 3600.0
     time_zone: str = "Asia/Tokyo"
     token_monitor_hub_url: str = ""
     token_monitor_secret: str = ""
@@ -204,8 +200,6 @@ def load_config(env: Optional[dict[str, str]] = None) -> AgentConfig:
         state_path=state_path,
         request_timeout_seconds=_float("REQUEST_TIMEOUT_SECONDS", 15.0, minimum=1.0),
         run_once=_env_bool(env.get("RUN_ONCE")),
-        allow_insecure_http=allow_insecure,
-        health_stale_seconds=parse_health_stale_seconds(env.get("HEALTH_STALE_SECONDS")),
         time_zone=time_zone,
         token_monitor_hub_url=tm_hub,
         token_monitor_secret=get("TOKEN_MONITOR_SECRET"),
@@ -762,14 +756,6 @@ class SyncAgent:
             log.warning("本批共跳过 %d 条无法同步的记录", skipped)
         return wire, skipped
 
-    def _wire_valid(self, records: list[dict]) -> tuple[list[dict], int]:
-        wire, skipped = self._classify_records(records)
-        if skipped:
-            self.state.data["skipped_invalid"] = (
-                int(self.state.data.get("skipped_invalid") or 0) + skipped
-            )
-        return wire, skipped
-
     # ------------------------------------------------------------ 同步轮次
 
     def _resolve_source(self, meta: Optional[dict]) -> tuple[str, str, Optional[int]]:
@@ -815,7 +801,7 @@ class SyncAgent:
             )
         return "time", self.config.source_instance_id, None
 
-    def _rotate_if_needed(self, mode: str, source: str) -> bool:
+    def _rotate_if_needed(self, mode: str, source: str) -> None:
         """数据源实例变化（本地库重建）→ 重置游标走全量，避免 local_id 复用被吞。"""
         if self.state.source_instance_id and self.state.source_instance_id != source:
             log.warning(
@@ -827,12 +813,8 @@ class SyncAgent:
             self.state.cursor = 0
             self.state.watermark = None
             self.state.save()
-        changed = (
-            self.state.mode != mode or self.state.source_instance_id != source
-        )
         self.state.mode = mode
         self.state.source_instance_id = source
-        return changed
 
     def run_once(self) -> dict:
         meta = self.probe_sync_meta()

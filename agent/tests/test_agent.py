@@ -903,8 +903,8 @@ def test_run_once_accepts_uppercase_bool(tmp_path):
     assert sa.load_config({**base, "RUN_ONCE": "0"}).run_once is False
 
 
-def test_parse_health_stale_seconds_shared_by_healthcheck():
-    """agent 配置与 healthcheck 必须同一解析规则，否则阈值口径分裂。"""
+def test_parse_health_stale_seconds():
+    """healthcheck 的阈值解析：非法回退 3600、下限 60。"""
     assert sa.parse_health_stale_seconds("abc") == 3600.0
     assert sa.parse_health_stale_seconds("10") == 60.0
     assert sa.parse_health_stale_seconds("7200") == 7200.0
