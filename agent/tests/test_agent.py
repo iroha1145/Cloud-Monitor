@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -150,7 +150,6 @@ def test_env_device_id_wins_over_state(tmp_path):
     state = AgentState(cfg.state_path)
     state.device_id = "old-id"
     # P1-7：冲突默认失败关闭
-    import pytest
     with pytest.raises(SystemExit):
         resolve_device_id(cfg, state)
     # 显式放行则以环境变量为准（独立开关，与 ALLOW_LEGACY_FALLBACK 无关）
@@ -293,7 +292,6 @@ def test_cursor_advances_per_batch_and_resumes(tmp_path):
 
     agent = make_agent(cfg, state, session)
     # 中途"崩溃"：第二批（1 条记录）的所有推送尝试都失败
-    import pytest as _pytest
     real_sleep = sa.time.sleep
     sa.time.sleep = lambda *_: None
     real_post = session.post
@@ -747,7 +745,6 @@ def test_tm_device_id_isolated_from_cloud_id(tmp_path):
 
 
 def test_bridge_not_started_without_config(tmp_path, caplog):
-    import threading
     cfg = tm_config(tmp_path, token_monitor_hub_url="", token_monitor_secret="")
     agent = make_agent(cfg, AgentState(cfg.state_path), FakeSession())
     assert tm.start_bridge_thread(agent) is None
