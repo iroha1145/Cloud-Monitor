@@ -70,7 +70,9 @@ function usageNote(item: Pick<PeriodUsage, "components">) {
       : undefined;
 }
 
-function compositionNote(parts: PeriodUsage["components"]) {
+function compositionNote(per: Pick<PeriodUsage, "totalTokens" | "components">) {
+  const parts = per.components;
+  if (per.totalTokens === 0) return "这个周期还没有上报用量。";
   return !parts.complete && parts.known
     ? "组成与总量不一致，暂不计算缓存占比。"
     : parts.partial
@@ -112,7 +114,7 @@ function UsageSpectrum({ per }: { per: PeriodUsage }) {
     <section className="ledger-composition" aria-labelledby="ledger-composition-title">
       <div className="ledger-composition-head">
         <h2 id="ledger-composition-title">用量组成</h2>
-        <p>{compositionNote(parts)}</p>
+        <p>{compositionNote(per)}</p>
       </div>
       <div
         className={`spectrum ${drawable ? "" : "is-incomplete"}`}
@@ -331,7 +333,7 @@ export function CompositionCard({
       <CompositionLegend parts={per.components} />
       <p className="composition-note">
         <CircleHelp size={13} />
-        {compositionNote(per.components)}
+        {compositionNote(per)}
       </p>
     </section>
   );
@@ -562,13 +564,19 @@ export function ModelTable({
           </table>
         </GlideMenu>
       </div>
-      {!models.length && (
-        <div className="empty-inline">
-          <Search size={22} />
-          <strong>没有找到匹配的模型</strong>
-          <span>调整搜索词或提供商筛选后再试。</span>
-        </div>
-      )}
+      {!models.length &&
+        (per.models.length ? (
+          <div className="empty-inline">
+            <Search size={22} />
+            <strong>没有找到匹配的模型</strong>
+            <span>调整搜索词或提供商筛选后再试。</span>
+          </div>
+        ) : (
+          <div className="empty-inline">
+            <strong>这个周期还没有模型用量</strong>
+            <span>设备上报后，这里按模型列出词元、缓存与费用。</span>
+          </div>
+        ))}
       <div className="table-foot">
         <span>缓存读取单独展示，不受其他来源影响</span>
         <span>
@@ -589,6 +597,12 @@ function Clients({ per }: { per: PeriodUsage }) {
           <p>{per.clients.length} 个客户端 · 占全部用量</p>
         </div>
       </div>
+      {!per.clients.length && (
+        <div className="empty-inline">
+          <strong>还没有客户端上报</strong>
+          <span>Codex、Claude Code、Cursor 等客户端的用量会按来源分开显示。</span>
+        </div>
+      )}
       <div className="client-rows">
         {per.clients.map((c) => (
           <div className="client-row" key={c.id}>
@@ -650,6 +664,35 @@ function Clients({ per }: { per: PeriodUsage }) {
   );
 }
 
+/** A new server has no devices yet: say how to connect one, not just "0". */
+function FirstReport() {
+  return (
+    <section className="panel first-report" aria-labelledby="first-report-title">
+      <div>
+        <h2 id="first-report-title">还没有设备上报用量</h2>
+        <p>
+          在本机 token-monitor 里打开「设置 → 多设备同步」，填好右边两项后保存。widget
+          按自己的同步间隔推送，第一次上报后这里就会出现用量。
+        </p>
+      </div>
+      <dl>
+        <div>
+          <dt>hub</dt>
+          <dd>
+            <code>{location.origin}</code>
+          </dd>
+        </div>
+        <div>
+          <dt>密钥</dt>
+          <dd>
+            服务端配置的 <code>TOKEN_MONITOR_SECRET</code>
+          </dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
 export function Overview({
   data,
   period,
@@ -660,8 +703,13 @@ export function Overview({
   onModel: (m: UsageEntity, opener: HTMLButtonElement) => void;
 }) {
   const per = data.periods[period];
+  const awaitingFirstReport =
+    data.mode === "live" &&
+    data.devices.length === 0 &&
+    data.periods.allTime.totalTokens === 0;
   return (
     <>
+      {awaitingFirstReport && <FirstReport />}
       <Stats data={data} period={period} showComposition />
       <div className="overview-layout">
         <AppErrorBoundary title="用量趋势已更新，请刷新。">

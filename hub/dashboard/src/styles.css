@@ -896,6 +896,57 @@ kbd {
   font-weight: 550;
 }
 
+/* ── First report: a new server explains how to connect a device ─── */
+.first-report {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.8fr);
+  align-items: center;
+  gap: 16px 40px;
+  margin-bottom: var(--gap);
+  padding: 24px 26px;
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--line));
+}
+.first-report p {
+  max-width: 62ch;
+  margin: 8px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.first-report dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+.first-report dl > div {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  align-items: baseline;
+  gap: 12px;
+}
+.first-report dt {
+  color: var(--ink-3);
+  font-size: var(--fs-label);
+}
+.first-report dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.first-report code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+@media (max-width: 860px) {
+  .first-report {
+    grid-template-columns: 1fr;
+    padding: 20px 18px;
+  }
+}
+
 /* ── Overview layout ──────────────────────────────────────────────── */
 .overview-layout {
   display: grid;

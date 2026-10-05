@@ -1,0 +1,172 @@
+{
+ "overview_schema_version": 2,
+ "generated_at": "2026-10-05T01:44:28.971Z",
+ "pending_outbox": 0,
+ "unconfirmed_outbox": 0,
+ "expired_unconfirmed_outbox": 0,
+ "forwarding_outbox": 0,
+ "forwarding_bytes": 0,
+ "last_forward_error": null,
+ "last_forward_terminal_reason": null,
+ "last_snapshot_success_at": null,
+ "last_snapshot_error": null,
+ "snapshot_degraded": false,
+ "staleAfterMs": 600000,
+ "dashboard_time_zone": "Asia/Tokyo",
+ "features": {
+  "trend_models": true,
+  "activity_hourly": true,
+  "subscriptions": true,
+  "provider_status": false,
+  "history_daily": true
+ },
+ "partial": false,
+ "partial_errors": [],
+ "totals": {
+  "today": {
+   "capabilities": {
+    "tokenComponents": true,
+    "throughput": true
+   },
+   "totalTokens": 0,
+   "costUsd": 0,
+   "cacheReadTokens": 0,
+   "cacheWriteTokens": 0,
+   "outputTokens": 0,
+   "unclassifiedTokens": 0,
+   "timedTokens": 0,
+   "timedOutputTokens": 0,
+   "timedDurationMs": 0,
+   "clients": {},
+   "clientCosts": {},
+   "clientCacheReads": {},
+   "clientCacheWrites": {},
+   "clientOutputs": {},
+   "clientUnclassifiedTokens": {},
+   "models": {},
+   "modelCosts": {},
+   "modelCacheReads": {},
+   "modelCacheWrites": {},
+   "modelOutputs": {},
+   "modelUnclassifiedTokens": {},
+   "clientModels": {},
+   "clientModelCosts": {},
+   "projects": {},
+   "sessions": {}
+  },
+  "month": {
+   "capabilities": {
+    "tokenComponents": true,
+    "throughput": true
+   },
+   "totalTokens": 0,
+   "costUsd": 0,
+   "cacheReadTokens": 0,
+   "cacheWriteTokens": 0,
+   "outputTokens": 0,
+   "unclassifiedTokens": 0,
+   "timedTokens": 0,
+   "timedOutputTokens": 0,
+   "timedDurationMs": 0,
+   "clients": {},
+   "clientCosts": {},
+   "clientCacheReads": {},
+   "clientCacheWrites": {},
+   "clientOutputs": {},
+   "clientUnclassifiedTokens": {},
+   "models": {},
+   "modelCosts": {},
+   "modelCacheReads": {},
+   "modelCacheWrites": {},
+   "modelOutputs": {},
+   "modelUnclassifiedTokens": {},
+   "clientModels": {},
+   "clientModelCosts": {},
+   "projects": {},
+   "sessions": {}
+  },
+  "allTime": {
+   "capabilities": {
+    "tokenComponents": true,
+    "throughput": true
+   },
+   "totalTokens": 0,
+   "costUsd": 0,
+   "cacheReadTokens": 0,
+   "cacheWriteTokens": 0,
+   "outputTokens": 0,
+   "unclassifiedTokens": 0,
+   "timedTokens": 0,
+   "timedOutputTokens": 0,
+   "timedDurationMs": 0,
+   "clients": {},
+   "clientCosts": {},
+   "clientCacheReads": {},
+   "clientCacheWrites": {},
+   "clientOutputs": {},
+   "clientUnclassifiedTokens": {},
+   "models": {},
+   "modelCosts": {},
+   "modelCacheReads": {},
+   "modelCacheWrites": {},
+   "modelOutputs": {},
+   "modelUnclassifiedTokens": {},
+   "clientModels": {},
+   "clientModelCosts": {},
+   "projects": {},
+   "sessions": {}
+  }
+ },
+ "devices": [],
+ "trend": [],
+ "trend_models": [],
+ "activity": {
+  "time_zone": "Asia/Tokyo",
+  "hourly": [],
+  "hourly_day": "2026-10-05",
+  "daily_day_basis": "dashboard-time-zone",
+  "daily_mixed_basis": false,
+  "daily_archive_cutover_day": null,
+  "hourly_today": {
+   "day": "2026-10-05",
+   "time_zone": "Asia/Tokyo",
+   "buckets": []
+  },
+  "daily": [],
+  "coverage": {
+   "first_sample_at": null,
+   "last_sample_at": null,
+   "expected_buckets": 0,
+   "observed_buckets": 0,
+   "coverage_percent": 0.0,
+   "attribution_mode": "none",
+   "devices": [],
+   "gap_count": 0,
+   "reset_count": 0
+  }
+ },
+ "period_windows": null,
+ "period_windows_by_device": {},
+ "dashboard_period": {
+  "time_zone": "Asia/Tokyo",
+  "today": {
+   "key": "2026-10-05",
+   "endsAt": "2026-10-05T15:00:00.000Z"
+  },
+  "month": {
+   "key": "2026-10",
+   "endsAt": "2026-10-31T15:00:00.000Z"
+  }
+ },
+ "limits": [],
+ "sessions": [],
+ "sessions_omitted": false,
+ "sessions_meta": {
+  "sessions_total": 0,
+  "sessions_returned": 0,
+  "sessions_omitted_count": 0,
+  "session_details_incomplete": false
+ },
+ "projects": [],
+ "diagnostics": []
+}
