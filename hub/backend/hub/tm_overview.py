@@ -66,7 +66,8 @@ from .tm_snapshots import (
     BUCKET_MS,
     HARD_RETENTION_DAYS,
     query_daily_archive,
-    trend_by_day,
+    summarize_trend,
+    trend_last_rows,
     utc_z,
 )
 from .tm_validate import valid_day_key
@@ -104,30 +105,15 @@ def _device_display(device: dict) -> str:
 
 
 def trend_models_by_day(db: Database, days: int = TREND_DAYS) -> list[dict]:
-    """每设备每本地日最后一个桶，按天合并 today_total 与 models_json。
+    """每设备每本地日最后一个桶，按天合并 today_total 与 models_json。"""
+    return summarize_trend_models(*trend_last_rows(db, days))
 
-    日期范围在窗口函数之前收敛（local_day >= 下界），不加载 370 天全量
-    后再在 Python 切 30 天。
-    """
 
-    day_floor = (datetime.now(timezone.utc) - timedelta(days=days + 1)).date().isoformat()
-    rows = db.fetchall(
-        """
-        SELECT local_day, today_total, models_json FROM (
-            SELECT local_day, today_total, models_json,
-                   ROW_NUMBER() OVER (
-                       PARTITION BY device_id, local_day
-                       ORDER BY bucket_start DESC, server_received_at DESC, id DESC
-                   ) AS rn
-            FROM tm_snapshot_buckets
-            WHERE local_day >= ?
-        ) WHERE rn = 1 ORDER BY local_day
-        """,
-        (day_floor,),
-    )
+def summarize_trend_models(selected_days: list[str], last_rows: list[dict]) -> list[dict]:
+    """trend_last_rows 的结果按日合并 today_total 与 models_json，按日期升序返回。"""
     totals: dict[str, int] = {}
     models_by_day: dict[str, dict[str, int]] = {}
-    for row in rows:
+    for row in last_rows:
         day = row["local_day"]
         totals[day] = totals.get(day, 0) + _int(row["today_total"])
         try:
@@ -140,7 +126,7 @@ def trend_models_by_day(db: Database, days: int = TREND_DAYS) -> list[dict]:
         for model, tokens in models.items():
             model = str(model)
             bucket[model] = bucket.get(model, 0) + _int(tokens)
-    days_sorted = sorted(totals)[-days:]
+    days_sorted = sorted(totals)
     return [
         {"day": d, "total": totals[d], "models": models_by_day.get(d, {})}
         for d in days_sorted
@@ -831,6 +817,7 @@ def build_overview(
         if isinstance(d.get("periodWindows"), dict) and d.get("periodWindows")
     }
     dashboard_period = _dashboard_period(dashboard_time_zone, now=now)
+    trend_days, trend_rows = trend_last_rows(db, TREND_DAYS)
 
     overview = {
         "overview_schema_version": 2,
@@ -849,9 +836,12 @@ def build_overview(
         "partial_errors": partial_errors,
         "totals": stats.get("periods"),
         "devices": devices,
-        "trend": merge_trend_with_history(trend_by_day(db), history, days=TREND_DAYS),
+        "trend": merge_trend_with_history(
+            summarize_trend(trend_days, trend_rows), history, days=TREND_DAYS
+        ),
         "trend_models": merge_trend_with_history(
-            trend_models_by_day(db), history, days=TREND_DAYS, with_models=True
+            summarize_trend_models(trend_days, trend_rows), history, days=TREND_DAYS,
+            with_models=True,
         ),
         "activity": activity,
         "period_windows": _latest_period_windows(stats),  # deprecated

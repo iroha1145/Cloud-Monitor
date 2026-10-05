@@ -768,26 +768,39 @@ def query_daily_archive(
     }
 
 
-def trend_by_day(db: Database, days: int = 30) -> list[dict]:
-    """每设备每天取同一个最后桶的总量、费用和组成，按 local_day 汇总。
+def trend_last_rows(db: Database, days: int = 30) -> tuple[list[str], list[dict]]:
+    """近 days 个有数据的本地日（新到旧），以及这些日里每设备的最后一个桶。
 
-    先用日期索引选出所需日期，再只对这些日期开窗。与日归档共享最后行
-    的排序和组件判定，不从稀疏 allTime 锚点差分或借用当前周期组成。
+    先用日期索引选出所需日期，再只对这些日期开窗。总览的 trend 与 trend_models
+    共用这一次查询。
     """
     days = max(0, int(days))
     if not days:
-        return []
+        return [], []
     day_floor = (datetime.now(timezone.utc) - timedelta(days=days + 1)).date().isoformat()
     day_rows = db.fetchall(
         DISTINCT_DAYS_SQL.format(where="local_day >= ?"),
         (day_floor, days),
     )
     selected_days = [row["day"] for row in day_rows]
+    return selected_days, _last_rows_for_days(db, selected_days)
+
+
+def trend_by_day(db: Database, days: int = 30) -> list[dict]:
+    """每设备每天取同一个最后桶的总量、费用和组成，按 local_day 汇总。
+
+    与日归档共享最后行的排序和组件判定，不从稀疏 allTime 锚点差分或借用当前周期组成。
+    """
+    return summarize_trend(*trend_last_rows(db, days))
+
+
+def summarize_trend(selected_days: list[str], last_rows: list[dict]) -> list[dict]:
+    """把 trend_last_rows 的结果按日汇总，按日期升序返回。"""
     grouped = {
         day: {"day": day, "total": 0, "costUsd": 0.0, **_empty_daily_components()}
         for day in selected_days
     }
-    for row in _last_rows_for_days(db, selected_days):
+    for row in last_rows:
         item = grouped[row["local_day"]]
         item["total"] += int(row["today_total"] or 0)
         item["costUsd"] += _row_cost(row)
