@@ -1435,7 +1435,7 @@
 .sv-quota-summary { margin: 4px 0 0; display: grid; gap: 3px; }
 .sv-quota-summary div { display: flex; justify-content: space-between; gap: 8px; }
 .sv-quota-summary dd { margin: 0; text-align: right; }
-.sv-session-activity { color: var(--primary); }
+.sv-session-activity { color: var(--ink-2); }
 .sv-session-context { min-width: 0; }
 .sv-session-context dd { display: grid; gap: 5px; }
 .sv-session-context progress { width: 100%; height: 7px; accent-color: var(--primary); }

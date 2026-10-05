@@ -78,17 +78,37 @@
 .archive-day {
   border-bottom: 1px solid var(--line);
 }
+.archive-columns,
 .archive-day summary {
-  list-style: none;
   display: grid;
-  grid-template-columns: minmax(125px, 1.3fr) minmax(110px, 1fr) minmax(
-      90px,
-      0.8fr
-    ) 16px;
+  grid-template-columns: minmax(125px, 1.3fr) minmax(110px, 1fr) minmax(90px, 0.8fr) 16px;
   align-items: center;
   gap: 16px;
-  padding: 17px 4px;
+}
+.archive-day summary {
+  list-style: none;
+  padding: 13px 4px;
   cursor: pointer;
+}
+/* One header row names the columns; each row keeps its labels for screen
+   readers only, instead of repeating them on every line. */
+.archive-columns {
+  padding: 0 4px 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-3);
+  font-size: var(--fs-meta);
+}
+.archive-columns > span:nth-child(n + 2) {
+  text-align: right;
+}
+.archive-number small,
+.archive-cost small {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .archive-day summary::-webkit-details-marker {
   display: none;
@@ -218,6 +238,18 @@
   }
   .archive-button {
     min-height: 44px;
+  }
+  /* Rows stack on phones, so each keeps its own labels instead of a header. */
+  .archive-columns {
+    display: none;
+  }
+  .archive-number small,
+  .archive-cost small {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
   }
   .archive-day summary {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 16px;

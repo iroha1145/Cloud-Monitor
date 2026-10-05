@@ -312,6 +312,13 @@ export function ArchivePanel({
         (dataMode === "demo" || accessToken) && (
           <p className="archive-empty">当前没有可显示的每日记录。</p>
         )}
+      {visibleRows.length > 0 && (
+        <div className="archive-columns" aria-hidden="true">
+          <span>日期</span>
+          <span>词元</span>
+          <span>费用（美元）</span>
+        </div>
+      )}
       <div className="archive-days" aria-busy={loading}>
         {visibleRows.map((row) => (
           <ArchiveRow key={row.day} row={row} />

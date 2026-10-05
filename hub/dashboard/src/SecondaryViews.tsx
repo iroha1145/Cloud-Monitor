@@ -1288,7 +1288,7 @@ export function HistoryView({ data }: SecondaryProps) {
       <section className="sv-summary" aria-label="历史活动概况">
         <SummaryItem
           icon={<CalendarDays />}
-          label="有活动的日期"
+          label="累计有活动的日期"
           value={activeDays}
           unit="天"
           foot={`在 ${data.activity.length} 个已上报日期中`}
