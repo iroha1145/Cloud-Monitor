@@ -4,14 +4,12 @@ import { InsightTrend } from "./InsightTrend";
 import {
   ArrowDown,
   ArrowUpRight,
-  ArrowRight,
   CircleHelp,
   Cpu,
   Database,
   Layers3,
   Monitor,
   Search,
-  Sparkles,
   Wallet,
   Zap,
 } from "lucide-react";

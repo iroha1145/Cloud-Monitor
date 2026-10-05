@@ -200,7 +200,6 @@ export function ArchivePanel({
       busy.current = false;
     };
     // Requests reset only when their authentication or source changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, dataMode, historyAvailable]);
   const visibleRows = fallback ? makeArchiveFallback(fallbackData) : rows;
   const basis =

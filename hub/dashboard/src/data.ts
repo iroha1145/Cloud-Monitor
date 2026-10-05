@@ -308,12 +308,9 @@ export interface DashboardData {
 }
 
 type JsonRecord = Record<string, unknown>;
-const record = (value: unknown): JsonRecord =>
-  value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as JsonRecord)
-    : {};
 const isRecord = (value: unknown): value is JsonRecord =>
   value !== null && typeof value === "object" && !Array.isArray(value);
+const record = (value: unknown): JsonRecord => (isRecord(value) ? value : {});
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 const text = (value: unknown, fallback = ""): string =>
   typeof value === "string" ? value : fallback;
@@ -2009,5 +2006,3 @@ export function createDemoData(now = new Date(), refreshes = 0): DashboardData {
     ],
   };
 }
-
-export const dashboardData = createDemoData();

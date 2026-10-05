@@ -40,7 +40,6 @@ import "./secondary-mobile.css";
 
 export interface SecondaryProps {
   data: DashboardData;
-  onDevice?: (device: Device) => void;
 }
 
 const fullNumber = (value: number) =>
@@ -172,7 +171,6 @@ function DeviceCard({
   device,
   total,
   data,
-  onDevice,
 }: { device: Device; total: number } & SecondaryProps) {
   const [expanded, setExpanded] = useState(false);
   const Icon = /linux|ubuntu|debian|server/i.test(device.platform)
@@ -388,10 +386,7 @@ function DeviceCard({
           className="sv-device-toggle"
           aria-expanded={expanded}
           aria-controls={`device-detail-${device.id}`}
-          onClick={() => {
-            setExpanded(!expanded);
-            if (!expanded) onDevice?.(device);
-          }}
+          onClick={() => setExpanded(!expanded)}
         >
           {expanded ? "收起详情" : "设备详情"}
           <ChevronDown aria-hidden="true" />
@@ -423,7 +418,7 @@ function DeviceCard({
   );
 }
 
-export function DevicesView({ data, onDevice }: SecondaryProps) {
+export function DevicesView({ data }: SecondaryProps) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const total = data.devices.reduce(
@@ -500,7 +495,6 @@ export function DevicesView({ data, onDevice }: SecondaryProps) {
               device={device}
               total={total}
               data={data}
-              onDevice={onDevice}
             />
           ))}
         </div>
@@ -802,18 +796,14 @@ function QuotaWindow({ quota, data }: { quota: Quota; data: DashboardData }) {
         </div>
         {!isBalance && quota.showMeter !== false && percent !== null && (
           <div
-            className={`sv-progress ${color} ${percent === null ? "sv-progress-unknown" : ""}`}
-            {...(percent === null
-              ? { role: "img", "aria-label": `${quota.label}：未提供使用进度` }
-              : {
-                  role: "progressbar",
-                  "aria-label": `${quota.label}已用额度`,
-                  "aria-valuenow": percent,
-                  "aria-valuemin": 0,
-                  "aria-valuemax": 100,
-                })}
+            className={`sv-progress ${color}`}
+            role="progressbar"
+            aria-label={`${quota.label}已用额度`}
+            aria-valuenow={percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
           >
-            {percent !== null && <span style={{ width: `${percent}%` }} />}
+            <span style={{ width: `${percent}%` }} />
           </div>
         )}
         <div className="sv-quota-window-foot">

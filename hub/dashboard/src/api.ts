@@ -123,10 +123,6 @@ export async function requestJSON(path: string, token: string, signal?: AbortSig
   }
 }
 
-export async function loadOverview(token: string, signal?: AbortSignal): Promise<DashboardData> {
-  return normalizeOverview(await requestJSON(API_ENDPOINTS.overview, token, signal));
-}
-
 export async function loadDashboard(
   token: string,
   signal?: AbortSignal,
