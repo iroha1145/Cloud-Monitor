@@ -15,6 +15,11 @@ import { full } from "./lib/format";
 import { usd } from "./money";
 import "./archive-panel.css";
 
+// Fallback days come from the overview in one piece (90 in the demo); show
+// them in steps so the page does not unroll every day at once.
+const FALLBACK_FIRST = 14;
+const FALLBACK_STEP = 30;
+
 export interface ArchivePanelProps {
   accessToken: string;
   dataMode: "live" | "demo";
@@ -113,6 +118,7 @@ export function ArchivePanel({
     dataMode === "demo" || historyAvailable === false,
   );
   const [paginationNote, setPaginationNote] = useState("");
+  const [fallbackShown, setFallbackShown] = useState(FALLBACK_FIRST);
   const context = useRef(0);
   const activeRequest = useRef<AbortController | null>(null);
   const lastRequest = useRef<{ cursor: string | null; previous: ArchiveDay[] }>(
@@ -190,6 +196,7 @@ export function ArchivePanel({
     setPaginationNote("");
     setLoading(false);
     setFallback(dataMode === "demo" || historyAvailable === false);
+    setFallbackShown(FALLBACK_FIRST);
     if (dataMode === "live" && historyAvailable !== false && accessToken)
       void load(null, [], revision);
     return () => {
@@ -199,7 +206,8 @@ export function ArchivePanel({
     };
     // Requests reset only when their authentication or source changes.
   }, [accessToken, dataMode, historyAvailable]);
-  const visibleRows = fallback ? makeArchiveFallback(fallbackData) : rows;
+  const fallbackRows = fallback ? makeArchiveFallback(fallbackData) : [];
+  const visibleRows = fallback ? fallbackRows.slice(0, fallbackShown) : rows;
   const basis =
     metadata?.dayBasis === "device-local"
       ? "按各设备本地日期归档"
@@ -315,13 +323,24 @@ export function ArchivePanel({
             ? visibleRows.length
               ? "正在加载更多归档…"
               : "正在读取每日归档…"
-            : `已显示 ${visibleRows.length} 天`}
+            : fallback && visibleRows.length < fallbackRows.length
+              ? `已显示 ${visibleRows.length} / ${fallbackRows.length} 天`
+              : `已显示 ${visibleRows.length} 天`}
         </span>
         {!fallback && cursor && (
           <button
             className="archive-button"
             disabled={loading}
             onClick={() => void load(cursor, rows)}
+          >
+            加载更多
+            <ChevronDown size={15} aria-hidden="true" />
+          </button>
+        )}
+        {fallback && visibleRows.length < fallbackRows.length && (
+          <button
+            className="archive-button"
+            onClick={() => setFallbackShown((shown) => shown + FALLBACK_STEP)}
           >
             加载更多
             <ChevronDown size={15} aria-hidden="true" />

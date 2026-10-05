@@ -287,3 +287,17 @@ test("archive authentication failure calls the owner instead of showing fallback
   );
   await expect(page.getByText(/归档接口暂不可用/)).toHaveCount(0);
 });
+
+test("demo archive shows two weeks first and unrolls the rest in steps", async ({ page }) => {
+  await page.goto("/#history");
+  const panel = page.locator(".archive-panel");
+  await expect(panel.getByText("已显示 14 / 90 天", { exact: true })).toBeVisible();
+  await expect(panel.locator(".archive-day")).toHaveCount(14);
+  await panel.getByRole("button", { name: "加载更多" }).click();
+  await expect(panel.locator(".archive-day")).toHaveCount(44);
+  await panel.getByRole("button", { name: "加载更多" }).click();
+  await panel.getByRole("button", { name: "加载更多" }).click();
+  await expect(panel.locator(".archive-day")).toHaveCount(90);
+  await expect(panel.getByText("已显示 90 天", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "加载更多" })).toHaveCount(0);
+});
