@@ -513,6 +513,31 @@ def test_cancelling_one_waiter_does_not_cancel_the_shared_refresh():
     assert len(urls) == 1  # 仍然只拉了一次
 
 
+def test_refresh_failure_is_logged_after_every_waiter_left(caplog):
+    """唯一的等待者断开后共享刷新才失败：异常仍被读走并记日志，不留给垃圾回收去报。"""
+
+    async def run():
+        svc = ProviderStatusService(cache_seconds=300, timeout_seconds=2.5)
+        started = asyncio.Event()
+
+        async def failing_fetch(client, observed, key):
+            started.set()
+            await asyncio.sleep(0.05)
+            raise RuntimeError("status pages exploded")
+
+        svc._do_fetch = failing_fetch
+        waiter = asyncio.create_task(svc.snapshot(client=None, observed={"anthropic": ["claude"]}))
+        await started.wait()
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        await asyncio.wait({svc._inflight})
+
+    with caplog.at_level("WARNING", logger="tm-provider-status"):
+        asyncio.run(run())
+    assert "后台刷新异常: status pages exploded" in caplog.text
+
+
 def test_invalid_json_and_non_200_unknown_not_500():
     async def run():
         mapping = {

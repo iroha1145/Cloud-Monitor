@@ -780,6 +780,15 @@ def _observed_key(
     )
 
 
+def _log_refresh_failure(task: asyncio.Task) -> None:
+    """读走刷新任务的异常：没有任何请求在等它时，也不会出现 never retrieved 警告。"""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        log.warning("provider-status 后台刷新异常: %s", exc)
+
+
 class ProviderStatusService:
     """进程内缓存：fresh 直返；过期立即返 stale 并后台刷新；无缓存才等待。"""
 
@@ -842,15 +851,7 @@ class ProviderStatusService:
         loop = asyncio.get_running_loop()
         self._inflight = loop.create_task(self._do_fetch(client, observed, key))
         self._inflight_key = key
-
-        def _consume(task: asyncio.Task) -> None:
-            if task.cancelled():
-                return
-            exc = task.exception()
-            if exc is not None:
-                log.warning("provider-status 后台刷新异常: %s", exc)
-
-        self._inflight.add_done_callback(_consume)
+        self._inflight.add_done_callback(_log_refresh_failure)
 
     async def _refresh_wait(
         self,
@@ -873,6 +874,8 @@ class ProviderStatusService:
                 task = self._inflight
             else:
                 task = asyncio.create_task(self._do_fetch(client, observed, key))
+                # 等待者可能全部先被取消；任务的异常仍由回调读走并记日志。
+                task.add_done_callback(_log_refresh_failure)
                 self._inflight = task
                 self._inflight_key = key
         # 多个请求共用这次刷新；某个请求被取消（客户端断开）时只取消它自己的等待，

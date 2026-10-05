@@ -106,10 +106,11 @@ def _device_display(device: dict) -> str:
 
 def trend_models_by_day(db: Database, days: int = TREND_DAYS) -> list[dict]:
     """每设备每本地日最后一个桶，按天合并 today_total 与 models_json。"""
-    return summarize_trend_models(*trend_last_rows(db, days))
+    _, last_rows = trend_last_rows(db, days)
+    return summarize_trend_models(last_rows)
 
 
-def summarize_trend_models(selected_days: list[str], last_rows: list[dict]) -> list[dict]:
+def summarize_trend_models(last_rows: list[dict]) -> list[dict]:
     """trend_last_rows 的结果按日合并 today_total 与 models_json，按日期升序返回。"""
     totals: dict[str, int] = {}
     models_by_day: dict[str, dict[str, int]] = {}
@@ -840,7 +841,7 @@ def build_overview(
             summarize_trend(trend_days, trend_rows), history, days=TREND_DAYS
         ),
         "trend_models": merge_trend_with_history(
-            summarize_trend_models(trend_days, trend_rows), history, days=TREND_DAYS,
+            summarize_trend_models(trend_rows), history, days=TREND_DAYS,
             with_models=True,
         ),
         "activity": activity,

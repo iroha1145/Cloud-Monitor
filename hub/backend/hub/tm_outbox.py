@@ -831,6 +831,8 @@ def replay_pending(
             stats["completed"] += 1
             _invalidate_overview()
         except Exception as exc:  # noqa: BLE001
+            # 重放循环只读写 SQLite。若以后在这里加入网络调用，连接失败会按失败计次，
+            # 次数用完后整行被永久拒绝；那时要单独捕获连接错误并中止本轮，下轮再试。
             if isinstance(exc, DETERMINISTIC_FAILURES):
                 mark_rejected(db, row["request_id"], str(exc))
                 stats["rejected"] += 1
