@@ -119,6 +119,12 @@ export function ArchivePanel({
   );
   const [paginationNote, setPaginationNote] = useState("");
   const [fallbackShown, setFallbackShown] = useState(FALLBACK_FIRST);
+  // "加载更多" is disabled while it loads and removed after the last page, and
+  // either drops the keyboard focus to the page; it comes back to the button,
+  // or to the count beside it once nothing is left to load.
+  const moreFocus = useRef(false);
+  const moreButton = useRef<HTMLButtonElement>(null);
+  const footerStatus = useRef<HTMLSpanElement>(null);
   const context = useRef(0);
   const activeRequest = useRef<AbortController | null>(null);
   const lastRequest = useRef<{ cursor: string | null; previous: ArchiveDay[] }>(
@@ -208,6 +214,12 @@ export function ArchivePanel({
   }, [accessToken, dataMode, historyAvailable]);
   const fallbackRows = fallback ? makeArchiveFallback(fallbackData) : [];
   const visibleRows = fallback ? fallbackRows.slice(0, fallbackShown) : rows;
+  useEffect(() => {
+    if (!moreFocus.current || loading) return;
+    moreFocus.current = false;
+    const lost = !document.activeElement || document.activeElement === document.body;
+    if (lost) (moreButton.current ?? footerStatus.current)?.focus();
+  }, [loading, visibleRows.length]);
   const basis =
     metadata?.dayBasis === "device-local"
       ? "按各设备本地日期归档"
@@ -325,7 +337,12 @@ export function ArchivePanel({
         ))}
       </div>
       <footer className="archive-footer">
-        <span aria-live="polite" className={loading ? "beautiful-loading-text" : undefined}>
+        <span
+          aria-live="polite"
+          className={loading ? "beautiful-loading-text" : undefined}
+          ref={footerStatus}
+          tabIndex={-1}
+        >
           {loading
             ? visibleRows.length
               ? "正在加载更多归档…"
@@ -336,9 +353,13 @@ export function ArchivePanel({
         </span>
         {!fallback && cursor && (
           <button
+            ref={moreButton}
             className="archive-button"
             disabled={loading}
-            onClick={() => void load(cursor, rows)}
+            onClick={() => {
+              moreFocus.current = true;
+              void load(cursor, rows);
+            }}
           >
             加载更多
             <ChevronDown size={15} aria-hidden="true" />
@@ -346,8 +367,12 @@ export function ArchivePanel({
         )}
         {fallback && visibleRows.length < fallbackRows.length && (
           <button
+            ref={moreButton}
             className="archive-button"
-            onClick={() => setFallbackShown((shown) => shown + FALLBACK_STEP)}
+            onClick={() => {
+              moreFocus.current = true;
+              setFallbackShown((shown) => shown + FALLBACK_STEP);
+            }}
           >
             加载更多
             <ChevronDown size={15} aria-hidden="true" />

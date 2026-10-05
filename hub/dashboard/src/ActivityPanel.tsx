@@ -129,7 +129,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
   const cellKey = (cell: (typeof cells)[number]) => `${cell.day}|${cell.hour ?? ""}`;
   const lastPast = cells.reduce((latest, cell, index) => (cell.future ? latest : index), -1);
   const focusedIndex = cells.findIndex((cell) => !cell.future && cellKey(cell) === focusKey);
-  const selectedIndex = cells.findIndex((cell) => cell.hour === undefined && cell.day === selected);
+  const selectedIndex = cells.findIndex((cell) => !cell.future && cell.hour === undefined && cell.day === selected);
   const tabIndexAt = focusedIndex >= 0 ? focusedIndex : selectedIndex >= 0 ? selectedIndex : lastPast;
   const monthLabel = metadata.month ? `${Number(metadata.month.slice(0, 4))} 年 ${Number(metadata.month.slice(5))} 月` : "日期未提供";
   const subtitle = view === "day" ? `${metadata.hourlyDay || today || "日期未提供"} · 24 小时`
@@ -155,12 +155,13 @@ export function ActivityPanel({ data, selected, onSelect }: {
     const delta = view === "week"
       ? ({ ArrowUp: -1, ArrowDown: 1, ArrowLeft: -7, ArrowRight: 7 } as Record<string, number>)
       : { ArrowUp: view === "day" ? -6 : -7, ArrowDown: view === "day" ? 6 : 7, ArrowLeft: -1, ArrowRight: 1 } as Record<string, number>;
+    // Alt/Cmd + arrow belongs to the browser (history), not the grid.
+    if (event.altKey || event.metaKey || event.ctrlKey) return;
     if (delta[event.key] === undefined && event.key !== "Home" && event.key !== "End") return;
     event.preventDefault();
-    const last = cells.reduce((latest, cell, cellIndex) => cell.future ? latest : cellIndex, -1);
-    const next = event.key === "Home" ? 0 : event.key === "End" ? last
-      : Math.max(0, Math.min(last, index + delta[event.key]));
-    buttons.current[next]?.focus();
+    const next = event.key === "Home" ? 0 : event.key === "End" ? lastPast : index + delta[event.key];
+    // At an edge the focus stays put instead of jumping to the first or last day.
+    if (next >= 0 && next <= lastPast) buttons.current[next]?.focus();
   }
 
   return <section className="sv-card sv-history-activity cm-activity-panel" aria-labelledby="sv-activity-title">

@@ -148,6 +148,9 @@ test("the activity grid is one Tab stop and arrow keys carry it between days", a
   await expect(panel.locator('[data-day="2026-08-24"]')).toBeFocused();
   await expect(panel.locator('[data-day="2026-08-24"]')).toHaveAttribute("tabindex", "0");
   await expect(cells.and(page.locator('[tabindex="0"]'))).toHaveCount(1);
+  // A week below is still to come, so the focus stays instead of jumping to the last day.
+  await page.keyboard.press("ArrowDown");
+  await expect(panel.locator('[data-day="2026-08-24"]')).toBeFocused();
   // Leaving the grid takes a single Tab, not one per day.
   await page.keyboard.press("Tab");
   await expect(cells.and(page.locator(":focus"))).toHaveCount(0);

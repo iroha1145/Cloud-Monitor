@@ -373,6 +373,22 @@
   .composition-legend > div {
     min-height: 38px;
   }
+  /* The model dialog at 320px: "100.0%" and the ring must share ~250px. */
+  .composition-hero,
+  .composition-panel .composition-legend {
+    margin-left: 16px;
+    margin-right: 16px;
+  }
+  .composition-hero > div {
+    min-width: 0;
+  }
+  .composition-hero strong {
+    font-size: clamp(26px, 8.5vw, 34px);
+  }
+  .composition-ring {
+    width: 80px;
+    height: 80px;
+  }
   .cache-bar-legend {
     padding: 0 16px 14px;
     gap: 8px 14px;

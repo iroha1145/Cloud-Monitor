@@ -296,8 +296,11 @@ test("demo archive shows two weeks first and unrolls the rest in steps", async (
   await panel.getByRole("button", { name: "加载更多" }).click();
   await expect(panel.locator(".archive-day")).toHaveCount(44);
   await panel.getByRole("button", { name: "加载更多" }).click();
-  await panel.getByRole("button", { name: "加载更多" }).click();
+  // The last press removes the button; the keyboard lands on the count beside it.
+  await panel.getByRole("button", { name: "加载更多" }).focus();
+  await page.keyboard.press("Enter");
   await expect(panel.locator(".archive-day")).toHaveCount(90);
   await expect(panel.getByText("已显示 90 天", { exact: true })).toBeVisible();
   await expect(panel.getByRole("button", { name: "加载更多" })).toHaveCount(0);
+  await expect(panel.getByText("已显示 90 天", { exact: true })).toBeFocused();
 });

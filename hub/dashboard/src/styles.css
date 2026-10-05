@@ -1311,6 +1311,7 @@ kbd {
   padding: 6px;
   border-radius: var(--r-xs);
   color: var(--ink-3);
+  cursor: pointer;
   transition: color var(--duration-quick) var(--ease-smooth-out);
 }
 .row-arrow:hover {

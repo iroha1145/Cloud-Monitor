@@ -205,6 +205,11 @@
   color: var(--ink-3);
   font-size: 12px;
 }
+.archive-footer > span:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
 .archive-feedback {
   display: flex;
   align-items: center;

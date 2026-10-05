@@ -23,6 +23,12 @@ export default function HostedRoot() {
   // Only a key the user submitted and the server rejected shakes and turns red.
   const [keyRejected, setKeyRejected] = useState(false);
   const tokenField = useErrorShake<HTMLInputElement>(keyRejected);
+  const refocusField = useRef(false);
+  useEffect(() => {
+    if (busy || !refocusField.current) return;
+    refocusField.current = false;
+    tokenField.current?.focus();
+  }, [busy, tokenField]);
   const pending = useRef<AbortController | null>(null);
   const sessionRef = useRef(session);
   sessionRef.current = session;
@@ -51,6 +57,8 @@ export default function HostedRoot() {
         clearAccessToken();
         setKeyRejected(submitted);
       }
+      // The field was disabled while connecting, which dropped its focus.
+      refocusField.current = submitted;
       setError(error instanceof Error ? error.message : "连接未完成，请稍后重试。");
     } finally {
       if (!controller.signal.aborted) setBusy(false);

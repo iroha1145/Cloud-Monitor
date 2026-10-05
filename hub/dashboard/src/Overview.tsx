@@ -548,15 +548,19 @@ export function ModelTable({
                   </td>
                   <td className="model-action-cell">
                     {/* Pointer shortcut only: the name button is the keyboard and
-                        screen-reader entry, so this one stays out of both. */}
-                    <button
+                        screen-reader entry, and focus returns to it on close. */}
+                    <span
                       className="row-arrow"
-                      onClick={(event) => onSelect(m, event.currentTarget)}
-                      tabIndex={-1}
                       aria-hidden="true"
+                      onClick={(event) => {
+                        const opener = event.currentTarget
+                          .closest("tr")
+                          ?.querySelector<HTMLButtonElement>(".model-open");
+                        if (opener) onSelect(m, opener);
+                      }}
                     >
                       <ArrowUpRight size={15} />
-                    </button>
+                    </span>
                   </td>
                 </tr>
               ))}
