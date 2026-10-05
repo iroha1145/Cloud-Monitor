@@ -164,7 +164,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
     if (next >= 0 && next <= lastPast) buttons.current[next]?.focus();
   }
 
-  return <section className="sv-card sv-history-activity cm-activity-panel" aria-labelledby="sv-activity-title">
+  return <section className="sv-card sv-history-activity cm-activity-panel heat-scope" aria-labelledby="sv-activity-title">
     <header className="cm-activity-head">
       <div><h2 id="sv-activity-title">活动一览</h2><p>{subtitle}</p></div>
       <div className="cm-activity-tabs" role="tablist" aria-label="活动时间范围" ref={tabList}>
@@ -213,7 +213,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
             </MetricTooltip>;
           })}
         </div>
-        <div className="cm-activity-range"><span>{metadata.timeZone}</span><span className="cm-activity-legend" aria-label="颜色越深，用量越多">少{[0, 1, 2, 3, 4].map((level) => <i key={level} data-level={level} />)}多</span></div>
+        <div className="cm-activity-range"><span>{metadata.timeZone}</span><span className="cm-activity-legend" aria-label="颜色越浓，用量越多">少{[0, 1, 2, 3, 4].map((level) => <i key={level} data-level={level} />)}多</span></div>
         <div className="cm-activity-summary">
           <MetricTooltip title="已上报用量合计" rows={[{ label: "词元用量", value: reported.length ? full(total) : "未上报" }]} note="仅合计已上报的时段，未知记录不计为零。">
             <span><small>已上报合计</small><strong>{reported.length ? compact(total) : "未提供"}</strong></span>

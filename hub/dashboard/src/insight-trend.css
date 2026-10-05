@@ -149,11 +149,12 @@
   font-size: var(--fs-label);
   line-height: 1.6;
 }
+/* Tinted with the line's measure colour inline. */
 .insight-trend .insight-trend-cursor {
   top: 14px;
   bottom: 8px;
   background: var(--ink);
-  opacity: 0.2;
+  opacity: 0.35;
 }
 .insight-trend-floating {
   position: fixed;

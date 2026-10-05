@@ -364,11 +364,14 @@ export function InsightTrend({ data }: { data: DashboardData }) {
         event.key === "ArrowLeft" || event.key === "ArrowDown" ? -1 : 1,
       );
   };
-  // The five composition colours are reserved for usage parts; the daily line
-  // is drawn in the theme's ink so it never reads as "non-cached input".
+  // The line wears its measure's colour (tokens indigo, cost gold, tokens.css),
+  // the same hue the heat maps use; the composition colours stay for parts.
   const lineColor = useMemo(
-    () => getComputedStyle(document.documentElement).getPropertyValue("--ink").trim() || "#14171c",
-    [dark],
+    () =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue(metric === "tokens" ? "--viz-tokens" : "--viz-cost")
+        .trim() || "#5d55c6",
+    [dark, metric],
   );
   const position =
     point && firstTime != null
@@ -583,7 +586,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
                         showValue={false}
                         pulse={false}
                         momentum={false}
-                        fill={false}
+                        fill
                         scrub={false}
                         paused
                         window={span / 0.97}
@@ -612,7 +615,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
                 <>
                   <span
                     className="insight-chart-cursor insight-trend-cursor"
-                    style={{ left: `${position}%` }}
+                    style={{ left: `${position}%`, background: lineColor }}
                   />
                   {detailAnchor && (
                     <FloatingDayDetails

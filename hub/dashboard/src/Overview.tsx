@@ -764,7 +764,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
   );
   const peak = matrixHeatPeak(source);
   return (
-    <section className="panel matrix-panel">
+    <section className="panel matrix-panel heat-scope" data-metric={metric}>
       <div className="panel-head">
         <div>
           <h2>客户端 × 模型</h2>
@@ -871,7 +871,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
         </div>
       )}
       <div className="table-foot">
-        <span>颜色越深，当前组合的用量越高。— 表示未上报该组合。</span>
+        <span>颜色越浓，当前组合的{metric === "tokens" ? "用量" : "费用"}越高。— 表示未上报该组合。</span>
         <span>按来源原始对应关系统计</span>
       </div>
     </section>

@@ -511,7 +511,7 @@
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: color-mix(in srgb, var(--ink) 72%, var(--surface));
+  background: var(--viz-tokens);
   /* Fills from the left when the quota first renders; later values glide. */
   transition: width var(--duration-slow) var(--ease-smooth-out);
   animation: t-bar-fill var(--duration-very-slow) var(--ease-smooth-out) backwards;
