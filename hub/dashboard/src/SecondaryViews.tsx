@@ -42,6 +42,14 @@ export interface SecondaryProps {
   data: DashboardData;
 }
 
+/** Third-party quota adapters reported by the service, in reader-facing words. */
+const ADAPTER_NAMES: Record<string, string> = {
+  "newapi-account": "New API 账户",
+  "newapi-token": "New API 密钥",
+  sub2api: "Sub2API",
+  custom: "自定义接口",
+};
+
 const fullNumber = (value: number) =>
   new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
 const DAY = DAY_MS;
@@ -615,7 +623,8 @@ function QuotaAccountDetails({ quota, data }: { quota: Quota; data: DashboardDat
   const summaryMoney = (amount: number) => quota.balanceCurrency
     ? quotaBalance(amount, { balanceCurrency: quota.balanceCurrency })
     : `${fullNumber(amount)}（单位未提供）`;
-  if (quota.adapterId) usageRows.push(["接口来源", quota.adapterId]);
+  if (quota.adapterId)
+    usageRows.push(["接口来源", ADAPTER_NAMES[quota.adapterId] ?? quota.adapterId]);
   addCount("请求次数", usage?.requests ?? balance?.requestCount);
   addCount("今日词元", usage?.todayTokens);
   addCount("本周词元", usage?.weekTokens);
@@ -1039,7 +1048,7 @@ export function QuotaView({ data }: SecondaryProps) {
                       <div className="sv-provider-heading">
                         <div className="sv-provider-icon">
                           <BrandIcon
-                            name={first.provider || first.name}
+                            name={first.adapterId === "sub2api" ? "sub2api" : first.provider || first.name}
                             size={34}
                           />
                         </div>
