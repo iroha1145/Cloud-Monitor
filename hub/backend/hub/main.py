@@ -409,28 +409,33 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return {"devices": devices, "total": len(devices)}
 
     frontend_dir: Path = settings.frontend_dir
+    # Release images ship the built dashboard in frontend/app. A source checkout
+    # has no frontend directory until hub/dashboard has been built, and "/" then
+    # says so instead of a bare 404. A FRONTEND_DIR holding index.html directly
+    # is served as it is.
+    page_dir = frontend_dir / "app" if (frontend_dir / "app" / "index.html").is_file() else frontend_dir
+    live_index = page_dir / "index.html"
+    demo_index = page_dir / "demo.html"
+    root_index = demo_index if settings.cm_demo and demo_index.is_file() else live_index
+
+    def _page(path):
+        return FileResponse(path, headers={"Cache-Control": "no-cache"})
+
+    @app.api_route("/", methods=["GET", "HEAD"])
+    def index() -> FileResponse:
+        if not root_index.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail="未找到前端页面：先在 hub/dashboard 目录运行 npm ci && npm run build，再重启服务",
+            )
+        return _page(root_index)
+
+    if (settings.cm_demo or settings.serve_demo_route) and demo_index.is_file():
+        @app.api_route("/demo", methods=["GET", "HEAD"], include_in_schema=False)
+        def demo_page() -> FileResponse:
+            return _page(demo_index)
+
     if frontend_dir.is_dir():
-        # The built dashboard is used in release images; source checkouts retain
-        # the static fallback until the dashboard has been built.
-        page_dir = frontend_dir / "app" if (frontend_dir / "app" / "index.html").is_file() else frontend_dir
-        live_index = page_dir / "index.html"
-        demo_index = page_dir / "demo.html"
-        root_index = demo_index if settings.cm_demo and demo_index.is_file() else live_index
-
-        def _page(path):
-            return FileResponse(path, headers={"Cache-Control": "no-cache"})
-
-        @app.api_route("/", methods=["GET", "HEAD"])
-        def index() -> FileResponse:
-            if not root_index.is_file():
-                raise HTTPException(status_code=404, detail="未找到前端页面")
-            return _page(root_index)
-
-        if (settings.cm_demo or settings.serve_demo_route) and demo_index.is_file():
-            @app.api_route("/demo", methods=["GET", "HEAD"], include_in_schema=False)
-            def demo_page() -> FileResponse:
-                return _page(demo_index)
-
         app.mount("/static", SafeStaticFiles(directory=str(frontend_dir)), name="static")
 
     # 旧的 /tm/ 面板已并入 /（云端用量面板）：301 保留书签兼容

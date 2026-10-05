@@ -19,7 +19,7 @@ npm run build
 npm run build:showcase
 ```
 
-正式构建输出到 `hub/frontend/app/`，所有静态资源使用 `/static/app/`。后端只托管这个构建，未构建时首页返回 404。Docker 多阶段构建会自动安装前端依赖并生成正式页面，运行容器不需要 Node.js。
+正式构建输出到 `hub/frontend/app/`，所有静态资源使用 `/static/app/`。后端只托管这个构建，未构建时首页返回 404「未找到前端页面」并提示构建命令。Docker 多阶段构建会自动安装前端依赖并生成正式页面，运行容器不需要 Node.js。
 
 演示构建输出到 `dist-showcase/`，资源和应用清单使用相对路径。演示入口不会读取保存的密钥、请求用量接口或提供系统更新操作，GitHub Pages 使用此构建。`CM_DEMO=true` 和后端的 `/demo` 同样使用隔离的演示入口。
 

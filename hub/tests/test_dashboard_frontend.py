@@ -31,3 +31,17 @@ def test_dashboard_entry_and_static_assets(tmp_path, built, demo):
         if built:
             assert client.get("/static/app/asset.js").text == "/* local asset */"
         assert client.get("/api/v1/devices").status_code in (401, 403)
+
+
+def test_unbuilt_checkout_explains_the_missing_dashboard(tmp_path):
+    """A fresh clone has no hub/frontend at all; "/" still says how to build it."""
+    settings = Settings(api_key="a" * 32, access_token="b" * 32,
+        database_path=tmp_path / "db.sqlite3", frontend_dir=tmp_path / "frontend",
+        max_records_per_push=500, tm_background_enabled=False)
+    with TestClient(create_app(settings)) as client:
+        response = client.get("/")
+        assert response.status_code == 404
+        assert "未找到前端页面" in response.text
+        assert "npm run build" in response.text
+        assert client.get("/static/app/index.html").status_code == 404
+        assert client.get("/api/v1/health/live").status_code == 200
