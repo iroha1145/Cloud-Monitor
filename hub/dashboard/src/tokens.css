@@ -1,0 +1,183 @@
+/* Design tokens. The Beautiful UI foundation is imported first and keeps its
+   own token names; every value the dashboard renders with is set here, once
+   per theme, so a colour or size change never needs a hunt through the
+   component sheets. Text pairs are checked at WCAG AA (4.5:1) on --page and
+   --surface; data colours reach 3:1 on both themes' surfaces. */
+:root {
+  color-scheme: light;
+
+  /* type scale: meta 11, label 12, body 13, emphasis 14, section 16,
+     page 26, ledger figures 28 and the lead figure up to 52. Weights stop
+     at 500: regular for reading, medium for headings and figures. */
+  --fs-meta: 11px;
+  --fs-label: 12px;
+  --fs-body: 13px;
+  --fs-strong: 14px;
+  --fs-section: 16px;
+  --fs-page: 26px;
+  --fs-figure: 28px;
+  --fs-lead: clamp(40px, 2.6vw + 14px, 52px);
+
+  /* --radius-* belong to Tailwind's @theme (styles.css); these are the
+     dashboard's own corner steps: controls 8–10, panels 16 */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  /* buttons, search fields and segmented controls are pills */
+  --r-pill: 999px;
+
+  /* Surfaces are flat: a near-white page, white panels edged by a hairline,
+     no resting shadow. Greys carry no hue (chroma 0), as on uiarc.dev and
+     transitions.dev; colour is left to the data. */
+  --page: #fafafa;
+  --canvas: #f2f2f2;
+  --surface: #ffffff;
+  --inset: #fafafa;
+  --hover: #f4f4f4;
+  --hover-2: #ebebeb;
+  --sidebar-bg: var(--page);
+  --field: #f4f4f4;
+
+  /* The earlier tinted ramp without its hue (ink-3 a shade darker):
+     ink-3 is 5.4:1 on white and 4.5:1 on --hover-2. */
+  --ink: #171717;
+  --ink-2: #5b5b5b;
+  --ink-3: #6a6a6a;
+
+  --line: #e8e8e8;
+  --line-strong: #d9d9d9;
+  --line-soft: #f0f0f0;
+  --border: var(--line);
+
+  --primary: #1f5fae;
+  --accent: var(--primary);
+  --accent-ink: #1b5499;
+  --accent-tint: #edf3fb;
+  /* a step darker than --hover, so a hovered item never reads as current */
+  --nav-active: #ebebeb;
+  --nav-ink: var(--ink);
+
+  --green: #127152;
+  --green-tint: #e6f5ee;
+  --orange: #a3570b;
+  --orange-tint: #fbf0e3;
+  --red: #c23a46;
+  --red-tint: #fbebec;
+  --danger: var(--red);
+
+
+  --stripe: oklch(0.405 0 0 / 0.075);
+  --stripe-bg: #f3f4f6;
+
+  /* Heat ramps, the dashboard's original colours: the activity calendar is
+     green, the client × model matrix teal (both measures). Each step names
+     its own text colour. */
+  --activity-1: #deeee9;
+  --activity-1-ink: #345a4f;
+  --activity-2: #a3d6c7;
+  --activity-2-ink: #24483d;
+  --activity-3: #4caa90;
+  --activity-3-ink: #112f27;
+  --activity-4: #19775e;
+  --activity-4-ink: #ffffff;
+  --matrix-1: #e5eeef;
+  --matrix-1-ink: #365962;
+  --matrix-2: #bddbdc;
+  --matrix-2-ink: #254b52;
+  --matrix-3: #78b4b5;
+  --matrix-3-ink: #15373e;
+  --matrix-4: #246875;
+  --matrix-4-ink: #ffffff;
+  /* Quota bars take the original three colours in turn, card by card. */
+  --quota-1: #27847f;
+  --quota-2: #428ab5;
+  --quota-3: #b78246;
+  --quota-warning: #dba54a;
+  --quota-danger: #cb7065;
+
+
+  /* Only things that float (tooltips, menus, dialogs, toasts) cast a shadow. */
+  --shadow-panel: none;
+  --shadow-float: 0 3px 10px rgb(0 0 0 / 0.045), 0 20px 48px rgb(0 0 0 / 0.1);
+  --shadow-overlay: var(--shadow-float);
+  /* a segmented control's thumb: an edge, not a lift */
+  --shadow-thumb: 0 0 0 1px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.05);
+
+  /* transitions.dev motion tokens; recipes live in motion.css. */
+  --duration-stagger: 40ms;
+  --duration-quick: 150ms;
+  --duration-fast: 250ms;
+  --duration-medium: 350ms;
+  --duration-slow: 400ms;
+  --duration-very-slow: 500ms;
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --distance-base: 8px;
+  --scale-large: 0.96;
+  --scale-medium: 0.97;
+  --scale-tiny: 0.99;
+  --blur-small: 2px;
+}
+
+.dark {
+  color-scheme: dark;
+
+  /* neutral steps of depth: page < inset < surface < hover */
+  --page: #111111;
+  --canvas: #1d1d1d;
+  --surface: #171717;
+  --inset: #141414;
+  --hover: #202020;
+  --hover-2: #2a2a2a;
+  --sidebar-bg: var(--page);
+  --field: #1b1b1b;
+
+  --ink: #ededed;
+  --ink-2: #b0b0b0;
+  --ink-3: #969696;
+
+  --line: #262626;
+  --line-strong: #343434;
+  --line-soft: #1f1f1f;
+
+  --primary: #8bb9f2;
+  --accent-ink: #a9cbf6;
+  --accent-tint: #172437;
+  --nav-active: #292929;
+
+  --green: #4fcf9f;
+  --green-tint: #11291f;
+  --orange: #f0a85b;
+  --orange-tint: #2b1d0e;
+  --red: #f0848c;
+  --red-tint: #2c1316;
+
+
+  --stripe: oklch(0.85 0 0 / 0.07);
+  --stripe-bg: #14171d;
+
+  /* The original dark heat ramps: they rise towards a pale top step. */
+  --activity-1: #203c34;
+  --activity-1-ink: #bce4d8;
+  --activity-2: #30594b;
+  --activity-2-ink: #dbf1e9;
+  --activity-3: #85c9b3;
+  --activity-3-ink: #183c30;
+  --activity-4: #b8e5d5;
+  --activity-4-ink: #193b31;
+  --matrix-1: #243e48;
+  --matrix-1-ink: #a6c9cc;
+  --matrix-2: #335d64;
+  --matrix-2-ink: #dceced;
+  --matrix-3: #78b4b5;
+  --matrix-3-ink: #102d34;
+  --matrix-4: #b4dedd;
+  --matrix-4-ink: #183b43;
+
+
+
+  --shadow-panel: none;
+  --shadow-float: 0 3px 10px rgb(0 0 0 / 0.3), 0 20px 48px rgb(0 0 0 / 0.5);
+  --shadow-thumb: 0 0 0 1px rgb(255 255 255 / 0.06);
+}

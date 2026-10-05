@@ -20,7 +20,6 @@ from __future__ import annotations
 import json
 import logging
 import threading
-import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
@@ -60,7 +59,6 @@ class TransientBridgeError(Exception):
 
 def _period_bounds(now_local: datetime) -> dict[str, dict[str, Any]]:
     """按本地时区计算 today/month 的 key、起点与 endsAt（下一周期起点，UTC ISO）。"""
-    tz = now_local.tzinfo
     today_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
     month_start = now_local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     next_month = (month_start + timedelta(days=32)).replace(day=1)

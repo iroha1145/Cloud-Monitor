@@ -19,7 +19,6 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY backend /app/backend
-COPY frontend /app/frontend
 COPY --from=dashboard /build/frontend/app /app/frontend/app
 
 ARG CM_VERSION=dev

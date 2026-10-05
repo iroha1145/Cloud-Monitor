@@ -69,14 +69,18 @@ def test_two_devices_different_spans(tmp_path):
 
 
 def test_coverage_never_exceeds_100(tmp_path):
+    # 每台设备在同一个 5 分钟槽位里有两个样本：按设备求和后 observed=10、expected=5，
+    # 原始比例是 200%，必须钳到 100。
     db = _db(tmp_path)
     day = "2026-08-23"
     now = dt.datetime(2026, 8, 23, 3, 0, tzinfo=dt.timezone.utc)
     for d in range(5):
-        for i in range(3):
-            seed(db, f"d{d}", day, f"{day}T01:{i*5:02d}:00.000Z", 10 * (i + 1), tz="UTC")
-    percent = activity_report(db, "UTC", now=now)["coverage"]["coverage_percent"]
-    assert percent <= 100.0
+        seed(db, f"d{d}", day, f"{day}T01:00:00.000Z", 10, tz="UTC")
+        seed(db, f"d{d}", day, f"{day}T01:01:00.000Z", 20, tz="UTC")
+    coverage = activity_report(db, "UTC", now=now)["coverage"]
+    assert coverage["observed_buckets"] == 10
+    assert coverage["expected_buckets"] == 5
+    assert coverage["coverage_percent"] == 100.0
     db.close()
 
 

@@ -3,7 +3,8 @@
  * All demo records are synthetic. The live adapter consumes the existing v2
  * /api/v1/tm/overview contract without changing aggregation or fetching secrets.
  */
-import { dayKeyZoned, isValidTimeZone } from "./lib/datetime";
+import { DAY_MS, dayKeyZoned, isValidTimeZone } from "./lib/datetime";
+import { providerFor, providerName } from "./vendors";
 
 export type PeriodKey = "today" | "month" | "allTime";
 export const PERIOD_LABELS: Record<PeriodKey, string> = {
@@ -40,7 +41,6 @@ export interface UsageEntity {
   id: string;
   name: string;
   provider: string;
-  color: string;
   totalTokens: number;
   costUsd: number | null;
   components: UsageComponents;
@@ -308,12 +308,9 @@ export interface DashboardData {
 }
 
 type JsonRecord = Record<string, unknown>;
-const record = (value: unknown): JsonRecord =>
-  value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as JsonRecord)
-    : {};
 const isRecord = (value: unknown): value is JsonRecord =>
   value !== null && typeof value === "object" && !Array.isArray(value);
+const record = (value: unknown): JsonRecord => (isRecord(value) ? value : {});
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 const text = (value: unknown, fallback = ""): string =>
   typeof value === "string" ? value : fallback;
@@ -485,58 +482,6 @@ function normalizeClientHealth(diagnostic: JsonRecord): ClientHealth[] {
     });
 }
 const periods: PeriodKey[] = ["today", "month", "allTime"];
-const colors = [
-  "#608ac5",
-  "#338b87",
-  "#c49462",
-  "#9c85b4",
-  "#7a9aaa",
-  "#9aa5b2",
-];
-
-export function providerFor(name: string): string {
-  const key = name.toLowerCase();
-  if (/claude|anthropic|sonnet|opus|haiku/.test(key)) return "anthropic";
-  if (/codex|gpt|openai/.test(key)) return "openai";
-  if (/cursor|composer/.test(key)) return "cursor";
-  if (/(?:^|[^a-z0-9])muse[\s-]*spark/.test(key)) return "meta";
-  if (/gemini|google/.test(key)) return "google";
-  if (/grok|xai/.test(key)) return "xai";
-  if (/deepseek/.test(key)) return "deepseek";
-  if (/kimi|moonshot|k2d6-agent|k3-agent|(?:^|[^a-z0-9])k[23](?:[-._]|$)/.test(key)) return "kimi";
-  if (/glm|zhipu|\bzai\b/.test(key)) return "glm";
-  return "other";
-}
-
-export function providerName(provider: string): string {
-  return (
-    (
-      {
-        anthropic: "Anthropic",
-        openai: "OpenAI",
-        cursor: "Cursor",
-        google: "Google",
-        xai: "xAI",
-        deepseek: "DeepSeek",
-        kimi: "Kimi",
-        amp: "Amp",
-        factory: "Factory Droid",
-        droid: "Factory Droid",
-        devin: "Devin",
-        omp: "Oh My Pi",
-        mimo: "Xiaomi MiMo",
-        muse: "Muse Code",
-        stepfun: "StepFun",
-        cline: "Cline",
-        typesafe: "TypeSafe",
-        alibaba: "Alibaba Cloud",
-        copilot: "GitHub Copilot",
-        glm: "GLM",
-        meta: "Meta",
-      } as Record<string, string>
-    )[provider] || provider
-  );
-}
 
 /** Mirrors the shipped cache-preservation contract, including legacy gaps. */
 export function normalizeComponents(
@@ -775,7 +720,7 @@ export function normalizePeriod(source: unknown): PeriodUsage {
   const entities = (kind: "model" | "client"): UsageEntity[] =>
     Object.entries(record(period[kind + "s"]))
       .filter(([, value]) => validCounter(value) && value > 0)
-      .map(([id, value], index) => ({
+      .map(([id, value]) => ({
         id,
         name:
           kind === "client"
@@ -795,7 +740,6 @@ export function normalizePeriod(source: unknown): PeriodUsage {
               )[id] || id
             : id,
         provider: providerFor(id),
-        color: colors[index % colors.length],
         totalTokens: count(value),
         costUsd: optionalNumber(record(period[kind + "Costs"])[id]),
         components: normalizeComponents(period, kind, id),
@@ -1422,15 +1366,9 @@ export function normalizeOverview(
   };
 }
 
-const DAY = 86_400_000;
+const DAY = DAY_MS;
 const DEMO_TIME_ZONE = "Asia/Tokyo";
-const dayKey = (date: Date): string =>
-  new Intl.DateTimeFormat("en-CA", {
-    timeZone: DEMO_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+const dayKey = (date: Date): string => dayKeyZoned(date, DEMO_TIME_ZONE) ?? "";
 const cents = (value: number): number => Math.round(value * 100) / 100;
 const DEMO_MODELS = [
   {
@@ -1442,7 +1380,6 @@ const DEMO_MODELS = [
     output: 0.012,
     unknown: 0,
     rate: 0.65,
-    color: "#608ac5",
   },
   {
     id: "claude-sonnet-4-6",
@@ -1453,7 +1390,6 @@ const DEMO_MODELS = [
     output: 0.035,
     unknown: 0,
     rate: 1.25,
-    color: "#338b87",
   },
   {
     id: "claude-opus-4-6",
@@ -1464,7 +1400,6 @@ const DEMO_MODELS = [
     output: 0.05,
     unknown: 0,
     rate: 3.15,
-    color: "#9c85b4",
   },
   {
     id: "gemini-2.5-flash",
@@ -1475,7 +1410,6 @@ const DEMO_MODELS = [
     output: 0,
     unknown: 1,
     rate: 0.38,
-    color: "#c49462",
   },
   {
     id: "grok-bot-default",
@@ -1486,7 +1420,6 @@ const DEMO_MODELS = [
     output: 0,
     unknown: 1,
     rate: 1.08,
-    color: "#7a9aaa",
   },
   {
     id: "muse-spark-1",
@@ -1497,7 +1430,6 @@ const DEMO_MODELS = [
     output: 0,
     unknown: 1,
     rate: 0.42,
-    color: "#9aa5b2",
   },
   {
     id: "muse spark",
@@ -1508,7 +1440,6 @@ const DEMO_MODELS = [
     output: 0,
     unknown: 1,
     rate: 0.42,
-    color: "#8a95a2",
   },
 ];
 
@@ -1575,11 +1506,7 @@ function demoPeriod(total: number): PeriodUsage {
     ])
       raw[target] = count(raw[target]) + values[suffix as keyof typeof values];
   });
-  const normalized = normalizePeriod(raw);
-  normalized.models.forEach((model) => {
-    model.color = DEMO_MODELS.find((item) => item.id === model.id)!.color;
-  });
-  return normalized;
+  return normalizePeriod(raw);
 }
 
 function sumDemoPeriods(items: PeriodUsage[]): PeriodUsage {
@@ -1652,8 +1579,7 @@ function sumDemoPeriods(items: PeriodUsage[]): PeriodUsage {
 }
 
 /** Deterministic, anonymous sample; dates follow the dashboard's Tokyo day.
- *  This is the single demo source for the React panel. The legacy native
- *  panel keeps hub/frontend/mock.js as an Overview-API generator only.
+ *  This is the single demo source for the web panel.
  *  `refreshes` adds a little usage to today, so each demo refresh shows new numbers. */
 export function createDemoData(now = new Date(), refreshes = 0): DashboardData {
   const today = dayKey(now);
@@ -2009,5 +1935,3 @@ export function createDemoData(now = new Date(), refreshes = 0): DashboardData {
     ],
   };
 }
-
-export const dashboardData = createDemoData();

@@ -21,7 +21,7 @@ for (const viewport of [
 ]) {
   test.describe(`mobile ${viewport.width} × ${viewport.height}`, () => {
     test.use({ viewport, isMobile: true, hasTouch: true });
-    test("all five destinations fit, remain reachable and preserve square charts", async ({
+    test("all five destinations fit, remain reachable and keep chart cells undistorted", async ({
       page,
     }) => {
       const errors: string[] = [];
@@ -34,6 +34,9 @@ for (const viewport of [
         await expect(
           nav.getByRole("link", { name, exact: true }),
         ).toHaveAttribute("aria-current", "page");
+        // Measure the lazily loaded charts only once they are on the page.
+        if (id === "models") await expect(page.locator(".matrix-cell").first()).toBeVisible();
+        if (id === "history") await expect(page.locator(".cm-activity-cell").first()).toBeVisible();
         const dimensions = await page.evaluate(() => ({
           viewport: innerWidth,
           document: document.documentElement.scrollWidth,
@@ -43,11 +46,16 @@ for (const viewport of [
               return { width: rect.width, height: rect.height };
             },
           ),
-          squares: [
-            ...document.querySelectorAll(".matrix-cell, .cm-activity-cell"),
-          ].map((node) => {
+          squares: [...document.querySelectorAll(".cm-activity-cell")].map(
+            (node) => {
+              const rect = node.getBoundingClientRect();
+              return Math.abs(rect.width - rect.height);
+            },
+          ),
+          // Matrix cells are fixed-size tiles: every one the same shape.
+          tiles: [...document.querySelectorAll(".matrix-cell")].map((node) => {
             const rect = node.getBoundingClientRect();
-            return Math.abs(rect.width - rect.height);
+            return `${Math.round(rect.width)}x${Math.round(rect.height)}`;
           }),
         }));
         expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport);
@@ -59,6 +67,7 @@ for (const viewport of [
         expect(dimensions.squares.every((difference) => difference < 0.5)).toBe(
           true,
         );
+        expect(new Set(dimensions.tiles).size).toBeLessThanOrEqual(1);
       }
       expect(errors).toEqual([]);
     });
@@ -147,7 +156,8 @@ test.describe("mobile reading and actions", () => {
     await expect(date).toHaveValue("");
     await page.getByRole("searchbox", { name: "搜索会话" }).fill("重构");
     await expect(page.locator(".sv-session-toggle")).toHaveCount(1);
-    await page.getByLabel("筛选会话客户端").selectOption("claude");
+    await page.getByRole("combobox", { name: "筛选会话客户端" }).tap();
+    await page.getByRole("option", { name: "claude", exact: true }).tap();
     await expect(
       page.getByRole("heading", { name: "没有匹配的会话" }),
     ).toBeVisible();

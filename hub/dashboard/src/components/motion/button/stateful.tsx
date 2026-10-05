@@ -68,7 +68,17 @@ const ICON_VARIANTS: Variants = {
   },
 };
 
-function IconSlot({ keyId, children }: { keyId: string; children: ReactNode }) {
+// The gap to the label lives inside the slot, so it opens and closes with
+// the slot's width instead of jumping when the icon leaves.
+function IconSlot({
+  keyId,
+  side,
+  children,
+}: {
+  keyId: string;
+  side: "leading" | "trailing";
+  children: ReactNode;
+}) {
   const reduce = useReducedMotion();
   return (
     <motion.span
@@ -80,7 +90,7 @@ function IconSlot({ keyId, children }: { keyId: string; children: ReactNode }) {
       transition={reduce ? { duration: 0.15 } : undefined}
       className="inline-grid shrink-0 place-items-center overflow-hidden"
     >
-      {children}
+      <span className={side === "leading" ? "pr-1.5" : "pl-1.5"}>{children}</span>
     </motion.span>
   );
 }
@@ -209,17 +219,17 @@ export const StatefulButton = forwardRef<HTMLButtonElement, StatefulButtonProps>
       >
         <AnimatePresence initial={false}>
           {state === "loading" ? (
-            <IconSlot keyId="loading-icon">
+            <IconSlot keyId="loading-icon" side="leading">
               <Loader2 className="h-4 w-4 animate-spin" />
             </IconSlot>
           ) : null}
           {state === "success" ? (
-            <IconSlot keyId="success-icon">
+            <IconSlot keyId="success-icon" side="leading">
               <Check className="h-4 w-4" />
             </IconSlot>
           ) : null}
           {state === "error" ? (
-            <IconSlot keyId="error-icon">
+            <IconSlot keyId="error-icon" side="leading">
               <X className="h-4 w-4" />
             </IconSlot>
           ) : null}
@@ -229,7 +239,7 @@ export const StatefulButton = forwardRef<HTMLButtonElement, StatefulButtonProps>
 
         <AnimatePresence initial={false}>
           {state === "idle" && icon ? (
-            <IconSlot keyId="idle-icon">{icon}</IconSlot>
+            <IconSlot keyId="idle-icon" side="trailing">{icon}</IconSlot>
           ) : null}
         </AnimatePresence>
       </span>

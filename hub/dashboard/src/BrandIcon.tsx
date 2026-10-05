@@ -1,6 +1,7 @@
 import { Bot } from "lucide-react";
 import type { CSSProperties } from "react";
 import "./brand-icons.css";
+import { vendorFor } from "./vendors";
 
 const logoIds = new Set([
   "alibaba",
@@ -27,10 +28,10 @@ const logoIds = new Set([
   "kilocode",
   "kimi",
   "kiro",
+  "lmstudio",
   "meta",
   "minimax",
   "mistral",
-  "moonshot",
   "newapi",
   "ollama",
   "omp",
@@ -44,8 +45,10 @@ const logoIds = new Set([
   "qwen",
   "reasonix",
   "stepfun",
+  "sub2api",
   "trae",
   "typesafe",
+  "unsloth",
   "volcengine",
   "workbuddy",
   "xai",
@@ -58,30 +61,17 @@ const aliases: Record<string, string> = {
   hermes: "hermes-agent",
   grok: "xai",
   xai: "grok",
-  micode: "xiaomi",
-  mimo: "xiaomi",
   muse: "meta",
   musecode: "meta",
   "muse-code": "meta",
   factory: "droid",
   factorydroid: "droid",
   ohmypi: "omp",
-  githubcopilot: "copilot",
-  xiaomimimo: "xiaomi",
   alibabacloud: "alibaba",
   clinepass: "cline",
   kilo: "kilocode",
   zcode: "zai",
   zaiteam: "zai",
-  thirdparty: "newapi",
-  anthropic: "claude",
-  openai: "codex",
-  chatgpt: "codex",
-  google: "gemini",
-  github: "copilot",
-  zhipu: "zai",
-  moonshot: "kimi",
-  bytedance: "doubao",
   volc: "volcengine",
   cherrystudioapp: "cherrystudio",
 };
@@ -92,47 +82,16 @@ export function brandLogoId(name: string): string | null {
   const key = raw.replace(/[^a-z0-9-]/g, "");
   const direct = aliases[key] || key;
   if (logoIds.has(direct)) return direct;
-  const vendors: [RegExp, string][] = [
-    [/claude|anthropic|sonnet|opus|haiku/, "claude"],
-    [/gpt|openai|chatgpt|codex|(?:^|[^a-z])o[1-9](?:[-.]|$)/, "codex"],
-    [/gemini|gemma|google/, "gemini"],
-    [/grok|xai/, "grok"],
-    [/deepseek/, "deepseek"],
-    [/qwen|qwq/, "qwen"],
-    [/glm|zhipu|\bzai\b/, "zai"],
-    [/kimi|moonshot|(?:^|[^a-z0-9])k3(?:[-._]|$)/, "kimi"],
-    [/mistral|mixtral|codestral/, "mistral"],
-    [/(?:^|[^a-z0-9])muse[\s-]*spark|llama|meta/, "meta"],
-    [/minimax/, "minimax"],
-    [/doubao|bytedance/, "doubao"],
-    [/hunyuan/, "hunyuan"],
-    [/command-r|cohere|aya-/, "cohere"],
-    [/^pi$|^pi-|inflection/, "pi"],
-    [/cursor|composer/, "cursor"],
-    [/copilot|github/, "copilot"],
-    [/antigravity/, "antigravity"],
-    [/openrouter/, "openrouter"],
-    [/new.?api|third.?party/, "newapi"],
-    [/xiaomi|mimo|micode/, "xiaomi"],
-  ];
-  return vendors.find(([pattern]) => pattern.test(raw))?.[1] || null;
+  return vendorFor(raw)?.logo ?? null;
 }
 
 export interface BrandIconProps {
   name: string;
   size?: number;
-  /** Accepted for compatibility; brand marks always follow the monochrome theme. */
-  color?: string;
-  className?: string;
-  title?: string;
 }
 
-export function BrandIcon({
-  name,
-  size = 34,
-  className = "",
-  title,
-}: BrandIconProps) {
+/** Brand marks are monochrome masks that follow the theme's ink colour. */
+export function BrandIcon({ name, size = 34 }: BrandIconProps) {
   const logo = brandLogoId(name);
   const style = {
     "--brand-size": `${size}px`,
@@ -144,13 +103,10 @@ export function BrandIcon({
   } as CSSProperties;
   return (
     <span
-      className={`brand-icon ${className}`.trim()}
+      className="brand-icon"
       style={style}
       data-brand={logo || "unknown"}
-      title={title}
-      role={title ? "img" : undefined}
-      aria-label={title}
-      aria-hidden={title ? undefined : true}
+      aria-hidden="true"
     >
       {logo ? (
         <span className="brand-icon-mark" />

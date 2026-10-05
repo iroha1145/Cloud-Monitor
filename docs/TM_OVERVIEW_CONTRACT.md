@@ -329,8 +329,11 @@ Cloud 扩展。环境变量：`PROVIDER_STATUS_ENABLED`（默认 true）、
 `PROVIDER_STATUS_CACHE_SECONDS`（300）、`PROVIDER_STATUS_TIMEOUT_SECONDS`
 （2.5）。总请求预算 ≤3s，并发 `httpx.AsyncClient`，禁止串行 3×5s。
 
-提供商发现来源：`stats.periods.today.clients`、`stats.limits.providers`、
-`subscriptions[].provider`。别名：`claude|anthropic→anthropic`，
+提供商发现来源：只看今日有用量（数值大于 0）的 `stats.periods.today.clients`
+与 `stats.periods.today.models`；配额窗口 `limits.providers` 与订阅清单不参与，
+服务端也不再为此读取 `/api/subscriptions`。`errors` 里来自 tm-core 的只有
+`stats_unavailable`（读不到 stats 时，响应同时标 `partial: true`）。
+别名：`claude|anthropic→anthropic`，
 `codex|openai→openai`，`cursor→cursor`。不得因状态页 key 是
 anthropic/openai 而丢掉真实的 claude/codex。
 
@@ -341,6 +344,8 @@ anthropic/openai 而丢掉真实的 claude/codex。
 | anthropic | https://status.claude.com/api/v2/summary.json | …/status.json |
 | openai | https://status.openai.com/api/v2/summary.json | …/status.json |
 | cursor | https://status.cursor.com/api/v2/summary.json | …/status.json |
+| deepseek | https://deepseek.statuspage.io/api/v2/summary.json（Atlassian 镜像；页面入口 https://status.deepseek.com） | …/status.json |
+| kimi | https://status.moonshot.cn/api/v2/summary.json | …/status.json |
 | grok | https://status.x.ai/feed.xml（RSS，API 组件） | 同 URL |
 | grok-web | https://status.x.ai/feed.xml（RSS，Grok Web） | 同 URL；页面 https://status.x.ai/grok-com |
 

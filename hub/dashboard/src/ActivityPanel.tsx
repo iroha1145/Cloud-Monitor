@@ -3,7 +3,7 @@ import type { CSSProperties, KeyboardEvent } from "react";
 import { ChevronDown, Info, X } from "lucide-react";
 import { MetricTooltip } from "./MetricTooltip";
 import { compact, full } from "./lib/format";
-import { dayKeyZoned, formatZoned } from "./lib/datetime";
+import { DAY_MS, dayKeyZoned, formatZoned } from "./lib/datetime";
 import { useSlidingIndicator } from "./lib/hooks/use-sliding-indicator";
 import type { ActivityCoverage, ActivityMetadata, DashboardData } from "./data";
 import "./ActivityPanel.css";
@@ -13,7 +13,7 @@ type Cell = { day: string; label: string; total: number | null; future?: boolean
 const VIEWS: ActivityView[] = ["day", "week", "month"];
 const VIEW_LABELS = { day: "日", week: "周", month: "月" };
 const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
-const DAY = 86_400_000;
+const DAY = DAY_MS;
 const addDay = (day: string, offset: number) =>
   new Date(Date.parse(`${day}T12:00:00Z`) + offset * DAY).toISOString().slice(0, 10);
 const mondayIndex = (day: string) => (new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7;
@@ -87,6 +87,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
   data: DashboardData; selected: string | null; onSelect(day: string | null): void;
 }) {
   const [view, setView] = useState<ActivityView>("month");
+  const [focusKey, setFocusKey] = useState<string | null>(null);
   const uid = useId();
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
   const tabList = useSlidingIndicator<HTMLDivElement>('[aria-selected="true"]');
@@ -124,6 +125,12 @@ export function ActivityPanel({ data, selected, onSelect }: {
   const total = reported.reduce((sum, cell) => sum + (cell.total || 0), 0);
   const active = reported.filter((cell) => (cell.total || 0) > 0).length;
   const missing = cells.filter((cell) => !cell.future && cell.total === null).length;
+  // One cell in the grid takes Tab; arrow keys move within it (roving focus).
+  const cellKey = (cell: (typeof cells)[number]) => `${cell.day}|${cell.hour ?? ""}`;
+  const lastPast = cells.reduce((latest, cell, index) => (cell.future ? latest : index), -1);
+  const focusedIndex = cells.findIndex((cell) => !cell.future && cellKey(cell) === focusKey);
+  const selectedIndex = cells.findIndex((cell) => !cell.future && cell.hour === undefined && cell.day === selected);
+  const tabIndexAt = focusedIndex >= 0 ? focusedIndex : selectedIndex >= 0 ? selectedIndex : lastPast;
   const monthLabel = metadata.month ? `${Number(metadata.month.slice(0, 4))} 年 ${Number(metadata.month.slice(5))} 月` : "日期未提供";
   const subtitle = view === "day" ? `${metadata.hourlyDay || today || "日期未提供"} · 24 小时`
     : view === "week" ? "最近 12 周 · 每格一天" : `${monthLabel} · 每格一天`;
@@ -148,12 +155,13 @@ export function ActivityPanel({ data, selected, onSelect }: {
     const delta = view === "week"
       ? ({ ArrowUp: -1, ArrowDown: 1, ArrowLeft: -7, ArrowRight: 7 } as Record<string, number>)
       : { ArrowUp: view === "day" ? -6 : -7, ArrowDown: view === "day" ? 6 : 7, ArrowLeft: -1, ArrowRight: 1 } as Record<string, number>;
+    // Alt/Cmd + arrow belongs to the browser (history), not the grid.
+    if (event.altKey || event.metaKey || event.ctrlKey) return;
     if (delta[event.key] === undefined && event.key !== "Home" && event.key !== "End") return;
     event.preventDefault();
-    const last = cells.reduce((latest, cell, cellIndex) => cell.future ? latest : cellIndex, -1);
-    const next = event.key === "Home" ? 0 : event.key === "End" ? last
-      : Math.max(0, Math.min(last, index + delta[event.key]));
-    buttons.current[next]?.focus();
+    const next = event.key === "Home" ? 0 : event.key === "End" ? lastPast : index + delta[event.key];
+    // At an edge the focus stays put instead of jumping to the first or last day.
+    if (next >= 0 && next <= lastPast) buttons.current[next]?.focus();
   }
 
   return <section className="sv-card sv-history-activity cm-activity-panel" aria-labelledby="sv-activity-title">
@@ -181,7 +189,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
             const at = view === "month" ? index + leading : index;
             const [column, row] = view === "week" ? [Math.floor(at / 7), at % 7]
               : view === "day" ? [at % 6, Math.floor(at / 6)] : [at % 7, Math.floor(at / 7)];
-            const entrance = { "--cell-delay": `${(column + row) * 18}ms` } as CSSProperties;
+            const entrance = { "--cell-delay": `${(column + row) * 14}ms` } as CSSProperties;
             const level = cell.total === null ? "unknown" : cell.total === 0 ? "0"
               : String(Math.min(4, Math.max(1, Math.ceil(cell.total / maximum * 4))));
             const label = cell.hour === undefined ? cell.day
@@ -196,6 +204,8 @@ export function ActivityPanel({ data, selected, onSelect }: {
               <button type="button" className={`cm-activity-cell${selected === cell.day && view !== "day" ? " is-selected" : ""}`}
                 data-level={level} data-day={cell.day} data-hour={cell.hour} style={entrance}
                 aria-pressed={cell.hour === undefined ? selected === cell.day : undefined}
+                tabIndex={index === tabIndexAt ? 0 : -1}
+                onFocus={() => setFocusKey(cellKey(cell))}
                 aria-label={`${label}，${cell.total === null ? "未上报用量" : `${full(cell.total)} 词元`}${cell.hour === undefined ? "，点击筛选会话" : ""}`}
                 ref={(element) => { buttons.current[index] = element; }}
                 onClick={cell.hour === undefined ? () => onSelect(selected === cell.day ? null : cell.day) : undefined}
@@ -203,7 +213,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
             </MetricTooltip>;
           })}
         </div>
-        <div className="cm-activity-range"><span>{metadata.timeZone}</span><span className="cm-activity-legend" aria-label="颜色越深，用量越多">少{[0, 1, 2, 3, 4].map((level) => <i key={level} data-level={level} />)}多</span></div>
+        <div className="cm-activity-range"><span>{metadata.timeZone}</span><span className="cm-activity-legend" aria-label="颜色越浓，用量越多">少{[0, 1, 2, 3, 4].map((level) => <i key={level} data-level={level} />)}多</span></div>
         <div className="cm-activity-summary">
           <MetricTooltip title="已上报用量合计" rows={[{ label: "词元用量", value: reported.length ? full(total) : "未上报" }]} note="仅合计已上报的时段，未知记录不计为零。">
             <span><small>已上报合计</small><strong>{reported.length ? compact(total) : "未提供"}</strong></span>

@@ -26,15 +26,19 @@ import {
 import SearchList from "./components/primitives/SearchList";
 import {
   PERIOD_LABELS,
-  providerName,
   type DashboardData,
   type PeriodKey,
   type PeriodUsage,
   type UsageEntity,
 } from "./data";
+import { providerName } from "./vendors";
 import { SystemUpdate } from "./SystemUpdate";
 import { useErrorShake } from "./lib/hooks/use-error-shake";
-import { BrandIcon, compact, CompositionCard, count, money } from "./Overview";
+import { CompositionCard } from "./Overview";
+import { BrandIcon } from "./BrandIcon";
+import { compact, count } from "./lib/format";
+import { usd } from "./money";
+import { COMPOSITION } from "./palette";
 
 const SHOWCASE_UI = import.meta.env.VITE_SHOWCASE_UI === "true";
 
@@ -187,7 +191,7 @@ export default function AppDialogs({
             </span>
             <DialogTitle>{hosted ? "工作区设置" : isolatedDemo ? "演示工作区" : "连接你的用量"}</DialogTitle>
             <DialogDescription>
-              {hosted ? "查看服务版本，管理此设备上的登录。" : isolatedDemo ? "此页面使用示例数据，供浏览和体验界面。" : "接入现有云端服务，用真实数据体验新面板。"}
+              {hosted ? "查看服务版本，管理此设备上的登录。" : isolatedDemo ? "此页面使用示例数据，供浏览和体验界面。" : "连接后显示这台服务器上的真实用量。"}
             </DialogDescription>
           </DialogHeader>
           <div className="connection-target">
@@ -232,9 +236,9 @@ export default function AppDialogs({
               state={connecting ? "loading" : "idle"}
               loadingText="正在连接"
               disabled={connecting || !secret.trim()}
+              icon={<ArrowRight size={15} />}
             >
               连接并查看真实用量
-              <ArrowRight size={15} />
             </StatefulButton>
           </form>
           <div className="dialog-divider">
@@ -323,7 +327,6 @@ export default function AppDialogs({
               <DialogHeader>
                 <BrandIcon
                   name={shownModel.name}
-                  color={shownModel.color}
                   size={45}
                 />
                 <DialogTitle>{shownModel.name}</DialogTitle>
@@ -336,11 +339,11 @@ export default function AppDialogs({
                 <div>
                   <span>总用量</span>
                   <strong>{compact(shownModel.totalTokens)}</strong>
-                  <small>{count(shownModel.totalTokens)} Tokens</small>
+                  <small>{count(shownModel.totalTokens)} 词元</small>
                 </div>
                 <div>
                   <span>使用费用</span>
-                  <strong>{money(shownModel.costUsd)}</strong>
+                  <strong>{usd(shownModel.costUsd)}</strong>
                   <small>美元 · 已上报费用</small>
                 </div>
               </div>
@@ -367,18 +370,14 @@ export default function AppDialogs({
             <span className="dialog-icon">
               <Palette size={23} />
             </span>
-            <DialogTitle>清晰、有序，轻盈一些。</DialogTitle>
+            <DialogTitle>数字在前，界面退后。</DialogTitle>
             <DialogDescription>
-              为每日查看用量而设计的新工作台。
+              给每天看一眼用量的人：今天用了多少、花了多少、缓存省了多少。
             </DialogDescription>
           </DialogHeader>
           <div className="design-swatches">
             {[
-              ["正文", "#20242b"],
-              ["缓存读取", "#25a878"],
-              ["非缓存输入", "#3d9aff"],
-              ["输出", "#f09a2f"],
-              ["缓存写入", "#b393c5"],
+              ...COMPOSITION.map((part) => [part.label, part.color]),
             ].map(([label, c]) => (
               <MetricTooltip
                 key={c}
@@ -390,8 +389,7 @@ export default function AppDialogs({
             ))}
           </div>
           <p className="design-intro">
-            从 Stripe
-            的信息层次和留白出发，让用量、缓存和费用直接可见。色彩负责强调，动效负责交代变化。
+            五种颜色只用来表示用量组成：缓存读取、非缓存输入、输出、缓存写入和未分类，从总览的色谱到模型表的细条都是同一套。数字用 Geist 的等宽数位，列与列对得齐；动效只在你操作或数据变化时出现。
           </p>
           <div className="design-sources">
             {[
@@ -402,6 +400,7 @@ export default function AppDialogs({
                 "趋势曲线、快速搜索与导航反馈",
               ],
               ["beUI", "https://beui.dev", "数字变化与刷新状态"],
+              ["Arc UI", "https://uiarc.dev", "平面层次、胶囊控件与图表形状"],
               ["Rare UI", "https://www.rareui.com", "新提示出现时的通知铃"],
               [
                 "Transitions",

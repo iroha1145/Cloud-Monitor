@@ -27,15 +27,16 @@ from urllib.parse import quote
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, ValidationError
+from starlette.concurrency import run_in_threadpool
 
 from .auth import require_access_token
 from .config import Settings
+from .services import parse_iso_datetime
 from .tm_snapshots import utc_seconds_z
 
 log = logging.getLogger("tm-update")
 
 GITHUB_API = "https://api.github.com"
-REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 REF_RE = re.compile(r"^(main|master|v?[0-9]+(\.[0-9A-Za-z_-]+)*)$")
 SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 STALE_RUNNING_SECONDS = 30 * 60
@@ -74,11 +75,9 @@ def _job_age_seconds(updated_at: str) -> float | None:
     if not raw:
         return None
     try:
-        ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        ts = parse_iso_datetime(raw)
     except ValueError:
         return None
-    if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
     return max(0.0, (datetime.now(timezone.utc) - ts).total_seconds())
 
 
@@ -142,7 +141,7 @@ class UpdateService:
         if path is None:
             return None
         try:
-            if path.is_dir() and os_access_write(path):
+            if path.is_dir() and os.access(path, os.W_OK):
                 return path
         except OSError:
             return None
@@ -490,10 +489,6 @@ class UpdateService:
         return resp.status_code, body
 
 
-def os_access_write(path: Path) -> bool:
-    return os.access(path, os.W_OK)
-
-
 def _gh_error(status: int, body: Any) -> str:
     if status == 200:
         return ""
@@ -549,7 +544,6 @@ def build_update_router(settings: Settings, service: UpdateService) -> APIRouter
             body = ApplyBody.model_validate(raw)
         except ValidationError as exc:
             raise HTTPException(status_code=400, detail="请求体校验失败") from exc
-        from starlette.concurrency import run_in_threadpool
 
         try:
             return await run_in_threadpool(service.apply, body.ref)

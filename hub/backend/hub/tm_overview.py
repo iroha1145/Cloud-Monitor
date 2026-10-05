@@ -46,19 +46,31 @@ import json
 import logging
 import math
 import time as _time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from itertools import groupby
+from threading import Lock
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from .auth import require_access_token
+from .auth import CodedHTTPException, require_access_token
 from .config import Settings
 from .db import Database
-from .tm_proxy import TmCore
-from .tm_snapshots import HARD_RETENTION_DAYS, query_daily_archive, trend_by_day, utc_z, valid_day_key
+from .tm_outbox import snapshot_health
+from .tm_provider_status import discover_providers
+from .tm_proxy import TmCore, UpstreamUnavailable
+from .tm_snapshots import (
+    BUCKET_MS,
+    HARD_RETENTION_DAYS,
+    query_daily_archive,
+    summarize_trend,
+    trend_last_rows,
+    utc_z,
+)
+from .tm_validate import valid_day_key
 
 log = logging.getLogger("tm-overview")
 
@@ -67,7 +79,6 @@ ACTIVITY_DAILY_DAYS = 90
 FINE_ACTIVITY_DAYS = 7
 SESSIONS_LIMIT = 100
 GAP_BUCKETS = 2  # 相邻桶间隔超过 2 个槽位视为采样缺口（低覆盖）
-DEFAULT_SAMPLE_INTERVAL_MS = 5 * 60 * 1000
 LATE_START_GRACE_MINUTES = 10  # 本地日开始后 10 分钟内的首桶不算晚启动
 OVERVIEW_REFRESH_TIMEOUT_SECONDS = 20.0
 
@@ -94,30 +105,16 @@ def _device_display(device: dict) -> str:
 
 
 def trend_models_by_day(db: Database, days: int = TREND_DAYS) -> list[dict]:
-    """每设备每本地日最后一个桶，按天合并 today_total 与 models_json。
+    """每设备每本地日最后一个桶，按天合并 today_total 与 models_json。"""
+    _, last_rows = trend_last_rows(db, days)
+    return summarize_trend_models(last_rows)
 
-    日期范围在窗口函数之前收敛（local_day >= 下界），不加载 370 天全量
-    后再在 Python 切 30 天。
-    """
 
-    day_floor = (datetime.now(timezone.utc) - timedelta(days=days + 1)).date().isoformat()
-    rows = db.fetchall(
-        """
-        SELECT local_day, today_total, models_json FROM (
-            SELECT local_day, today_total, models_json,
-                   ROW_NUMBER() OVER (
-                       PARTITION BY device_id, local_day
-                       ORDER BY bucket_start DESC, server_received_at DESC, id DESC
-                   ) AS rn
-            FROM tm_snapshot_buckets
-            WHERE local_day >= ?
-        ) WHERE rn = 1 ORDER BY local_day
-        """,
-        (day_floor,),
-    )
+def summarize_trend_models(last_rows: list[dict]) -> list[dict]:
+    """trend_last_rows 的结果按日合并 today_total 与 models_json，按日期升序返回。"""
     totals: dict[str, int] = {}
     models_by_day: dict[str, dict[str, int]] = {}
-    for row in rows:
+    for row in last_rows:
         day = row["local_day"]
         totals[day] = totals.get(day, 0) + _int(row["today_total"])
         try:
@@ -130,7 +127,7 @@ def trend_models_by_day(db: Database, days: int = TREND_DAYS) -> list[dict]:
         for model, tokens in models.items():
             model = str(model)
             bucket[model] = bucket.get(model, 0) + _int(tokens)
-    days_sorted = sorted(totals)[-days:]
+    days_sorted = sorted(totals)
     return [
         {"day": d, "total": totals[d], "models": models_by_day.get(d, {})}
         for d in days_sorted
@@ -283,23 +280,22 @@ def _bucket_gap_slots(prev: str | None, curr: str) -> int:
     a, b = _parse_bucket_dt(prev), _parse_bucket_dt(curr)
     if a is None or b is None:
         return GAP_BUCKETS + 1
-    return max(int((b - a).total_seconds() // 300), 0)
+    return max(int((b - a).total_seconds() // (BUCKET_MS // 1000)), 0)
 
 
 def _deltas_for_device(
-    rows: list[dict], *, expected_interval_ms: int = DEFAULT_SAMPLE_INTERVAL_MS
+    rows: list[dict], *, expected_interval_ms: int = BUCKET_MS
 ) -> list[dict]:
     """同一设备按时间排序的相邻差分。换本地日视为新周期，不记累计回退。"""
     out: list[dict] = []
     expected_slots = max(
         1,
         round(
-            max(int(expected_interval_ms or 0), DEFAULT_SAMPLE_INTERVAL_MS)
-            / DEFAULT_SAMPLE_INTERVAL_MS
+            max(int(expected_interval_ms or 0), BUCKET_MS)
+            / BUCKET_MS
         ),
     )
     prev_total: int | None = None
-    prev_max: int = 0
     prev_bucket: str | None = None
     prev_day: str | None = None
     for row in rows:
@@ -320,14 +316,12 @@ def _deltas_for_device(
                     "reset": False,
                 }
             )
-            prev_max = value
         else:
             gap_slots = _bucket_gap_slots(prev_bucket, stamp)
             gap = gap_slots > max(GAP_BUCKETS, expected_slots * 2)
             reset = value < prev_total
-            sql_prev = row.get("prev_day_max")
-            seen = int(sql_prev) if sql_prev is not None else prev_max
-            delta = max(0, value - seen)
+            # 本地日内的第二行起，SQL 窗口给出的此前最大值必然非空（today_total NOT NULL）
+            delta = max(0, value - int(row["prev_day_max"]))
             out.append(
                 {
                     "device_id": row["device_id"],
@@ -340,7 +334,6 @@ def _deltas_for_device(
                     "reset": reset,
                 }
             )
-            prev_max = max(prev_max, value)
         prev_total = value
         prev_bucket = stamp
         prev_day = local_day
@@ -348,7 +341,7 @@ def _deltas_for_device(
 
 
 def _coverage_for_device(
-    deltas: list[dict], *, expected_interval_ms: int = DEFAULT_SAMPLE_INTERVAL_MS
+    deltas: list[dict], *, expected_interval_ms: int = BUCKET_MS
 ) -> dict:
     stamps = []
     gap_count = 0
@@ -366,7 +359,7 @@ def _coverage_for_device(
             late = True
     observed = len(stamps)
     normalized_interval_ms = max(
-        int(expected_interval_ms or 0), DEFAULT_SAMPLE_INTERVAL_MS
+        int(expected_interval_ms or 0), BUCKET_MS
     )
     sample_seconds = normalized_interval_ms / 1000
     expected = (
@@ -454,7 +447,7 @@ def activity_report(
     for device_id, device_rows in by_device.items():
         expected_interval_ms = max(
             int((sync_intervals or {}).get(device_id) or 0),
-            DEFAULT_SAMPLE_INTERVAL_MS,
+            BUCKET_MS,
         )
         deltas = _deltas_for_device(
             device_rows, expected_interval_ms=expected_interval_ms
@@ -531,33 +524,6 @@ def activity_report(
         if has_today_hourly
         else []
     )
-    if not by_device and not archive["items"]:
-        return {
-            "time_zone": str(tz),
-            "hourly": [],
-            "hourly_day": today_key,
-            "daily_day_basis": "dashboard-time-zone",
-            "daily_mixed_basis": False,
-            "daily_archive_cutover_day": None,
-            "hourly_today": {
-                "day": today_key,
-                "time_zone": str(tz),
-                "buckets": [],
-            },
-            "daily": [],
-            "coverage": {
-                "first_sample_at": None,
-                "last_sample_at": None,
-                "expected_buckets": 0,
-                "observed_buckets": 0,
-                "coverage_percent": 0.0,
-                "attribution_mode": "none",
-                "devices": [],
-                "gap_count": 0,
-                "reset_count": 0,
-            },
-        }
-
     return {
         "time_zone": str(tz),
         "hourly": hourly_buckets,
@@ -852,8 +818,7 @@ def build_overview(
         if isinstance(d.get("periodWindows"), dict) and d.get("periodWindows")
     }
     dashboard_period = _dashboard_period(dashboard_time_zone, now=now)
-
-    from .tm_outbox import snapshot_health
+    trend_days, trend_rows = trend_last_rows(db, TREND_DAYS)
 
     overview = {
         "overview_schema_version": 2,
@@ -872,9 +837,12 @@ def build_overview(
         "partial_errors": partial_errors,
         "totals": stats.get("periods"),
         "devices": devices,
-        "trend": merge_trend_with_history(trend_by_day(db), history, days=TREND_DAYS),
+        "trend": merge_trend_with_history(
+            summarize_trend(trend_days, trend_rows), history, days=TREND_DAYS
+        ),
         "trend_models": merge_trend_with_history(
-            trend_models_by_day(db), history, days=TREND_DAYS, with_models=True
+            summarize_trend_models(trend_rows), history, days=TREND_DAYS,
+            with_models=True,
         ),
         "activity": activity,
         "period_windows": _latest_period_windows(stats),  # deprecated
@@ -905,19 +873,12 @@ def _dashboard_period(dashboard_tz: str, now: Any = None) -> dict:
     else:
         next_month = month_start.replace(month=now.month + 1)
 
-    def utc(dt) -> str:
-        return (
-            dt.astimezone(timezone.utc)
-            .isoformat(timespec="milliseconds")
-            .replace("+00:00", "Z")
-        )
-
     return {
         "time_zone": dashboard_tz,
-        "today": {"key": today_start.date().isoformat(), "endsAt": utc(next_day)},
+        "today": {"key": today_start.date().isoformat(), "endsAt": utc_z(next_day)},
         "month": {
             "key": today_start.strftime("%Y-%m"),
-            "endsAt": utc(next_month),
+            "endsAt": utc_z(next_month),
         },
     }
 
@@ -946,8 +907,6 @@ class OverviewCache:
         self._built_at: float = 0.0
         self._generation = 0
         self._inflight: asyncio.Future | None = None
-        from threading import Lock
-
         self._lock = Lock()
 
     @property
@@ -984,7 +943,7 @@ class OverviewCache:
             self._generation += 1
             self._expires_at = 0.0
 
-    def claim_refresh(self) -> tuple[bool, asyncio.Future | None]:
+    def claim_refresh(self) -> tuple[bool, asyncio.Future]:
         with self._lock:
             if self._inflight is not None:
                 return False, self._inflight
@@ -1020,8 +979,6 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
 
     def _require_core() -> None:
         if not settings.tm_ingest_secret:
-            from .auth import CodedHTTPException
-
             raise CodedHTTPException(
                 404, "token_monitor_secret_unconfigured", "未启用 token-monitor 接入"
             )
@@ -1029,8 +986,6 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
 
     def _fetch_sync(core: TmCore, path: str) -> tuple[Optional[dict], Optional[str]]:
         """同步辅助读取（测试 TestClient 回退）。"""
-        from .tm_proxy import UpstreamUnavailable
-
         try:
             resp = core.request("GET", path)
         except (httpx.HTTPError, UpstreamUnavailable) as exc:
@@ -1102,48 +1057,28 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
             return cached
         owned, waiter = overview_cache.claim_refresh()
         if not owned:
-            if waiter is not None:
-                try:
-                    # One client cancelling/timing out must not cancel the
-                    # shared refresh result for every other request.
-                    return await asyncio.wait_for(
-                        asyncio.shield(waiter), OVERVIEW_REFRESH_TIMEOUT_SECONDS
-                    )
-                except Exception as exc:
-                    # asyncio.TimeoutError 在 3.11 起是内置 TimeoutError 的别名，
-                    # 更早版本两者无继承关系——wait_for 抛的是前者，必须按前者判。
-                    timed_out = isinstance(exc, asyncio.TimeoutError) or (
-                        isinstance(exc, HTTPException) and exc.status_code == 504
-                    )
-                    stale = _stale_overview("refresh_timeout" if timed_out else "refresh_failed")
-                    if stale is not None:
-                        return stale
-                    if isinstance(exc, asyncio.TimeoutError):
-                        raise HTTPException(504, "总览刷新超时，请稍后重试") from exc
-                    raise
-            stale = _stale_overview("refresh_failed")
-            if stale is not None:
-                return stale
-        from concurrent.futures import ThreadPoolExecutor
-
-        from .tm_proxy import UpstreamUnavailable
+            try:
+                # One client cancelling/timing out must not cancel the
+                # shared refresh result for every other request.
+                return await asyncio.wait_for(
+                    asyncio.shield(waiter), OVERVIEW_REFRESH_TIMEOUT_SECONDS
+                )
+            except Exception as exc:
+                # asyncio.TimeoutError 在 3.11 起是内置 TimeoutError 的别名，
+                # 更早版本两者无继承关系——wait_for 抛的是前者，必须按前者判。
+                timed_out = isinstance(exc, asyncio.TimeoutError) or (
+                    isinstance(exc, HTTPException) and exc.status_code == 504
+                )
+                stale = _stale_overview("refresh_timeout" if timed_out else "refresh_failed")
+                if stale is not None:
+                    return stale
+                if isinstance(exc, asyncio.TimeoutError):
+                    raise HTTPException(504, "总览刷新超时，请稍后重试") from exc
+                raise
 
         def _stats_sync():
-            try:
-                resp = core.request("GET", "/api/stats")
-            except (httpx.HTTPError, UpstreamUnavailable) as exc:
-                raise HTTPException(
-                    status_code=502, detail="tm-core 聚合不可用"
-                ) from exc
-            if resp.status_code != 200:
-                raise HTTPException(status_code=502, detail="tm-core 聚合不可用")
-            try:
-                data = resp.json()
-            except ValueError as exc:
-                raise HTTPException(
-                    status_code=502, detail="tm-core 聚合不可用"
-                ) from exc
-            if not isinstance(data, dict):
+            data, _error = _fetch_sync(core, "/api/stats")
+            if data is None:
                 raise HTTPException(status_code=502, detail="tm-core 聚合不可用")
             return data
 
@@ -1210,15 +1145,8 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         if not settings.provider_status_enabled:
             raise HTTPException(status_code=404, detail="provider-status 未启用")
 
-        from .tm_provider_status import discover_providers
-
-        core = _core(request)
-
-        (stats, stats_error), (subs, subs_error) = await asyncio.gather(
-            asyncio.to_thread(_fetch_sync, core, "/api/stats"),
-            asyncio.to_thread(_fetch_sync, core, "/api/subscriptions"),
-        )
-        observed = discover_providers(stats, subs)
+        stats, stats_error = await asyncio.to_thread(_fetch_sync, _core(request), "/api/stats")
+        observed = discover_providers(stats)
         service = request.app.state.provider_status
         client = getattr(request.app.state, "http_provider", request.app.state.http_async)
         envelope = await service.snapshot(client=client, observed=observed)
@@ -1226,11 +1154,6 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
             envelope["partial"] = True
             envelope["errors"].append(
                 {"error_code": "stats_unavailable", "source": "tm-core"}
-            )
-        if subs_error:
-            envelope["partial"] = True
-            envelope["errors"].append(
-                {"error_code": "subscriptions_unavailable", "source": "tm-core"}
             )
         if request.query_params.get("url"):
             log.warning("provider-status ignored client url parameter")

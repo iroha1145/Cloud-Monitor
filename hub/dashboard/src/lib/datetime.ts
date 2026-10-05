@@ -1,5 +1,7 @@
 /** 带时区的时间格式化。Intl.DateTimeFormat 遇非法时区抛 RangeError，统一在此兜底。 */
 
+export const DAY_MS = 86_400_000;
+
 /** 带时区格式化；非法时区回退 null，兜本文案由调用方决定。 */
 export function formatZoned(
   date: Date,

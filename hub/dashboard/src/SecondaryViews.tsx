@@ -18,20 +18,27 @@ import {
   X,
 } from "lucide-react";
 import {
-  providerName,
   type DashboardData,
   type Device,
   type Quota,
   type Session,
   type Subscription,
 } from "./data";
+import { providerName } from "./vendors";
 import "./secondary.css";
 import { BrandIcon } from "./BrandIcon";
 import { MetricTooltip } from "./MetricTooltip";
 import { ActivityPanel } from "./ActivityPanel";
-import { compact as compactNumber } from "./Overview";
-import { dayKeyZoned, formatZoned } from "./lib/datetime";
-import { escapeCsv, downloadCsv } from "./lib/csv";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./components/ui/select";
+import { compact } from "./lib/format";
+import { DAY_MS, dayKeyZoned, formatZoned } from "./lib/datetime";
+import { downloadCsv, rowsToCsv } from "./lib/csv";
 import { usd } from "./money";
 import { quotaAmount, quotaBalance, quotaBoundaryLabel, quotaHeadline, quotaPercent } from "./quota-presentation";
 import { sessionActivity, sessionContext } from "./session-presentation";
@@ -40,12 +47,19 @@ import "./secondary-mobile.css";
 
 export interface SecondaryProps {
   data: DashboardData;
-  onDevice?: (device: Device) => void;
 }
+
+/** Third-party quota adapters reported by the service, in reader-facing words. */
+const ADAPTER_NAMES: Record<string, string> = {
+  "newapi-account": "New API 账户",
+  "newapi-token": "New API 密钥",
+  sub2api: "Sub2API",
+  custom: "自定义接口",
+};
 
 const fullNumber = (value: number) =>
   new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
-const DAY = 86_400_000;
+const DAY = DAY_MS;
 
 function dateLabel(
   value: string | null,
@@ -172,7 +186,6 @@ function DeviceCard({
   device,
   total,
   data,
-  onDevice,
 }: { device: Device; total: number } & SecondaryProps) {
   const [expanded, setExpanded] = useState(false);
   const Icon = /linux|ubuntu|debian|server/i.test(device.platform)
@@ -231,9 +244,7 @@ function DeviceCard({
                 ]}
               >
                 <span className="sv-device-id sv-inline-detail">
-                  {device.id.length > 12
-                    ? `${device.id.slice(0, 8)}…`
-                    : device.id}
+                  {device.id}
                 </span>
               </MetricTooltip>
             </p>
@@ -342,7 +353,7 @@ function DeviceCard({
               rows={[
                 {
                   label: "完整用量",
-                  value: `${fullNumber(device.periods[key].totalTokens)} tokens`,
+                  value: `${fullNumber(device.periods[key].totalTokens)} 词元`,
                 },
                 { label: "估算费用", value: usd(device.periods[key].costUsd) },
                 {
@@ -355,7 +366,7 @@ function DeviceCard({
               <div className="sv-device-stat sv-detail-trigger">
                 <span className="sv-metric-label">{label}</span>
                 <span className="sv-metric-value">
-                  {compactNumber(device.periods[key].totalTokens)}
+                  {compact(device.periods[key].totalTokens)}
                 </span>
               </div>
             </MetricTooltip>
@@ -388,10 +399,7 @@ function DeviceCard({
           className="sv-device-toggle"
           aria-expanded={expanded}
           aria-controls={`device-detail-${device.id}`}
-          onClick={() => {
-            setExpanded(!expanded);
-            if (!expanded) onDevice?.(device);
-          }}
+          onClick={() => setExpanded(!expanded)}
         >
           {expanded ? "收起详情" : "设备详情"}
           <ChevronDown aria-hidden="true" />
@@ -414,7 +422,7 @@ function DeviceCard({
             </div>
             <div>
               <dt>本月完整用量</dt>
-              <dd>{fullNumber(device.periods.month.totalTokens)} tokens</dd>
+              <dd>{fullNumber(device.periods.month.totalTokens)} 词元</dd>
             </div>
           </dl>
         </div>
@@ -423,7 +431,7 @@ function DeviceCard({
   );
 }
 
-export function DevicesView({ data, onDevice }: SecondaryProps) {
+export function DevicesView({ data }: SecondaryProps) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const total = data.devices.reduce(
@@ -460,7 +468,7 @@ export function DevicesView({ data, onDevice }: SecondaryProps) {
         <SummaryItem
           icon={<Activity />}
           label="今日设备用量"
-          value={compactNumber(total)}
+          value={compact(total)}
           foot="来自全部已上报设备"
         />
       </section>
@@ -476,17 +484,17 @@ export function DevicesView({ data, onDevice }: SecondaryProps) {
           />
         </label>
         <div className="sv-toolbar-actions">
-          <select
-            className="sv-select"
-            aria-label="筛选设备状态"
-            value={status}
-            onChange={(event) => setStatus(event.target.value)}
-          >
-            <option value="all">所有状态</option>
-            <option value="online">在线</option>
-            <option value="delayed">同步延迟</option>
-            <option value="offline">离线</option>
-          </select>
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger aria-label="筛选设备状态">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectItem value="all">所有状态</SelectItem>
+              <SelectItem value="online">在线</SelectItem>
+              <SelectItem value="delayed">同步延迟</SelectItem>
+              <SelectItem value="offline">离线</SelectItem>
+            </SelectContent>
+          </Select>
           <span className="sv-result-count" aria-live="polite">
             {filtered.length} 台设备
           </span>
@@ -500,7 +508,6 @@ export function DevicesView({ data, onDevice }: SecondaryProps) {
               device={device}
               total={total}
               data={data}
-              onDevice={onDevice}
             />
           ))}
         </div>
@@ -621,7 +628,8 @@ function QuotaAccountDetails({ quota, data }: { quota: Quota; data: DashboardDat
   const summaryMoney = (amount: number) => quota.balanceCurrency
     ? quotaBalance(amount, { balanceCurrency: quota.balanceCurrency })
     : `${fullNumber(amount)}（单位未提供）`;
-  if (quota.adapterId) usageRows.push(["接口来源", quota.adapterId]);
+  if (quota.adapterId)
+    usageRows.push(["接口来源", ADAPTER_NAMES[quota.adapterId] ?? quota.adapterId]);
   addCount("请求次数", usage?.requests ?? balance?.requestCount);
   addCount("今日词元", usage?.todayTokens);
   addCount("本周词元", usage?.weekTokens);
@@ -802,18 +810,14 @@ function QuotaWindow({ quota, data }: { quota: Quota; data: DashboardData }) {
         </div>
         {!isBalance && quota.showMeter !== false && percent !== null && (
           <div
-            className={`sv-progress ${color} ${percent === null ? "sv-progress-unknown" : ""}`}
-            {...(percent === null
-              ? { role: "img", "aria-label": `${quota.label}：未提供使用进度` }
-              : {
-                  role: "progressbar",
-                  "aria-label": `${quota.label}已用额度`,
-                  "aria-valuenow": percent,
-                  "aria-valuemin": 0,
-                  "aria-valuemax": 100,
-                })}
+            className={`sv-progress ${color}`}
+            role="progressbar"
+            aria-label={`${quota.label}已用额度`}
+            aria-valuenow={percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
           >
-            {percent !== null && <span style={{ width: `${percent}%` }} />}
+            <span style={{ width: `${percent}%` }} />
           </div>
         )}
         <div className="sv-quota-window-foot">
@@ -822,17 +826,15 @@ function QuotaWindow({ quota, data }: { quota: Quota; data: DashboardData }) {
               ? quota.balanceCurrency?.toUpperCase() === "CREDITS" ? "账户点数" : "账户余额"
               : quota.limit !== null && quota.metric !== "percentage" && quota.metric !== "credits" && quota.metric !== "spend"
                 ? `上限 ${quotaAmount(quota.limit, quota)}`
-                : quota.metric === "credits" && quota.limit !== null
+                : (quota.metric === "credits" || quota.metric === "spend") && quota.limit !== null
                   ? `上限 ${quotaAmount(quota.limit, quota)}${percent !== null ? ` · 已用 ${fullNumber(percent)}%` : ""}`
-                  : quota.metric === "spend" && quota.limit !== null
-                    ? `上限 ${quotaAmount(quota.limit, quota)}${percent !== null ? ` · 已用 ${fullNumber(percent)}%` : ""}`
-                    : percent !== null
-                  ? `剩余 ${fullNumber(100 - percent)}%`
-                  : quota.used !== null
-                    ? "已上报使用金额"
-                    : quota.remaining !== null
-                      ? "已上报剩余额度"
-                      : "用量未提供"}
+                  : percent !== null
+                    ? `剩余 ${fullNumber(100 - percent)}%`
+                    : quota.used !== null
+                      ? "已上报使用金额"
+                      : quota.remaining !== null
+                        ? "已上报剩余额度"
+                        : "用量未提供"}
             {quota.used !== null && !isBalance && quota.metric === "percentage" && (
               <> · 已用 {quotaAmount(quota.used, quota)}</>
             )}
@@ -1051,7 +1053,7 @@ export function QuotaView({ data }: SecondaryProps) {
                       <div className="sv-provider-heading">
                         <div className="sv-provider-icon">
                           <BrandIcon
-                            name={first.provider || first.name}
+                            name={first.adapterId === "sub2api" ? "sub2api" : first.provider || first.name}
                             size={34}
                           />
                         </div>
@@ -1180,8 +1182,7 @@ export function QuotaView({ data }: SecondaryProps) {
 
 /** Quote every cell and neutralize formula prefixes before spreadsheet export. */
 export function sessionsToCsv(sessions: Session[]): string {
-  const cell = (value: string | number | null) => escapeCsv(value);
-  const rows: (string | number | null)[][] = [
+  return rowsToCsv([
     [
       "会话",
       "项目",
@@ -1204,8 +1205,7 @@ export function sessionsToCsv(sessions: Session[]): string {
       session.startedAt,
       session.lastUsedAt,
     ]),
-  ];
-  return "\uFEFF" + rows.map((row) => row.map(cell).join(",")).join("\r\n");
+  ]);
 }
 
 export function HistoryView({ data }: SecondaryProps) {
@@ -1293,7 +1293,7 @@ export function HistoryView({ data }: SecondaryProps) {
       <section className="sv-summary" aria-label="历史活动概况">
         <SummaryItem
           icon={<CalendarDays />}
-          label="有活动的日期"
+          label="累计活动天数"
           value={activeDays}
           unit="天"
           foot={`在 ${data.activity.length} 个已上报日期中`}
@@ -1301,7 +1301,7 @@ export function HistoryView({ data }: SecondaryProps) {
         <SummaryItem
           icon={<Activity />}
           label="历史上报用量"
-          value={compactNumber(activityTotal)}
+          value={compact(activityTotal)}
           foot="按活动记录汇总"
         />
         <SummaryItem
@@ -1378,23 +1378,28 @@ export function HistoryView({ data }: SecondaryProps) {
                   </button>
                 </span>
               )}
-              <select
-                className="sv-select"
-                aria-label="筛选会话客户端"
+              <Select
                 value={client}
-                onChange={(event) => {
-                  setClient(event.target.value);
+                onValueChange={(value) => {
+                  setClient(value);
                   setPage(1);
                   setExported(false);
                 }}
               >
-                <option value="all">所有客户端</option>
-                {clients.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger aria-label="筛选会话客户端">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="end">
+                  <SelectItem value="all">所有客户端</SelectItem>
+                  {/* An item needs a non-empty value; a nameless client is
+                      still listed under 所有客户端. */}
+                  {clients.filter(Boolean).map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           {displayed.length ? (
@@ -1470,7 +1475,7 @@ export function HistoryView({ data }: SecondaryProps) {
                             ]}
                           >
                             <span className="sv-inline-detail">
-                              {compactNumber(session.totalTokens)}
+                              {compact(session.totalTokens)}
                             </span>
                           </MetricTooltip>
                         </td>
@@ -1533,7 +1538,7 @@ export function HistoryView({ data }: SecondaryProps) {
                               <div>
                                 <dt>完整用量</dt>
                                 <dd>
-                                  {fullNumber(session.totalTokens)} tokens
+                                  {fullNumber(session.totalTokens)} 词元
                                 </dd>
                               </div>
                             </dl>

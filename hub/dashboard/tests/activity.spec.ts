@@ -132,3 +132,26 @@ for (const width of [320, 390]) {
     await context.close();
   });
 }
+
+test("the activity grid is one Tab stop and arrow keys carry it between days", async ({ page }) => {
+  await loadActivity(page);
+  const panel = page.locator(".cm-activity-panel");
+  const cells = panel.locator("button.cm-activity-cell");
+  await expect(panel.getByRole("tab", { name: "月", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(cells.and(page.locator('[tabindex="0"]'))).toHaveCount(1);
+  // With nothing selected the latest past day takes the stop.
+  await expect(panel.locator('[data-day="2026-08-25"]')).toHaveAttribute("tabindex", "0");
+  await panel.getByRole("tab", { name: "月", exact: true }).focus();
+  await page.keyboard.press("Tab");
+  await expect(panel.locator('[data-day="2026-08-25"]')).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(panel.locator('[data-day="2026-08-24"]')).toBeFocused();
+  await expect(panel.locator('[data-day="2026-08-24"]')).toHaveAttribute("tabindex", "0");
+  await expect(cells.and(page.locator('[tabindex="0"]'))).toHaveCount(1);
+  // A week below is still to come, so the focus stays instead of jumping to the last day.
+  await page.keyboard.press("ArrowDown");
+  await expect(panel.locator('[data-day="2026-08-24"]')).toBeFocused();
+  // Leaving the grid takes a single Tab, not one per day.
+  await page.keyboard.press("Tab");
+  await expect(cells.and(page.locator(":focus"))).toHaveCount(0);
+});

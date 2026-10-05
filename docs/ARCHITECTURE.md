@@ -170,7 +170,8 @@ PRAGMA：`journal_mode=WAL`、`synchronous=NORMAL`、`busy_timeout=30000`、
 
 ## 安全
 
-- 启动校验：`API_KEY` 非空、非弱默认值（changeme 等）、长度 ≥12；
+- 启动校验：`API_KEY` 非空、非弱默认值（changeme 等）、长度 ≥32
+  （`ACCESS_TOKEN` 与 `DEVICE_KEYS_JSON` 里的每个密钥同样校验，`TOKEN_MONITOR_SECRET` 配置了也一样校验，且彼此不得相同）；
   `ACCESS_TOKEN` 必须与 `API_KEY` 分离（共用需显式 `ALLOW_SHARED_TOKEN=true`）。
 - `DEVICE_KEYS_JSON` 支持每设备写密钥，服务端校验密钥与 device.id 绑定。
 - 公网 `CLOUD_HUB_URL` / `TOKEN_MONITOR_HUB_URL` 强制 HTTPS（本机地址或

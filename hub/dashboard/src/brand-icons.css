@@ -1,9 +1,3 @@
-:root {
-  --brand-ink: #17212d;
-}
-.dark {
-  --brand-ink: #f1f4f7;
-}
 .brand-icon {
   display: inline-flex;
   align-items: center;
@@ -13,7 +7,7 @@
   min-width: var(--brand-size, 34px);
   flex: 0 0 var(--brand-size, 34px);
   line-height: 1;
-  color: var(--brand-ink);
+  color: var(--ink);
   vertical-align: middle;
 }
 .brand-icon-mark {

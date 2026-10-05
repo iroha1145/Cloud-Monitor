@@ -1,29 +1,19 @@
-import { FileClock, Grid2X2, Layers3, Monitor, Wallet } from "lucide-react";
 import { scrollToTop } from "./lib/scroll";
+import { PAGES, type PageId } from "./pages";
 import { useSlidingIndicator } from "./lib/hooks/use-sliding-indicator";
-
-const destinations = [
-  { id: "overview", label: "总览", name: "总览", icon: Grid2X2 },
-  { id: "models", label: "模型", name: "模型分析", icon: Layers3 },
-  { id: "devices", label: "设备", name: "设备", icon: Monitor },
-  { id: "quota", label: "配额", name: "配额与订阅", icon: Wallet },
-  { id: "history", label: "历史", name: "历史记录", icon: FileClock },
-] as const;
-
-export type MobilePageId = (typeof destinations)[number]["id"];
 
 export function MobileNavigation({
   page,
   onNavigate,
 }: {
-  page: MobilePageId;
-  onNavigate: (page: MobilePageId) => void;
+  page: PageId;
+  onNavigate: (page: PageId) => void;
 }) {
   const ref = useSlidingIndicator<HTMLElement>('a[aria-current="page"]');
   return (
     <nav className="mobile-bottom-nav" aria-label="移动端主导航" ref={ref}>
       <span data-sliding-indicator aria-hidden="true" />
-      {destinations.map(({ id, label, name, icon: Icon }) => (
+      {PAGES.map(({ id, short, name, icon: Icon }) => (
         <a
           key={id}
           href={`#${id}`}
@@ -47,7 +37,7 @@ export function MobileNavigation({
             strokeWidth={page === id ? 2 : 1.7}
             aria-hidden="true"
           />
-          <span>{label}</span>
+          <span>{short}</span>
         </a>
       ))}
     </nav>

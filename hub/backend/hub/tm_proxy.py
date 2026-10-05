@@ -26,7 +26,9 @@ from urllib.parse import quote
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
+from .auth import CodedHTTPException, constant_eq
 from .config import Settings
 from .db import Database
 from .tm_outbox import (
@@ -34,6 +36,7 @@ from .tm_outbox import (
     OutboxFullError,
     ensure_schema as ensure_outbox_schema,
     purge_device as purge_device_outbox,
+    reject_exhausted_pending,
     replay_pending,
     replayable_count,
 )
@@ -70,9 +73,8 @@ class TmCore:
         self.secret = secret
         self._client = client
 
-    def bind_client(self, client: httpx.Client) -> "TmCore":
+    def bind_client(self, client: httpx.Client) -> None:
         self._client = client
-        return self
 
     def headers(self) -> dict[str, str]:
         return {
@@ -88,20 +90,10 @@ class TmCore:
         json_body: Optional[dict] = None,
         timeout: Optional[httpx.Timeout] = None,
     ) -> httpx.Response:
-        if self._client is None:
-            # 非 lifespan 用法（直连 ASGI 测试等）：临时客户端兜底
-            try:
-                return httpx.request(
-                    method,
-                    f"{self.base_url}{path}",
-                    json=json_body,
-                    headers=self.headers(),
-                    timeout=timeout or httpx.Timeout(CONNECT_TIMEOUT, read=READ_TIMEOUT),
-                )
-            except httpx.HTTPError as exc:
-                raise UpstreamUnavailable(f"tm-core 请求失败: {exc}") from exc
+        # 非 lifespan 用法（直连 ASGI 测试等）没有注入客户端：用模块级 httpx.request 临时发一次
+        sender = httpx if self._client is None else self._client
         try:
-            return self._client.request(
+            return sender.request(
                 method,
                 f"{self.base_url}{path}",
                 json=json_body,
@@ -177,18 +169,13 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
 
     def tm_auth(request: Request) -> None:
         if not settings.tm_ingest_secret:
-            from .auth import CodedHTTPException
-
             raise CodedHTTPException(
                 404,
                 "token_monitor_secret_unconfigured",
                 "未启用 token-monitor 接入（缺少 TOKEN_MONITOR_SECRET）",
             )
-        import hmac
-
-        secret = settings.tm_ingest_secret
         provided = request_tm_secret(request)
-        if not provided or not hmac.compare_digest(provided.encode(), secret.encode()):
+        if not provided or not constant_eq(provided, settings.tm_ingest_secret):
             raise HTTPException(status_code=401, detail="unauthorized")
 
     # ------------------------------------------------------------ health
@@ -282,8 +269,6 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             return JSONResponse(
                 status_code=400, content={"error": "bad_request", "message": "invalid json"}
             )
-        from starlette.concurrency import run_in_threadpool
-
         return await run_in_threadpool(_tm_ingest_sync, request, payload)
 
     # ------------------------------------------------------------ 只读透传（统一 503）
@@ -353,7 +338,6 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             return JSONResponse(
                 status_code=400, content={"error": "bad_request", "message": "invalid json"}
             )
-        from starlette.concurrency import run_in_threadpool
 
         def _put() -> JSONResponse:
             try:
@@ -435,8 +419,6 @@ class TmBackground:
         self._wake.set()
 
     def start(self) -> None:
-        from .tm_outbox import reject_exhausted_pending
-
         try:
             reject_exhausted_pending(self.db)
         except Exception as exc:  # noqa: BLE001
@@ -485,7 +467,7 @@ class TmBackground:
             maintenance_due = time.monotonic() >= next_maintenance
             try:
                 if maintenance_due or replayable_count(self.db) > 0:
-                    replay_pending(self.db, self.core, should_stop=self._stop.is_set)
+                    replay_pending(self.db, should_stop=self._stop.is_set)
             except Exception as exc:  # noqa: BLE001 — 后台任务不得崩溃进程
                 failed = True
                 log.warning("outbox 后台重放异常: %s", exc)
@@ -570,22 +552,20 @@ class TmBackground:
         # 只有全部 payload 成功提交后才写幂等标记；失败时下一轮仍能重试。
         mark_legacy_reingested(self.db)
         try:
-            replay_pending(self.db, self.core, should_stop=self._stop.is_set)
+            replay_pending(self.db, should_stop=self._stop.is_set)
         except Exception as exc:  # noqa: BLE001
             log.warning("启动重放异常: %s", exc)
         return True
 
 
-def bootstrap_tm_layer(
-    settings: Settings, db: Database, client: Optional[httpx.Client] = None
-) -> Optional[TmCore]:
+def bootstrap_tm_layer(settings: Settings, db: Database) -> Optional[TmCore]:
     """启动接线：建表、迁移旧表、构造 core（后台线程负责重试与重放）。"""
     ensure_schema(db)
     ensure_outbox_schema(db)
     migrate_legacy_tables(db)
     if not settings.tm_ingest_secret:
         return None
-    core = TmCore(settings.tm_core_url, settings.tm_ingest_secret, client)
+    core = TmCore(settings.tm_core_url, settings.tm_ingest_secret)
     if core.health() is None:
         log.warning(
             "tm-core 上游暂不可达 (%s)：后台线程将自动重试初始化与回填",

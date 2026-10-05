@@ -67,7 +67,7 @@ import {
   TREND_SAMPLES_PER_SEGMENT,
 } from "../src/trend-math";
 
-test("smoothed cost curves preserve every reported credit and endpoint", () => {
+test("trend spec (trend-math.ts, not the drawn Liveline stroke): smoothed cost curves preserve every reported credit and endpoint", () => {
   const points = [-5, -10, 8, -2].map((value, time) => ({ time, value }));
   const smoothed = smoothTrendPoints(points);
   points.forEach((point, index) =>
@@ -75,7 +75,7 @@ test("smoothed cost curves preserve every reported credit and endpoint", () => {
   );
 });
 
-test("smoothing does not invent extrema between adjacent daily records", () => {
+test("trend spec (trend-math.ts, not the drawn Liveline stroke): smoothing does not invent extrema between adjacent daily records", () => {
   for (const values of [[100, 1, 1, 100], [-2, -20, 8, 0], [0, 30, 0, 10], [1, 9]]) {
     const points = values.map((value, time) => ({ time, value }));
     const smoothed = smoothTrendPoints(points);
@@ -91,7 +91,7 @@ test("smoothing does not invent extrema between adjacent daily records", () => {
   }
 });
 
-test("the latest daily point is flattened like Liveline's same-Y tip", () => {
+test("trend spec (trend-math.ts, not the drawn Liveline stroke): the latest daily point is flattened like Liveline's same-Y tip", () => {
   const rising = [2, 10, 40].map((value, time) => ({ time, value }));
   const pair = [1, 9].map((value, time) => ({ time, value }));
   assert.equal(monotoneTrendSlopes(rising).at(-1), 0);
@@ -110,7 +110,7 @@ test("trend selection follows the calendar day when the window slides", () => {
   assert.equal(indexForSelectedDay([], null), 0);
 });
 
-test("large jumps flatten at the vertex instead of folding a corner", () => {
+test("trend spec (trend-math.ts, not the drawn Liveline stroke): large jumps flatten at the vertex instead of folding a corner", () => {
   const points = [2, 100, 1, 80].map((value, time) => ({ time, value }));
   const smoothed = smoothTrendPoints(points);
   const peak = 1 * TREND_SAMPLES_PER_SEGMENT;

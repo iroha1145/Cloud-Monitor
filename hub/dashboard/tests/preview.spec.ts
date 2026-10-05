@@ -41,7 +41,7 @@ test('late connection responses cannot replace a newly selected demo workspace',
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "用量，一目了然。" }),
+    page.getByRole("heading", { name: "总览", level: 1 }),
   ).toBeVisible();
 });
 

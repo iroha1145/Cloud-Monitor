@@ -2,7 +2,7 @@
   margin-top: 24px;
   padding: 24px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   background: var(--surface);
   color: var(--ink);
   min-width: 0;
@@ -22,9 +22,9 @@
 }
 .archive-header h2 {
   margin: 7px 0 6px;
-  font-size: 21px;
-  letter-spacing: -0.4px;
-  font-weight: 650;
+  font-size: 18px;
+  letter-spacing: -0.3px;
+  font-weight: 500;
 }
 .archive-header p,
 .archive-context p,
@@ -41,8 +41,8 @@
   gap: 7px;
   min-height: 38px;
   padding: 8px 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
   background: var(--surface);
   color: var(--ink);
   font: inherit;
@@ -73,25 +73,42 @@
   margin-top: 5px;
 }
 .archive-panel .archive-warning {
-  color: #986222;
-}
-.dark .archive-panel .archive-warning {
-  color: #e3b373;
+  color: var(--orange);
 }
 .archive-day {
   border-bottom: 1px solid var(--line);
 }
+.archive-columns,
 .archive-day summary {
-  list-style: none;
   display: grid;
-  grid-template-columns: minmax(125px, 1.3fr) minmax(110px, 1fr) minmax(
-      90px,
-      0.8fr
-    ) 16px;
+  grid-template-columns: minmax(125px, 1.3fr) minmax(110px, 1fr) minmax(90px, 0.8fr) 16px;
   align-items: center;
   gap: 16px;
-  padding: 17px 4px;
+}
+.archive-day summary {
+  list-style: none;
+  padding: 13px 4px;
   cursor: pointer;
+}
+/* One header row names the columns; each row keeps its labels for screen
+   readers only, instead of repeating them on every line. */
+.archive-columns {
+  padding: 0 4px 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-3);
+  font-size: var(--fs-meta);
+}
+.archive-columns > span:nth-child(n + 2) {
+  text-align: right;
+}
+.archive-number small,
+.archive-cost small {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .archive-day summary::-webkit-details-marker {
   display: none;
@@ -109,7 +126,6 @@
 }
 .archive-date time {
   font-size: 13px;
-  font-weight: 550;
 }
 .archive-day small {
   font-size: 11px;
@@ -121,7 +137,7 @@
 }
 .archive-day strong {
   font-size: 13px;
-  font-weight: 550;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
@@ -144,13 +160,13 @@
 .archive-composition {
   min-width: 0;
   padding: 13px 15px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--r-md);
+  background: var(--inset);
 }
-.archive-composition h4 {
+.archive-composition h3 {
   margin: 0 0 12px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .archive-composition dl {
   margin: 0;
@@ -188,13 +204,18 @@
   color: var(--ink-3);
   font-size: 12px;
 }
+.archive-footer > span:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
 .archive-feedback {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
   padding: 12px 0;
-  color: #b54448;
+  color: var(--red);
   font-size: 12px;
 }
 .archive-feedback p {
@@ -221,6 +242,18 @@
   }
   .archive-button {
     min-height: 44px;
+  }
+  /* Rows stack on phones, so each keeps its own labels instead of a header. */
+  .archive-columns {
+    display: none;
+  }
+  .archive-number small,
+  .archive-cost small {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
   }
   .archive-day summary {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 16px;

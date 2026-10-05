@@ -4,18 +4,20 @@ async function expectStaticComposition(
   page: Page,
   card: Locator,
   touch: boolean,
+  chart: RegExp,
+  figure?: Locator,
 ) {
   await expect(
     card.getByRole("heading", { name: "用量组成", exact: true }),
   ).toBeVisible();
-  const ring = card.getByRole("img", { name: /用量组成环形图/ });
-  await expect(ring).toBeVisible();
+  const graphic = card.getByRole("img", { name: chart });
+  await expect(graphic).toBeVisible();
   const legend = card.locator(".composition-legend > div");
   await expect(legend).toHaveCount(5);
   const before = await legend.allTextContents();
   for (const target of [
-    ring,
-    card.locator(".composition-hero strong"),
+    graphic,
+    ...(figure ? [figure] : []),
     ...(await card
       .locator(
         ".composition-legend strong, .composition-legend > div > span:last-child",
@@ -39,14 +41,15 @@ for (const touch of [false, true]) {
       isMobile: touch,
     });
 
-    test("composition stays static in overview and model details while model cache details remain available", async ({
+    test("composition stays static in the overview spectrum and model details while model cache details remain available", async ({
       page,
     }) => {
       await page.goto("/demo.html#overview");
       await expectStaticComposition(
         page,
-        page.locator(".composition-panel:not(.small)"),
+        page.getByRole("region", { name: "用量组成" }),
         touch,
+        /用量组成色谱/,
       );
 
       const model = page.locator(".model-table tbody tr").first();
@@ -63,10 +66,13 @@ for (const touch of [false, true]) {
       else await model.locator(".model-open").click();
       const dialog = page.locator(".model-dialog");
       await expect(dialog).toBeVisible();
+      const card = dialog.locator(".composition-panel.small");
       await expectStaticComposition(
         page,
-        dialog.locator(".composition-panel.small"),
+        card,
         touch,
+        /用量组成环形图/,
+        card.locator(".composition-hero strong"),
       );
     });
   });

@@ -15,6 +15,11 @@ import { full } from "./lib/format";
 import { usd } from "./money";
 import "./archive-panel.css";
 
+// Fallback days come from the overview in one piece (90 in the demo); show
+// them in steps so the page does not unroll every day at once.
+const FALLBACK_FIRST = 14;
+const FALLBACK_STEP = 30;
+
 export interface ArchivePanelProps {
   accessToken: string;
   dataMode: "live" | "demo";
@@ -22,8 +27,6 @@ export interface ArchivePanelProps {
   fallbackData?: ArchiveFallbackData;
   historyAvailable?: boolean;
 }
-const formatCount = full;
-const formatCost = usd;
 function Composition({
   title,
   values,
@@ -34,13 +37,13 @@ function Composition({
   const entries = Object.entries(values).sort((a, b) => b[1] - a[1]);
   return (
     <section className="archive-composition">
-      <h4>{title}</h4>
+      <h3>{title}</h3>
       {entries.length ? (
         <dl>
           {entries.map(([name, value]) => (
             <div key={name}>
               <dt>{name}</dt>
-              <dd>{formatCount(value)}</dd>
+              <dd>{full(value)}</dd>
             </div>
           ))}
         </dl>
@@ -67,12 +70,12 @@ function ArchiveRow({ row }: { row: ArchiveDay }) {
           </small>
         </span>
         <span className="archive-number">
-          <small>用量（Token）</small>
-          <strong>{formatCount(row.tokens)}</strong>
+          <small>词元</small>
+          <strong>{full(row.tokens)}</strong>
         </span>
         <span className="archive-cost">
           <small>费用（美元）</small>
-          <strong>{formatCost(row.costUsd)}</strong>
+          <strong>{usd(row.costUsd)}</strong>
         </span>
         <ChevronDown size={16} className="archive-chevron" aria-hidden="true" />
       </summary>
@@ -115,6 +118,13 @@ export function ArchivePanel({
     dataMode === "demo" || historyAvailable === false,
   );
   const [paginationNote, setPaginationNote] = useState("");
+  const [fallbackShown, setFallbackShown] = useState(FALLBACK_FIRST);
+  // "加载更多" is disabled while it loads and removed after the last page, and
+  // either drops the keyboard focus to the page; it comes back to the button,
+  // or to the count beside it once nothing is left to load.
+  const moreFocus = useRef(false);
+  const moreButton = useRef<HTMLButtonElement>(null);
+  const footerStatus = useRef<HTMLSpanElement>(null);
   const context = useRef(0);
   const activeRequest = useRef<AbortController | null>(null);
   const lastRequest = useRef<{ cursor: string | null; previous: ArchiveDay[] }>(
@@ -192,6 +202,7 @@ export function ArchivePanel({
     setPaginationNote("");
     setLoading(false);
     setFallback(dataMode === "demo" || historyAvailable === false);
+    setFallbackShown(FALLBACK_FIRST);
     if (dataMode === "live" && historyAvailable !== false && accessToken)
       void load(null, [], revision);
     return () => {
@@ -200,9 +211,15 @@ export function ArchivePanel({
       busy.current = false;
     };
     // Requests reset only when their authentication or source changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, dataMode, historyAvailable]);
-  const visibleRows = fallback ? makeArchiveFallback(fallbackData) : rows;
+  const fallbackRows = fallback ? makeArchiveFallback(fallbackData) : [];
+  const visibleRows = fallback ? fallbackRows.slice(0, fallbackShown) : rows;
+  useEffect(() => {
+    if (!moreFocus.current || loading) return;
+    moreFocus.current = false;
+    const lost = !document.activeElement || document.activeElement === document.body;
+    if (lost) (moreButton.current ?? footerStatus.current)?.focus();
+  }, [loading, visibleRows.length]);
   const basis =
     metadata?.dayBasis === "device-local"
       ? "按各设备本地日期归档"
@@ -307,24 +324,55 @@ export function ArchivePanel({
         (dataMode === "demo" || accessToken) && (
           <p className="archive-empty">当前没有可显示的每日记录。</p>
         )}
+      {visibleRows.length > 0 && (
+        <div className="archive-columns" aria-hidden="true">
+          <span>日期</span>
+          <span>词元</span>
+          <span>费用（美元）</span>
+        </div>
+      )}
       <div className="archive-days" aria-busy={loading}>
         {visibleRows.map((row) => (
           <ArchiveRow key={row.day} row={row} />
         ))}
       </div>
       <footer className="archive-footer">
-        <span aria-live="polite" className={loading ? "beautiful-loading-text" : undefined}>
+        <span
+          aria-live="polite"
+          className={loading ? "beautiful-loading-text" : undefined}
+          ref={footerStatus}
+          tabIndex={-1}
+        >
           {loading
             ? visibleRows.length
               ? "正在加载更多归档…"
               : "正在读取每日归档…"
-            : `已显示 ${visibleRows.length} 天`}
+            : fallback && visibleRows.length < fallbackRows.length
+              ? `已显示 ${visibleRows.length} / ${fallbackRows.length} 天`
+              : `已显示 ${visibleRows.length} 天`}
         </span>
         {!fallback && cursor && (
           <button
+            ref={moreButton}
             className="archive-button"
             disabled={loading}
-            onClick={() => void load(cursor, rows)}
+            onClick={() => {
+              moreFocus.current = true;
+              void load(cursor, rows);
+            }}
+          >
+            加载更多
+            <ChevronDown size={15} aria-hidden="true" />
+          </button>
+        )}
+        {fallback && visibleRows.length < fallbackRows.length && (
+          <button
+            ref={moreButton}
+            className="archive-button"
+            onClick={() => {
+              moreFocus.current = true;
+              setFallbackShown((shown) => shown + FALLBACK_STEP);
+            }}
           >
             加载更多
             <ChevronDown size={15} aria-hidden="true" />

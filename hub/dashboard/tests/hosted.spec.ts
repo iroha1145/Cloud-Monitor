@@ -162,8 +162,9 @@ test("real daily cache reaches range and day details independently of the select
   const slider = trend.getByRole("slider");
   await slider.focus();
   await slider.press("End");
+  // The day's cache rate moves into the metric header; the popup keeps the parts.
   await expect(page.locator(".insight-trend-tooltip")).toContainText("986,000");
-  await expect(page.locator(".insight-trend-tooltip")).toContainText("53.4%");
+  await expect(metric.locator("strong")).toHaveText("53.4%");
   await slider.press("Escape");
   await page.getByRole("tablist", { name: "统计周期" }).getByRole("tab").nth(1).click();
   await expect(metric.locator("strong")).toHaveText("53.4%");
@@ -261,7 +262,7 @@ test("invalid restored keys return to the gate without showing demo data", async
   await page.addInitScript(() => { sessionStorage.setItem("cm_access_token", "invalid-fixture-key"); localStorage.setItem("cm_access_token", "stale-fixture-key"); });
   await page.goto("/");
   await expect(page.getByRole("alert")).toContainText("访问密钥不正确");
-  await expect(page.getByRole("heading", { name: "用量，一目了然。" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "总览", level: 1 })).toHaveCount(0);
   expect(await page.evaluate(() => [localStorage.getItem("cm_access_token"),sessionStorage.getItem("cm_access_token")])).toEqual([null,null]);
 });
 
@@ -313,8 +314,10 @@ test("320px hosted interface supports bottom navigation, theme and accessible au
   await page.reload();
   await expect(page.getByText("当前展示真实数据")).toBeAttached();
   await expect(page.locator("html")).toHaveClass(/dark/);
-  // Check settled colors after the requested heading entrance animation.
-  await expect.poll(() => page.locator(".heading-copy > p").evaluate(element => getComputedStyle(element).opacity)).toBe("1");
+  // Check settled colors once every entrance (heading, activity cells) has
+  // finished; looping indicators such as the live status dot never finish.
+  await expect.poll(() => page.evaluate(() => document.getAnimations().filter(animation =>
+    animation.playState === "running" && animation.effect?.getTiming().iterations !== Infinity).length)).toBe(0);
   await injectAxe(page);
   violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: "tag", values: ["wcag2a","wcag2aa","wcag21aa"] } })).violations);
   expect(violations).toEqual([]);

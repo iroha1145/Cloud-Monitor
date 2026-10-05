@@ -8,7 +8,7 @@ async function openDashboard(page: Page) {
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "用量，一目了然。" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "总览", level: 1 })).toBeVisible();
   return errors;
 }
 
@@ -37,23 +37,26 @@ test("theme changes queued before the next render preserve every activation", as
   expect(errors).toEqual([]);
 });
 
-for (const fallback of ["reduced motion", "missing view transitions"] as const) {
-  test(`theme switching works with ${fallback}`, async ({ page }) => {
-    if (fallback === "reduced motion") {
-      await page.emulateMedia({ reducedMotion: "reduce" });
-      await page.addInitScript(() => {
-        document.startViewTransition = () => { throw new Error("Reduced motion must not start a view transition"); };
-      });
-    } else {
-      await page.addInitScript(() => {
-        Object.defineProperty(document, "startViewTransition", { value: undefined });
-      });
-    }
+// A document view transition blocks pointer input while its snapshot animates,
+// so the toggle swaps only the button's icons (App.tsx). Guard against a
+// transition coming back, with and without reduced motion.
+for (const reducedMotion of ["no-preference", "reduce"] as const) {
+  test(`theme switching never starts a document view transition (${reducedMotion})`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion });
+    await page.addInitScript(() => {
+      (window as unknown as { viewTransitions: number }).viewTransitions = 0;
+      document.startViewTransition = ((update?: () => void) => {
+        (window as unknown as { viewTransitions: number }).viewTransitions += 1;
+        update?.();
+        return undefined as unknown as ViewTransition;
+      }) as typeof document.startViewTransition;
+    });
     const errors = await openDashboard(page);
     await page.getByRole("button", { name: "切换深色模式" }).click();
     await expectTheme(page, "dark");
     await page.getByRole("button", { name: "切换浅色模式" }).click();
     await expectTheme(page, "light");
+    expect(await page.evaluate(() => (window as unknown as { viewTransitions: number }).viewTransitions)).toBe(0);
     expect(errors).toEqual([]);
   });
 }

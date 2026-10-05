@@ -51,8 +51,7 @@ fi
 # 4) 运行期数据目录
 mkdir -p data
 
-# 5) 新版用量面板：构建到 hub/frontend/app/，后端优先提供该目录
-#    未构建时会回退到旧静态页。npm ci 可重复执行。
+# 5) 用量面板：构建到 hub/frontend/app/，后端托管该目录。npm ci 可重复执行。
 if [ -f hub/dashboard/package-lock.json ]; then
   (cd hub/dashboard && npm ci --no-audit --no-fund && npm run build)
 fi
