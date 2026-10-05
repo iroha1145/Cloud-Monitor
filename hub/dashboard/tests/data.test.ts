@@ -719,3 +719,22 @@ test("diagnostic text is truncated and subscription amounts may be negative", ()
   assert.equal(data.subscriptions[0].topUps?.[0].amount, -2.5);
   assert.equal(data.subscriptions[0].topUpTotal, -2.5);
 });
+
+test("without an official freshness flag, a late upload reads as delayed before offline", () => {
+  const data = normalizeOverview(
+    {
+      totals: {},
+      staleAfterMs: 600_000,
+      devices: [
+        { deviceId: "fresh", receivedAt: "2026-09-05T00:55:00Z" },
+        { deviceId: "late", receivedAt: "2026-09-05T00:40:00Z" },
+        { deviceId: "gone", receivedAt: "2026-09-04T22:30:00Z" },
+      ],
+    },
+    { now: new Date("2026-09-05T01:00:00Z") },
+  );
+  assert.deepEqual(
+    data.devices.map((device) => device.status),
+    ["online", "delayed", "offline"],
+  );
+});

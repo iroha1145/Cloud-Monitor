@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { compact, count, full, pct } from "../src/lib/format.ts";
+import { dayKeyZoned, formatZoned, isValidTimeZone } from "../src/lib/datetime.ts";
 
 test("compact rolls 10000 万 over to 1 亿 instead of showing 10000.0 万", () => {
   assert.equal(compact(99_999_449), "9999.9 万");
@@ -24,4 +25,13 @@ test("count, full and pct keep their empty-value contract", () => {
   assert.equal(full(null), "未提供");
   assert.equal(pct(0.281), "28.1%");
   assert.equal(pct(null), "未提供");
+});
+
+test("an unknown time zone yields null so callers choose their own fallback", () => {
+  const moment = new Date("2026-10-05T01:00:00Z");
+  assert.equal(formatZoned(moment, "Mars/Phobos", { hour: "2-digit" }), null);
+  assert.equal(dayKeyZoned(moment, "Asia"), null);
+  assert.equal(isValidTimeZone("Asia/Tokyo"), true);
+  assert.equal(isValidTimeZone("Mars/Phobos"), false);
+  assert.equal(dayKeyZoned(moment, "Asia/Tokyo"), "2026-10-05");
 });
