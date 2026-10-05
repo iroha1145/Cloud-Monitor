@@ -21,7 +21,6 @@ import {
   RefreshCw,
   Search,
   Settings2,
-  ShieldCheck,
   Sun,
   UserRound,
   X,
@@ -39,6 +38,7 @@ import {
   type ButtonState,
 } from "./components/motion/button/stateful";
 import { NotificationBell } from "./components/rareui/notification-bell";
+import { BrandMark } from "./BrandMark";
 import GlideMenu from "./components/primitives/GlideMenu";
 import { downloadCsv, rowsToCsv } from "./lib/csv";
 import { scrollToTop } from "./lib/scroll";
@@ -169,7 +169,9 @@ export default function App({ initialData, initialToken = "", hosted = false, is
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
     document.documentElement.dataset.theme = dark ? "dark" : "light";
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#191b20" : "#fafafb");
+    // The browser chrome takes the page colour of the theme just applied.
+    const page = getComputedStyle(document.documentElement).getPropertyValue("--page").trim();
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", page);
   }, [dark]);
   useEffect(() => {
     const preference = matchMedia("(prefers-color-scheme: dark)");
@@ -372,10 +374,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
   const nav = (
     <>
       <a className="app-brand" href="#overview" aria-label="Cloud Monitor 首页">
-        <span className="brand-symbol">
-          <Cloud size={23} strokeWidth={2} />
-          <span />
-        </span>
+        <BrandMark />
         <span>Cloud Monitor</span>
       </a>
       {SHOWCASE_UI && (
@@ -420,40 +419,26 @@ export default function App({ initialData, initialToken = "", hosted = false, is
         ))}
       </GlideMenu>
       <div className="sidebar-bottom">
-        <div className="workspace-note">
-          <div className="mini-cloud">
-            <Cloud size={19} />
-          </div>
-          <strong>用量尽在眼前</strong>
-          <p>
-            连接你的设备，
-            <br />
-            让每一次使用都有记录。
-          </p>
-          <button onClick={openSettings}>
-            {data.mode === "demo" ? "连接我的数据" : "管理数据连接"}
-            <ArrowRight size={14} />
-          </button>
-          <div className="note-orbit" aria-hidden="true" />
+        <div className="sidebar-connection">
+          <span className="sidebar-connection-state">
+            <i className={`status-dot ${data.mode === "demo" ? "muted" : ""}`} />
+            {hosted ? "已连接云端服务" : isolatedDemo ? "演示工作区" : data.mode === "demo" ? "示例数据 · 本地预览" : "真实数据 · 本地预览"}
+          </span>
+          {!hosted && !isolatedDemo && (
+            <button className="sidebar-connect" onClick={openSettings}>
+              {data.mode === "demo" ? "连接我的数据" : "管理数据连接"}
+              <ArrowRight size={14} />
+            </button>
+          )}
         </div>
         {!hosted && <button className="sidebar-setting" onClick={openDesign}>
-          <Palette size={17} />
-          设计说明<span className="new-tag">新</span>
+          <Palette size={16} />
+          设计说明
         </button>}
         <button className="sidebar-setting" onClick={openSettings}>
-          <Settings2 size={17} />
+          <Settings2 size={16} />
           工作区设置
         </button>
-        <div className="sidebar-profile">
-          <span className="profile-avatar">
-            <UserRound size={16} />
-          </span>
-          <span>
-            <strong>个人工作空间</strong>
-            <small>{hosted ? "已连接云端服务" : isolatedDemo ? "演示工作区" : "本地预览"}</small>
-          </span>
-          <ShieldCheck size={17} />
-        </div>
       </div>
     </>
   );
@@ -549,39 +534,24 @@ export default function App({ initialData, initialToken = "", hosted = false, is
             </div>
           </header>
           <main id="main-content" className="main-content">
-            <section
-              className={`page-heading ${page === "overview" ? "overview-heading" : ""}`}
-            >
+            <section className="page-heading">
               <div className="heading-copy" key={page}>
-                <div className="heading-kicker">
-                  <span className="heading-line" />
-                  {page === "overview"
-                    ? "你的用量工作台"
-                    : current.name.toUpperCase()}
-                </div>
-                <h1>
-                  {page === "overview" ? "用量，一目了然。" : current.name}
-                </h1>
-                <p>
-                  {current.description}
-                  <span className="heading-mode">
-                    {data.mode === "demo"
-                      ? "当前展示示例数据"
-                      : "当前展示真实数据"}
-                  </span>
+                <p className="heading-kicker">
+                  {date}
+                  <span aria-hidden="true">·</span>
+                  {data.timeZone}
+                </p>
+                <h1>{current.name}</h1>
+                <p className="heading-mode">
+                  {data.mode === "demo"
+                    ? "当前展示示例数据"
+                    : "当前展示真实数据"}
                 </p>
               </div>
-              {page === "overview" && (
-                <div className="heading-art" aria-hidden="true">
-                  <div className="gradient-ribbon ribbon-one" />
-                  <div className="gradient-ribbon ribbon-two" />
-                  <div className="art-grid" />
-                </div>
-              )}
               <div className="heading-actions">
                 <span className="sync-status">
                   <i className={`status-dot ${freshData ? "is-fresh" : ""}`} key={data.generatedAt} />
-                  {data.mode === "demo" ? "示例数据" : `更新于 ${time}`}
+                  更新于 {time}
                 </span>
                 <StatefulButton
                   variant="outline"
@@ -701,18 +671,15 @@ export default function App({ initialData, initialToken = "", hosted = false, is
             </AnimatePresence>
             <footer className="page-footer">
               <span>
-                <Cloud size={13} />
-                Cloud Monitor<span className="footer-separator">/</span>
-                每一份用量，都有迹可循。
-              </span>
-              <span>
+                Cloud Monitor
+                <span className="footer-separator" aria-hidden="true">·</span>
                 {data.mode === "demo"
                   ? "示例数据，不代表实际账单"
                   : `每 5 分钟自动刷新 · ${data.timeZone}`}
-                {!hosted && <button onClick={openDesign}>
-                  关于这版设计 <ArrowUpRight size={12} />
-                </button>}
               </span>
+              {!hosted && <button onClick={openDesign}>
+                关于这版设计 <ArrowUpRight size={12} />
+              </button>}
             </footer>
           </main>
         </div>

@@ -396,7 +396,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
       <div className="panel-head insight-trend-heading">
         <div>
           <h2 id={`${uid}-title`}>用量趋势</h2>
-          <p>沿着曲线，查看每一天的花费与缓存</p>
+          <p>每日词元、费用与缓存</p>
         </div>
         <Tabs value={days} onValueChange={setDays}>
           <TabsList className="small-tabs" aria-label="趋势日期范围">

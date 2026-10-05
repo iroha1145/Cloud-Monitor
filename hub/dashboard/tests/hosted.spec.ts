@@ -261,7 +261,7 @@ test("invalid restored keys return to the gate without showing demo data", async
   await page.addInitScript(() => { sessionStorage.setItem("cm_access_token", "invalid-fixture-key"); localStorage.setItem("cm_access_token", "stale-fixture-key"); });
   await page.goto("/");
   await expect(page.getByRole("alert")).toContainText("访问密钥不正确");
-  await expect(page.getByRole("heading", { name: "用量，一目了然。" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "总览", level: 1 })).toHaveCount(0);
   expect(await page.evaluate(() => [localStorage.getItem("cm_access_token"),sessionStorage.getItem("cm_access_token")])).toEqual([null,null]);
 });
 
@@ -314,7 +314,7 @@ test("320px hosted interface supports bottom navigation, theme and accessible au
   await expect(page.getByText("当前展示真实数据")).toBeAttached();
   await expect(page.locator("html")).toHaveClass(/dark/);
   // Check settled colors after the requested heading entrance animation.
-  await expect.poll(() => page.locator(".heading-copy > p").evaluate(element => getComputedStyle(element).opacity)).toBe("1");
+  await expect.poll(() => page.locator(".heading-copy > .heading-mode").evaluate(element => getComputedStyle(element).opacity)).toBe("1");
   await injectAxe(page);
   violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: "tag", values: ["wcag2a","wcag2aa","wcag21aa"] } })).violations);
   expect(violations).toEqual([]);

@@ -24,7 +24,7 @@
     line-height: 1.5;
   }
   .sv-summary-foot {
-    font-size: 10px;
+    font-size: var(--fs-meta);
     line-height: 1.6;
   }
   .sv-summary-value,

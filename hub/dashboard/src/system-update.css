@@ -63,14 +63,11 @@
 .system-update .system-update-primary {
   background: var(--primary);
   border-color: var(--primary);
-  color: #fff;
+  color: var(--surface);
 }
 .system-update .system-update-primary:hover:not(:disabled) {
   filter: brightness(0.94);
   background: var(--primary);
-}
-.dark .system-update .system-update-primary {
-  color: #132a42;
 }
 .system-update-versions {
   margin: 20px 0;
@@ -115,7 +112,7 @@
   color: var(--ink-2);
   border-radius: 4px;
   padding: 3px 6px;
-  font-size: 10px;
+  font-size: var(--fs-meta);
 }
 .system-update-tag.is-new {
   color: var(--nav-ink);
@@ -134,14 +131,11 @@
   overflow-wrap: anywhere;
 }
 .system-update-error {
-  color: #b54448;
+  color: var(--red);
   font-size: 12px;
   line-height: 1.7;
   margin: 14px 0;
   overflow-wrap: anywhere;
-}
-.dark .system-update-error {
-  color: #f3969b;
 }
 .system-update-job {
   padding: 14px 16px;
@@ -172,10 +166,7 @@
   margin-top: 12px;
 }
 .system-update-job-error > strong {
-  color: #b54448;
-}
-.dark .system-update-job-error > strong {
-  color: #f3969b;
+  color: var(--red);
 }
 .system-update-job-ok > strong {
   color: var(--green);

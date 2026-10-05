@@ -370,15 +370,14 @@ export default function AppDialogs({
             <span className="dialog-icon">
               <Palette size={23} />
             </span>
-            <DialogTitle>清晰、有序，轻盈一些。</DialogTitle>
+            <DialogTitle>数字在前，界面退后。</DialogTitle>
             <DialogDescription>
-              为每日查看用量而设计的新工作台。
+              给每天看一眼用量的人：今天用了多少、花了多少、缓存省了多少。
             </DialogDescription>
           </DialogHeader>
           <div className="design-swatches">
             {[
-              ["正文", "#20242b"],
-              ...COMPOSITION.slice(0, 4).map((part) => [part.label, part.color]),
+              ...COMPOSITION.map((part) => [part.label, part.color]),
             ].map(([label, c]) => (
               <MetricTooltip
                 key={c}
@@ -390,8 +389,7 @@ export default function AppDialogs({
             ))}
           </div>
           <p className="design-intro">
-            从 Stripe
-            的信息层次和留白出发，让用量、缓存和费用直接可见。色彩负责强调，动效负责交代变化。
+            五种颜色只用来表示用量组成：缓存读取、非缓存输入、输出、缓存写入和未分类，从总览的色谱到模型表的细条都是同一套。数字用 Geist 的等宽数位，列与列对得齐；动效只在你操作或数据变化时出现。
           </p>
           <div className="design-sources">
             {[

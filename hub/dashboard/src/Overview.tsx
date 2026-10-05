@@ -1,18 +1,7 @@
 import { useMemo, useState } from "react";
 import { AppErrorBoundary } from "./chunkLoad";
 import { InsightTrend } from "./InsightTrend";
-import {
-  ArrowDown,
-  ArrowUpRight,
-  CircleHelp,
-  Cpu,
-  Database,
-  Layers3,
-  Monitor,
-  Search,
-  Wallet,
-  Zap,
-} from "lucide-react";
+import { ArrowDown, ArrowUpRight, CircleHelp, Search } from "lucide-react";
 import { BrandIcon } from "./BrandIcon";
 import GlideMenu from "./components/primitives/GlideMenu";
 import { NumberTicker } from "./components/motion/number-ticker";
@@ -38,7 +27,18 @@ import { usd } from "./money";
 import { compact, count, pct } from "./lib/format";
 import { useSlidingIndicator } from "./lib/hooks/use-sliding-indicator";
 
-const composition = COMPOSITION;
+
+/** A part the source did not report is unknown, never zero. */
+function partUnknown(
+  parts: PeriodUsage["components"],
+  key: (typeof COMPOSITION)[number]["key"],
+) {
+  return (
+    (!parts.known && key !== "unclassified") ||
+    (key === "cacheRead" && !parts.cacheReadKnown) ||
+    (key === "cacheWrite" && !parts.cacheWriteKnown)
+  );
+}
 
 function usageDetails(
   item: Pick<PeriodUsage, "totalTokens" | "costUsd" | "components">,
@@ -54,15 +54,10 @@ function usageDetails(
       label: parts.partial ? "已识别缓存占比" : "缓存占比",
       value: pct(parts.cacheRate),
     },
-    ...composition.map((part) => ({
+    ...COMPOSITION.map((part) => ({
       label: part.label,
       color: part.color,
-      value:
-        (!parts.known && part.key !== "unclassified") ||
-        (part.key === "cacheRead" && !parts.cacheReadKnown) ||
-        (part.key === "cacheWrite" && !parts.cacheWriteKnown)
-          ? "来源未提供"
-          : count(parts[part.key]),
+      value: partUnknown(parts, part.key) ? "来源未提供" : count(parts[part.key]),
     })),
   ];
 }
@@ -75,154 +70,191 @@ function usageNote(item: Pick<PeriodUsage, "components">) {
       : undefined;
 }
 
-function Sparkline({
-  values,
-  color = "#608ac5",
-}: {
-  values: number[];
-  color?: string;
-}) {
-  const max = Math.max(...values, 1),
-    min = Math.min(...values, 0);
-  const pts = values
-    .map(
-      (v, i) =>
-        `${(i / Math.max(1, values.length - 1)) * 105},${33 - ((v - min) / Math.max(1, max - min)) * 28}`,
-    )
-    .join(" ");
+function compositionNote(parts: PeriodUsage["components"]) {
+  return !parts.complete && parts.known
+    ? "组成与总量不一致，暂不计算缓存占比。"
+    : parts.partial
+      ? "保留已知缓存，未识别用量单独列出。"
+      : "所有已上报用量均已完成分类。";
+}
+
+function CompositionLegend({ parts }: { parts: PeriodUsage["components"] }) {
+  const sum = COMPOSITION.reduce((total, part) => total + parts[part.key], 0) || 1;
   return (
-    <svg className="stat-spark" viewBox="0 0 106 36" aria-hidden="true">
-      <polyline
-        points={pts}
-        fill="none"
-        stroke={color}
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <div className="composition-legend">
+      {COMPOSITION.map((part) => {
+        const unknown = partUnknown(parts, part.key);
+        return (
+          <div key={part.key}>
+            <span>
+              <i className="legend-dot" style={{ background: part.color }} />
+              {part.label}
+            </span>
+            <strong>{unknown ? "未提供" : compact(parts[part.key])}</strong>
+            <span>
+              {unknown || (parts.known && !parts.complete)
+                ? "未提供"
+                : pct(parts[part.key] / sum)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The five-part spectrum: one bar, widths proportional to the reported parts. */
+function UsageSpectrum({ per }: { per: PeriodUsage }) {
+  const parts = per.components;
+  const sum = COMPOSITION.reduce((total, part) => total + parts[part.key], 0);
+  const drawable = parts.complete && sum > 0;
+  return (
+    <section className="ledger-composition" aria-labelledby="ledger-composition-title">
+      <div className="ledger-composition-head">
+        <h2 id="ledger-composition-title">用量组成</h2>
+        <p>{compositionNote(parts)}</p>
+      </div>
+      <div
+        className={`spectrum ${drawable ? "" : "is-incomplete"}`}
+        role="img"
+        aria-label={
+          drawable
+            ? `用量组成色谱：${COMPOSITION
+                .map((part) => `${part.label} ${pct(parts[part.key] / sum)}`)
+                .join("，")}`
+            : "用量组成色谱：组成记录不足，无法绘制准确比例"
+        }
+      >
+        {drawable &&
+          COMPOSITION.map((part) =>
+            parts[part.key] > 0 ? (
+              <span
+                key={part.key}
+                style={{
+                  flexGrow: parts[part.key],
+                  background: part.color,
+                }}
+              />
+            ) : null,
+          )}
+      </div>
+      <CompositionLegend parts={parts} />
+    </section>
   );
 }
 
 export function Stats({
   data,
   period,
+  showComposition = false,
 }: {
   data: DashboardData;
   period: PeriodKey;
+  showComposition?: boolean;
 }) {
   const per = data.periods[period],
     rate = per.components.cacheRate;
   const online = data.devices.filter((d) => d.status === "online").length;
   return (
-    <section className="stats-row" aria-label="用量摘要">
-      <article className="stat">
-        <div className="stat-label">
-          <Zap size={15} />
-          总用量<span className="metric-unit">词元（Tokens）</span>
-        </div>
-        <div className="stat-value">
-          <NumberTicker
-            value={per.totalTokens}
-            format={(n) => compact(n)}
-            duration={0.45}
-            stagger={0.015}
-            startOnView={false}
-          />
-        </div>
-        <div className="stat-foot">
-          <span>所有模型与客户端</span>
-          <Sparkline values={data.trend.slice(-14).map((t) => t.totalTokens)} />
-        </div>
-      </article>
-      <article className="stat">
-        <div className="stat-label">
-          <Wallet size={15} />
-          使用费用<span className="metric-unit">美元</span>
-        </div>
-        <div className="stat-value">
-          {per.costUsd === null ? (
-            "未提供"
-          ) : (
+    <section className="ledger" aria-label="用量摘要">
+      <div className="ledger-figures">
+        <article className="ledger-figure ledger-lead">
+          <span className="ledger-label">
+            总用量<small>词元（Tokens）</small>
+          </span>
+          <strong className="ledger-value">
             <NumberTicker
-              value={Math.round(per.costUsd * 100)}
-              prefix="$"
-              format={(n) =>
-                (n / 100).toLocaleString("en-US", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })
-              }
+              digitClassName="ledger-digit"
+              value={per.totalTokens}
+              format={(n) => compact(n).split(" ")[0]}
               duration={0.45}
               stagger={0.015}
               startOnView={false}
             />
-          )}
-        </div>
-        <div className="stat-foot">
-          <span>按上报价格统计</span>
-          {data.trend.slice(-14).every((t) => t.costUsd !== null) && (
-            <Sparkline
-              values={data.trend.slice(-14).map((t) => t.costUsd!)}
-              color="#32a397"
-            />
-          )}
-        </div>
-      </article>
-      <article className="stat">
-        <div className="stat-label">
-          <Database size={15} />
-          {per.components.partial ? "已识别缓存占比" : "缓存占比"}
-          <MetricTooltip
-            title="缓存占比说明"
-            rows={[
-              { label: "计算方式", value: "缓存读取量 ÷ 总用量" },
-              { label: "未知组成", value: "单独保留，不推算缓存" },
-            ]}
-          >
-            <button className="help-icon" aria-label="缓存占比说明">
-              <CircleHelp size={14} />
-            </button>
-          </MetricTooltip>
-        </div>
-        <div className="stat-value">
-          {rate === null ? (
-            "未提供"
-          ) : (
-            <NumberTicker
-              value={Math.round(rate * 1000)}
-              format={(n) => (n / 10).toFixed(1)}
-              suffix="%"
-              duration={0.45}
-              startOnView={false}
-            />
-          )}
-        </div>
-        <div className="stat-foot">
-          <span className="stat-highlight">
+            <span className="ledger-unit">{compact(per.totalTokens).split(" ")[1]}</span>
+          </strong>
+          <span className="ledger-note">
+            {count(per.totalTokens)} · 所有模型与客户端
+          </span>
+        </article>
+        <article className="ledger-figure">
+          <span className="ledger-label">
+            使用费用<small>美元</small>
+          </span>
+          <strong className="ledger-value">
+            {per.costUsd === null ? (
+              "未提供"
+            ) : (
+              <>
+                <span className="ledger-unit is-prefix">$</span>
+                <NumberTicker
+                digitClassName="ledger-digit"
+                  value={Math.round(per.costUsd * 100)}
+                  format={(n) =>
+                    (n / 100).toLocaleString("en-US", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })
+                  }
+                  duration={0.45}
+                  stagger={0.015}
+                  startOnView={false}
+                />
+              </>
+            )}
+          </strong>
+          <span className="ledger-note">按上报价格统计</span>
+        </article>
+        <article className="ledger-figure">
+          <span className="ledger-label">
+            {per.components.partial ? "已识别缓存占比" : "缓存占比"}
+            <MetricTooltip
+              title="缓存占比说明"
+              rows={[
+                { label: "计算方式", value: "缓存读取量 ÷ 总用量" },
+                { label: "未知组成", value: "单独保留，不推算缓存" },
+              ]}
+            >
+              <button className="help-icon" aria-label="缓存占比说明">
+                <CircleHelp size={14} />
+              </button>
+            </MetricTooltip>
+          </span>
+          <strong className="ledger-value">
+            {rate === null ? (
+              "未提供"
+            ) : (
+              <>
+                <NumberTicker
+                digitClassName="ledger-digit"
+                  value={Math.round(rate * 1000)}
+                  format={(n) => (n / 10).toFixed(1)}
+                  duration={0.45}
+                  startOnView={false}
+                />
+                <span className="ledger-unit">%</span>
+              </>
+            )}
+          </strong>
+          <span className="ledger-note">
             {per.components.cacheReadKnown
               ? `${compact(per.components.cacheRead)} 缓存读取`
               : "等待来源提供缓存数据"}
           </span>
-        </div>
-      </article>
-      <article className="stat">
-        <div className="stat-label">
-          <Monitor size={15} />
-          在线设备
-        </div>
-        <div className="stat-value">
-          <NumberTicker value={online} duration={0.4} startOnView={false} />
-          <span className="stat-denominator">/ {data.devices.length}</span>
-        </div>
-        <div className="stat-foot">
-          <span>
+        </article>
+        <article className="ledger-figure">
+          <span className="ledger-label">在线设备</span>
+          <strong className="ledger-value">
+            <NumberTicker value={online} duration={0.4} startOnView={false} digitClassName="ledger-digit" />
+            <span className="ledger-denominator">/ {data.devices.length}</span>
+          </strong>
+          <span className="ledger-note">
             <i className={online ? "status-dot" : "status-dot muted"} />
             {online ? "设备正在同步" : "暂无在线设备"}
           </span>
-          <span className="mini-tag">跨设备汇总</span>
-        </div>
-      </article>
+        </article>
+      </div>
+      {showComposition && <UsageSpectrum per={per} />}
     </section>
   );
 }
@@ -234,7 +266,7 @@ export function CompositionCard({
   per: PeriodUsage;
   small?: boolean;
 }) {
-  const values = composition.map((s) => ({
+  const values = COMPOSITION.map((s) => ({
     ...s,
     value: per.components[s.key],
   }));
@@ -243,13 +275,7 @@ export function CompositionCard({
   return (
     <section className={`panel composition-panel ${small ? "small" : ""}`}>
       <div className="panel-head">
-        <div>
-          <h2>用量组成</h2>
-          <p>缓存，让每次调用更轻盈</p>
-        </div>
-        <span className="soft-icon">
-          <Layers3 size={18} />
-        </span>
+        <h2>用量组成</h2>
       </div>
       <div className="composition-hero">
         <div>
@@ -300,42 +326,12 @@ export function CompositionCard({
                 />
               );
             })}
-          <path d="m59 38-14 20h10l-4 15 16-22H57z" fill="var(--primary)" />
         </svg>
       </div>
-      <div className="composition-legend">
-        {values.map((v) => (
-          <div key={v.key}>
-            <span>
-              <i className="legend-dot" style={{ background: v.color }} />
-              {v.label}
-            </span>
-            <strong>
-              {(!per.components.known && v.key !== "unclassified") ||
-              (v.key === "cacheRead" && !per.components.cacheReadKnown) ||
-              (v.key === "cacheWrite" && !per.components.cacheWriteKnown)
-                ? "未提供"
-                : compact(v.value)}
-            </strong>
-            <span>
-              {(!per.components.known && v.key !== "unclassified") ||
-              (v.key === "cacheRead" && !per.components.cacheReadKnown) ||
-              (v.key === "cacheWrite" && !per.components.cacheWriteKnown)
-                ? "未提供"
-                : per.components.known && !per.components.complete
-                  ? "未提供"
-                  : pct(v.value / sum)}
-            </span>
-          </div>
-        ))}
-      </div>
+      <CompositionLegend parts={per.components} />
       <p className="composition-note">
         <CircleHelp size={13} />
-        {!per.components.complete && per.components.known
-          ? "组成与总量不一致，暂不计算缓存占比。"
-          : per.components.partial
-            ? "保留已知缓存，未识别用量单独列出。"
-            : "所有已上报用量均已完成分类。"}
+        {compositionNote(per.components)}
       </p>
     </section>
   );
@@ -377,7 +373,7 @@ export function ModelTable({
           <h2>
             模型用量 <span className="count-badge">{per.models.length}</span>
           </h2>
-          <p>用量、缓存与费用，在同一处比较</p>
+          <p>按总用量排序，展开查看每个模型的组成</p>
         </div>
         {!full && (
           <a href="#models" className="text-link">
@@ -422,7 +418,7 @@ export function ModelTable({
         </div>
       )}
       <div className="cache-bar-legend" aria-label="用量组成颜色说明">
-        {composition.map((part) => (
+        {COMPOSITION.map((part) => (
           <span key={part.key}>
             <i style={{ background: part.color }} />
             {part.label}
@@ -511,7 +507,7 @@ export function ModelTable({
                           role="img"
                           aria-label={
                             m.components.complete
-                              ? composition
+                              ? COMPOSITION
                                   .map(
                                     (part) =>
                                       `${part.label} ${count(m.components[part.key])}`,
@@ -525,7 +521,7 @@ export function ModelTable({
                             aria-hidden="true"
                           >
                             {m.components.complete &&
-                              composition.map((part) => (
+                              COMPOSITION.map((part) => (
                                 <span
                                   key={part.key}
                                   style={{
@@ -571,10 +567,7 @@ export function ModelTable({
         </div>
       )}
       <div className="table-foot">
-        <span>
-          <i className="status-dot purple" />
-          缓存读取单独展示，不受其他来源影响
-        </span>
+        <span>缓存读取单独展示，不受其他来源影响</span>
         <span>
           {Math.min(full ? models.length : 5, models.length)} /{" "}
           {per.models.length} 个模型
@@ -590,9 +583,8 @@ function Clients({ per }: { per: PeriodUsage }) {
       <div className="panel-head">
         <div>
           <h2>客户端分布</h2>
-          <p>了解用量从哪里来</p>
+          <p>{per.clients.length} 个客户端 · 占全部用量</p>
         </div>
-        <Cpu size={19} className="muted" />
       </div>
       <div className="client-rows">
         {per.clients.map((c) => (
@@ -631,7 +623,7 @@ function Clients({ per }: { per: PeriodUsage }) {
                   aria-hidden="true"
                 >
                   {c.components.complete &&
-                    composition.map((s) => (
+                    COMPOSITION.map((s) => (
                       <span
                         key={s.key}
                         style={{
@@ -650,15 +642,7 @@ function Clients({ per }: { per: PeriodUsage }) {
           </div>
         ))}
       </div>
-      <div className="client-note">
-        <span className="soft-icon">
-          <Database size={17} />
-        </span>
-        <p>
-          <strong>清晰保留每一份用量</strong>
-          <span>同一模型跨客户端汇总，未知组成独立显示。</span>
-        </p>
-      </div>
+      <p className="client-note">同一模型跨客户端汇总，未知组成单独显示。</p>
     </section>
   );
 }
@@ -675,45 +659,40 @@ export function Overview({
   const per = data.periods[period];
   return (
     <>
-      <Stats data={data} period={period} />
-      <div className="overview-layout">
-        <div className="overview-primary">
+        <Stats data={data} period={period} showComposition />
+        <div className="overview-layout">
           <AppErrorBoundary title="用量趋势已更新，请刷新。">
             <InsightTrend data={data} />
           </AppErrorBoundary>
-          <ModelTable per={per} onSelect={onModel} />
-        </div>
-        <div className="overview-aside">
-          <CompositionCard per={per} />
           <Clients per={per} />
         </div>
-      </div>
-      <section className="provider-strip" aria-label="提供商状态">
-        <span className="provider-caption">服务状态</span>
-        {data.providers.map((p) => (
-          <div key={p.id} className="provider-status">
-            <BrandIcon name={p.name} size={22} />
-            <strong>{p.name}</strong>
-            <span className={`provider-state ${p.status}`}>
-              <i
-                className={`status-dot ${p.status === "operational" ? "" : p.status === "unknown" ? "muted" : "amber"}`}
-              />
-              {p.stale
-                ? "上次状态"
-                : p.status === "operational"
-                  ? "运行正常"
-                  : p.status === "unknown"
-                    ? "暂无状态"
-                    : p.status === "maintenance"
-                      ? "维护中"
-                      : "服务异常"}
-            </span>
-          </div>
-        ))}
-        <span className="provider-demo-note">
-          {data.mode === "demo" ? "示例状态" : "官方状态页"}
-        </span>
-      </section>
+        <ModelTable per={per} onSelect={onModel} />
+        {data.providers.length > 0 && <section className="provider-strip" aria-label="提供商状态">
+          <span className="provider-caption">服务状态</span>
+          {data.providers.map((p) => (
+            <div key={p.id} className="provider-status">
+              <BrandIcon name={p.name} size={22} />
+              <strong>{p.name}</strong>
+              <span className={`provider-state ${p.status}`}>
+                <i
+                  className={`status-dot ${p.status === "operational" ? "" : p.status === "unknown" ? "muted" : "amber"}`}
+                />
+                {p.stale
+                  ? "上次状态"
+                  : p.status === "operational"
+                    ? "运行正常"
+                    : p.status === "unknown"
+                      ? "暂无状态"
+                      : p.status === "maintenance"
+                        ? "维护中"
+                        : "服务异常"}
+              </span>
+            </div>
+          ))}
+          <span className="provider-demo-note">
+            {data.mode === "demo" ? "示例状态" : "官方状态页"}
+          </span>
+        </section>}
     </>
   );
 }
@@ -732,7 +711,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
       <div className="panel-head">
         <div>
           <h2>客户端 × 模型</h2>
-          <p>顺着使用来源，进一步了解每个模型</p>
+          <p>每个客户端用了哪些模型</p>
         </div>
         <div className="metric-switch" ref={metricSwitch}>
           <span data-sliding-indicator aria-hidden="true" />

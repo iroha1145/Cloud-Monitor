@@ -1,0 +1,155 @@
+/* Design tokens. The Beautiful UI foundation is imported first and keeps its
+   own token names; every value the dashboard renders with is set here, once
+   per theme, so a colour or size change never needs a hunt through the
+   component sheets. Text pairs are checked at WCAG AA (4.5:1) on --page and
+   --surface; data colours reach 3:1 on both themes' surfaces. */
+:root {
+  color-scheme: light;
+
+  /* type scale: meta 11, label 12, body 13, emphasis 14, section 16,
+     page 26, ledger figures 30 and the lead figure up to 60 */
+  --fs-meta: 11px;
+  --fs-label: 12px;
+  --fs-body: 13px;
+  --fs-strong: 14px;
+  --fs-section: 16px;
+  --fs-page: 26px;
+  --fs-figure: 30px;
+  --fs-lead: clamp(44px, 3.6vw + 8px, 60px);
+
+  /* --radius-* belong to Tailwind's @theme (styles.css); these are the
+     dashboard's own corner steps */
+  --r-xs: 5px;
+  --r-sm: 7px;
+  --r-md: 10px;
+  --r-lg: 14px;
+
+  /* surfaces: one cool neutral family (hue ≈ 255) */
+  --page: #f4f5f7;
+  --canvas: #eef0f3;
+  --surface: #ffffff;
+  --inset: #f8f9fa;
+  --hover: #f0f2f5;
+  --hover-2: #e7eaef;
+  --sidebar-bg: #f4f5f7;
+  --field: #f6f7f9;
+
+  --ink: #14171c;
+  --ink-2: #545b69;
+  --ink-3: #666e7c;
+  --muted-foreground: var(--ink-3);
+
+  --line: #e5e7eb;
+  --line-strong: #d4d8df;
+  --line-soft: #eef0f3;
+  --border: var(--line);
+  --grid-line: #eceef1;
+  --chart-grid: #eceef1;
+
+  --primary: #1f5fae;
+  --accent: var(--primary);
+  --accent-ink: #1b5499;
+  --accent-tint: #ebf2fb;
+  --nav-active: var(--surface);
+  --nav-ink: var(--ink);
+
+  --green: #127152;
+  --green-tint: #e6f5ee;
+  --orange: #a3570b;
+  --orange-tint: #fbf0e3;
+  --red: #c23a46;
+  --red-tint: #fbebec;
+  --danger: var(--red);
+  --warning: var(--orange);
+
+
+  --stripe: oklch(0.405 0 0 / 0.075);
+  --stripe-bg: #f3f4f6;
+
+  /* heat ramp for the activity calendar and the client × model matrix:
+     the cache-read hue deepening, each step with its own legible ink */
+  --heat-1: #e3f3ec;
+  --heat-1-ink: #1d5642;
+  --heat-2: #b9e2d1;
+  --heat-2-ink: #154736;
+  --heat-3: #5dbb95;
+  --heat-3-ink: #0b2c20;
+  --heat-4: #157553;
+  --heat-4-ink: #ffffff;
+
+  --tooltip-bg: #1b1f26;
+  --tooltip-fg: #f3f4f6;
+  --tooltip-muted: #b3bac6;
+  --tooltip-border: #2c323c;
+
+  --shadow-panel: 0 1px 2px rgb(20 27 40 / 0.04), 0 8px 24px -16px rgb(20 27 40 / 0.18);
+  --shadow-float: 0 2px 6px rgb(20 27 40 / 0.06), 0 18px 40px -18px rgb(20 27 40 / 0.28);
+
+  /* transitions.dev motion tokens; recipes live in motion.css. */
+  --duration-stagger: 40ms;
+  --duration-quick: 150ms;
+  --duration-fast: 250ms;
+  --duration-medium: 350ms;
+  --duration-slow: 400ms;
+  --duration-very-slow: 500ms;
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --distance-base: 8px;
+  --scale-large: 0.96;
+  --blur-small: 2px;
+}
+
+.dark {
+  color-scheme: dark;
+
+  /* three steps of depth: page < inset < surface < hover */
+  --page: #0d0f13;
+  --canvas: #111419;
+  --surface: #161920;
+  --inset: #121519;
+  --hover: #1e222a;
+  --hover-2: #262b35;
+  --sidebar-bg: #0d0f13;
+  --field: #12151a;
+
+  --ink: #eceef2;
+  --ink-2: #a8b0bd;
+  --ink-3: #8f98a7;
+
+  --line: #242934;
+  --line-strong: #323946;
+  --line-soft: #1c2028;
+  --grid-line: #20242d;
+  --chart-grid: #232833;
+
+  --primary: #8bb9f2;
+  --accent-ink: #a9cbf6;
+  --accent-tint: #172437;
+  --nav-active: #1b1f27;
+
+  --green: #4fcf9f;
+  --green-tint: #11291f;
+  --orange: #f0a85b;
+  --orange-tint: #2b1d0e;
+  --red: #f0848c;
+  --red-tint: #2c1316;
+
+
+  --stripe: oklch(0.85 0 0 / 0.07);
+  --stripe-bg: #14171d;
+
+  --heat-1: #15291f;
+  --heat-1-ink: #9fd6bd;
+  --heat-2: #1d4433;
+  --heat-2-ink: #d3efe2;
+  --heat-3: #2f8a65;
+  --heat-3-ink: #f2fbf6;
+  --heat-4: #6fd1a6;
+  --heat-4-ink: #0b2419;
+
+  --tooltip-bg: #22262f;
+  --tooltip-border: #333a46;
+
+  --shadow-panel: 0 0 0 1px rgb(255 255 255 / 0.01);
+  --shadow-float: 0 18px 44px -12px rgb(0 0 0 / 0.65);
+}

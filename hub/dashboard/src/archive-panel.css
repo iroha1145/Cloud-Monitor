@@ -73,10 +73,7 @@
   margin-top: 5px;
 }
 .archive-panel .archive-warning {
-  color: #986222;
-}
-.dark .archive-panel .archive-warning {
-  color: #e3b373;
+  color: var(--orange);
 }
 .archive-day {
   border-bottom: 1px solid var(--line);
@@ -194,7 +191,7 @@
   justify-content: space-between;
   gap: 14px;
   padding: 12px 0;
-  color: #b54448;
+  color: var(--red);
   font-size: 12px;
 }
 .archive-feedback p {

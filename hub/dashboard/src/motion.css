@@ -229,10 +229,10 @@ details[open]::details-content {
 }
 @keyframes t-ping {
   from {
-    box-shadow: 0 0 0 0 color-mix(in srgb, #34a781 55%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--green) 55%, transparent);
   }
   to {
-    box-shadow: 0 0 0 7px color-mix(in srgb, #34a781 0%, transparent);
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--green) 0%, transparent);
   }
 }
 
