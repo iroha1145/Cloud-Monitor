@@ -407,7 +407,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
             aria-current={page === p.id ? "page" : undefined}
             className={`nav-item ${page === p.id ? "active" : ""}`}
           >
-            <p.icon size={18} />
+            <p.icon size={19} />
             <span>{p.name}</span>
             {p.id === "devices" && (
               <span className="nav-count">{data.devices.length}</span>

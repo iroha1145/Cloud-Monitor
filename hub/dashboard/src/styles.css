@@ -151,24 +151,15 @@ kbd {
   align-items: center;
   gap: 11px;
   padding: 6px 8px;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 650;
   letter-spacing: -0.02em;
   white-space: nowrap;
 }
 .brand-mark {
   flex-shrink: 0;
-  border-radius: 8px;
-  box-shadow: 0 1px 2px rgb(20 27 40 / 0.14), 0 6px 14px -8px rgb(20 27 40 / 0.45);
-}
-.brand-mark-tile {
-  fill: #14171c;
-}
-.dark .brand-mark {
-  box-shadow: inset 0 0 0 1px var(--line-strong);
-}
-.dark .brand-mark-tile {
-  fill: #1e222a;
+  border-radius: 10px;
+  box-shadow: 0 3px 7px #176b7a25;
 }
 .workspace-picker {
   display: flex;
@@ -207,28 +198,28 @@ kbd {
   font-size: var(--fs-meta);
 }
 .nav-label {
-  margin: 28px 10px 8px;
+  margin: 28px 12px 10px;
   color: var(--ink-3);
-  font-size: var(--fs-meta);
+  font-size: var(--fs-label);
   font-weight: 500;
   letter-spacing: 0.06em;
 }
 .nav-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 .nav-item {
   position: relative;
   isolation: isolate;
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 36px;
-  padding: 0 10px;
+  gap: 12px;
+  min-height: 40px;
+  padding: 0 12px;
   border-radius: var(--r-sm);
   color: var(--ink-2);
-  font-size: 13.5px;
+  font-size: 14.5px;
   font-weight: 500;
   line-height: 1.2;
   transition: color var(--duration-quick) var(--ease-smooth-out);

@@ -1,41 +1,35 @@
 import { useId } from "react";
-import { COMPOSITION } from "./palette";
 
-// Fixed proportions: the mark quotes the usage spectrum, it does not chart data.
-const SEGMENTS = [7.5, 3.5, 2.5, 1.5, 1];
-
-export function BrandMark({ size = 28 }: { size?: number }) {
-  const clip = useId();
-  let x = 6;
+/** The original Cloud Monitor logo: a cloud on a teal tile with a mint dot,
+ * the same drawing as public/favicon.svg. */
+export function BrandMark({ size = 33 }: { size?: number }) {
+  const gradient = useId();
   return (
     <svg
       className="brand-mark"
       width={size}
       height={size}
-      viewBox="0 0 28 28"
+      viewBox="0 0 33 33"
       aria-hidden="true"
     >
-      <rect className="brand-mark-tile" width="28" height="28" rx="8" />
-      <clipPath id={clip}>
-        <rect x="6" y="11.5" width="16" height="5" rx="2.5" />
-      </clipPath>
-      <g clipPath={`url(#${clip})`}>
-        {COMPOSITION.map((part, index) => {
-          const width = SEGMENTS[index];
-          const segment = (
-            <rect
-              key={part.key}
-              x={x}
-              y="11.5"
-              width={Math.max(0.5, width - 0.6)}
-              height="5"
-              fill={part.color}
-            />
-          );
-          x += width;
-          return segment;
-        })}
+      <defs>
+        <linearGradient id={gradient} x1="4.72%" y1="-3.96%" x2="95.28%" y2="103.96%">
+          <stop stopColor="#4495a3" />
+          <stop offset="1" stopColor="#18596e" />
+        </linearGradient>
+      </defs>
+      <rect width="33" height="33" rx="10" fill={`url(#${gradient})`} />
+      <g
+        transform="translate(5 5) scale(.9583333333)"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
       </g>
+      <circle cx="24.5" cy="24.5" r="2.5" fill="#a8e4de" />
     </svg>
   );
 }
