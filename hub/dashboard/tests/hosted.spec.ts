@@ -314,8 +314,10 @@ test("320px hosted interface supports bottom navigation, theme and accessible au
   await page.reload();
   await expect(page.getByText("当前展示真实数据")).toBeAttached();
   await expect(page.locator("html")).toHaveClass(/dark/);
-  // Check settled colors after the requested heading entrance animation.
-  await expect.poll(() => page.locator(".heading-copy > .heading-mode").evaluate(element => getComputedStyle(element).opacity)).toBe("1");
+  // Check settled colors once every entrance (heading, activity cells) has
+  // finished; looping indicators such as the live status dot never finish.
+  await expect.poll(() => page.evaluate(() => document.getAnimations().filter(animation =>
+    animation.playState === "running" && animation.effect?.getTiming().iterations !== Infinity).length)).toBe(0);
   await injectAxe(page);
   violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: "tag", values: ["wcag2a","wcag2aa","wcag21aa"] } })).violations);
   expect(violations).toEqual([]);

@@ -83,9 +83,9 @@
   white-space: nowrap;
   line-height: 1.4;
   transition:
-    background 0.16s,
-    border-color 0.16s,
-    box-shadow 0.16s;
+    background var(--duration-quick) var(--ease-smooth-out),
+    border-color var(--duration-quick) var(--ease-smooth-out),
+    box-shadow var(--duration-quick) var(--ease-smooth-out);
 }
 .sv-button:hover {
   background: var(--hover);
@@ -197,7 +197,7 @@
   padding: 8px 12px 8px 35px;
   font-size: 12px;
   color: var(--ink);
-  transition: border-color 0.16s;
+  transition: border-color var(--duration-quick) var(--ease-smooth-out);
 }
 .sv-search input::placeholder {
   color: var(--ink-3);
@@ -236,8 +236,8 @@
 }
 .sv-device-card {
   transition:
-    border-color 0.16s,
-    box-shadow 0.16s;
+    border-color var(--duration-quick) var(--ease-smooth-out),
+    box-shadow var(--duration-quick) var(--ease-smooth-out);
 }
 .sv-device-card:hover {
   border-color: var(--line-strong);

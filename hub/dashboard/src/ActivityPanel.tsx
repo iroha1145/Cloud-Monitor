@@ -189,7 +189,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
             const at = view === "month" ? index + leading : index;
             const [column, row] = view === "week" ? [Math.floor(at / 7), at % 7]
               : view === "day" ? [at % 6, Math.floor(at / 6)] : [at % 7, Math.floor(at / 7)];
-            const entrance = { "--cell-delay": `${(column + row) * 18}ms` } as CSSProperties;
+            const entrance = { "--cell-delay": `${(column + row) * 14}ms` } as CSSProperties;
             const level = cell.total === null ? "unknown" : cell.total === 0 ? "0"
               : String(Math.min(4, Math.max(1, Math.ceil(cell.total / maximum * 4))));
             const label = cell.hour === undefined ? cell.day

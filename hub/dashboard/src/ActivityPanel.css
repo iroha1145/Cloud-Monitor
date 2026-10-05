@@ -42,7 +42,8 @@
 .cm-activity-cell { animation: t-cell-in var(--duration-medium) var(--ease-bounce) var(--cell-delay, 0ms) backwards; transition: transform var(--duration-quick) var(--ease-bounce), box-shadow var(--duration-quick) var(--ease-smooth-out); }
 @keyframes t-cell-in { from { opacity: 0; transform: scale(0.4); } to { opacity: 1; transform: none; } }
 @media (hover: hover) and (pointer: fine) {
-  button.cm-activity-cell:hover { position: relative; z-index: 1; transform: scale(1.14); box-shadow: 0 3px 8px rgb(20 27 40 / 0.16); }
+  /* The lift is direct; only the return keeps the spring. */
+  button.cm-activity-cell:hover { position: relative; z-index: 1; transform: scale(1.14); box-shadow: 0 3px 8px rgb(20 27 40 / 0.16); transition-timing-function: var(--ease-smooth-out); }
 }
 .cm-activity-cell.is-selected { outline: 2px solid var(--primary); outline-offset: 2px; }
 .cm-activity-cell:focus-visible, .cm-activity-tabs button:focus-visible, .cm-activity-selection:focus-visible, .cm-activity-coverage summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
