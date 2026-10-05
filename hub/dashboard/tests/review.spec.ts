@@ -120,6 +120,28 @@ test("用量趋势静态挂载后能画出曲线并用 day 键选中", async ({ 
   expect(errors).toEqual([]);
 });
 
+test("检查某一天时，趋势卡标题换成那天的数字，聚焦带来的滚动也不会把它关掉", async ({ page }) => {
+  await page.goto("/demo.html#overview");
+  const trend = page.getByRole("region", { name: "用量趋势" });
+  await expect(trend.locator(".insight-trend-canvas")).toBeVisible();
+  const label = trend.locator(".insight-trend-metrics > div > span").first();
+  await expect(label).toHaveText("区间词元");
+  const slider = trend.getByRole("slider");
+  // Focusing scrolls the chart into view smoothly; that scroll used to close
+  // the keyboard inspection it had just opened.
+  await slider.focus();
+  await slider.press("End");
+  const tooltip = page.locator(".insight-trend-tooltip");
+  const day = await tooltip.locator("time").getAttribute("datetime");
+  const short = `${Number(day!.slice(5, 7))}/${Number(day!.slice(8))}`;
+  await expect(label).toHaveText(`${short} 词元`);
+  await page.waitForTimeout(700);
+  await expect(tooltip).toBeVisible();
+  await expect(label).toHaveText(`${short} 词元`);
+  await slider.press("Escape");
+  await expect(label).toHaveText("区间词元");
+});
+
 test("移动端导航 Escape 后焦点回到打开按钮", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/demo.html#overview");

@@ -270,10 +270,15 @@ export function InsightTrend({ data }: { data: DashboardData }) {
     setPointerAnchor(null);
     setDetailMode(null);
   }, [days, metric]);
+  // Scrolling or resizing ends a pointer inspection. Keyboard and day-button
+  // inspection stay open and only re-measure: focusing the chart scrolls it
+  // into view smoothly, and that scroll must not close what the focus opened.
+  const [viewportTick, setViewportTick] = useState(0);
   useEffect(() => {
     const dismiss = () => {
       setPointerAnchor(null);
-      setDetailMode(null);
+      setDetailMode((mode) => (mode === "pointer" ? null : mode));
+      setViewportTick((tick) => tick + 1);
       pointerDown.current = false;
     };
     window.addEventListener("scroll", dismiss, true);
@@ -297,7 +302,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
       return;
     }
     setPlot(stageRef.current?.getBoundingClientRect());
-  }, [detailMode, selectedDay, days, metric]);
+  }, [detailMode, selectedDay, days, metric, viewportTick]);
 
   const setFromPointer = (
     event: PointerEvent<HTMLDivElement>,
