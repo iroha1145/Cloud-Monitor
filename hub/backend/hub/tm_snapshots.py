@@ -154,7 +154,7 @@ def _parse_iso(value: Any) -> Optional[datetime]:
         return None
 
 
-def _valid_day_key(key: Any) -> Optional[str]:
+def valid_day_key(key: Any) -> Optional[str]:
     if not isinstance(key, str) or len(key) != 10:
         return None
     try:
@@ -170,7 +170,7 @@ def resolve_local_day(
     """返回 (local_day, 时区标注)。回退链按任务要求，UTC 回退显式标注。"""
     windows = period_windows if isinstance(period_windows, dict) else {}
 
-    key = _valid_day_key((windows.get("today") or {}).get("key"))
+    key = valid_day_key((windows.get("today") or {}).get("key"))
     tz_name = windows.get("timeZone")
     tz = None
     if isinstance(tz_name, str) and tz_name:
@@ -614,10 +614,6 @@ def _merge_daily_components(item: dict, row: dict) -> None:
     item["unclassifiedTokens"] += components["unclassifiedTokens"]
     item["tokenComponentsAvailable"] = item["tokenComponentsAvailable"] and components["tokenComponentsAvailable"]
     item["componentsPartial"] = item["componentsPartial"] or components["componentsPartial"]
-
-
-def valid_day_key(key: Any) -> Optional[str]:
-    return _valid_day_key(key)
 
 
 def _merge_token_map(dest: dict[str, int], raw: Any) -> bool:

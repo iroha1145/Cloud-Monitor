@@ -35,7 +35,6 @@ from .tm_snapshots import utc_seconds_z
 log = logging.getLogger("tm-update")
 
 GITHUB_API = "https://api.github.com"
-REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 REF_RE = re.compile(r"^(main|master|v?[0-9]+(\.[0-9A-Za-z_-]+)*)$")
 SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 STALE_RUNNING_SECONDS = 30 * 60
@@ -142,7 +141,7 @@ class UpdateService:
         if path is None:
             return None
         try:
-            if path.is_dir() and os_access_write(path):
+            if path.is_dir() and os.access(path, os.W_OK):
                 return path
         except OSError:
             return None
@@ -488,10 +487,6 @@ class UpdateService:
         except ValueError:
             body = {"message": (resp.text or "")[:200]}
         return resp.status_code, body
-
-
-def os_access_write(path: Path) -> bool:
-    return os.access(path, os.W_OK)
 
 
 def _gh_error(status: int, body: Any) -> str:

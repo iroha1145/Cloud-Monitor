@@ -70,9 +70,8 @@ class TmCore:
         self.secret = secret
         self._client = client
 
-    def bind_client(self, client: httpx.Client) -> "TmCore":
+    def bind_client(self, client: httpx.Client) -> None:
         self._client = client
-        return self
 
     def headers(self) -> dict[str, str]:
         return {
@@ -576,16 +575,14 @@ class TmBackground:
         return True
 
 
-def bootstrap_tm_layer(
-    settings: Settings, db: Database, client: Optional[httpx.Client] = None
-) -> Optional[TmCore]:
+def bootstrap_tm_layer(settings: Settings, db: Database) -> Optional[TmCore]:
     """启动接线：建表、迁移旧表、构造 core（后台线程负责重试与重放）。"""
     ensure_schema(db)
     ensure_outbox_schema(db)
     migrate_legacy_tables(db)
     if not settings.tm_ingest_secret:
         return None
-    core = TmCore(settings.tm_core_url, settings.tm_ingest_secret, client)
+    core = TmCore(settings.tm_core_url, settings.tm_ingest_secret)
     if core.health() is None:
         log.warning(
             "tm-core 上游暂不可达 (%s)：后台线程将自动重试初始化与回填",

@@ -256,7 +256,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return {"ok": True, "role": "cloud-hub"}
 
     @app.get("/api/v1/health/ready")
-    def health_ready(request: Request) -> JSONResponse:
+    def health_ready() -> JSONResponse:
         """就绪探测：SQLite 读写、tm-core、快照/outbox 状态。"""
         components: dict[str, dict] = {}
 

@@ -45,9 +45,6 @@ def validate_secret(name: str, value: str) -> None:
         )
 
 
-validate_api_key = validate_secret
-
-
 def parse_device_keys(raw: str | None) -> dict[str, str]:
     """解析 DEVICE_KEYS_JSON：{"device-id": "write-key", ...}"""
     if not raw or not raw.strip():
@@ -79,8 +76,6 @@ class Settings:
     device_keys: dict[str, str] = field(default_factory=dict)
     cors_origins: tuple[str, ...] = ()
     docs_enabled: bool = False
-    max_body_bytes: int = 2 * 1024 * 1024
-    allow_shared_token: bool = True  # 仅显式构造（测试）时默认放行；load_settings 会强制校验
     protocol_version: int = PROTOCOL_VERSION
     tm_ingest_secret: str = ""  # token-monitor 接入密钥（TOKEN_MONITOR_SECRET），空 = 停用
     tm_core_url: str = "http://127.0.0.1:17321"  # vendored 官方 Node hub 地址
@@ -169,11 +164,6 @@ def load_settings() -> Settings:
         origin.strip() for origin in cors_raw.split(",") if origin.strip()
     )
 
-    try:
-        max_body = int(os.environ.get("MAX_BODY_BYTES", str(2 * 1024 * 1024)))
-    except ValueError:
-        max_body = 2 * 1024 * 1024
-
     dashboard_tz = (os.environ.get("DASHBOARD_TIME_ZONE") or "Asia/Tokyo").strip()
     try:
         from zoneinfo import ZoneInfo
@@ -215,8 +205,6 @@ def load_settings() -> Settings:
         device_keys=device_keys,
         cors_origins=cors_origins,
         docs_enabled=_env_bool(os.environ.get("DOCS_ENABLED")),
-        max_body_bytes=max_body,
-        allow_shared_token=allow_shared,
         protocol_version=PROTOCOL_VERSION,
         tm_ingest_secret=tm_secret,
         tm_core_url=(os.environ.get("TM_CORE_URL") or "http://127.0.0.1:17321").strip(),

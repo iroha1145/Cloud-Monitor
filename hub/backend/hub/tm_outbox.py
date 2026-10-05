@@ -351,7 +351,7 @@ def record_from_payload(payload: dict, received_at: Optional[str] = None) -> dic
     }
 
 
-def replay_record(row: dict, payload: dict) -> Optional[dict]:
+def replay_record(row: dict) -> Optional[dict]:
     raw = row.get("normalized_json")
     if isinstance(raw, str) and raw.strip():
         try:
@@ -573,7 +573,7 @@ def expire_pending(db: Database, request_id: str, reason: str) -> bool:
             (utc_z(datetime.now(timezone.utc)), reason, reason, request_id),
         )
         _clear_retired_snapshot_error(db, [row])
-    _invalidate_overview(db)
+    _invalidate_overview()
     return True
 
 
@@ -600,7 +600,7 @@ def expire_unconfirmed(db: Database) -> int:
             )
         _clear_retired_snapshot_error(db, rows)
     if rows:
-        _invalidate_overview(db)
+        _invalidate_overview()
     return len(rows)
 
 
@@ -715,7 +715,7 @@ def set_overview_invalidator(fn: Callable[[], None] | None) -> None:
     _overview_invalidator = fn
 
 
-def _invalidate_overview(_db: Database) -> None:
+def _invalidate_overview() -> None:
     if _overview_invalidator is not None:
         _overview_invalidator()
 
@@ -816,7 +816,7 @@ def replay_pending(
                     mark_done(db, row["request_id"])
                     stats["superseded"] += 1
                     continue
-                record = replay_record(row, payload)
+                record = replay_record(row)
                 if record is None:
                     # No current-device fallback may invent this request's data.
                     stats["failed"] += 1
@@ -837,7 +837,7 @@ def replay_pending(
                     supersede_older_pending(db, row["device_id"], row["request_id"])
             set_snapshot_status(db, success=True)
             stats["completed"] += 1
-            _invalidate_overview(db)
+            _invalidate_overview()
         except Exception as exc:  # noqa: BLE001
             if isinstance(exc, DETERMINISTIC_FAILURES):
                 mark_rejected(db, row["request_id"], str(exc))
