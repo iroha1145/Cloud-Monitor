@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -283,7 +284,7 @@ def test_cursor_not_advanced_on_bad_response(tmp_path):
     assert state.cursor == 2
 
 
-def test_cursor_advances_per_batch_and_resumes(tmp_path):
+def test_cursor_advances_per_batch_and_resumes(tmp_path, monkeypatch):
     cfg = make_config(tmp_path, batch_size=2)
     state = AgentState(cfg.state_path)
     state.device_id = cfg.device_id
@@ -292,19 +293,18 @@ def test_cursor_advances_per_batch_and_resumes(tmp_path):
 
     agent = make_agent(cfg, state, session)
     # 中途"崩溃"：第二批（1 条记录）的所有推送尝试都失败
-    real_sleep = sa.time.sleep
-    sa.time.sleep = lambda *_: None
     real_post = session.post
     def flaky_post(url, **kwargs):
         body = kwargs.get("json") or {}
         if len(body.get("records") or []) == 1:
             raise requests.ConnectionError("cloud down")
         return real_post(url, **kwargs)
-    session.post = flaky_post
-    with pytest.raises((requests.ConnectionError, sa.TransientError)):
-        agent.run_once()
-    session.post = real_post
-    sa.time.sleep = real_sleep
+    # sa.time 就是全局 time 模块：用 monkeypatch 替换，断言失败时也会还原
+    with monkeypatch.context() as patch:
+        patch.setattr(sa.time, "sleep", lambda *_: None)
+        patch.setattr(session, "post", flaky_post)
+        with pytest.raises((requests.ConnectionError, sa.TransientError)):
+            agent.run_once()
     assert state.cursor == 2  # 批1已持久化
 
     # 恢复：从 cursor=2 继续，只推批2
@@ -1069,20 +1069,26 @@ def test_cursor_regression_latches_until_reset(tmp_path):
 def test_state_save_is_serialized_across_threads(tmp_path):
     state = AgentState(tmp_path / "agent-state.json")
     state.device_id = "dev"
+    errors: list[BaseException] = []
 
     def writer(mark: str) -> None:
-        for index in range(40):
-            state.data["last_error"] = f"{mark}-{index}"
-            state.save()
+        # 线程里的异常不会让测试失败，只会变成一条警告；收集起来断言
+        try:
+            for index in range(40):
+                state.data["last_error"] = f"{mark}-{index}"
+                state.save()
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
 
     threads = [
-        __import__("threading").Thread(target=writer, args=("a",)),
-        __import__("threading").Thread(target=writer, args=("b",)),
+        threading.Thread(target=writer, args=("a",)),
+        threading.Thread(target=writer, args=("b",)),
     ]
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join()
+    assert errors == []
     loaded = json.loads((tmp_path / "agent-state.json").read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
     assert loaded["device_id"] == "dev"
