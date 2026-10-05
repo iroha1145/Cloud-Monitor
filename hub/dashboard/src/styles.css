@@ -1,5 +1,4 @@
 @import "./components/primitives/beautiful-foundation.css";
-@import "./components/primitives/transitions-tooltip.css";
 
 @theme inline {
   --font-sans:
@@ -47,8 +46,6 @@
   --muted-foreground: #636c7a;
   --nav-active: #edf3fa;
   --nav-ink: #276aaf;
-  --tt-bg: #fff;
-  --tt-fg: #334155;
   --green: #16765e;
   --green-tint: #e7f6ef;
   --accent-tint: #edf4fc;
@@ -88,8 +85,6 @@
   --green: #62d0a5;
   --green-tint: #163d34;
   --accent-tint: #25374c;
-  --tt-bg: #2c3039;
-  --tt-fg: #f1f3f5;
   --danger: var(--red);
   --warning: var(--orange);
 }
@@ -1545,14 +1540,6 @@ h2 {
   width: 15px;
   height: 15px;
 }
-[data-slot="tooltip-content"] {
-  background: var(--tt-bg);
-  color: var(--tt-fg);
-  border: 1px solid var(--line);
-  box-shadow: 0 2px 10px #0a254015;
-  font-size: 11px;
-  animation: tooltip-in var(--tt-in-dur) var(--tt-in-ease);
-}
 [data-slot="select-content"],
 [data-slot="dropdown-menu-content"] {
   background: var(--surface);
@@ -1937,16 +1924,6 @@ h2 {
   }
   to {
     opacity: 1;
-  }
-}
-@keyframes tooltip-in {
-  from {
-    opacity: 0;
-    scale: 0.98;
-  }
-  to {
-    opacity: 1;
-    scale: 1;
   }
 }
 @media (min-width: 1550px) {

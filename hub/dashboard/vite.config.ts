@@ -14,9 +14,7 @@ export default defineConfig(({ command, mode }) => ({
       resolveDependencies(_filename, deps) {
         return deps.filter(
           (dep) =>
-            !/InsightTrend|SecondaryViews|AppDialogs|ArchivePanel|liveline/.test(
-              dep,
-            ),
+            !/SecondaryViews|AppDialogs|ArchivePanel/.test(dep),
         );
       },
     },
@@ -27,7 +25,8 @@ export default defineConfig(({ command, mode }) => ({
       },
       output: {
         manualChunks(id: string) {
-          // Keep liveline in its own async chunk; InsightTrend chrome is static.
+          // Leave liveline unassigned so it stays a lazy chunk: naming it
+          // makes the bundler hoist it into the entry's static imports.
           if (id.includes("node_modules/liveline")) return;
           if (id.includes("node_modules/motion")) return "motion";
           if (id.includes("node_modules/lucide-react")) return "icons";

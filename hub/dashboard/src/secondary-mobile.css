@@ -35,7 +35,6 @@
     font-size: 16px;
   }
   .sv-section-head p,
-  .sv-notice,
   .sv-note,
   .sv-muted {
     font-size: 11px;
@@ -113,8 +112,6 @@
   .sv-quota-card h3 {
     font-size: 16px;
   }
-  .sv-quota-account-label,
-  .sv-quota-card-meta,
   .sv-quota-window-foot,
   .sv-quota-source,
   .sv-records-label,
@@ -178,16 +175,6 @@
   .cm-activity-coverage summary {
     min-height: 44px;
     font-size: 12px;
-  }
-  .sv-history-activity .sv-heatmap-grid {
-    --sv-heat-cell: clamp(16px, calc((100vw - 104px) / 13), 26px);
-    gap: 3px;
-  }
-  .sv-heatmap-period,
-  .sv-heatmap-footer,
-  .sv-heatmap > .sv-muted {
-    font-size: 11px !important;
-    line-height: 1.7;
   }
   .sv-mobile-date-picker {
     display: grid;
