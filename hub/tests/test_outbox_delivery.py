@@ -16,7 +16,7 @@ from conftest import TM_SECRET, limits_only_payload, make_cloud_app, widget_styl
 from hub.db import Database
 from hub import tm_outbox as outbox, tm_snapshots as snapshots
 from hub.tm_forwarding import (
-    ForwardAttempt, ForwardingQueue, FORWARD_TTL_SECONDS, INFLIGHT_GRACE_SECONDS,
+    ForwardingQueue, FORWARD_TTL_SECONDS, INFLIGHT_GRACE_SECONDS,
     MAX_FORWARD_ATTEMPTS, forwarding_queue,
 )
 from hub.tm_proxy import TmBackground, UpstreamUnavailable

@@ -8,10 +8,7 @@ Cloud 扩展字段（快照/面板）不在对比范围，但不得替换官方�
 
 from __future__ import annotations
 
-import json
-
 import httpx
-import pytest
 
 from conftest import (
     TM_SECRET,

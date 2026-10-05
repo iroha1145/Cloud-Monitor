@@ -5,7 +5,6 @@ import asyncio
 import hashlib
 import json
 import sqlite3
-from threading import Event
 from urllib.parse import quote
 
 import httpx

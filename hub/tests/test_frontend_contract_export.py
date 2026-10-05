@@ -8,7 +8,7 @@ from pathlib import Path
 
 import httpx
 
-from conftest import READ_KEY, TM_SECRET, make_cloud_app, requires_node, widget_style_payload
+from conftest import READ_KEY, TM_SECRET, requires_node, widget_style_payload
 from hub.tm_provider_status import STATUS_PAGES, ProviderStatusService
 
 

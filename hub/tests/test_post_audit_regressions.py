@@ -359,7 +359,6 @@ def test_bootstrap_marks_device_rejected_on_deterministic_400(tmp_path):
     from types import SimpleNamespace
 
     from hub.tm_proxy import TmBackground
-    from hub.tm_snapshots import mark_legacy_rejected
 
     class MixedCore:
         """bad 设备回 400，good 设备回 200。"""

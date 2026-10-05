@@ -13,7 +13,6 @@ import json
 import sqlite3
 import threading
 import time
-from pathlib import Path
 
 import pytest
 
@@ -629,7 +628,7 @@ def sync_app(tmp_path):
         max_records_per_push=500,
     )
     app = create_app(settings)
-    with TestClient(app) as client:
+    with TestClient(app):
         yield app
 
 
