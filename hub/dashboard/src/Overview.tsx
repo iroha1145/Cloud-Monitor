@@ -662,40 +662,40 @@ export function Overview({
   const per = data.periods[period];
   return (
     <>
-        <Stats data={data} period={period} showComposition />
-        <div className="overview-layout">
-          <AppErrorBoundary title="用量趋势已更新，请刷新。">
-            <InsightTrend data={data} />
-          </AppErrorBoundary>
-          <Clients per={per} />
-        </div>
-        <ModelTable per={per} onSelect={onModel} />
-        {data.providers.length > 0 && <section className="provider-strip" aria-label="提供商状态">
-          <span className="provider-caption">服务状态</span>
-          {data.providers.map((p) => (
-            <div key={p.id} className="provider-status">
-              <BrandIcon name={p.name} size={22} />
-              <strong>{p.name}</strong>
-              <span className={`provider-state ${p.status}`}>
-                <i
-                  className={`status-dot ${p.status === "operational" ? "" : p.status === "unknown" ? "muted" : "amber"}`}
-                />
-                {p.stale
-                  ? "上次状态"
-                  : p.status === "operational"
-                    ? "运行正常"
-                    : p.status === "unknown"
-                      ? "暂无状态"
-                      : p.status === "maintenance"
-                        ? "维护中"
-                        : "服务异常"}
-              </span>
-            </div>
-          ))}
-          <span className="provider-demo-note">
-            {data.mode === "demo" ? "示例状态" : "官方状态页"}
-          </span>
-        </section>}
+      <Stats data={data} period={period} showComposition />
+      <div className="overview-layout">
+        <AppErrorBoundary title="用量趋势已更新，请刷新。">
+          <InsightTrend data={data} />
+        </AppErrorBoundary>
+        <Clients per={per} />
+      </div>
+      <ModelTable per={per} onSelect={onModel} />
+      {data.providers.length > 0 && <section className="provider-strip" aria-label="提供商状态">
+        <span className="provider-caption">服务状态</span>
+        {data.providers.map((p) => (
+          <div key={p.id} className="provider-status">
+            <BrandIcon name={p.name} size={22} />
+            <strong>{p.name}</strong>
+            <span className={`provider-state ${p.status}`}>
+              <i
+                className={`status-dot ${p.status === "operational" ? "" : p.status === "unknown" ? "muted" : "amber"}`}
+              />
+              {p.stale
+                ? "上次状态"
+                : p.status === "operational"
+                  ? "运行正常"
+                  : p.status === "unknown"
+                    ? "暂无状态"
+                    : p.status === "maintenance"
+                      ? "维护中"
+                      : "服务异常"}
+            </span>
+          </div>
+        ))}
+        <span className="provider-demo-note">
+          {data.mode === "demo" ? "示例状态" : "官方状态页"}
+        </span>
+      </section>}
     </>
   );
 }
