@@ -5,9 +5,8 @@ import {
   normalizeComponents,
   normalizeOverview,
   normalizePeriod,
-  providerFor,
-  providerName,
 } from "../src/data.ts";
+import { providerFor, providerName } from "../src/vendors.ts";
 
 const componentKeys = [
   "input",

@@ -26,12 +26,12 @@ import {
 import SearchList from "./components/primitives/SearchList";
 import {
   PERIOD_LABELS,
-  providerName,
   type DashboardData,
   type PeriodKey,
   type PeriodUsage,
   type UsageEntity,
 } from "./data";
+import { providerName } from "./vendors";
 import { SystemUpdate } from "./SystemUpdate";
 import { useErrorShake } from "./lib/hooks/use-error-shake";
 import { CompositionCard } from "./Overview";

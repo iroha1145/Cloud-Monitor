@@ -4,6 +4,7 @@
  * /api/v1/tm/overview contract without changing aggregation or fetching secrets.
  */
 import { DAY_MS, dayKeyZoned, isValidTimeZone } from "./lib/datetime";
+import { providerFor, providerName } from "./vendors";
 
 export type PeriodKey = "today" | "month" | "allTime";
 export const PERIOD_LABELS: Record<PeriodKey, string> = {
@@ -481,50 +482,6 @@ function normalizeClientHealth(diagnostic: JsonRecord): ClientHealth[] {
     });
 }
 const periods: PeriodKey[] = ["today", "month", "allTime"];
-
-export function providerFor(name: string): string {
-  const key = name.toLowerCase();
-  if (/claude|anthropic|sonnet|opus|haiku/.test(key)) return "anthropic";
-  if (/codex|gpt|openai/.test(key)) return "openai";
-  if (/cursor|composer/.test(key)) return "cursor";
-  if (/(?:^|[^a-z0-9])muse[\s-]*spark/.test(key)) return "meta";
-  if (/gemini|google/.test(key)) return "google";
-  if (/grok|xai/.test(key)) return "xai";
-  if (/deepseek/.test(key)) return "deepseek";
-  if (/kimi|moonshot|k2d6-agent|k3-agent|(?:^|[^a-z0-9])k[23](?:[-._]|$)/.test(key)) return "kimi";
-  if (/glm|zhipu|\bzai\b/.test(key)) return "glm";
-  return "other";
-}
-
-export function providerName(provider: string): string {
-  return (
-    (
-      {
-        anthropic: "Anthropic",
-        openai: "OpenAI",
-        cursor: "Cursor",
-        google: "Google",
-        xai: "xAI",
-        deepseek: "DeepSeek",
-        kimi: "Kimi",
-        amp: "Amp",
-        factory: "Factory Droid",
-        droid: "Factory Droid",
-        devin: "Devin",
-        omp: "Oh My Pi",
-        mimo: "Xiaomi MiMo",
-        muse: "Muse Code",
-        stepfun: "StepFun",
-        cline: "Cline",
-        typesafe: "TypeSafe",
-        alibaba: "Alibaba Cloud",
-        copilot: "GitHub Copilot",
-        glm: "GLM",
-        meta: "Meta",
-      } as Record<string, string>
-    )[provider] || provider
-  );
-}
 
 /** Mirrors the shipped cache-preservation contract, including legacy gaps. */
 export function normalizeComponents(

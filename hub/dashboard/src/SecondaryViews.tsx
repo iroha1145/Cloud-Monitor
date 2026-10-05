@@ -18,13 +18,13 @@ import {
   X,
 } from "lucide-react";
 import {
-  providerName,
   type DashboardData,
   type Device,
   type Quota,
   type Session,
   type Subscription,
 } from "./data";
+import { providerName } from "./vendors";
 import "./secondary.css";
 import { BrandIcon } from "./BrandIcon";
 import { MetricTooltip } from "./MetricTooltip";

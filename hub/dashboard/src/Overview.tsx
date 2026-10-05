@@ -26,12 +26,12 @@ import {
   SelectValue,
 } from "./components/ui/select";
 import {
-  providerName,
   type DashboardData,
   type PeriodKey,
   type PeriodUsage,
   type UsageEntity,
 } from "./data";
+import { providerName } from "./vendors";
 import { matrixHeatLevel, matrixHeatPeak } from "./matrix-heat";
 import { COMPOSITION } from "./palette";
 import { usd } from "./money";
