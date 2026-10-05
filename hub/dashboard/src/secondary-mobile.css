@@ -310,6 +310,35 @@
 }
 
 @media (max-width: 360px) {
+  /* Three columns leave ~90px each: every label and number wrapped. One row per
+     figure instead, the name and note on the left and the number on the right. */
+  .sv-summary {
+    grid-template-columns: 1fr;
+  }
+  .sv-summary-item,
+  .sv-dense-page .sv-summary-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 3px 12px;
+    padding: 13px 16px;
+  }
+  .sv-summary-label {
+    grid-area: 1 / 1;
+  }
+  .sv-summary-foot {
+    grid-area: 2 / 1;
+  }
+  .sv-summary-value {
+    grid-area: 1 / 2 / 3 / 3;
+    text-align: right;
+  }
+  .sv-summary-item + .sv-summary-item::before,
+  .sv-dense-page .sv-summary-item + .sv-summary-item::before {
+    inset: 0 16px auto;
+    width: auto;
+    height: 1px;
+  }
   .sv-device-metrics {
     gap: 12px 10px;
   }
