@@ -87,13 +87,13 @@ def test_snapshot_failure_not_silently_lost_then_replayed(node_hub, tmp_path, mo
         monkeypatch.setattr(forwarding, "write_snapshot", real_write)
         from hub.tm_outbox import replay_pending
 
-        stats = replay_pending(db, cloud.app.state.tm_core)
+        stats = replay_pending(db)
         assert stats["completed"] == 1
         assert db.fetchone(
             "SELECT COUNT(*) n FROM tm_snapshot_buckets WHERE device_id='dev-ob'"
         )["n"] == 1
         assert db.fetchone("SELECT today_total FROM tm_snapshot_buckets WHERE device_id='dev-ob'")["today_total"] == widget_style_payload("dev-ob")["today"]["totalTokens"]
-        assert replay_pending(db, cloud.app.state.tm_core)["checked"] == 0  # 幂等
+        assert replay_pending(db)["checked"] == 0  # 幂等
 
 
 @requires_node
@@ -112,7 +112,7 @@ def test_outbox_replay_after_crash_before_snapshot(node_hub, tmp_path):
         assert response.status_code == 200
         normalized = next(r for r in response.json()["stats"]["devices"] if r["deviceId"] == "dev-crash")
         save_normalized(db, request_id, normalized)
-        result = replay_pending(db, core)
+        result = replay_pending(db)
         assert result["completed"] == 1
         assert db.fetchone(
             "SELECT COUNT(*) n FROM tm_snapshot_buckets WHERE device_id='dev-crash'"
@@ -120,7 +120,7 @@ def test_outbox_replay_after_crash_before_snapshot(node_hub, tmp_path):
         request_id = new_request_id()
         record_pending(db, request_id=request_id, device_id="dev-crash", payload=payload)
         save_normalized(db, request_id, normalized)
-        replay_pending(db, core)
+        replay_pending(db)
         assert db.fetchone(
             "SELECT COUNT(*) n FROM tm_snapshot_buckets WHERE device_id='dev-crash'"
         )["n"] == 1

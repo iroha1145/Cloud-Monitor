@@ -53,14 +53,14 @@ def test_counter_upgrade_starts_above_retained_snapshot_sequences(database):
     sequence = outbox.outbox_ingest_sequence(db, 'new')
     assert sequence > 900
     outbox.save_normalized(db, 'new', outbox.record_from_payload(usage(total=200)))
-    assert outbox.replay_pending(db, None)['completed'] == 1
+    assert outbox.replay_pending(db)['completed'] == 1
     assert db.fetchone('SELECT today_total FROM tm_snapshot_buckets')['today_total'] == 200
 
 
 def test_unconfirmed_payload_cannot_be_replayed_before_core_accepts(database):
     db = database
     outbox.record_pending(db, request_id='forwarding', device_id='dev', payload=usage())
-    result = outbox.replay_pending(db, None)
+    result = outbox.replay_pending(db)
     assert result['completed'] == 0
     assert db.fetchone('SELECT COUNT(*) AS n FROM tm_snapshot_buckets')['n'] == 0
     assert outbox.pending_count(db) == 1
@@ -73,7 +73,7 @@ def test_unconfirmed_rows_do_not_starve_confirmed_replay(database):
     p = usage('accepted', 321)
     outbox.record_pending(db, request_id='accepted', device_id='accepted', payload=p)
     outbox.save_normalized(db, 'accepted', outbox.record_from_payload(p))
-    assert outbox.replay_pending(db, None)['completed'] == 1
+    assert outbox.replay_pending(db)['completed'] == 1
     assert db.fetchone("SELECT today_total FROM tm_snapshot_buckets WHERE device_id='accepted'")['today_total'] == 321
 
 
@@ -86,7 +86,7 @@ def test_confirmed_partial_update_finishes_without_usage_snapshot(database, part
     p = {k: v for k, v in usage().items() if k != 'today'} | partial
     outbox.record_pending(db, request_id='partial', device_id='dev', payload=p)
     outbox.save_normalized(db, 'partial', outbox.record_from_payload(p))
-    assert outbox.replay_pending(db, None)['completed'] == 1
+    assert outbox.replay_pending(db)['completed'] == 1
     assert outbox.pending_count(db) == 0
     assert db.fetchone('SELECT COUNT(*) AS n FROM tm_snapshot_buckets')['n'] == 0
 
@@ -94,7 +94,7 @@ def test_confirmed_partial_update_finishes_without_usage_snapshot(database, part
 def test_rejected_forwarding_cannot_create_a_ghost_snapshot(cloud, monkeypatch):
     db = cloud.app.state.db
     def reject_after_background_tick(*args, **kwargs):
-        outbox.replay_pending(db, None)
+        outbox.replay_pending(db)
         return httpx.Response(503, json={'error': 'persistence_failed'})
     monkeypatch.setattr(cloud.app.state.tm_core, 'request', reject_after_background_tick)
     response = cloud.post('/api/ingest', json=widget_style_payload('never-accepted'),
@@ -171,7 +171,7 @@ def test_real_core_replay_preserves_the_acknowledged_total_cost_and_model(cloud,
     assert len(receipts) == 2
     assert [row['received_at'] for row in receipts] == [expected_receipt, expected_receipt]
     monkeypatch.setattr(forwarding, 'write_snapshot', original)
-    result = outbox.replay_pending(db, None)
+    result = outbox.replay_pending(db)
     assert result['completed'] == 1
     assert result['superseded'] == 0
     import json

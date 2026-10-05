@@ -30,14 +30,6 @@ class Response:
         return self._body
 
 
-class Core:
-    def __init__(self, response: Response):
-        self.response = response
-
-    def request(self, *_args, **_kwargs):
-        return self.response
-
-
 def db_for(tmp_path, name="edge.sqlite3"):
     db = Database(tmp_path / name)
     ensure_snapshots(db)
@@ -72,12 +64,7 @@ def test_thirty_minute_interval_is_not_treated_as_five_minute_loss(tmp_path):
     db.close()
 
 
-class UnusedCore:
-    def request(self, *_args, **_kwargs):
-        raise AssertionError("replay must not call tm-core or read the current device")
-
-
-def test_replay_writes_acknowledged_snapshot_without_calling_core(tmp_path):
+def test_replay_writes_acknowledged_snapshot_from_saved_normalization(tmp_path):
     db = db_for(tmp_path)
     record_pending(
         db,
@@ -93,7 +80,7 @@ def test_replay_writes_acknowledged_snapshot_without_calling_core(tmp_path):
     # Simulate the saved normalization returned by a successful upstream POST.
     raw = db.fetchone("SELECT payload_json FROM tm_ingest_outbox WHERE request_id='r1'")["payload_json"]
     save_normalized(db, "r1", record_from_payload(json.loads(raw)))
-    result = replay_pending(db, UnusedCore())
+    result = replay_pending(db)
     row = db.fetchone(
         "SELECT state, attempts, snapshot_written FROM tm_ingest_outbox WHERE request_id='r1'"
     )
@@ -127,7 +114,7 @@ def test_missing_usage_never_writes_zero_snapshot(tmp_path):
         device_id="dev",
         payload={"deviceId": "dev"},
     )
-    result = replay_pending(db, UnusedCore())
+    result = replay_pending(db)
     row = db.fetchone("SELECT state, attempts FROM tm_ingest_outbox WHERE request_id='r2'")
     count = db.fetchone("SELECT COUNT(*) AS n FROM tm_snapshot_buckets")["n"]
     assert result["checked"] == 0  # unconfirmed rows never create zero snapshots
@@ -162,7 +149,7 @@ def test_healthy_path_prunes_expired_done_and_rejected_rows(tmp_path):
             " received_at, terminal_at, state) VALUES (?, 'dev', '{}', ?, ?, ?)",
             (rid, old, old, state),
         )
-    result = replay_pending(db, Core(Response(200, {"stats": {"devices": []}})))
+    result = replay_pending(db)
     assert result["checked"] == 0  # 无 pending，走的正是健康路径
     remaining = db.fetchone("SELECT COUNT(*) AS n FROM tm_ingest_outbox")["n"]
     assert remaining == 0

@@ -128,9 +128,6 @@ def test_replay_stops_between_requests_and_keeps_remaining_items_pending(tmp_pat
     def should_stop():
         checks["n"] += 1
         return checks["n"] > 1
-    class UnusedCore:
-        def request(self, *_args, **_kwargs):
-            raise AssertionError("replay must not read the current device")
     try:
         for key in ("one", "two"):
             record_pending(
@@ -147,7 +144,7 @@ def test_replay_stops_between_requests_and_keeps_remaining_items_pending(tmp_pat
         # Persist the acknowledgements received before snapshot processing stopped.
         for row in db.fetchall("SELECT request_id, payload_json FROM tm_ingest_outbox"):
             save_normalized(db, row["request_id"], record_from_payload(json.loads(row["payload_json"])))
-        result = replay_pending(db, UnusedCore(), should_stop=should_stop)
+        result = replay_pending(db, should_stop=should_stop)
         assert result["stopped_by"] == "shutdown"
         assert db.fetchone("SELECT COUNT(*) AS n FROM tm_ingest_outbox WHERE state='pending'")["n"] == 1
     finally:

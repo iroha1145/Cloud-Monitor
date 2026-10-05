@@ -146,7 +146,7 @@ def test_integrity_error_is_terminal_while_locked_error_remains_retryable(databa
     outbox.record_pending(db, request_id="integrity", device_id="integrity", payload=payload)
     outbox.save_normalized(db, "integrity", outbox.record_from_payload(payload))
     db.execute("CREATE TRIGGER constraint_failure BEFORE INSERT ON tm_snapshot_buckets BEGIN SELECT RAISE(ABORT, 'constraint rejected'); END")
-    assert outbox.replay_pending(db, None)["rejected"] == 1
+    assert outbox.replay_pending(db)["rejected"] == 1
     assert db.fetchone("SELECT state, attempts FROM tm_ingest_outbox WHERE request_id='integrity'") == {"state": "rejected", "attempts": 1}
     db.execute("DROP TRIGGER constraint_failure")
     outbox.record_pending(db, request_id="locked", device_id="locked", payload=usage("locked"))
@@ -154,7 +154,7 @@ def test_integrity_error_is_terminal_while_locked_error_remains_retryable(databa
     def locked(*args, **kwargs):
         raise sqlite3.OperationalError("database is locked")
     monkeypatch.setattr(snapshots, "write_snapshot", locked)
-    assert outbox.replay_pending(db, None)["failed"] == 1
+    assert outbox.replay_pending(db)["failed"] == 1
     assert db.fetchone("SELECT state, attempts FROM tm_ingest_outbox WHERE request_id='locked'") == {"state": "pending", "attempts": 1}
 
 
@@ -765,7 +765,7 @@ def test_confirmed_replay_and_delete_are_serialized(delivery, monkeypatch, delet
             return result
         monkeypatch.setattr(core, "request", observe_delete)
     with ThreadPoolExecutor(max_workers=2) as workers:
-        replay = workers.submit(outbox.replay_pending, db, None)
+        replay = workers.submit(outbox.replay_pending, db)
         try:
             assert selected.wait(5)
             deletion = workers.submit(cloud.delete, "/api/devices/confirmed-delete", headers=HEADERS)

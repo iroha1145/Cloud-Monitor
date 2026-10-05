@@ -28,8 +28,6 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional
 
-import httpx
-
 from .db import Database
 from .services import utc_now
 from .tm_snapshots import norm_ts, utc_z
@@ -760,12 +758,10 @@ def _superseded(db: Database, row: dict) -> bool:
 
 
 def replay_pending(
-    db: Database, core, *, max_items: int = REPLAY_BATCH,
+    db: Database, *, max_items: int = REPLAY_BATCH,
     should_stop: Callable[[], bool] | None = None,
 ) -> dict:
-    """重放未完成项。core 为 TmCore；返回统计。返回值含 stopped_by 表示
-    因上游不可达提前中止（下轮继续）。"""
-    from .tm_proxy import UpstreamUnavailable
+    """重放未完成项，返回统计。返回值含 stopped_by 表示因停机提前中止（下轮继续）。"""
     from .tm_snapshots import write_snapshot
     from .tm_validate import is_limits_only_update
 
@@ -842,21 +838,11 @@ def replay_pending(
             set_snapshot_status(db, success=True)
             stats["completed"] += 1
             _invalidate_overview(db)
-        except UpstreamUnavailable as exc:
-            log.warning("重放中止（tm-core 不可达）: %s", exc)
-            stats["stopped_by"] = "upstream_unavailable"
-            break
         except Exception as exc:  # noqa: BLE001
             if isinstance(exc, DETERMINISTIC_FAILURES):
                 mark_rejected(db, row["request_id"], str(exc))
                 stats["rejected"] += 1
             else:
-                # 防御分支：重放改从 normalized_json 回读后循环内已无 tm-core
-                # 调用；万一底层再引入网络依赖，按类型中止整轮，不看错误文案。
-                if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
-                    log.warning("重放中止（tm-core 不可达）: %s", exc)
-                    stats["stopped_by"] = "upstream_unavailable"
-                    break
                 mark_failed(db, row["request_id"], str(exc))
                 stats["failed"] += 1
             set_snapshot_status(db, success=False, error=str(exc), request_id=row["request_id"])

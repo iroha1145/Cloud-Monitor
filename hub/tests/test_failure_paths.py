@@ -36,7 +36,7 @@ def test_replay_quarantines_a_corrupt_stored_payload_but_completes_the_rest(tmp_
     outbox.save_normalized(db, "good", outbox.record_from_payload(widget_style_payload("dev", tz="UTC")))
     # 磁盘半写/进程崩溃后的样子：审计 JSON 完好，原始载荷已损坏
     db.execute("UPDATE tm_ingest_outbox SET payload_json='{corrupt' WHERE request_id='bad'")
-    result = outbox.replay_pending(db, None)
+    result = outbox.replay_pending(db)
     assert result["rejected"] == 1
     assert result["completed"] == 1
     bad = db.fetchone("SELECT state, last_error FROM tm_ingest_outbox WHERE request_id='bad'")
@@ -181,24 +181,6 @@ def test_coverage_clamp_caps_an_oversampled_slot_at_100(tmp_path):
     db.close()
 
 
-def test_replay_stops_the_round_when_the_floor_raises_connect_error(tmp_path, monkeypatch):
-    """上游不可达按类型中止整轮（不看错误文案），且不按失败计次。"""
-    db = _db(tmp_path, "abort.sqlite3")
-    outbox.record_pending(db, request_id="keep", device_id="dev", payload=widget_style_payload("dev", tz="UTC"))
-    outbox.save_normalized(db, "keep", outbox.record_from_payload(widget_style_payload("dev", tz="UTC")))
-
-    def unreachable(*_args, **_kwargs):
-        raise httpx.ConnectError("connection refused")
-
-    monkeypatch.setattr(snapshots, "write_snapshot", unreachable)
-    result = outbox.replay_pending(db, None)
-    assert result["stopped_by"] == "upstream_unavailable"
-    row = db.fetchone("SELECT state, attempts FROM tm_ingest_outbox WHERE request_id='keep'")
-    assert row["state"] == "pending"
-    assert int(row["attempts"] or 0) == 0
-    db.close()
-
-
 # ---- 后台维护循环：失败既不能冻结排期，也不能让线程退出 ----
 
 def _loop_harness(tmp_path, monkeypatch, *, rounds=6):
@@ -262,7 +244,7 @@ def test_housekeeping_pragma_failure_is_logged_and_contained(tmp_path, monkeypat
     monkeypatch.setattr(db, "execute", execute)
     monkeypatch.setattr(outbox, "prune_done", lambda _db: 1)  # 让增量回收那一步也执行
     with caplog.at_level(logging.WARNING, logger="tm-outbox"):
-        stats = outbox.replay_pending(db, object())
+        stats = outbox.replay_pending(db)
     assert stats["checked"] == 0  # 收尾维护失败不得让整轮重放抛出
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 2, [r.getMessage() for r in warnings]

@@ -485,7 +485,7 @@ class TmBackground:
             maintenance_due = time.monotonic() >= next_maintenance
             try:
                 if maintenance_due or replayable_count(self.db) > 0:
-                    replay_pending(self.db, self.core, should_stop=self._stop.is_set)
+                    replay_pending(self.db, should_stop=self._stop.is_set)
             except Exception as exc:  # noqa: BLE001 — 后台任务不得崩溃进程
                 failed = True
                 log.warning("outbox 后台重放异常: %s", exc)
@@ -570,7 +570,7 @@ class TmBackground:
         # 只有全部 payload 成功提交后才写幂等标记；失败时下一轮仍能重试。
         mark_legacy_reingested(self.db)
         try:
-            replay_pending(self.db, self.core, should_stop=self._stop.is_set)
+            replay_pending(self.db, should_stop=self._stop.is_set)
         except Exception as exc:  # noqa: BLE001
             log.warning("启动重放异常: %s", exc)
         return True

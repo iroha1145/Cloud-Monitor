@@ -59,11 +59,6 @@ def _normalized(payload: dict, received_at: str) -> dict:
     return record_from_payload(payload, received_at)
 
 
-class UnusedCore:
-    def request(self, *_args, **_kwargs):
-        raise AssertionError("replay must not call tm-core or read the current device")
-
-
 def _limits(device: str, day: str) -> dict:
     return {
         "deviceId": device,
@@ -238,7 +233,7 @@ def test_replay_does_not_skip_older_day_when_newer_day_has_snapshot(tmp_path):
         )
         assert written is not None
 
-        result = replay_pending(db, UnusedCore())
+        result = replay_pending(db)
         assert "stopped_by" not in result
         assert result["superseded"] == 0
         assert result["completed"] == 1
@@ -312,7 +307,7 @@ def test_replay_newer_same_second_usage_overwrites_older_snapshot(tmp_path):
         assert before["server_received_at"] == older_snap
         assert int(before["ingest_sequence"]) == 3
 
-        result = replay_pending(db, UnusedCore())
+        result = replay_pending(db)
         assert result["checked"] == 1
         assert result["completed"] == 1
         assert result["superseded"] == 0
