@@ -47,6 +47,23 @@ def _cache_control_for(path: str) -> str:
     return "no-cache"
 
 
+def _validation_details(errors, *, under_body: bool = False) -> list[dict]:
+    """校验错误只回传诊断元数据（type/loc/msg），不回传提交的输入。
+
+    under_body：请求体模型在路由里手动校验时，loc 不带 "body" 前缀，补上以与
+    FastAPI 自动校验的形状一致。
+    """
+    details = []
+    for error in errors:
+        item = {key: error[key] for key in ("type", "loc", "msg") if key in error}
+        if under_body:
+            loc = item.get("loc")
+            if isinstance(loc, (list, tuple)) and (not loc or loc[0] != "body"):
+                item["loc"] = ["body", *loc]
+        details.append(item)
+    return details
+
+
 class SafeStaticFiles(StarletteStaticFiles):
     async def get_response(self, path: str, scope):
         normalized = path.replace("\\", "/").lstrip("/").lower()
@@ -219,13 +236,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     async def validation_error(_request: Request, exc: RequestValidationError):
         # Pydantic errors may retain NaN/Infinity or entire submitted objects in
         # input/ctx. Return only diagnostic metadata, never re-serialize input.
-        details = [
-            {key: error[key] for key in ("type", "loc", "msg") if key in error}
-            for error in exc.errors()
-        ]
         return JSONResponse(
             status_code=400,
-            content={"error": "请求体校验失败", "details": details},
+            content={"error": "请求体校验失败", "details": _validation_details(exc.errors())},
         )
 
     def settings_dep() -> Settings:
@@ -326,16 +339,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             try:
                 payload = SyncPushRequest.model_validate(raw)
             except ValidationError as exc:
-                details = []
-                for error in exc.errors():
-                    item = {key: error[key] for key in ("type", "loc", "msg") if key in error}
-                    loc = item.get("loc")
-                    if isinstance(loc, (list, tuple)) and (not loc or loc[0] != "body"):
-                        item["loc"] = ["body", *loc]
-                    details.append(item)
                 return JSONResponse(
                     status_code=400,
-                    content={"error": "请求体校验失败", "details": details},
+                    content={
+                        "error": "请求体校验失败",
+                        "details": _validation_details(exc.errors(), under_body=True),
+                    },
                 )
             enforce_device_binding(binding, payload.device.id)
             if len(payload.records) > settings.max_records_per_push:

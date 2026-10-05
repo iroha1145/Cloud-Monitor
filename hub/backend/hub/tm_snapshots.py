@@ -93,6 +93,10 @@ def utc_z(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+def now_z() -> str:
+    return utc_z(datetime.now(timezone.utc))
+
+
 def utc_seconds_z(dt: datetime) -> str:
     """秒级精度的同款格式：状态文件与 HTTP 日期等只需要秒的场景。"""
     if dt.tzinfo is None:
@@ -206,7 +210,7 @@ def norm_ts(value: Any) -> str:
     """
     dt = _parse_iso(value)
     if dt is None:
-        return utc_z(datetime.now(timezone.utc))
+        return now_z()
     return utc_z(dt)
 
 
@@ -214,11 +218,7 @@ def bucket_start_of(producer: Optional[datetime]) -> str:
     base = producer or datetime.now(timezone.utc)
     ms = int(base.timestamp() * 1000)
     floored = (ms // BUCKET_MS) * BUCKET_MS
-    return (
-        datetime.fromtimestamp(floored / 1000, tz=timezone.utc)
-        .isoformat(timespec="milliseconds")
-        .replace("+00:00", "Z")
-    )
+    return utc_z(datetime.fromtimestamp(floored / 1000, tz=timezone.utc))
 
 
 # ---------------------------------------------------------------- 写入
@@ -275,6 +275,11 @@ def _period_cost(period: Any) -> float:
     except (TypeError, ValueError):
         return 0.0
     return max(value, 0.0)
+
+
+def _row_cost(row: dict) -> float:
+    # today_cost 列是 REAL NOT NULL，所有写入方都先经 float() 转换，读回一定是数值
+    return max(float(row["today_cost"] or 0), 0.0)
 
 
 def _stringify_dict(period: Any, key: str) -> str:
@@ -732,10 +737,7 @@ def query_daily_archive(
             continue
         item["tokens"] += int(row["today_total"] or 0)
         _merge_daily_components(item, row)
-        try:
-            item["costUsd"] += max(float(row["today_cost"] or 0), 0.0)
-        except (TypeError, ValueError):
-            pass
+        item["costUsd"] += _row_cost(row)
         item["deviceCount"] += 1
         tz_name = str(row["device_time_zone"] or "").strip()
         if tz_name:
@@ -798,10 +800,7 @@ def trend_by_day(db: Database, days: int = 30) -> list[dict]:
     for row in _last_rows_for_days(db, selected_days):
         item = grouped[row["local_day"]]
         item["total"] += int(row["today_total"] or 0)
-        try:
-            item["costUsd"] += max(float(row["today_cost"] or 0), 0.0)
-        except (TypeError, ValueError):
-            pass
+        item["costUsd"] += _row_cost(row)
         _merge_daily_components(item, row)
     for item in grouped.values():
         item["costUsd"] = round(item["costUsd"], 6)

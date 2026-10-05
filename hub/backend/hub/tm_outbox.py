@@ -30,7 +30,7 @@ from typing import Callable, Optional
 
 from .db import Database
 from .services import utc_now
-from .tm_snapshots import norm_ts, utc_z
+from .tm_snapshots import norm_ts, now_z, utc_z
 
 log = logging.getLogger("tm-outbox")
 
@@ -238,7 +238,7 @@ def ensure_schema(db: Database) -> None:
         db.execute(
             "UPDATE tm_ingest_outbox SET terminal_at = ? "
             "WHERE state IN ('done', 'rejected', 'expired') AND terminal_at IS NULL",
-            (utc_z(datetime.now(timezone.utc)),),
+            (now_z(),),
         )
     expire_unconfirmed(db)
 
@@ -368,24 +368,19 @@ def replay_record(row: dict) -> Optional[dict]:
 def mark_done(
     db: Database, request_id: str, *, snapshot_written: Optional[bool] = None
 ) -> None:
-    finished = utc_z(datetime.now(timezone.utc))
-    if snapshot_written is None:
-        db.execute(
-            "UPDATE tm_ingest_outbox SET state = 'done', last_error = NULL, "
-            "terminal_at = COALESCE(terminal_at, ?), terminal_reason = 'completed', "
-            "forward_payload_json = NULL, forward_payload_bytes = 0 WHERE request_id = ?",
-            (finished, request_id),
-        )
-        return
+    finished = now_z()
+    # snapshot_written 为 None 时保留原值
+    written = None if snapshot_written is None else (1 if snapshot_written else 0)
     db.execute(
         """
         UPDATE tm_ingest_outbox
-        SET state = 'done', last_error = NULL, snapshot_written = ?,
+        SET state = 'done', last_error = NULL,
+            snapshot_written = COALESCE(?, snapshot_written),
             terminal_at = COALESCE(terminal_at, ?), terminal_reason = 'completed',
             forward_payload_json = NULL, forward_payload_bytes = 0
         WHERE request_id = ?
         """,
-        (1 if snapshot_written else 0, finished, request_id),
+        (written, finished, request_id),
     )
 
 
@@ -453,7 +448,7 @@ def supersede_older_pending(db: Database, device_id: str, request_id: str) -> in
                 forward_payload_json = NULL, forward_payload_bytes = 0
             WHERE request_id = ?
             """,
-            (utc_z(datetime.now(timezone.utc)), old["request_id"]),
+            (now_z(), old["request_id"]),
         )
         n += 1
     return n
@@ -472,7 +467,7 @@ def reject_exhausted_pending(
         WHERE state = 'pending' AND attempts >= ?
         """,
         (f"exceeded {max_attempts} attempts (startup sweep)",
-         utc_z(datetime.now(timezone.utc)), max_attempts),
+         now_z(), max_attempts),
     )
     return cur.rowcount or 0
 
@@ -505,7 +500,7 @@ def mark_failed(
             WHERE request_id = ?
             """,
             ((f"exceeded {max_attempts} attempts: {error}")[:500],
-             utc_z(datetime.now(timezone.utc)), request_id),
+             now_z(), request_id),
         )
 
 
@@ -519,7 +514,7 @@ def mark_rejected(db: Database, request_id: str, error: str) -> None:
             forward_payload_json = NULL, forward_payload_bytes = 0
         WHERE request_id = ?
         """,
-        (error[:500], utc_z(datetime.now(timezone.utc)), request_id),
+        (error[:500], now_z(), request_id),
     )
 
 
@@ -570,7 +565,7 @@ def expire_pending(db: Database, request_id: str, reason: str) -> bool:
             "UPDATE tm_ingest_outbox SET state='expired', terminal_at=?, terminal_reason=?, "
             "last_error=COALESCE(last_error, ?), forward_payload_json=NULL, forward_payload_bytes=0 "
             "WHERE request_id=?",
-            (utc_z(datetime.now(timezone.utc)), reason, reason, request_id),
+            (now_z(), reason, reason, request_id),
         )
         _clear_retired_snapshot_error(db, [row])
     _invalidate_overview()
@@ -596,7 +591,7 @@ def expire_unconfirmed(db: Database) -> int:
                 "UPDATE tm_ingest_outbox SET state='expired', terminal_at=?, "
                 "terminal_reason='unconfirmed_timeout', last_error=COALESCE(last_error, 'unconfirmed_timeout') "
                 "WHERE request_id=?",
-                (utc_z(datetime.now(timezone.utc)), row["request_id"]),
+                (now_z(), row["request_id"]),
             )
         _clear_retired_snapshot_error(db, rows)
     if rows:
@@ -646,7 +641,7 @@ def set_snapshot_status(
         db.execute(
             "INSERT INTO tm_meta (key, value) VALUES ('last_snapshot_success_at', ?)"
             " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (utc_z(datetime.now(timezone.utc)),),
+            (now_z(),),
         )
         db.execute(
             "INSERT INTO tm_meta (key, value) VALUES ('last_snapshot_error', '')"

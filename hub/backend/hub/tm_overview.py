@@ -58,7 +58,14 @@ from .auth import require_access_token
 from .config import Settings
 from .db import Database
 from .tm_proxy import TmCore
-from .tm_snapshots import HARD_RETENTION_DAYS, query_daily_archive, trend_by_day, utc_z, valid_day_key
+from .tm_snapshots import (
+    BUCKET_MS,
+    HARD_RETENTION_DAYS,
+    query_daily_archive,
+    trend_by_day,
+    utc_z,
+    valid_day_key,
+)
 
 log = logging.getLogger("tm-overview")
 
@@ -67,7 +74,6 @@ ACTIVITY_DAILY_DAYS = 90
 FINE_ACTIVITY_DAYS = 7
 SESSIONS_LIMIT = 100
 GAP_BUCKETS = 2  # 相邻桶间隔超过 2 个槽位视为采样缺口（低覆盖）
-DEFAULT_SAMPLE_INTERVAL_MS = 5 * 60 * 1000
 LATE_START_GRACE_MINUTES = 10  # 本地日开始后 10 分钟内的首桶不算晚启动
 OVERVIEW_REFRESH_TIMEOUT_SECONDS = 20.0
 
@@ -283,19 +289,19 @@ def _bucket_gap_slots(prev: str | None, curr: str) -> int:
     a, b = _parse_bucket_dt(prev), _parse_bucket_dt(curr)
     if a is None or b is None:
         return GAP_BUCKETS + 1
-    return max(int((b - a).total_seconds() // 300), 0)
+    return max(int((b - a).total_seconds() // (BUCKET_MS // 1000)), 0)
 
 
 def _deltas_for_device(
-    rows: list[dict], *, expected_interval_ms: int = DEFAULT_SAMPLE_INTERVAL_MS
+    rows: list[dict], *, expected_interval_ms: int = BUCKET_MS
 ) -> list[dict]:
     """同一设备按时间排序的相邻差分。换本地日视为新周期，不记累计回退。"""
     out: list[dict] = []
     expected_slots = max(
         1,
         round(
-            max(int(expected_interval_ms or 0), DEFAULT_SAMPLE_INTERVAL_MS)
-            / DEFAULT_SAMPLE_INTERVAL_MS
+            max(int(expected_interval_ms or 0), BUCKET_MS)
+            / BUCKET_MS
         ),
     )
     prev_total: int | None = None
@@ -344,7 +350,7 @@ def _deltas_for_device(
 
 
 def _coverage_for_device(
-    deltas: list[dict], *, expected_interval_ms: int = DEFAULT_SAMPLE_INTERVAL_MS
+    deltas: list[dict], *, expected_interval_ms: int = BUCKET_MS
 ) -> dict:
     stamps = []
     gap_count = 0
@@ -362,7 +368,7 @@ def _coverage_for_device(
             late = True
     observed = len(stamps)
     normalized_interval_ms = max(
-        int(expected_interval_ms or 0), DEFAULT_SAMPLE_INTERVAL_MS
+        int(expected_interval_ms or 0), BUCKET_MS
     )
     sample_seconds = normalized_interval_ms / 1000
     expected = (
@@ -450,7 +456,7 @@ def activity_report(
     for device_id, device_rows in by_device.items():
         expected_interval_ms = max(
             int((sync_intervals or {}).get(device_id) or 0),
-            DEFAULT_SAMPLE_INTERVAL_MS,
+            BUCKET_MS,
         )
         deltas = _deltas_for_device(
             device_rows, expected_interval_ms=expected_interval_ms
@@ -874,19 +880,12 @@ def _dashboard_period(dashboard_tz: str, now: Any = None) -> dict:
     else:
         next_month = month_start.replace(month=now.month + 1)
 
-    def utc(dt) -> str:
-        return (
-            dt.astimezone(timezone.utc)
-            .isoformat(timespec="milliseconds")
-            .replace("+00:00", "Z")
-        )
-
     return {
         "time_zone": dashboard_tz,
-        "today": {"key": today_start.date().isoformat(), "endsAt": utc(next_day)},
+        "today": {"key": today_start.date().isoformat(), "endsAt": utc_z(next_day)},
         "month": {
             "key": today_start.strftime("%Y-%m"),
-            "endsAt": utc(next_month),
+            "endsAt": utc_z(next_month),
         },
     }
 
@@ -1091,24 +1090,9 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
                 raise
         from concurrent.futures import ThreadPoolExecutor
 
-        from .tm_proxy import UpstreamUnavailable
-
         def _stats_sync():
-            try:
-                resp = core.request("GET", "/api/stats")
-            except (httpx.HTTPError, UpstreamUnavailable) as exc:
-                raise HTTPException(
-                    status_code=502, detail="tm-core 聚合不可用"
-                ) from exc
-            if resp.status_code != 200:
-                raise HTTPException(status_code=502, detail="tm-core 聚合不可用")
-            try:
-                data = resp.json()
-            except ValueError as exc:
-                raise HTTPException(
-                    status_code=502, detail="tm-core 聚合不可用"
-                ) from exc
-            if not isinstance(data, dict):
+            data, _error = _fetch_sync(core, "/api/stats")
+            if data is None:
                 raise HTTPException(status_code=502, detail="tm-core 聚合不可用")
             return data
 

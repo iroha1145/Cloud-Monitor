@@ -18,7 +18,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import timezone
 from defusedxml import ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
 from email.utils import parsedate_to_datetime
@@ -27,7 +27,7 @@ from xml.etree.ElementTree import ParseError
 
 import httpx
 
-from .tm_snapshots import utc_seconds_z
+from .tm_snapshots import now_z, utc_seconds_z
 
 log = logging.getLogger("tm-provider-status")
 
@@ -179,14 +179,6 @@ ALLOWED_FETCH_URLS: frozenset[str] = frozenset(
     for page in STATUS_PAGES.values()
     for url in (page.summary_url, page.status_url)
 )
-
-
-def utc_now_z() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .isoformat(timespec="milliseconds")
-        .replace("+00:00", "Z")
-    )
 
 
 def _canonical_from_usage_name(key: str) -> Optional[str]:
@@ -706,7 +698,7 @@ async def fetch_provider_statuses(
     budget_seconds: float = TOTAL_BUDGET_SECONDS,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     """并发拉取 allowlist 状态页。总预算默认 3s，不得串行 3×5s。"""
-    checked_at = utc_now_z()
+    checked_at = now_z()
     timeout = min(max(float(timeout_seconds), 0.1), budget_seconds)
     canonicals = [c for c in STATUS_PAGES if c in observed]
     if not canonicals:
@@ -767,7 +759,7 @@ def assemble_envelope(
 ) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
-        "generated_at": generated_at or utc_now_z(),
+        "generated_at": generated_at or now_z(),
         "providers": providers,
         "partial": bool(errors) or any(p.get("status") == "unknown" for p in providers),
         "errors": errors,

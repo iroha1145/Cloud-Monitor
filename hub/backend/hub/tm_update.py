@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from .auth import require_access_token
 from .config import Settings
+from .services import parse_iso_datetime
 from .tm_snapshots import utc_seconds_z
 
 log = logging.getLogger("tm-update")
@@ -73,11 +74,9 @@ def _job_age_seconds(updated_at: str) -> float | None:
     if not raw:
         return None
     try:
-        ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        ts = parse_iso_datetime(raw)
     except ValueError:
         return None
-    if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
     return max(0.0, (datetime.now(timezone.utc) - ts).total_seconds())
 
 

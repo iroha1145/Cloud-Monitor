@@ -87,20 +87,10 @@ class TmCore:
         json_body: Optional[dict] = None,
         timeout: Optional[httpx.Timeout] = None,
     ) -> httpx.Response:
-        if self._client is None:
-            # 非 lifespan 用法（直连 ASGI 测试等）：临时客户端兜底
-            try:
-                return httpx.request(
-                    method,
-                    f"{self.base_url}{path}",
-                    json=json_body,
-                    headers=self.headers(),
-                    timeout=timeout or httpx.Timeout(CONNECT_TIMEOUT, read=READ_TIMEOUT),
-                )
-            except httpx.HTTPError as exc:
-                raise UpstreamUnavailable(f"tm-core 请求失败: {exc}") from exc
+        # 非 lifespan 用法（直连 ASGI 测试等）没有注入客户端：用模块级 httpx.request 临时发一次
+        sender = httpx if self._client is None else self._client
         try:
-            return self._client.request(
+            return sender.request(
                 method,
                 f"{self.base_url}{path}",
                 json=json_body,
