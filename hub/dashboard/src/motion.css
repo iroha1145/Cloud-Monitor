@@ -1,9 +1,9 @@
 /*
  * Shared motion recipes, adapted from the transitions.dev catalog: 05 menu
  * dropdown, 06 modal, 09 icon swap, 12 error shake, 14 skeleton reveal,
- * 16 tabs sliding, 18 texts reveal, 21 accordion. The motion tokens they read
- * (--duration-*, --ease-*, ...) sit in styles.css :root next to the colours,
- * so every stylesheet loaded after it can use them. Motion follows a user
+ * 16 tabs sliding, 18 texts reveal, 21 accordion, 02 number pop-in. The
+ * motion tokens they read (--duration-*, --ease-*, ...) sit in tokens.css
+ * next to the colours, so every stylesheet loaded after it can use them. Motion follows a user
  * action or a data change; an unchanged refresh replays nothing.
  */
 
@@ -291,8 +291,41 @@ details[open]::details-content {
   transform: scale(0.88);
 }
 
+/* Number pop-in: a changed value re-enters from below with a short blur; the
+   last two digits follow a beat later (PopValue marks them). */
+.t-digit-group {
+  display: inline-flex;
+  align-items: baseline;
+}
+.t-digit {
+  display: inline-block;
+  white-space: pre;
+}
+.t-digit-group.is-animating .t-digit {
+  animation: t-digit-pop-in var(--duration-very-slow) var(--ease-bounce) both;
+}
+.t-digit-group.is-animating .t-digit[data-stagger="1"] {
+  animation-delay: var(--duration-stagger);
+}
+.t-digit-group.is-animating .t-digit[data-stagger="2"] {
+  animation-delay: calc(var(--duration-stagger) * 2);
+}
+@keyframes t-digit-pop-in {
+  from {
+    opacity: 0;
+    filter: blur(var(--blur-small));
+    transform: translateY(var(--distance-base));
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .page-stage > *,
+  .t-digit-group .t-digit,
   .skeleton-block::after,
   .status-dot.is-fresh,
   .is-shaking {

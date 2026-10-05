@@ -13,7 +13,7 @@
 .insight-trend-metrics > div {
   min-width: 0;
 }
-.insight-trend-metrics span {
+.insight-trend-metrics > div > span {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -29,9 +29,15 @@
   line-height: 1.2;
   letter-spacing: -0.035em;
 }
-.insight-trend-metrics small {
+/* One line in both states: inspecting a day must not move the plot under
+   the finger that is inspecting it. */
+.insight-trend-metrics > div > small {
+  display: block;
+  overflow: hidden;
   color: var(--ink-3);
   font-size: var(--fs-meta);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* The chart sits on the card itself: no inner card, only hairlines. */
 .insight-trend-inset {
@@ -105,7 +111,7 @@
 .insight-trend-stage {
   position: relative;
   width: 100%;
-  height: 272px;
+  height: 264px;
   margin: 0;
   cursor: crosshair;
   touch-action: pan-y;
@@ -127,7 +133,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 272px;
+  height: 264px;
   color: var(--ink-2);
   font-size: 13px;
   text-align: center;
@@ -154,7 +160,7 @@
   top: 0;
   left: 0;
   z-index: 150;
-  width: 260px;
+  width: 220px;
   max-width: calc(100vw - 16px);
   overflow: hidden;
   isolation: isolate;
@@ -166,7 +172,7 @@
 .insight-trend-tooltip {
   display: flex;
   flex-direction: column;
-  width: 260px;
+  width: 220px;
   max-width: 100%;
   padding: 12px 13px;
   overflow: hidden;
@@ -192,43 +198,12 @@
 .insight-trend-tooltip-title span {
   color: var(--ink-3);
 }
-.insight-trend-tooltip-total {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  margin-top: 7px;
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.025em;
-}
-.insight-trend-tooltip-total small {
-  color: var(--ink-3);
-  font-size: var(--fs-meta);
-  font-weight: 400;
-  letter-spacing: 0;
-}
-.insight-trend-tooltip-metrics {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin: 10px 0;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--line);
-}
-.insight-trend-tooltip-metrics small {
-  display: block;
-  margin-bottom: 3px;
-  color: var(--ink-3);
-  font-size: var(--fs-meta);
-}
-.insight-trend-tooltip-metrics b {
-  font-size: 13px;
-  font-weight: 600;
-}
 .insight-trend-tooltip-rows {
   display: grid;
   gap: 6px;
-  margin: 0;
+  margin: 9px 0 0;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
   font-size: var(--fs-label);
 }
 .insight-trend-tooltip-rows > div {
@@ -257,10 +232,11 @@
   font-size: var(--fs-meta);
   line-height: 1.5;
 }
+/* Below the stage, so its keyboard focus ring never crosses the labels. */
 .insight-trend-dates {
   display: flex;
   justify-content: space-between;
-  margin: -8px 4px 9px;
+  margin: 0 4px 9px;
   color: var(--ink-3);
   font-size: var(--fs-meta);
 }
@@ -315,7 +291,7 @@
     gap: 10px;
     padding: 0 16px 15px;
   }
-  .insight-trend-metrics span {
+  .insight-trend-metrics > div > span {
     gap: 5px;
     font-size: var(--fs-meta);
   }
@@ -326,7 +302,7 @@
     margin: 0 16px 4px;
   }
   .insight-trend-stage {
-    height: 284px;
+    height: 276px;
   }
   .insight-trend-footer {
     gap: 4px;

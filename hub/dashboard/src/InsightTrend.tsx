@@ -2,7 +2,9 @@
  * Adapted from Beautiful UI's MIT InsightCards.tsx (CompareCard/AnomalyCard).
  * Source copy: references/beautifului/InsightCards.tsx. Keep its inset chart,
  * Liveline stroke, compact metric header, pointer cursor and floating details.
- * Daily values in the tooltip are always source records, never curve samples.
+ * Inspecting a day turns the metric header to that day (the scrub pattern of
+ * stock apps); the popup keeps only the day's composition. Daily values are
+ * always source records, never curve samples.
  * The stroke is Liveline's Fritsch–Carlson cubic through those daily points;
  * its same-Y live tip flattens the latest day against the dashed reference.
  * Slope rules live in trend-math.ts as the spec Android also follows.
@@ -28,6 +30,7 @@ import { indexForSelectedDay } from "./trend-math";
 import { PART_COLOR } from "./palette";
 import { DAY_MS } from "./lib/datetime";
 import { useSlidingIndicator } from "./lib/hooks/use-sliding-indicator";
+import { PopValue } from "./components/motion/pop-value";
 import "./insight-trend.css";
 
 const Liveline = lazyWithReload("liveline", () =>
@@ -89,25 +92,7 @@ function DayDetails({ point }: { point: TrendPoint }) {
     <div className="insight-trend-tooltip">
       <div className="insight-trend-tooltip-title">
         <time dateTime={point.day}>{point.day}</time>
-        <span>每日明细</span>
-      </div>
-      <strong className="insight-trend-tooltip-total">
-        {count(point.totalTokens)}
-        <small>词元（Tokens）</small>
-      </strong>
-      <div className="insight-trend-tooltip-metrics">
-        <span>
-          <small>当天花费</small>
-          <b>{usd(point.costUsd)}</b>
-        </span>
-        <span>
-          <small>
-            {parts?.partial && parts.cacheRate !== null
-              ? "已识别缓存占比"
-              : "缓存占比"}
-          </small>
-          <b>{pct(parts?.cacheRate ?? null)}</b>
-        </span>
+        <span>当天用量组成</span>
       </div>
       <dl className="insight-trend-tooltip-rows">
         {rows.map((row) => (
@@ -173,8 +158,11 @@ function FloatingDayDetails({
       controlled && plot
         ? Math.min(viewportBottom, plot.bottom - margin)
         : viewportBottom;
+    // The metric header above the plot now reads the inspected day, so the
+    // popup never rises past the plot's top edge.
+    const plotTop = plot ? Math.max(minY, plot.top + margin) : minY;
     const availableHeight = Math.max(1, maxY - minY);
-    popup.style.width = `${Math.min(260, availableWidth)}px`;
+    popup.style.width = `${Math.min(220, availableWidth)}px`;
     // Only very short/zoomed viewports need scaling; keep every row visible.
     const scale = Math.min(1, availableHeight / popup.offsetHeight);
     const width = popup.offsetWidth * scale;
@@ -183,16 +171,21 @@ function FloatingDayDetails({
     const touch = anchor.input === "touch";
     const gap = touch ? 28 : 16;
     let x = touch ? anchor.x - width / 2 : anchor.x + gap;
-    let y = touch ? anchor.y - height - gap : anchor.y + gap;
-    if (!touch && x + width > maxX) x = anchor.x - width - gap;
-    if (touch && y < minY) y = anchor.y + gap;
-    if (!touch && y + height > maxY) y = anchor.y - height - gap;
-    if (controlled && plot) {
-      x = plot.left + (plot.width - width) / 2;
-      y = plot.top + Math.max(margin, (plot.height - height) / 2);
+    // A pointer keeps the popup beside it, centred on its height within the
+    // plot band; a finger keeps it above, or below when the plot is short.
+    let y = touch ? anchor.y - height - gap : anchor.y - height / 2;
+    // Flip to the cursor's left before the popup would leave the chart, and
+    // keep the side with more room when neither fits.
+    const right = plot ? Math.min(maxX, plot.right) : maxX;
+    const left = plot ? Math.max(minX, plot.left) : minX;
+    if (!touch && x + width > right) {
+      const flipped = anchor.x - width - gap;
+      if (flipped >= left || anchor.x - left > right - anchor.x) x = flipped;
     }
+    if (touch && y < plotTop) y = anchor.y + gap;
+    if (!touch && plot) y = Math.min(y, plot.bottom - margin - height);
     x = Math.min(Math.max(x, minX), maxX - width);
-    y = Math.min(Math.max(y, minY), maxY - height);
+    y = Math.min(Math.max(y, plotTop), maxY - height);
     popup.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
     popup.style.visibility = "visible";
   }, [anchor, point, plot]);
@@ -222,6 +215,8 @@ export function InsightTrend({ data }: { data: DashboardData }) {
   const navigationRef = useRef<HTMLSpanElement>(null);
   const metricSwitch = useSlidingIndicator<HTMLDivElement>('[aria-pressed="true"]');
   const pointerDown = useRef(false);
+  // A tap focuses the plot after its pointerup; that focus is not keyboard use.
+  const pointerAt = useRef(0);
   const series = useMemo(() => {
     const last = data.trend.at(-1);
     if (!last) return [];
@@ -244,17 +239,20 @@ export function InsightTrend({ data }: { data: DashboardData }) {
     firstTime != null && lastTime != null
       ? Math.max(DAY, lastTime - firstTime)
       : DAY;
+  // The chart always holds every reported day; the range only sets how much
+  // of it is in view, so 7 ↔ 30 days is Liveline's own window zoom. A paused
+  // Liveline keeps the data it mounted with, hence the key on the values.
   const chart = useMemo(() => {
     const end = Date.now() / 1000;
-    const last = series.at(-1);
-    if (!last) return { points: [], end, value: 0 };
-    const lastStamp = seriesTimes.at(-1) ?? utcDay(last.day);
-    const values = series.flatMap((item, index) =>
+    const last = data.trend.at(-1);
+    if (!last) return { points: [], end, value: 0, key: metric };
+    const lastStamp = utcDay(last.day);
+    const values = data.trend.flatMap((item) =>
       metric !== "tokens" && item.costUsd === null
         ? []
         : [
             {
-              time: end - (lastStamp - (seriesTimes[index] ?? utcDay(item.day))),
+              time: end - (lastStamp - utcDay(item.day)),
               value: metric === "tokens" ? item.totalTokens : item.costUsd!,
             },
           ],
@@ -263,8 +261,9 @@ export function InsightTrend({ data }: { data: DashboardData }) {
       points: values,
       end,
       value: values.at(-1)?.value ?? 0,
+      key: `${metric}:${data.trend.map((item) => `${item.day}=${item.totalTokens}/${item.costUsd}`).join(",")}`,
     };
-  }, [series, seriesTimes, metric]);
+  }, [data.trend, metric]);
 
   useEffect(() => {
     setSelectedDay(null);
@@ -293,7 +292,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
   }, [hasCost, metric]);
   const [plot, setPlot] = useState<DOMRect | undefined>();
   useLayoutEffect(() => {
-    if (detailMode !== "keyboard" && detailMode !== "navigation") {
+    if (detailMode === null) {
       setPlot(undefined);
       return;
     }
@@ -371,11 +370,13 @@ export function InsightTrend({ data }: { data: DashboardData }) {
       ? 1.5 + ((seriesTimes[pointIndex] - firstTime) / span) * 97
       : 98.5;
   const tooltipVisible = detailMode !== null && selectedDay !== null && point;
+  const day = tooltipVisible ? point : null;
+  // Keyboard and day buttons anchor beside the cursor line, not over it.
   const detailAnchor =
     pointerAnchor ||
     (plot
       ? {
-          x: plot.left + plot.width / 2,
+          x: plot.left + (plot.width * position) / 100,
           y: plot.top + plot.height / 2,
           input:
             detailMode === "navigation"
@@ -419,32 +420,44 @@ export function InsightTrend({ data }: { data: DashboardData }) {
         </Tabs>
       </div>
 
-      <div className="insight-trend-metrics">
+      {/* While a day is inspected the header reads that day, so the numbers
+          sit where the eye already is instead of in a popup over the line. */}
+      <div className="insight-trend-metrics" data-day={day?.day}>
         <div>
-          <span>
-            区间词元
-          </span>
-          <strong>{compact(tokenTotal)}</strong>
-          <small>{series.length} 天已记录</small>
+          <span>{day ? `${shortDay(day.day)} 词元` : "区间词元"}</span>
+          <strong>
+            <PopValue value={compact(day ? day.totalTokens : tokenTotal)} />
+          </strong>
+          <small>
+            {day ? `${count(day.totalTokens)} 词元` : `${series.length} 天已记录`}
+          </small>
         </div>
         <div>
           <span>
-            {allCosts ? "区间花费" : hasCost ? "已知花费" : "区间花费"}
+            {day ? "当天花费" : allCosts ? "区间花费" : hasCost ? "已知花费" : "区间花费"}
           </span>
-          <strong>{usd(costTotal)}</strong>
+          <strong>
+            <PopValue value={usd(day ? day.costUsd : costTotal)} />
+          </strong>
           <small>美元（USD）</small>
         </div>
         <div>
           <span>
-            {partialCache && cacheRate !== null ? "已识别缓存占比" : "缓存占比"}
+            {(day ? day.components?.partial && day.components.cacheRate !== null : partialCache && cacheRate !== null)
+              ? "已识别缓存占比"
+              : "缓存占比"}
           </span>
-          <strong>{pct(cacheRate)}</strong>
+          <strong>
+            <PopValue value={pct(day ? day.components?.cacheRate ?? null : cacheRate)} />
+          </strong>
           <small>
-            {cacheSkippedDays > 0
-              ? cacheDays > 0
-                ? `仅统计 ${cacheDays}/${series.length} 天`
-                : "暂无缓存明细"
-              : "缓存读取 ÷ 总词元"}
+            {day
+              ? "缓存读取 ÷ 总词元"
+              : cacheSkippedDays > 0
+                ? cacheDays > 0
+                  ? `仅统计 ${cacheDays}/${series.length} 天`
+                  : "暂无缓存明细"
+                : "缓存读取 ÷ 总词元"}
           </small>
         </div>
       </div>
@@ -504,6 +517,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
               aria-describedby={`${uid}-hint${tooltipVisible ? ` ${uid}-details` : ""}`}
               onPointerDown={(event) => {
                 pointerDown.current = true;
+                pointerAt.current = performance.now();
                 event.currentTarget.setPointerCapture(event.pointerId);
                 setFromPointer(event, true);
               }}
@@ -528,7 +542,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
               }}
               onKeyDown={handleKey}
               onFocus={() => {
-                if (pointerDown.current) return;
+                if (pointerDown.current || performance.now() - pointerAt.current < 1000) return;
                 setDetailMode("keyboard");
                 setPointerAnchor(null);
                 setSelectedDay((current) => current ?? series.at(-1)?.day ?? null);
@@ -554,7 +568,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
                   <div className="insight-trend-canvas" aria-hidden="true">
                     <Suspense fallback={null}>
                       <Liveline
-                        key={`${days}-${metric}`}
+                        key={chart.key}
                         data={chart.points}
                         value={chart.value}
                         theme={dark ? "dark" : "light"}
@@ -570,7 +584,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
                         window={span / 0.97}
                         cursor="crosshair"
                         lineWidth={2.25}
-                        padding={{ top: 38, right: 0, bottom: 24, left: 0 }}
+                        padding={{ top: 38, right: 0, bottom: 16, left: 0 }}
                         formatValue={(value) =>
                           metric === "tokens" ? compact(value) : usd(value)
                         }

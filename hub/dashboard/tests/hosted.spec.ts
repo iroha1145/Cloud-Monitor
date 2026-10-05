@@ -162,8 +162,9 @@ test("real daily cache reaches range and day details independently of the select
   const slider = trend.getByRole("slider");
   await slider.focus();
   await slider.press("End");
+  // The day's cache rate moves into the metric header; the popup keeps the parts.
   await expect(page.locator(".insight-trend-tooltip")).toContainText("986,000");
-  await expect(page.locator(".insight-trend-tooltip")).toContainText("53.4%");
+  await expect(metric.locator("strong")).toHaveText("53.4%");
   await slider.press("Escape");
   await page.getByRole("tablist", { name: "统计周期" }).getByRole("tab").nth(1).click();
   await expect(metric.locator("strong")).toHaveText("53.4%");

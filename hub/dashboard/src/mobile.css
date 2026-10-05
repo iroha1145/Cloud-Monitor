@@ -347,13 +347,13 @@
   .insight-trend-metrics {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(90px, 1fr);
   }
-  .insight-trend-metrics span {
+  .insight-trend-metrics > div > span {
     font-size: 11px;
   }
   .insight-trend-metrics strong {
     font-size: clamp(17px, 4.5vw, 21px);
   }
-  .insight-trend-metrics small {
+  .insight-trend-metrics > div > small {
     font-size: var(--fs-meta);
   }
   .insight-trend-footer {
