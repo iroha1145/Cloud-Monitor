@@ -7,20 +7,12 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from pathlib import Path
 
-from sync_agent import AgentState, parse_health_stale_seconds
-
-
-def _state_path() -> Path:
-    return Path(
-        os.environ.get("STATE_PATH")
-        or (Path(__file__).resolve().parent / "agent-state.json")
-    )
+from sync_agent import AgentState, parse_health_stale_seconds, resolve_state_path
 
 
 def main() -> int:
-    state_path = _state_path()
+    state_path = resolve_state_path(os.environ)
     if not state_path.is_file():
         print(f"unhealthy: 状态文件不存在 {state_path}")
         return 1

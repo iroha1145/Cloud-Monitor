@@ -855,6 +855,23 @@ def test_healthcheck_states(tmp_path, monkeypatch, capsys):
     assert healthcheck.main() == 1
 
 
+def test_healthcheck_finds_state_written_by_agent_for_home_relative_path(tmp_path, monkeypatch):
+    """STATE_PATH 写成 ~/… 时，agent 与 healthcheck 必须落到同一个文件。"""
+    import healthcheck
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    env = {"CLOUD_HUB_URL": "http://127.0.0.1:7878", "STATE_PATH": " ~/agent-state.json "}
+    config = sa.load_config(env)
+    assert config.state_path == tmp_path / "agent-state.json"
+    state = AgentState(config.state_path)
+    state.device_id = "d"
+    state.data["last_success_at"] = utc_now_iso()
+    state.save()
+
+    monkeypatch.setenv("STATE_PATH", env["STATE_PATH"])
+    assert healthcheck.main() == 0
+
+
 def test_healthcheck_does_not_rename_corrupt_state(tmp_path, monkeypatch, capsys):
     """健康检查不得把损坏/不支持的状态文件改名移走，否则 agent 可能换新身份。"""
     import healthcheck

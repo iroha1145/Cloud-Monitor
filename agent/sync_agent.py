@@ -29,7 +29,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -101,6 +101,15 @@ def parse_health_stale_seconds(raw: str | None) -> float:
 LOCAL_HTTP_HOSTS = {"localhost", "127.0.0.1", "::1", "host.docker.internal", "0.0.0.0"}
 
 
+def resolve_state_path(env: Mapping[str, str]) -> Path:
+    """STATE_PATH 解析（去首尾空白、展开 ~，缺省为 agent 目录下的 agent-state.json）。
+
+    agent 与 healthcheck.py 共用：两侧解析不一致时，健康检查会去找一个 agent 从不写的文件。
+    """
+    raw = str(env.get("STATE_PATH", "")).strip()
+    return Path(raw or (Path(__file__).resolve().parent / "agent-state.json")).expanduser()
+
+
 def assert_https_allowed(url: str, *, allow_insecure: bool, what: str) -> None:
     """公网地址必须 HTTPS；仅本机/容器内部地址或显式放行时允许 HTTP。"""
     parsed = urlparse(url)
@@ -168,9 +177,7 @@ def load_config(env: Optional[dict[str, str]] = None) -> AgentConfig:
     allow_insecure = _env_bool(env.get("ALLOW_INSECURE_HTTP"))
     assert_https_allowed(hub_url, allow_insecure=allow_insecure, what="CLOUD_HUB_URL")
 
-    state_path = Path(
-        get("STATE_PATH") or (Path(__file__).resolve().parent / "agent-state.json")
-    ).expanduser()
+    state_path = resolve_state_path(env)
 
     interval = _float("SYNC_INTERVAL_SECONDS", 60.0, minimum=5.0)
     tm_hub = get("TOKEN_MONITOR_HUB_URL")
