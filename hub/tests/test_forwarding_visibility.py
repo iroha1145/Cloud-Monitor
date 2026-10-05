@@ -36,20 +36,21 @@ def test_background_delivery_reaches_persisted_history_and_refreshed_overview(no
 
         blocked["value"] = False
         client.app.state.tm_background.wake()
+        # 等总览本身反映出投递完成：库里的行先变 done，缓存失效紧随其后，
+        # 只等库里的状态再读总览，可能正好读到失效前的缓存。
         deadline = time.monotonic() + 5
-        while time.monotonic() < deadline:
-            saved = db.fetchone("SELECT state FROM tm_ingest_outbox WHERE device_id=?",
-                                (payload["deviceId"],))
-            if saved and saved["state"] == "done":
+        while True:
+            refreshed = client.get("/api/v1/tm/overview", headers=read_headers).json()
+            if (refreshed["forwarding_outbox"] == 0 and refreshed["pending_outbox"] == 0
+                    and refreshed["snapshot_degraded"] is False):
                 break
+            if time.monotonic() >= deadline:
+                raise AssertionError(f"overview never showed the delivered upload: {refreshed}")
             time.sleep(.02)
-        else:
-            raise AssertionError("background delivery did not persist its acknowledgement")
 
-        refreshed = client.get("/api/v1/tm/overview", headers=read_headers).json()
-        assert refreshed["forwarding_outbox"] == 0
-        assert refreshed["pending_outbox"] == 0
-        assert refreshed["snapshot_degraded"] is False
+        saved = db.fetchone("SELECT state FROM tm_ingest_outbox WHERE device_id=?",
+                            (payload["deviceId"],))
+        assert saved["state"] == "done"
         device = next(row for row in refreshed["devices"] if row["deviceId"] == payload["deviceId"])
         assert device["today"]["totalTokens"] == expected
         history = client.get("/api/v1/tm/history/daily", headers=read_headers).json()
