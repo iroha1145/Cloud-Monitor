@@ -10,28 +10,15 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from conftest import API_KEY, READ_KEY, make_settings
 from hub.config import ConfigError, Settings, load_settings
 from hub.db import Database
 from hub.main import create_app
 from hub.models import DeviceInfo, RecordIn, SyncPushRequest, UserIn
 from hub.services import apply_sync_push
 
-API_KEY = "unit-test-admin-key"
-READ_KEY = "unit-test-read-key"
 AUTH = {"Authorization": f"Bearer {API_KEY}"}
 READ = {"Authorization": f"Bearer {READ_KEY}"}
-
-
-def make_settings(tmp_path, **overrides) -> Settings:
-    defaults = dict(
-        api_key=API_KEY,
-        access_token=READ_KEY,
-        database_path=tmp_path / "hub.sqlite3",
-        frontend_dir=tmp_path / "no-frontend",
-        max_records_per_push=500,
-    )
-    defaults.update(overrides)
-    return Settings(**defaults)
 
 
 @pytest.fixture()

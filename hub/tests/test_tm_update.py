@@ -10,7 +10,8 @@ from fastapi.testclient import TestClient
 
 from hub.main import create_app
 from hub.tm_update import UpdateService, parse_ref, version_gt, version_key
-from test_hub import AUTH, READ, make_settings
+from conftest import make_settings
+from test_hub import AUTH, READ
 
 RELEASE = {
     "tag_name": "v0.2.0",
