@@ -27,7 +27,7 @@ import { usd } from "./money";
 import { compact, count, pct } from "./lib/format";
 import { AppErrorBoundary, lazyWithReload } from "./chunkLoad";
 import { indexForSelectedDay } from "./trend-math";
-import { PART_COLOR } from "./palette";
+import { PART_COLOR, TREND_COLOR } from "./palette";
 import { DAY_MS } from "./lib/datetime";
 import { useSlidingIndicator } from "./lib/hooks/use-sliding-indicator";
 import { PopValue } from "./components/motion/pop-value";
@@ -39,6 +39,20 @@ const Liveline = lazyWithReload("liveline", () =>
 
 // Liveline plots in seconds.
 const DAY = DAY_MS / 1000;
+// Room right of the plot for Liveline's value labels: the scale reads on the
+// right, as in Arc UI's line chart. Pointer, cursor and dates use plot width.
+const AXIS = 56;
+/** Short scale labels that fit AXIS: 8000万, 1.2亿, $90, $4.5, $0.25. */
+const oneDecimal = (value: number) => String(Math.round(value * 10) / 10);
+function axisLabel(value: number, metric: "tokens" | "cost") {
+  if (metric === "cost") {
+    if (value >= 100) return `$${Math.round(value)}`;
+    return value >= 1 ? `$${oneDecimal(value)}` : `$${value.toFixed(2)}`;
+  }
+  if (value >= 1e8) return `${oneDecimal(value / 1e8)}亿`;
+  if (value >= 1e4) return `${oneDecimal(value / 1e4)}万`;
+  return String(Math.round(value));
+}
 const shortDay = (day: string) =>
   `${Number(day.slice(5, 7))}/${Number(day.slice(8))}`;
 const utcDay = (day: string) => Date.parse(`${day}T00:00:00Z`) / 1000;
@@ -320,7 +334,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
       0,
       Math.min(
         1,
-        ((event.clientX - bounds.left) / bounds.width - 0.015) / 0.97,
+        ((event.clientX - bounds.left) / (bounds.width - AXIS) - 0.015) / 0.97,
       ),
     );
     const origin = seriesTimes[0];
@@ -364,15 +378,8 @@ export function InsightTrend({ data }: { data: DashboardData }) {
         event.key === "ArrowLeft" || event.key === "ArrowDown" ? -1 : 1,
       );
   };
-  // The line wears its measure's colour (tokens indigo, cost gold, tokens.css),
-  // the same hue the heat maps use; the composition colours stay for parts.
-  const lineColor = useMemo(
-    () =>
-      getComputedStyle(document.documentElement)
-        .getPropertyValue(metric === "tokens" ? "--viz-tokens" : "--viz-cost")
-        .trim() || "#5d55c6",
-    [dark, metric],
-  );
+  // The original line colours: tokens blue, cost orange (palette.ts).
+  const lineColor = TREND_COLOR[metric];
   const position =
     point && firstTime != null
       ? 1.5 + ((seriesTimes[pointIndex] - firstTime) / span) * 97
@@ -384,7 +391,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
     pointerAnchor ||
     (plot
       ? {
-          x: plot.left + (plot.width * position) / 100,
+          x: plot.left + ((plot.width - AXIS) * position) / 100,
           y: plot.top + plot.height / 2,
           input:
             detailMode === "navigation"
@@ -432,7 +439,10 @@ export function InsightTrend({ data }: { data: DashboardData }) {
           sit where the eye already is instead of in a popup over the line. */}
       <div className="insight-trend-metrics" data-day={day?.day}>
         <div>
-          <span>{day ? `${shortDay(day.day)} 词元` : "区间词元"}</span>
+          <span>
+            <i style={{ background: TREND_COLOR.tokens }} aria-hidden="true" />
+            {day ? `${shortDay(day.day)} 词元` : "区间词元"}
+          </span>
           <strong>
             <PopValue value={compact(day ? day.totalTokens : tokenTotal)} />
           </strong>
@@ -442,6 +452,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
         </div>
         <div>
           <span>
+            <i style={{ background: TREND_COLOR.cost }} aria-hidden="true" />
             {day ? "当天花费" : allCosts ? "区间花费" : hasCost ? "已知花费" : "区间花费"}
           </span>
           <strong>
@@ -451,6 +462,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
         </div>
         <div>
           <span>
+            <i style={{ background: TREND_COLOR.cache }} aria-hidden="true" />
             {(day ? day.components?.partial && day.components.cacheRate !== null : partialCache && cacheRate !== null)
               ? "已识别缓存占比"
               : "缓存占比"}
@@ -581,7 +593,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
                         value={chart.value}
                         theme={dark ? "dark" : "light"}
                         color={lineColor}
-                        grid={false}
+                        grid
                         badge={false}
                         showValue={false}
                         pulse={false}
@@ -592,10 +604,8 @@ export function InsightTrend({ data }: { data: DashboardData }) {
                         window={span / 0.97}
                         cursor="crosshair"
                         lineWidth={2.25}
-                        padding={{ top: 38, right: 0, bottom: 16, left: 0 }}
-                        formatValue={(value) =>
-                          metric === "tokens" ? compact(value) : usd(value)
-                        }
+                        padding={{ top: 38, right: AXIS, bottom: 16, left: 0 }}
+                        formatValue={(value) => axisLabel(value, metric)}
                         formatTime={() => ""}
                       />
                     </Suspense>
@@ -615,7 +625,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
                 <>
                   <span
                     className="insight-chart-cursor insight-trend-cursor"
-                    style={{ left: `${position}%`, background: lineColor }}
+                    style={{ left: `calc((100% - ${AXIS}px) * ${position / 100})` }}
                   />
                   {detailAnchor && (
                     <FloatingDayDetails

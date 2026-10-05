@@ -164,7 +164,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
     if (next >= 0 && next <= lastPast) buttons.current[next]?.focus();
   }
 
-  return <section className="sv-card sv-history-activity cm-activity-panel heat-scope" aria-labelledby="sv-activity-title">
+  return <section className="sv-card sv-history-activity cm-activity-panel" aria-labelledby="sv-activity-title">
     <header className="cm-activity-head">
       <div><h2 id="sv-activity-title">活动一览</h2><p>{subtitle}</p></div>
       <div className="cm-activity-tabs" role="tablist" aria-label="活动时间范围" ref={tabList}>

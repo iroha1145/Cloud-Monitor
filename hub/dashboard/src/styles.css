@@ -746,12 +746,12 @@ kbd {
   color: var(--ink-3);
   font-size: var(--fs-label);
 }
+/* Arc UI usage-meter bars: a pill, parts parted by 2px of the card itself. */
 .spectrum {
   display: flex;
   gap: 2px;
-  height: 12px;
-  border-radius: 6px;
-  background: var(--hover-2);
+  height: 14px;
+  border-radius: 7px;
   overflow: hidden;
 }
 .spectrum > span {
@@ -875,12 +875,16 @@ kbd {
 .metric-switch[data-indicator="ready"] [aria-pressed="true"] {
   border-color: transparent;
 }
+/* Arc UI swatches: rounded squares beside meters, round dots beside a donut. */
 .legend-dot {
   display: inline-block;
   flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.composition-panel .legend-dot {
+  border-radius: 50%;
 }
 .empty-inline {
   display: flex;
@@ -994,15 +998,20 @@ kbd {
 }
 .client-track {
   display: flex;
-  gap: 1px;
-  height: 8px;
-  border-radius: 4px;
-  background: var(--hover);
+  gap: 2px;
+  height: 10px;
+  border-radius: 5px;
   overflow: hidden;
 }
-.client-track > span {
-  flex-shrink: 0;
+/* Parts grow by their tokens; the rest of the period's usage is the track. */
+.client-track > span,
+.cache-track > span {
+  flex: 0 1 0;
+  min-width: 2px;
   height: 100%;
+}
+.client-track > .track-rest {
+  background: var(--hover);
 }
 .client-track.is-incomplete {
   background: repeating-linear-gradient(
@@ -1031,60 +1040,72 @@ kbd {
 .composition-panel {
   padding-bottom: 4px;
 }
+/* Arc UI donut: the ring centred, its reading in the hole. */
 .composition-hero {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 16px 24px 12px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  margin: 12px 24px 14px;
 }
 .eyebrow {
   display: block;
   color: var(--ink-3);
   font-size: var(--fs-label);
 }
+.composition-center {
+  position: absolute;
+  display: grid;
+  justify-items: center;
+  max-width: 130px;
+  text-align: center;
+}
 .composition-hero strong {
   display: block;
-  margin-top: 6px;
-  font-size: 34px;
-  font-weight: 620;
-  letter-spacing: -0.04em;
+  margin-top: 4px;
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.035em;
   line-height: 1.1;
 }
 .composition-hint {
   display: block;
-  margin-top: 6px;
+  margin-top: 4px;
   color: var(--ink-3);
-  font-size: var(--fs-label);
+  font-size: var(--fs-meta);
 }
 .composition-ring {
-  flex-shrink: 0;
-  width: 96px;
-  height: 96px;
-  overflow: visible;
+  width: min(208px, 100%);
+  height: auto;
+  aspect-ratio: 1;
+}
+.composition-ring-track {
+  fill: var(--line);
 }
 .composition-legend {
   margin: 0 24px;
 }
+/* Arc UI legend rows: name, value in secondary ink, share in bold. */
 .composition-legend > div {
   display: grid;
-  grid-template-columns: 1fr auto 52px;
+  grid-template-columns: 1fr auto 3.5em;
   align-items: center;
   gap: 12px;
-  margin: 9px 0;
-  font-size: var(--fs-label);
+  min-height: 36px;
+  font-size: var(--fs-body);
 }
 .composition-legend > div > span:first-child {
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: var(--ink-2);
+  gap: 10px;
+  color: var(--ink);
 }
 .composition-legend strong {
-  font-weight: 550;
+  color: var(--ink-2);
+  font-weight: 400;
 }
 .composition-legend > div > span:last-child {
-  color: var(--ink-3);
+  color: var(--ink);
+  font-weight: 550;
   text-align: right;
 }
 .composition-note {
@@ -1273,15 +1294,11 @@ kbd {
 .cache-track {
   display: flex;
   flex-shrink: 0;
+  gap: 2px;
   width: 88px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--hover);
+  height: 8px;
+  border-radius: 4px;
   overflow: hidden;
-}
-.cache-track > span {
-  display: block;
-  height: 100%;
 }
 .cache-track.is-incomplete {
   background: repeating-linear-gradient(
@@ -1347,7 +1364,7 @@ kbd {
   content: "";
   position: absolute;
   inset: 0;
-  background: var(--hover);
+  background: var(--surface);
   transform: scaleX(0);
   transform-origin: right;
   pointer-events: none;
@@ -1371,7 +1388,7 @@ kbd {
 }
 .cache-track > span,
 .client-track > span {
-  transition: width var(--duration-slow) var(--ease-smooth-out);
+  transition: flex-grow var(--duration-slow) var(--ease-smooth-out);
 }
 @keyframes t-bar-cover {
   from {
@@ -1387,16 +1404,19 @@ kbd {
     clip-path: inset(0);
   }
 }
-/* Ring segments draw from their start angle; period changes morph them. */
-.composition-ring circle[style] {
-  transition:
-    stroke-dasharray var(--duration-slow) var(--ease-smooth-out),
-    stroke-dashoffset var(--duration-slow) var(--ease-smooth-out);
-  animation: t-ring-draw var(--duration-very-slow) var(--ease-smooth-out) backwards;
+/* Arc UI sweep: the ring opens clockwise from the top the first time it shows. */
+@property --ring-sweep {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 360deg;
 }
-@keyframes t-ring-draw {
+.composition-ring {
+  mask-image: conic-gradient(#000 var(--ring-sweep), transparent 0);
+  animation: t-ring-sweep var(--duration-very-slow) var(--ease-smooth-out) backwards;
+}
+@keyframes t-ring-sweep {
   from {
-    stroke-dasharray: 0 270.18;
+    --ring-sweep: 0deg;
   }
 }
 
@@ -1990,20 +2010,20 @@ kbd {
   color: var(--ink-3);
 }
 .matrix-cell.level-1 {
-  background: var(--heat-1);
-  color: var(--heat-1-ink);
+  background: var(--matrix-1);
+  color: var(--matrix-1-ink);
 }
 .matrix-cell.level-2 {
-  background: var(--heat-2);
-  color: var(--heat-2-ink);
+  background: var(--matrix-2);
+  color: var(--matrix-2-ink);
 }
 .matrix-cell.level-3 {
-  background: var(--heat-3);
-  color: var(--heat-3-ink);
+  background: var(--matrix-3);
+  color: var(--matrix-3-ink);
 }
 .matrix-cell.level-4 {
-  background: var(--heat-4);
-  color: var(--heat-4-ink);
+  background: var(--matrix-4);
+  color: var(--matrix-4-ink);
 }
 
 /* ── Page heading and loading text motion (Beautiful UI sources) ──── */

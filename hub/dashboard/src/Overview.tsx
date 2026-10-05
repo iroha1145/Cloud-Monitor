@@ -27,6 +27,7 @@ import { usd } from "./money";
 import { compact, count, pct } from "./lib/format";
 import { useSlidingIndicator } from "./lib/hooks/use-sliding-indicator";
 import { useScrollEdges } from "./lib/hooks/use-scroll-edges";
+import { sector } from "./lib/donut-sector";
 
 
 /** A part the source did not report is unknown, never zero. */
@@ -262,6 +263,9 @@ export function Stats({
   );
 }
 
+/** Arc UI donut geometry: a 208px ring 24px thick, 3px gaps, 4px corners. */
+const RING = { size: 208, margin: 7, thickness: 24, gap: 3, corner: 4 };
+
 export function CompositionCard({
   per,
   small = false,
@@ -269,69 +273,53 @@ export function CompositionCard({
   per: PeriodUsage;
   small?: boolean;
 }) {
-  const values = COMPOSITION.map((s) => ({
-    ...s,
-    value: per.components[s.key],
-  }));
-  const sum = values.reduce((a, s) => a + s.value, 0) || 1;
-  let offset = 0;
+  const parts = per.components;
+  const sum = COMPOSITION.reduce((total, part) => total + parts[part.key], 0);
+  const c = RING.size / 2;
+  const outer = c - RING.margin;
+  const inner = outer - RING.thickness;
+  let turn = 0;
+  const arcs = COMPOSITION.flatMap((part) => {
+    if (!sum || parts[part.key] <= 0) return [];
+    const start = turn;
+    turn += parts[part.key] / sum;
+    return [{ key: part.key, color: part.color, d: sector(c, outer, inner, start, turn, RING.gap, RING.corner) }];
+  });
   return (
     <section className={`panel composition-panel ${small ? "small" : ""}`}>
       <div className="panel-head">
         <h2>用量组成</h2>
       </div>
-      <div className="composition-hero">
-        <div>
+      {/* The ring and the reading in its hole are one picture. */}
+      <div
+        className="composition-hero"
+        role="img"
+        aria-label={`用量组成环形图，总用量 ${count(per.totalTokens)}，缓存占比 ${pct(parts.cacheRate)}`}
+      >
+        <svg
+          viewBox={`0 0 ${RING.size} ${RING.size}`}
+          className="composition-ring"
+          aria-hidden="true"
+        >
+          {arcs.length ? (
+            arcs.map((arc) => <path key={arc.key} d={arc.d} fill={arc.color} />)
+          ) : (
+            <path className="composition-ring-track" d={sector(c, outer, inner, 0, 1, 0, 0)} />
+          )}
+        </svg>
+        <div className="composition-center">
           <span className="eyebrow">
-            {per.components.partial ? "已识别缓存占比" : "缓存占比"}
+            {parts.partial ? "已识别缓存占比" : "缓存占比"}
           </span>
-          <strong>{pct(per.components.cacheRate)}</strong>
+          <strong>{pct(parts.cacheRate)}</strong>
           <span className="composition-hint">
-            {per.components.cacheReadKnown
-              ? `${compact(per.components.cacheRead)} 缓存读取`
-              : "该来源未上报缓存组成"}
+            {parts.cacheReadKnown
+              ? `${compact(parts.cacheRead)} 缓存读取`
+              : "未上报缓存组成"}
           </span>
         </div>
-        <svg
-          viewBox="0 0 110 110"
-          className="composition-ring"
-          role="img"
-          aria-label={`用量组成环形图，总用量 ${count(per.totalTokens)}，缓存占比 ${pct(per.components.cacheRate)}`}
-        >
-          <circle
-            cx="55"
-            cy="55"
-            r="43"
-            stroke="var(--border)"
-            strokeWidth="10"
-            fill="none"
-          />
-          {values
-            .filter((v) => v.value > 0)
-            .map((v) => {
-              const len = (v.value / sum) * 270.18,
-                start = offset;
-              offset += len;
-              return (
-                <circle
-                  key={v.key}
-                  cx="55"
-                  cy="55"
-                  r="43"
-                  fill="none"
-                  stroke={v.color}
-                  strokeWidth="10"
-                  style={{
-                    strokeDasharray: `${Math.max(0, len - 2.8)} 270.18`,
-                    strokeDashoffset: -start,
-                  }}
-                  transform="rotate(-90 55 55)"
-                />
-              );
-            })}
-        </svg>
       </div>
-      <CompositionLegend parts={per.components} />
+      <CompositionLegend parts={parts} />
       <p className="composition-note">
         <CircleHelp size={13} />
         {compositionNote(per)}
@@ -524,13 +512,10 @@ export function ModelTable({
                             aria-hidden="true"
                           >
                             {m.components.complete &&
-                              COMPOSITION.map((part) => (
+                              COMPOSITION.filter((part) => m.components[part.key] > 0).map((part) => (
                                 <span
                                   key={part.key}
-                                  style={{
-                                    width: `${m.totalTokens ? (m.components[part.key] / m.totalTokens) * 100 : 0}%`,
-                                    background: part.color,
-                                  }}
+                                  style={{ flexGrow: m.components[part.key], background: part.color }}
                                 />
                               ))}
                           </span>
@@ -644,16 +629,16 @@ function Clients({ per }: { per: PeriodUsage }) {
                   className={`client-track ${!c.components.complete ? "is-incomplete" : ""}`}
                   aria-hidden="true"
                 >
-                  {c.components.complete &&
-                    COMPOSITION.map((s) => (
-                      <span
-                        key={s.key}
-                        style={{
-                          background: s.color,
-                          width: `${per.totalTokens ? (c.components[s.key] / per.totalTokens) * 100 : 0}%`,
-                        }}
-                      />
-                    ))}
+                  {c.components.complete && (
+                    <>
+                      {COMPOSITION.filter((s) => c.components[s.key] > 0).map((s) => (
+                        <span key={s.key} style={{ flexGrow: c.components[s.key], background: s.color }} />
+                      ))}
+                      {per.totalTokens > c.totalTokens && (
+                        <span className="track-rest" style={{ flexGrow: per.totalTokens - c.totalTokens }} />
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
             </MetricTooltip>
@@ -764,7 +749,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
   );
   const peak = matrixHeatPeak(source);
   return (
-    <section className="panel matrix-panel heat-scope" data-metric={metric}>
+    <section className="panel matrix-panel">
       <div className="panel-head">
         <div>
           <h2>客户端 × 模型</h2>

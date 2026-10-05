@@ -379,15 +379,11 @@
     margin-left: 16px;
     margin-right: 16px;
   }
-  .composition-hero > div {
-    min-width: 0;
-  }
   .composition-hero strong {
-    font-size: clamp(26px, 8.5vw, 34px);
+    font-size: clamp(24px, 7.5vw, 30px);
   }
   .composition-ring {
-    width: 80px;
-    height: 80px;
+    width: min(196px, 100%);
   }
   .cache-bar-legend {
     padding: 0 16px 14px;
@@ -496,7 +492,8 @@
   .cache-track,
   .full-models .cache-track {
     width: 100%;
-    height: 8px;
+    height: 10px;
+    border-radius: 5px;
   }
   .metric-bar-trigger {
     padding-block: 8px;

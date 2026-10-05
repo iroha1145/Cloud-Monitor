@@ -21,6 +21,13 @@
   font-size: var(--fs-label);
   white-space: nowrap;
 }
+/* Series dots: the line's colour for tokens and cost, cache-read green. */
+.insight-trend-metrics > div > span > i {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
 .insight-trend-metrics strong {
   display: block;
   margin: 6px 0 3px;
@@ -149,12 +156,11 @@
   font-size: var(--fs-label);
   line-height: 1.6;
 }
-/* Tinted with the line's measure colour inline. */
 .insight-trend .insight-trend-cursor {
   top: 14px;
   bottom: 8px;
   background: var(--ink);
-  opacity: 0.35;
+  opacity: 0.23;
 }
 .insight-trend-floating {
   position: fixed;
@@ -237,7 +243,8 @@
 .insight-trend-dates {
   display: flex;
   justify-content: space-between;
-  margin: 0 4px 9px;
+  /* Ends under the last day, left of the value labels (AXIS in the TSX). */
+  margin: 0 60px 9px 4px;
   color: var(--ink-3);
   font-size: var(--fs-meta);
 }

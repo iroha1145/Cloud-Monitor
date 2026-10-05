@@ -4,10 +4,10 @@
   </defs>
   <rect width="28" height="28" rx="8" fill="#14171c"/>
   <g clip-path="url(#bar)">
-    <rect x="6" y="11.5" width="6.9" height="5" fill="#1f9e70"/>
-    <rect x="13.5" y="11.5" width="2.9" height="5" fill="#2f86ec"/>
-    <rect x="17" y="11.5" width="1.9" height="5" fill="#cf7414"/>
-    <rect x="19.5" y="11.5" width="0.9" height="5" fill="#9d7bb8"/>
-    <rect x="21" y="11.5" width="1" height="5" fill="#a7b1c2"/>
+    <rect x="6" y="11.5" width="6.9" height="5" fill="#25a878"/>
+    <rect x="13.5" y="11.5" width="2.9" height="5" fill="#3d9aff"/>
+    <rect x="17" y="11.5" width="1.9" height="5" fill="#f09a2f"/>
+    <rect x="19.5" y="11.5" width="0.9" height="5" fill="#b393c5"/>
+    <rect x="21" y="11.5" width="1" height="5" fill="#b4becf"/>
   </g>
 </svg>

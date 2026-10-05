@@ -501,26 +501,35 @@
   color: var(--ink-3);
   margin-left: 4px;
 }
+/* Arc UI usage meter: a 10px pill on the original track colour. */
 .sv-progress {
-  height: 7px;
+  height: 10px;
   background: var(--line);
   overflow: hidden;
-  border-radius: 8px;
+  border-radius: 5px;
 }
 .sv-progress > span {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--viz-tokens);
+  background: var(--quota-1);
   /* Fills from the left when the quota first renders; later values glide. */
   transition: width var(--duration-slow) var(--ease-smooth-out);
   animation: t-bar-fill var(--duration-very-slow) var(--ease-smooth-out) backwards;
 }
+/* The original colours: cards take three bar colours in turn; amber from
+   75% used, red from 90%. */
+.sv-quota-card:nth-child(3n + 2) .sv-progress:not(.sv-progress-warning):not(.sv-progress-danger) > span {
+  background: var(--quota-2);
+}
+.sv-quota-card:nth-child(3n) .sv-progress:not(.sv-progress-warning):not(.sv-progress-danger) > span {
+  background: var(--quota-3);
+}
 .sv-progress.sv-progress-warning > span {
-  background: var(--orange);
+  background: var(--quota-warning);
 }
 .sv-progress.sv-progress-danger > span {
-  background: var(--red);
+  background: var(--quota-danger);
 }
 .sv-quota-window-foot {
   display: flex;
@@ -1067,9 +1076,25 @@
     0 3px 7px rgb(25 52 66 / 3%),
     0 12px 28px rgb(25 52 66 / 3%);
 }
+/* The summary icons keep the original colours, one per figure. */
 .sv-summary-label > span {
   display: inline-flex;
-  color: var(--ink-3);
+  color: #29877c;
+}
+.sv-summary-item:nth-child(2) .sv-summary-label > span {
+  color: #397eba;
+}
+.sv-summary-item:nth-child(3) .sv-summary-label > span {
+  color: #b07d33;
+}
+.dark .sv-summary-label > span {
+  color: #72c8b6;
+}
+.dark .sv-summary-item:nth-child(2) .sv-summary-label > span {
+  color: #83b9e1;
+}
+.dark .sv-summary-item:nth-child(3) .sv-summary-label > span {
+  color: #e0b578;
 }
 .sv-model-list {
   display: grid;
