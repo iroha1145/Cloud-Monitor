@@ -344,6 +344,8 @@ anthropic/openai 而丢掉真实的 claude/codex。
 | anthropic | https://status.claude.com/api/v2/summary.json | …/status.json |
 | openai | https://status.openai.com/api/v2/summary.json | …/status.json |
 | cursor | https://status.cursor.com/api/v2/summary.json | …/status.json |
+| deepseek | https://deepseek.statuspage.io/api/v2/summary.json（Atlassian 镜像；页面入口 https://status.deepseek.com） | …/status.json |
+| kimi | https://status.moonshot.cn/api/v2/summary.json | …/status.json |
 | grok | https://status.x.ai/feed.xml（RSS，API 组件） | 同 URL |
 | grok-web | https://status.x.ai/feed.xml（RSS，Grok Web） | 同 URL；页面 https://status.x.ai/grok-com |
 
