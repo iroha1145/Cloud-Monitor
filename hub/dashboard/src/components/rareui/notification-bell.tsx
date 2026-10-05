@@ -17,8 +17,9 @@ import {
 } from "motion/react";
 import { cn } from "@/lib/utils";
 
-const SURFACE = "bg-[#F4F4F9] dark:bg-[#262626]";
-const GLYPH = "text-[#868593] dark:text-[#9B9AA7]";
+// Matches the top bar's icon buttons: no fill until hovered, secondary ink.
+const SURFACE = "bg-transparent hover:bg-(--hover)";
+const GLYPH = "text-(--ink-2) hover:text-(--ink)";
 
 const COLORS = {
   red: "bg-[#FF3B30] dark:bg-[#FF453A]",

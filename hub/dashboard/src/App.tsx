@@ -520,9 +520,10 @@ export default function App({ initialData, initialToken = "", hosted = false, is
               </MetricTooltip>
               {SHOWCASE_UI && (
                 <NotificationBell
+                  className="topbar-bell"
                   count={statusCount}
                   variant="dot"
-                  size={33}
+                  size={34}
                   color="orange"
                   onClick={(event) => { rememberDialogOpener(event.currentTarget); setNotifications(true); }}
                   aria-label={`查看 ${statusCount} 条工作区提示`}

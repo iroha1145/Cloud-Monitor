@@ -54,7 +54,8 @@
   --accent: var(--primary);
   --accent-ink: #1b5499;
   --accent-tint: #edf3fb;
-  --nav-active: #efefef;
+  /* a step darker than --hover, so a hovered item never reads as current */
+  --nav-active: #ebebeb;
   --nav-ink: var(--ink);
 
   --green: #127152;
@@ -143,7 +144,7 @@
   --primary: #8bb9f2;
   --accent-ink: #a9cbf6;
   --accent-tint: #172437;
-  --nav-active: #212121;
+  --nav-active: #292929;
 
   --green: #4fcf9f;
   --green-tint: #11291f;

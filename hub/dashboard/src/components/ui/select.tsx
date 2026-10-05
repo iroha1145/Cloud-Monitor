@@ -47,13 +47,26 @@ function SelectTrigger({
   )
 }
 
+// Phones keep a tab bar along the bottom (mobile.css); a menu flips up
+// rather than open underneath it.
+const BOTTOM_BAR_QUERY = "(max-width: 760px), (max-width: 960px) and (max-height: 500px)"
+
+// The menu opens under its trigger, like a web dropdown, instead of laying
+// itself over the trigger the way the macOS system menu does.
 function SelectContent({
   className,
   children,
-  position = "item-aligned",
-  align = "center",
+  position = "popper",
+  align = "start",
+  sideOffset = 6,
+  collisionPadding,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
+  const padding =
+    collisionPadding ??
+    (typeof window !== "undefined" && window.matchMedia(BOTTOM_BAR_QUERY).matches
+      ? { top: 8, right: 8, bottom: 84, left: 8 }
+      : 8)
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
@@ -66,6 +79,8 @@ function SelectContent({
         )}
         position={position}
         align={align}
+        sideOffset={position === "popper" ? sideOffset : undefined}
+        collisionPadding={padding}
         {...props}
       >
         <SelectScrollUpButton />

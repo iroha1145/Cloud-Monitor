@@ -205,6 +205,9 @@
 .workspace-notices[open] summary {
   color: var(--ink);
 }
+.workspace-notices summary:focus-visible {
+  border-radius: 6px;
+}
 .workspace-notices summary::-webkit-details-marker {
   display: none;
 }

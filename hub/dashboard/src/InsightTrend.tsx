@@ -73,32 +73,40 @@ function useDarkMode() {
 }
 
 
-function DayDetails({ point }: { point: TrendPoint }) {
+function DayDetails({
+  point,
+  short = false,
+}: {
+  point: TrendPoint;
+  /** The phone strip writes 5347.3 万 rather than 53,472,804. */
+  short?: boolean;
+}) {
   const parts = point.components;
+  const amount = short ? compact : count;
   const rows = [
     {
       label: "缓存读取",
-      value: parts?.cacheReadKnown ? count(parts.cacheRead) : "未提供",
+      value: parts?.cacheReadKnown ? amount(parts.cacheRead) : "未提供",
       color: PART_COLOR.cacheRead,
     },
     {
       label: "非缓存输入",
-      value: parts?.inputKnown ? count(parts.input) : "未提供",
+      value: parts?.inputKnown ? amount(parts.input) : "未提供",
       color: PART_COLOR.input,
     },
     {
       label: "输出",
-      value: parts?.outputKnown ? count(parts.output) : "未提供",
+      value: parts?.outputKnown ? amount(parts.output) : "未提供",
       color: PART_COLOR.output,
     },
     {
       label: "缓存写入",
-      value: parts?.cacheWriteKnown ? count(parts.cacheWrite) : "未提供",
+      value: parts?.cacheWriteKnown ? amount(parts.cacheWrite) : "未提供",
       color: PART_COLOR.cacheWrite,
     },
     {
       label: "未分类",
-      value: parts ? count(parts.unclassified) : "未提供",
+      value: parts ? amount(parts.unclassified) : "未提供",
       color: PART_COLOR.unclassified,
     },
   ];
@@ -146,63 +154,71 @@ function FloatingDayDetails({
   point,
   anchor,
   plot,
+  dayX,
   id,
 }: {
   point: TrendPoint;
   anchor: DetailAnchor;
   plot?: DOMRect;
+  /** The inspected day's cursor line, which the popup must leave visible. */
+  dayX?: number;
   id: string;
 }) {
   const element = useRef<HTMLDivElement>(null);
+  const touch = anchor.input === "touch";
   useLayoutEffect(() => {
     const popup = element.current;
     if (!popup) return;
     const view = window.visualViewport;
     const margin = 8;
-    const minX = (view?.offsetLeft ?? 0) + margin;
-    const minY = (view?.offsetTop ?? 0) + margin;
-    const availableWidth = (view?.width ?? window.innerWidth) - margin * 2;
-    const controlled =
-      anchor.input === "keyboard" || anchor.input === "navigation";
-    const viewportBottom =
-      minY + (view?.height ?? window.innerHeight) - margin * 2;
-    // Button/keyboard inspection stays above the plot's bottom edge. The
-    // footer remains free even when the card is near the viewport bottom.
-    const maxY =
-      controlled && plot
-        ? Math.min(viewportBottom, plot.bottom - margin)
-        : viewportBottom;
-    // The metric header above the plot now reads the inspected day, so the
-    // popup never rises past the plot's top edge.
-    const plotTop = plot ? Math.max(minY, plot.top + margin) : minY;
-    const availableHeight = Math.max(1, maxY - minY);
-    popup.style.width = `${Math.min(220, availableWidth)}px`;
-    // Only very short/zoomed viewports need scaling; keep every row visible.
-    const scale = Math.min(1, availableHeight / popup.offsetHeight);
-    const width = popup.offsetWidth * scale;
-    const height = popup.offsetHeight * scale;
-    const maxX = minX + availableWidth;
-    const touch = anchor.input === "touch";
-    const gap = touch ? 28 : 16;
-    let x = touch ? anchor.x - width / 2 : anchor.x + gap;
-    // A pointer keeps the popup beside it, centred on its height within the
-    // plot band; a finger keeps it above, or below when the plot is short.
-    let y = touch ? anchor.y - height - gap : anchor.y - height / 2;
-    // Flip to the cursor's left before the popup would leave the chart, and
-    // keep the side with more room when neither fits.
-    const right = plot ? Math.min(maxX, plot.right) : maxX;
-    const left = plot ? Math.max(minX, plot.left) : minX;
-    if (!touch && x + width > right) {
-      const flipped = anchor.x - width - gap;
-      if (flipped >= left || anchor.x - left > right - anchor.x) x = flipped;
+    const viewLeft = (view?.offsetLeft ?? 0) + margin;
+    const viewTop = (view?.offsetTop ?? 0) + margin;
+    const viewRight = viewLeft + (view?.width ?? window.innerWidth) - margin * 2;
+    const viewBottom = viewTop + (view?.height ?? window.innerHeight) - margin * 2;
+    // The popup lives inside the plot band: the header above reads the same
+    // day, and the footer below holds the day buttons.
+    const left = Math.max(viewLeft, plot ? plot.left : viewLeft);
+    const right = Math.min(viewRight, plot ? plot.right : viewRight);
+    const top = Math.max(viewTop, plot ? plot.top + margin : viewTop);
+    const bottom = Math.min(viewBottom, plot ? plot.bottom - margin : viewBottom);
+    let x: number;
+    let y: number;
+    let scale: number;
+    if (touch) {
+      // A finger hides what is under it, and a phone's plot is too small for
+      // the card beside it: a strip across the plot, at the edge away from
+      // the finger. Narrow phones list the parts in one column.
+      popup.style.width = `${Math.max(1, right - left)}px`;
+      popup.toggleAttribute("data-narrow", right - left < 300);
+      scale = Math.min(1, Math.max(1, bottom - top) / popup.offsetHeight);
+      const height = popup.offsetHeight * scale;
+      x = left;
+      y = anchor.y < (top + bottom) / 2 ? bottom - height : top;
+    } else {
+      popup.style.width = `${Math.min(220, Math.max(1, right - left))}px`;
+      // Only very short or zoomed viewports need scaling; every row stays.
+      scale = Math.min(1, Math.max(1, bottom - top) / popup.offsetHeight);
+      const width = popup.offsetWidth * scale;
+      const height = popup.offsetHeight * scale;
+      const gap = 16;
+      const line = dayX ?? anchor.x;
+      // Beside the day line, clear of the value labels at the right; flip
+      // to the line's left when that side does not fit.
+      const drawRight = plot ? Math.max(left, plot.right - AXIS) : right;
+      x = line + gap;
+      if (x + width > drawRight) {
+        const flipped = line - gap - width;
+        if (flipped >= left || line - left > drawRight - line) x = flipped;
+      }
+      // A mouse keeps it centred on the pointer's height; keyboard and the
+      // day buttons centre it in the plot.
+      y = anchor.y - height / 2;
+      x = Math.min(Math.max(x, left), right - width);
+      y = Math.min(Math.max(y, top), bottom - height);
     }
-    if (touch && y < plotTop) y = anchor.y + gap;
-    if (!touch && plot) y = Math.min(y, plot.bottom - margin - height);
-    x = Math.min(Math.max(x, minX), maxX - width);
-    y = Math.min(Math.max(y, plotTop), maxY - height);
     popup.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
     popup.style.visibility = "visible";
-  }, [anchor, point, plot]);
+  }, [anchor, point, plot, dayX, touch]);
   return createPortal(
     <div
       ref={element}
@@ -210,8 +226,9 @@ function FloatingDayDetails({
       className="insight-trend-floating"
       role="tooltip"
       data-input={anchor.input}
+      data-layout={touch ? "strip" : "card"}
     >
-      <DayDetails point={point} />
+      <DayDetails point={point} short={touch} />
     </div>,
     document.body,
   );
@@ -632,6 +649,11 @@ export function InsightTrend({ data }: { data: DashboardData }) {
                       point={point}
                       anchor={detailAnchor}
                       plot={plot}
+                      dayX={
+                        plot
+                          ? plot.left + ((plot.width - AXIS) * position) / 100
+                          : undefined
+                      }
                       id={`${uid}-details`}
                     />
                   )}

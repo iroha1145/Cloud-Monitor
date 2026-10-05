@@ -166,8 +166,11 @@
   z-index: 150;
   width: 220px;
   max-width: calc(100vw - 16px);
-  overflow: hidden;
   isolation: isolate;
+  /* Placement measures the popup right after resizing it. The reduced-motion
+     rule turns every property change into a 0.01ms transition, which would
+     hand that measurement the old width. */
+  transition: none;
   visibility: hidden;
   pointer-events: none;
   transform-origin: top left;
@@ -176,6 +179,7 @@
 .insight-trend-tooltip {
   display: flex;
   flex-direction: column;
+  transition: none;
   width: 220px;
   max-width: 100%;
   padding: 12px 13px;
@@ -235,6 +239,23 @@
   color: var(--ink-3);
   font-size: var(--fs-meta);
   line-height: 1.5;
+}
+/* Touch: one compact strip across the plot, two columns of parts. */
+.insight-trend-floating[data-layout="strip"] .insight-trend-tooltip {
+  width: 100%;
+  padding: 10px 12px;
+}
+.insight-trend-floating[data-layout="strip"] .insight-trend-tooltip-rows {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 18px;
+  margin-top: 8px;
+  padding-top: 8px;
+}
+.insight-trend-floating[data-layout="strip"][data-narrow] .insight-trend-tooltip-rows {
+  grid-template-columns: minmax(0, 1fr);
+}
+.insight-trend-floating[data-layout="strip"] .insight-trend-tooltip p {
+  display: none;
 }
 /* Below the stage, so its keyboard focus ring never crosses the labels. */
 .insight-trend-dates {

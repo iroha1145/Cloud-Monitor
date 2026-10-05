@@ -10,10 +10,12 @@
     min-height: 44px;
     font-size: 13px;
   }
-  .sv-search input,
-  .sv-select {
+  .sv-search input {
     min-height: 42px;
     font-size: 16px;
+  }
+  .sv-toolbar-actions [data-slot="select-trigger"] {
+    height: 44px;
   }
   .sv-page {
     gap: 18px;
@@ -62,9 +64,8 @@
     width: 100%;
     justify-content: space-between;
   }
-  .sv-select {
+  .sv-toolbar-actions [data-slot="select-trigger"] {
     max-width: 100%;
-    min-height: 44px;
     flex: 1;
   }
   .sv-device-heading h3 {
@@ -196,10 +197,10 @@
     width: 100%;
     min-width: 0;
     min-height: 44px;
-    padding: 9px 12px;
-    border: 1px solid var(--line-strong);
-    border-radius: 6px;
-    background: var(--surface);
+    padding: 9px 14px;
+    border: 1px solid transparent;
+    border-radius: var(--r-pill);
+    background: var(--field);
     color: var(--ink);
     font: inherit;
     font-size: 16px;
@@ -309,9 +310,10 @@
   }
 }
 
-@media (max-width: 360px) {
-  /* Three columns leave ~90px each: every label and number wrapped. One row per
-     figure instead, the name and note on the left and the number on the right. */
+@media (max-width: 420px) {
+  /* Three columns leave ~100px each: labels and figures such as 7436.9 万
+     wrapped. One row per figure instead, the name and note on the left and
+     the number on the right. */
   .sv-summary {
     grid-template-columns: 1fr;
   }

@@ -129,6 +129,24 @@ kbd {
 .muted {
   color: var(--ink-3);
 }
+/* Search fields have no browser-drawn clear button; the page draws its own
+   controls. */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+/* Short captions should not leave one character alone on the last line. */
+.ledger-note,
+.panel-head p,
+.heading-mode,
+.client-note,
+.composition-note,
+.sv-muted,
+.sv-summary-foot,
+.cm-activity-head p {
+  text-wrap: pretty;
+}
 /* Lucide draws at 2px; a slightly finer line sits with regular-weight text. */
 .lucide {
   stroke-width: 1.75;
@@ -410,17 +428,17 @@ kbd {
 .top-avatar {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  margin-left: 4px;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: var(--surface);
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-pill);
+  background: transparent;
   color: var(--ink-2);
-  transition: border-color var(--duration-quick) var(--ease-smooth-out);
+  transition:
+    background var(--duration-quick) var(--ease-smooth-out),
+    color var(--duration-quick) var(--ease-smooth-out);
 }
 .top-avatar:hover {
-  border-color: var(--line-strong);
+  background: var(--hover);
   color: var(--ink);
 }
 .mobile-menu {
@@ -618,8 +636,12 @@ kbd {
 .help-icon {
   display: grid;
   place-items: center;
+  border-radius: 50%;
   color: var(--ink-3);
   transition: color var(--duration-quick) var(--ease-smooth-out);
+}
+.help-icon:focus-visible {
+  outline-offset: 1px;
 }
 .help-icon:hover {
   color: var(--ink);
@@ -828,36 +850,49 @@ kbd {
 .text-link:hover > svg {
   translate: 1px -1px;
 }
+/* The same segmented control as the trend card's 词元用量 / 使用费用. */
 .metric-switch {
   position: relative;
   display: flex;
-  gap: 16px;
-  color: var(--ink-3);
+  flex-shrink: 0;
+  padding: 2px;
+  border-radius: var(--r-pill);
+  background: var(--canvas);
   font-size: var(--fs-label);
 }
 .metric-switch button {
-  padding-bottom: 6px;
-  border-bottom: 2px solid transparent;
-  transition: color var(--duration-fast) var(--ease-smooth-out);
+  min-height: 26px;
+  padding: 0 12px;
+  border-radius: var(--r-pill);
+  color: var(--ink-2);
+  font-weight: 500;
+  transition:
+    color var(--duration-quick) var(--ease-smooth-out),
+    transform var(--duration-quick) var(--ease-smooth-out);
 }
 .metric-switch button:hover {
   color: var(--ink);
 }
 .metric-switch [aria-pressed="true"] {
-  border-color: var(--ink);
+  background: var(--surface);
   color: var(--ink);
+  box-shadow: var(--shadow-thumb);
 }
 .metric-switch > [data-sliding-indicator] {
-  height: 2px;
-  border-radius: 1px;
-  background: var(--ink);
-  transform: translate(
-    var(--indicator-x, 0px),
-    calc(var(--indicator-y, 0px) + var(--indicator-h, 0px) - 2px)
-  );
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-thumb);
+}
+.dark .metric-switch > [data-sliding-indicator],
+.dark .metric-switch [aria-pressed="true"] {
+  background: var(--hover-2);
 }
 .metric-switch[data-indicator="ready"] [aria-pressed="true"] {
-  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.metric-switch button:active {
+  transform: scale(0.96);
 }
 /* Arc UI swatches: rounded squares beside meters, round dots beside a donut. */
 .legend-dot {
@@ -1149,11 +1184,6 @@ kbd {
 }
 .model-filters [data-slot="select-trigger"] {
   width: 160px;
-  height: 36px;
-  border-color: var(--line);
-  border-radius: var(--r-pill);
-  font-size: 13px;
-  box-shadow: none;
 }
 .cache-bar-legend {
   display: flex;
@@ -1279,6 +1309,7 @@ kbd {
 .metric-bar-trigger {
   display: block;
   flex-shrink: 0;
+  border-radius: 4px;
 }
 .cache-track {
   display: flex;
@@ -1528,10 +1559,64 @@ kbd {
   width: 15px;
   height: 15px;
 }
+/* Dropdowns are drawn by the page (Radix Select), never by the system: a
+   pill trigger whose chevron sits on the text's centre line, and a floating
+   menu under it whose rows highlight with a fill rather than a focus ring. */
+[data-slot="select-trigger"] {
+  height: 36px;
+  gap: 8px;
+  padding: 0 12px 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background var(--duration-quick) var(--ease-smooth-out);
+}
+[data-slot="select-trigger"]:hover,
+[data-slot="select-trigger"][data-state="open"] {
+  background: var(--hover);
+}
+[data-slot="select-trigger"] > svg {
+  width: 16px;
+  height: 16px;
+  color: var(--ink-3);
+  opacity: 1;
+  transition: rotate var(--duration-fast) var(--ease-smooth-out);
+}
+[data-slot="select-trigger"][data-state="open"] > svg {
+  rotate: 180deg;
+}
 [data-slot="select-content"],
 [data-slot="dropdown-menu-content"] {
-  border-color: var(--line);
+  min-width: var(--radix-select-trigger-width);
+  border: 1px solid var(--line);
+  border-radius: 12px;
   background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-float);
+}
+[data-slot="select-item"] {
+  min-height: 34px;
+  padding: 0 34px 0 11px;
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+[data-slot="select-item"][data-highlighted] {
+  background: var(--hover);
+}
+[data-slot="select-item"]:focus-visible {
+  outline: none;
+}
+[data-slot="select-item-indicator"] {
+  right: 11px;
+}
+[data-slot="select-item-indicator"] svg {
   color: var(--ink);
 }
 .dialog-icon {
@@ -1562,6 +1647,7 @@ kbd {
   display: block;
   color: var(--ink);
   font-size: 13px;
+  font-weight: 500;
 }
 .connection-target small {
   display: block;
@@ -1703,10 +1789,18 @@ kbd {
 .search-dialog .h-10 {
   height: 44px;
   margin-bottom: 8px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--inset);
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: var(--field);
+}
+.search-dialog .h-10:focus-within {
+  border-color: var(--primary);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent);
+}
+.search-dialog .h-10 input:focus-visible {
+  outline: none;
 }
 .search-dialog .h-8 {
   height: 42px;
@@ -1747,12 +1841,22 @@ kbd {
 .notification-row p {
   margin: 0;
 }
+.notifications-dialog {
+  padding: 28px !important;
+}
 .notifications-dialog .plain-button {
   justify-self: end;
 }
+/* Fits a 900px-tall window without scrolling. */
 .model-dialog {
-  gap: 18px !important;
+  gap: 16px !important;
   padding: 28px !important;
+}
+.model-dialog .composition-hero {
+  margin-block: 6px 8px;
+}
+.model-dialog .composition-legend > div {
+  min-height: 32px;
 }
 .model-dialog [data-slot="dialog-header"] > .brand-icon {
   margin-bottom: 8px;
@@ -1961,6 +2065,9 @@ kbd {
   font-size: var(--fs-label);
   font-weight: 400;
 }
+.matrix-table thead th {
+  vertical-align: top;
+}
 .matrix-table thead th:not(:first-child) {
   width: 96px;
   max-width: 96px;
@@ -1971,15 +2078,16 @@ kbd {
   align-items: center;
   gap: 7px;
 }
-/* Long model names wrap onto a second line before they are clipped. */
+/* Long model names wrap onto two balanced lines (at the hyphens where they
+   can) before they are clipped; the tooltip carries the full name. */
 .matrix-model-heading > span:last-child {
-  display: -webkit-box;
+  display: block;
   width: 96px;
+  max-height: calc(1.35em * 2);
   overflow: hidden;
   overflow-wrap: anywhere;
   text-align: center;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  text-wrap: balance;
   line-height: 1.35;
 }
 .matrix-client-heading {

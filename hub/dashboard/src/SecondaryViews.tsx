@@ -29,6 +29,13 @@ import "./secondary.css";
 import { BrandIcon } from "./BrandIcon";
 import { MetricTooltip } from "./MetricTooltip";
 import { ActivityPanel } from "./ActivityPanel";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./components/ui/select";
 import { compact } from "./lib/format";
 import { DAY_MS, dayKeyZoned, formatZoned } from "./lib/datetime";
 import { downloadCsv, rowsToCsv } from "./lib/csv";
@@ -237,9 +244,7 @@ function DeviceCard({
                 ]}
               >
                 <span className="sv-device-id sv-inline-detail">
-                  {device.id.length > 12
-                    ? `${device.id.slice(0, 8)}…`
-                    : device.id}
+                  {device.id}
                 </span>
               </MetricTooltip>
             </p>
@@ -348,7 +353,7 @@ function DeviceCard({
               rows={[
                 {
                   label: "完整用量",
-                  value: `${fullNumber(device.periods[key].totalTokens)} tokens`,
+                  value: `${fullNumber(device.periods[key].totalTokens)} 词元`,
                 },
                 { label: "估算费用", value: usd(device.periods[key].costUsd) },
                 {
@@ -417,7 +422,7 @@ function DeviceCard({
             </div>
             <div>
               <dt>本月完整用量</dt>
-              <dd>{fullNumber(device.periods.month.totalTokens)} tokens</dd>
+              <dd>{fullNumber(device.periods.month.totalTokens)} 词元</dd>
             </div>
           </dl>
         </div>
@@ -479,17 +484,17 @@ export function DevicesView({ data }: SecondaryProps) {
           />
         </label>
         <div className="sv-toolbar-actions">
-          <select
-            className="sv-select"
-            aria-label="筛选设备状态"
-            value={status}
-            onChange={(event) => setStatus(event.target.value)}
-          >
-            <option value="all">所有状态</option>
-            <option value="online">在线</option>
-            <option value="delayed">同步延迟</option>
-            <option value="offline">离线</option>
-          </select>
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger aria-label="筛选设备状态">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectItem value="all">所有状态</SelectItem>
+              <SelectItem value="online">在线</SelectItem>
+              <SelectItem value="delayed">同步延迟</SelectItem>
+              <SelectItem value="offline">离线</SelectItem>
+            </SelectContent>
+          </Select>
           <span className="sv-result-count" aria-live="polite">
             {filtered.length} 台设备
           </span>
@@ -1373,23 +1378,28 @@ export function HistoryView({ data }: SecondaryProps) {
                   </button>
                 </span>
               )}
-              <select
-                className="sv-select"
-                aria-label="筛选会话客户端"
+              <Select
                 value={client}
-                onChange={(event) => {
-                  setClient(event.target.value);
+                onValueChange={(value) => {
+                  setClient(value);
                   setPage(1);
                   setExported(false);
                 }}
               >
-                <option value="all">所有客户端</option>
-                {clients.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger aria-label="筛选会话客户端">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="end">
+                  <SelectItem value="all">所有客户端</SelectItem>
+                  {/* An item needs a non-empty value; a nameless client is
+                      still listed under 所有客户端. */}
+                  {clients.filter(Boolean).map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           {displayed.length ? (
@@ -1528,7 +1538,7 @@ export function HistoryView({ data }: SecondaryProps) {
                               <div>
                                 <dt>完整用量</dt>
                                 <dd>
-                                  {fullNumber(session.totalTokens)} tokens
+                                  {fullNumber(session.totalTokens)} 词元
                                 </dd>
                               </div>
                             </dl>

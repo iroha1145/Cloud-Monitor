@@ -99,7 +99,6 @@
 }
 .sv-button:focus-visible,
 .sv-search input:focus-visible,
-.sv-select:focus-visible,
 .sv-device-toggle:focus-visible,
 .sv-session-toggle:focus-visible {
   outline: 2px solid var(--primary);
@@ -208,6 +207,7 @@
   border-color: var(--primary);
   background: var(--surface);
   outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent);
 }
 .sv-toolbar-actions {
   display: flex;
@@ -215,16 +215,9 @@
   gap: 10px;
   flex-wrap: wrap;
 }
-.sv-select {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  min-height: 37px;
-  padding: 7px 28px 7px 11px;
+.sv-toolbar-actions [data-slot="select-trigger"] {
+  min-width: 128px;
   max-width: 220px;
-  color: var(--ink-2);
-  font-size: 12px;
-  cursor: pointer;
 }
 .sv-result-count {
   font-size: 12px;
@@ -845,7 +838,7 @@
     justify-content: space-between;
     gap: 7px;
   }
-  .sv-select {
+  .sv-toolbar-actions [data-slot="select-trigger"] {
     max-width: 160px;
     flex: 1;
   }
@@ -1151,10 +1144,15 @@
 }
 .sv-device-id {
   display: inline-block;
+  max-width: 18ch;
   margin-left: 8px;
+  overflow: hidden;
   color: var(--ink-3);
   font-family: var(--font-mono);
   font-size: var(--fs-meta);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
 }
 .sv-device-meta {
   display: flex;
@@ -1243,7 +1241,7 @@
 }
 .sv-device-footer {
   padding: 10px 19px;
-  align-items: flex-start;
+  align-items: center;
 }
 .sv-device-footer p {
   flex-wrap: wrap;
@@ -1649,12 +1647,20 @@
 .sv-history-sessions .sv-session-detail .sv-detail-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
+/* Narrow session columns wrap titles evenly, never one character alone. */
+.sv-session-table strong,
+.sv-session-table small {
+  text-wrap: pretty;
+}
 @media (max-width: 1180px) {
   .sv-history-layout {
     grid-template-columns: 1fr;
   }
-  .sv-history-activity {
+  /* Full width like the session card below it; the calendar itself keeps
+     its compact size in the middle. */
+  .sv-history-activity .cm-activity-body {
     max-width: 540px;
+    margin-inline: auto;
   }
 }
 @media (max-width: 480px) {

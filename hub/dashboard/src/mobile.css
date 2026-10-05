@@ -42,16 +42,19 @@
 [data-slot="dialog-content"].mobile-nav-dialog[data-state="closed"] {
   animation: t-drawer-out var(--duration-fast) var(--ease-smooth-out) forwards !important;
 }
+/* The scroller reaches 4px past the items so their focus rings (2px ring,
+   2px offset) are not clipped at its edges. */
 .mobile-nav-dialog > .mobile-nav-content {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
+  margin-inline: -4px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
-  padding: 12px 0 0;
+  padding: 12px 4px 0;
 }
 .mobile-nav-dialog .app-brand {
   flex-shrink: 0;
@@ -68,9 +71,10 @@
   min-height: 46px;
   font-size: 15px;
 }
+/* Centred on the brand row: drawer padding + 12px, then a 45px row. */
 [data-slot="dialog-content"].mobile-nav-dialog
   > button[data-slot="dialog-close"] {
-  top: max(6px, env(safe-area-inset-top, 0px));
+  top: calc(max(20px, env(safe-area-inset-top, 0px)) + 12px);
   right: 6px;
   width: 44px;
   height: 44px;
@@ -155,6 +159,12 @@
     height: 44px;
     justify-content: center;
     padding: 0;
+  }
+  /* The bell draws at 34px; its touch area matches the 44px buttons. */
+  .topbar-bell::before {
+    content: "";
+    position: absolute;
+    inset: -5px;
   }
   .mobile-bottom-nav {
     display: grid;
@@ -537,6 +547,11 @@
     min-height: 44px;
     font-size: 13px;
   }
+  /* Menu rows are finger-sized on touch screens. */
+  [data-slot="select-item"] {
+    min-height: 44px;
+    font-size: 14px;
+  }
   .search-field input {
     min-height: 42px;
     font-size: 16px;
@@ -622,7 +637,7 @@
     border: 0;
   }
   .page-footer {
-    align-items: flex-start;
+    align-items: center;
     line-height: 1.7;
   }
   .page-footer button {
