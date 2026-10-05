@@ -8,7 +8,12 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 
-from sync_agent import AgentState, parse_health_stale_seconds, resolve_state_path
+from sync_agent import (
+    AgentState,
+    StateCorruptError,
+    parse_health_stale_seconds,
+    resolve_state_path,
+)
 
 
 def main() -> int:
@@ -19,7 +24,7 @@ def main() -> int:
     state = AgentState(state_path)
     try:
         state.load(readonly=True)  # 健康检查不得改名/备份状态文件
-    except Exception as exc:  # StateCorruptError 等
+    except StateCorruptError as exc:  # load 把读文件与 JSON 解析失败都转成了它
         print(f"unhealthy: 状态文件不可用 ({exc})")
         return 1
 
