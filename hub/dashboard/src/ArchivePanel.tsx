@@ -70,7 +70,7 @@ function ArchiveRow({ row }: { row: ArchiveDay }) {
           </small>
         </span>
         <span className="archive-number">
-          <small>用量（Token）</small>
+          <small>词元</small>
           <strong>{full(row.tokens)}</strong>
         </span>
         <span className="archive-cost">

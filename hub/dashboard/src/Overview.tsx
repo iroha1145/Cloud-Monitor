@@ -181,7 +181,7 @@ export function Stats({
         </article>
         <article className="ledger-figure">
           <span className="ledger-label">
-            使用费用<small>美元</small>
+            使用费用
           </span>
           <strong className="ledger-value">
             {per.costUsd === null ? (
@@ -653,7 +653,7 @@ function Clients({ per }: { per: PeriodUsage }) {
               </div>
             </MetricTooltip>
             <div className="client-foot">
-              <span>{compact(c.totalTokens)} Tokens</span>
+              <span>{compact(c.totalTokens)} 词元</span>
               <span>{usd(c.costUsd)}</span>
             </div>
           </div>
@@ -834,11 +834,16 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
                           <span
                             className={`matrix-cell level-${level}`}
                           >
-                            {v === undefined
-                              ? "未提供"
-                              : metric === "tokens"
-                                ? compact(v)
-                                : usd(v)}
+                            {v === undefined ? (
+                              <>
+                                <span aria-hidden="true">—</span>
+                                <span className="sr-only">未提供</span>
+                              </>
+                            ) : metric === "tokens" ? (
+                              compact(v)
+                            ) : (
+                              usd(v)
+                            )}
                           </span>
                         </MetricTooltip>
                       </td>

@@ -360,7 +360,12 @@ export function InsightTrend({ data }: { data: DashboardData }) {
         event.key === "ArrowLeft" || event.key === "ArrowDown" ? -1 : 1,
       );
   };
-  const lineColor = metric === "tokens" ? PART_COLOR.input : PART_COLOR.output;
+  // The five composition colours are reserved for usage parts; the daily line
+  // is drawn in the theme's ink so it never reads as "non-cached input".
+  const lineColor = useMemo(
+    () => getComputedStyle(document.documentElement).getPropertyValue("--ink").trim() || "#14171c",
+    [dark],
+  );
   const position =
     point && firstTime != null
       ? 1.5 + ((seriesTimes[pointIndex] - firstTime) / span) * 97
@@ -417,7 +422,6 @@ export function InsightTrend({ data }: { data: DashboardData }) {
       <div className="insight-trend-metrics">
         <div>
           <span>
-            <i style={{ background: PART_COLOR.input }} />
             区间词元
           </span>
           <strong>{compact(tokenTotal)}</strong>
@@ -425,7 +429,6 @@ export function InsightTrend({ data }: { data: DashboardData }) {
         </div>
         <div>
           <span>
-            <i style={{ background: PART_COLOR.output }} />
             {allCosts ? "区间花费" : hasCost ? "已知花费" : "区间花费"}
           </span>
           <strong>{usd(costTotal)}</strong>
@@ -433,7 +436,6 @@ export function InsightTrend({ data }: { data: DashboardData }) {
         </div>
         <div>
           <span>
-            <i style={{ background: PART_COLOR.cacheRead }} />
             {partialCache && cacheRate !== null ? "已识别缓存占比" : "缓存占比"}
           </span>
           <strong>{pct(cacheRate)}</strong>

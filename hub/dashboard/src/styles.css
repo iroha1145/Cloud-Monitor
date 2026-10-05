@@ -686,6 +686,10 @@ kbd {
   white-space: nowrap;
 }
 .ledger-lead .ledger-value {
+  /* Digit boxes are 1.1em tall with the glyph centred, so a larger figure's
+     baseline sits higher in its box; this drops it onto its neighbours'. */
+  position: relative;
+  top: 0.05em;
   font-size: var(--fs-lead);
   font-weight: 620;
   letter-spacing: -0.045em;
@@ -694,7 +698,7 @@ kbd {
 /* The ticker's digit boxes have no text baseline to share, so units sit on
    the box bottom and are lifted onto the digits' baseline. */
 .ledger-unit {
-  margin: 0 0 0.2em 0.1em;
+  margin: 0 0 0.2em 0.08em;
   color: var(--ink-2);
   font-size: max(0.5em, 11px);
   font-weight: 500;
@@ -702,8 +706,7 @@ kbd {
   letter-spacing: 0;
 }
 .ledger-unit.is-prefix {
-  margin: 0 0.08em 0.24em 0;
-  font-size: max(0.56em, 11px);
+  margin: 0 0.04em 0.2em 0;
 }
 .ledger-denominator {
   margin-left: 8px;
@@ -951,16 +954,11 @@ kbd {
 .overview-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr);
-  align-items: stretch;
+  align-items: start;
   gap: var(--gap);
   margin-bottom: var(--gap);
 }
 
-/* Clients: the panel matches the trend's height; the note sits at the bottom. */
-.clients-panel {
-  display: flex;
-  flex-direction: column;
-}
 .client-rows {
   padding: 4px 24px 0;
 }
@@ -1021,7 +1019,7 @@ kbd {
   font-size: var(--fs-label);
 }
 .client-note {
-  margin: auto 24px 0;
+  margin: 4px 24px 0;
   padding: 14px 0 18px;
   border-top: 1px solid var(--line);
   color: var(--ink-3);
@@ -1211,6 +1209,15 @@ kbd {
 .model-total-cell {
   color: var(--ink) !important;
   font-weight: 550;
+}
+/* Figures line up on their last digit: total, cache read and cost. */
+.model-table th:nth-child(2),
+.model-table th:nth-child(3),
+.model-table th:nth-child(5),
+.model-total-cell,
+.model-read-cell,
+.money-cell {
+  text-align: right;
 }
 /* Beautiful UI GlideMenu: one highlight glides between rows under a pointer.
    The scope spans the whole table, so full rows light up when it scrolls. */
@@ -1908,7 +1915,7 @@ kbd {
 /* Fixed cell dimensions preserve the same geometry on desktop and mobile. */
 .matrix-table {
   width: max-content;
-  margin: 0 auto;
+  margin: 0;
   border-collapse: separate;
   border-spacing: 8px;
   font-size: var(--fs-label);
@@ -1930,13 +1937,16 @@ kbd {
   align-items: center;
   gap: 7px;
 }
+/* Long model names wrap onto a second line before they are clipped. */
 .matrix-model-heading > span:last-child {
-  display: block;
+  display: -webkit-box;
   width: 96px;
   overflow: hidden;
+  overflow-wrap: anywhere;
   text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.35;
 }
 .matrix-client-heading {
   display: flex;
@@ -1957,7 +1967,10 @@ kbd {
   font-size: 13px;
   font-weight: 500;
 }
+/* An unreported pair is an outline, not a pale fill that reads as "a little". */
 .matrix-cell.level-0 {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
   color: var(--ink-3);
 }
 .matrix-cell.level-1 {

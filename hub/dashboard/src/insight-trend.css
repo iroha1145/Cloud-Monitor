@@ -21,12 +21,6 @@
   font-size: var(--fs-label);
   white-space: nowrap;
 }
-.insight-trend-metrics i {
-  flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-}
 .insight-trend-metrics strong {
   display: block;
   margin: 6px 0 3px;
@@ -39,20 +33,17 @@
   color: var(--ink-3);
   font-size: var(--fs-meta);
 }
+/* The chart sits on the card itself: no inner card, only hairlines. */
 .insight-trend-inset {
-  margin: 0 16px 16px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--inset);
+  margin: 0 24px 6px;
+  border-top: 1px solid var(--line);
 }
 .insight-trend-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 10px 8px 14px;
-  border-bottom: 1px solid var(--line);
+  padding: 12px 0 4px;
 }
 .insight-trend-toolbar > span {
   color: var(--ink-2);
@@ -113,9 +104,9 @@
 }
 .insight-trend-stage {
   position: relative;
-  width: calc(100% - 24px);
+  width: 100%;
   height: 272px;
-  margin: 0 12px;
+  margin: 0;
   cursor: crosshair;
   touch-action: pan-y;
 }
@@ -269,7 +260,7 @@
 .insight-trend-dates {
   display: flex;
   justify-content: space-between;
-  margin: -8px 17px 9px;
+  margin: -8px 4px 9px;
   color: var(--ink-3);
   font-size: var(--fs-meta);
 }
@@ -278,8 +269,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 38px;
-  padding: 4px 10px 4px 14px;
+  min-height: 40px;
+  padding: 4px 0;
   border-top: 1px solid var(--line);
 }
 .insight-trend-footer > span:first-child {
@@ -332,14 +323,13 @@
     font-size: 19px;
   }
   .insight-trend-inset {
-    margin: 0 10px 10px;
+    margin: 0 16px 4px;
   }
   .insight-trend-stage {
     height: 284px;
   }
   .insight-trend-footer {
     gap: 4px;
-    padding-inline: 10px 6px;
   }
   .insight-trend-footer > span:first-child {
     max-width: 180px;

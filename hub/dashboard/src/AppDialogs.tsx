@@ -191,7 +191,7 @@ export default function AppDialogs({
             </span>
             <DialogTitle>{hosted ? "工作区设置" : isolatedDemo ? "演示工作区" : "连接你的用量"}</DialogTitle>
             <DialogDescription>
-              {hosted ? "查看服务版本，管理此设备上的登录。" : isolatedDemo ? "此页面使用示例数据，供浏览和体验界面。" : "接入现有云端服务，用真实数据体验新面板。"}
+              {hosted ? "查看服务版本，管理此设备上的登录。" : isolatedDemo ? "此页面使用示例数据，供浏览和体验界面。" : "连接后显示这台服务器上的真实用量。"}
             </DialogDescription>
           </DialogHeader>
           <div className="connection-target">
@@ -236,9 +236,9 @@ export default function AppDialogs({
               state={connecting ? "loading" : "idle"}
               loadingText="正在连接"
               disabled={connecting || !secret.trim()}
+              icon={<ArrowRight size={15} />}
             >
               连接并查看真实用量
-              <ArrowRight size={15} />
             </StatefulButton>
           </form>
           <div className="dialog-divider">
@@ -339,7 +339,7 @@ export default function AppDialogs({
                 <div>
                   <span>总用量</span>
                   <strong>{compact(shownModel.totalTokens)}</strong>
-                  <small>{count(shownModel.totalTokens)} Tokens</small>
+                  <small>{count(shownModel.totalTokens)} 词元</small>
                 </div>
                 <div>
                   <span>使用费用</span>

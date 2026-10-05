@@ -14,17 +14,17 @@
   font-weight: 650;
   letter-spacing: -0.02em;
 }
+/* Brand on top, the statement centred on the same line as the form. */
 .access-brand-panel {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
   padding: 48px clamp(32px, 5vw, 72px);
   border-right: 1px solid var(--line);
   background: var(--surface);
 }
 .access-statement {
-  max-width: 520px;
-  padding-bottom: 8vh;
+  align-self: center;
+  max-width: 600px;
 }
 .access-statement p {
   margin: 0 0 32px;
@@ -72,9 +72,13 @@
   margin: 0 auto;
   padding: 40px 32px;
 }
-.access-brand-compact {
+.access-brand-compact,
+.access-spectrum-compact {
   display: none;
-  margin-bottom: 40px;
+}
+.access-spectrum-compact {
+  height: 6px;
+  margin: 18px 0 36px;
 }
 .access-card h1 {
   margin: 0 0 10px;
@@ -133,8 +137,9 @@
   transform: scale(0.98);
 }
 .access-card button:disabled {
+  background: var(--hover-2);
+  color: var(--ink-3);
   cursor: default;
-  opacity: 0.45;
 }
 .access-card small {
   display: flex;
@@ -165,6 +170,9 @@
   }
   .access-brand-compact {
     display: inline-flex;
+  }
+  .access-spectrum-compact {
+    display: flex;
   }
   .access-card {
     align-self: start;

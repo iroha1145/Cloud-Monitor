@@ -63,15 +63,16 @@
   --stripe-bg: #f3f4f6;
 
   /* heat ramp for the activity calendar and the client × model matrix:
-     the cache-read hue deepening, each step with its own legible ink */
-  --heat-1: #e3f3ec;
-  --heat-1-ink: #1d5642;
-  --heat-2: #b9e2d1;
-  --heat-2-ink: #154736;
-  --heat-3: #5dbb95;
-  --heat-3-ink: #0b2c20;
-  --heat-4: #157553;
-  --heat-4-ink: #ffffff;
+     the ink mixed into the surface, so colour stays reserved for usage
+     composition; follows the theme because --ink and --surface do */
+  --heat-1: color-mix(in srgb, var(--ink) 7%, var(--surface));
+  --heat-2: color-mix(in srgb, var(--ink) 18%, var(--surface));
+  --heat-3: color-mix(in srgb, var(--ink) 38%, var(--surface));
+  --heat-4: color-mix(in srgb, var(--ink) 78%, var(--surface));
+  --heat-1-ink: var(--ink);
+  --heat-2-ink: var(--ink);
+  --heat-3-ink: var(--ink);
+  --heat-4-ink: var(--surface);
 
 
   --shadow-panel: 0 1px 2px rgb(20 27 40 / 0.04), 0 8px 24px -16px rgb(20 27 40 / 0.18);
@@ -96,26 +97,26 @@
 
   /* three steps of depth: page < inset < surface < hover */
   --page: #0d0f13;
-  --canvas: #111419;
-  --surface: #161920;
-  --inset: #121519;
-  --hover: #1e222a;
-  --hover-2: #262b35;
-  --sidebar-bg: #0d0f13;
-  --field: #12151a;
+  --canvas: #12151a;
+  --surface: #1a1d24;
+  --inset: #15181e;
+  --hover: #22262f;
+  --hover-2: #2b303a;
+  --sidebar-bg: #111419;
+  --field: #15181e;
 
   --ink: #eceef2;
   --ink-2: #a8b0bd;
   --ink-3: #8f98a7;
 
-  --line: #242934;
-  --line-strong: #323946;
-  --line-soft: #1c2028;
+  --line: #272c37;
+  --line-strong: #353c49;
+  --line-soft: #20242c;
 
   --primary: #8bb9f2;
   --accent-ink: #a9cbf6;
   --accent-tint: #172437;
-  --nav-active: #1b1f27;
+  --nav-active: var(--hover);
 
   --green: #4fcf9f;
   --green-tint: #11291f;
@@ -128,14 +129,6 @@
   --stripe: oklch(0.85 0 0 / 0.07);
   --stripe-bg: #14171d;
 
-  --heat-1: #15291f;
-  --heat-1-ink: #9fd6bd;
-  --heat-2: #1d4433;
-  --heat-2-ink: #d3efe2;
-  --heat-3: #2f8a65;
-  --heat-3-ink: #f2fbf6;
-  --heat-4: #6fd1a6;
-  --heat-4-ink: #0b2419;
 
 
   --shadow-panel: 0 0 0 1px rgb(255 255 255 / 0.01);

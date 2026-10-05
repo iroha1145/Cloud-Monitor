@@ -92,6 +92,11 @@ export default function HostedRoot() {
     </section>
     <section className="access-card" aria-labelledby="access-heading">
       <span className="access-brand access-brand-compact"><BrandMark size={30} /> Cloud Monitor</span>
+      <div className="access-spectrum access-spectrum-compact" aria-hidden="true">
+        {COMPOSITION.map((part, index) => (
+          <span key={part.key} style={{ background: part.color, flexGrow: SPECTRUM_SHARE[index] }} />
+        ))}
+      </div>
       <h1 id="access-heading">查看你的用量</h1>
       <p>输入访问密钥，连接这台服务器上的用量记录。</p>
       <form onSubmit={(event) => { event.preventDefault(); if (secret.trim() && !busy) void authenticate(secret.trim(), true); }}>

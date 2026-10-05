@@ -303,10 +303,11 @@
   border-radius: 50%;
   background: var(--ink-3);
 }
+/* Healthy states stay neutral with a green dot; only problems take colour. */
 .sv-status-online,
 .sv-status-active {
-  color: var(--green);
-  background: var(--green-tint);
+  color: var(--ink-2);
+  background: var(--hover);
 }
 .sv-status-online::before,
 .sv-status-active::before {
@@ -510,7 +511,7 @@
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--green);
+  background: color-mix(in srgb, var(--ink) 72%, var(--surface));
   /* Fills from the left when the quota first renders; later values glide. */
   transition: width var(--duration-slow) var(--ease-smooth-out);
   animation: t-bar-fill var(--duration-very-slow) var(--ease-smooth-out) backwards;
@@ -989,7 +990,7 @@
 .sv-status-online,
 .sv-status-active,
 .sv-download-note {
-  color: var(--green);
+  color: var(--ink-2);
 }
 .sv-status-stale,
 .sv-status-warning {
@@ -1201,7 +1202,7 @@
   white-space: nowrap;
 }
 .sv-health-ok {
-  color: var(--green);
+  color: var(--ink-2);
 }
 .sv-health-warning {
   color: var(--orange);
