@@ -35,6 +35,7 @@ import {
 import { SystemUpdate } from "./SystemUpdate";
 import { useErrorShake } from "./lib/hooks/use-error-shake";
 import { BrandIcon, compact, CompositionCard, count, money } from "./Overview";
+import { COMPOSITION } from "./palette";
 
 const SHOWCASE_UI = import.meta.env.VITE_SHOWCASE_UI === "true";
 
@@ -375,10 +376,7 @@ export default function AppDialogs({
           <div className="design-swatches">
             {[
               ["正文", "#20242b"],
-              ["缓存读取", "#25a878"],
-              ["非缓存输入", "#3d9aff"],
-              ["输出", "#f09a2f"],
-              ["缓存写入", "#b393c5"],
+              ...COMPOSITION.slice(0, 4).map((part) => [part.label, part.color]),
             ].map(([label, c]) => (
               <MetricTooltip
                 key={c}

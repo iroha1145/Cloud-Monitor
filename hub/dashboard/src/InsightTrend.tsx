@@ -25,6 +25,7 @@ import { usd } from "./money";
 import { compact, count, pct } from "./lib/format";
 import { AppErrorBoundary, lazyWithReload } from "./chunkLoad";
 import { indexForSelectedDay } from "./trend-math";
+import { PART_COLOR } from "./palette";
 import { useSlidingIndicator } from "./lib/hooks/use-sliding-indicator";
 import "./insight-trend.css";
 
@@ -62,27 +63,27 @@ function DayDetails({ point }: { point: TrendPoint }) {
     {
       label: "缓存读取",
       value: parts?.cacheReadKnown ? exact(parts.cacheRead) : "未提供",
-      color: "#25a878",
+      color: PART_COLOR.cacheRead,
     },
     {
       label: "非缓存输入",
       value: parts?.inputKnown ? exact(parts.input) : "未提供",
-      color: "#3d9aff",
+      color: PART_COLOR.input,
     },
     {
       label: "输出",
       value: parts?.outputKnown ? exact(parts.output) : "未提供",
-      color: "#f09a2f",
+      color: PART_COLOR.output,
     },
     {
       label: "缓存写入",
       value: parts?.cacheWriteKnown ? exact(parts.cacheWrite) : "未提供",
-      color: "#b393c5",
+      color: PART_COLOR.cacheWrite,
     },
     {
       label: "未分类",
       value: parts ? exact(parts.unclassified) : "未提供",
-      color: "#b4becf",
+      color: PART_COLOR.unclassified,
     },
   ];
   return (
@@ -360,7 +361,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
         event.key === "ArrowLeft" || event.key === "ArrowDown" ? -1 : 1,
       );
   };
-  const lineColor = metric === "tokens" ? "#3d9aff" : "#f09a2f";
+  const lineColor = metric === "tokens" ? PART_COLOR.input : PART_COLOR.output;
   const position =
     point && firstTime != null
       ? 1.5 + ((seriesTimes[pointIndex] - firstTime) / span) * 97
@@ -417,7 +418,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
       <div className="insight-trend-metrics">
         <div>
           <span>
-            <i style={{ background: "#3d9aff" }} />
+            <i style={{ background: PART_COLOR.input }} />
             区间词元
           </span>
           <strong>{compact(tokenTotal)}</strong>
@@ -425,7 +426,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
         </div>
         <div>
           <span>
-            <i style={{ background: "#f09a2f" }} />
+            <i style={{ background: PART_COLOR.output }} />
             {allCosts ? "区间花费" : hasCost ? "已知花费" : "区间花费"}
           </span>
           <strong>{money(costTotal)}</strong>
@@ -433,7 +434,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
         </div>
         <div>
           <span>
-            <i style={{ background: "#25a878" }} />
+            <i style={{ background: PART_COLOR.cacheRead }} />
             {partialCache && cacheRate !== null ? "已识别缓存占比" : "缓存占比"}
           </span>
           <strong>{percent(cacheRate)}</strong>

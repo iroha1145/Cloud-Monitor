@@ -36,19 +36,14 @@ import {
   type UsageEntity,
 } from "./data";
 import { matrixHeatLevel, matrixHeatPeak } from "./matrix-heat";
+import { COMPOSITION } from "./palette";
 import { usd } from "./money";
 import { compact, count, pct } from "./lib/format";
 import { useSlidingIndicator } from "./lib/hooks/use-sliding-indicator";
 
 const money = usd;
 export { compact, count, money, pct };
-export const composition = [
-  { key: "cacheRead", label: "缓存读取", color: "#25a878" },
-  { key: "input", label: "非缓存输入", color: "#3d9aff" },
-  { key: "output", label: "输出", color: "#f09a2f" },
-  { key: "cacheWrite", label: "缓存写入", color: "#b393c5" },
-  { key: "unclassified", label: "未分类", color: "#b4becf" },
-] as const;
+const composition = COMPOSITION;
 
 function usageDetails(
   item: Pick<PeriodUsage, "totalTokens" | "costUsd" | "components">,
