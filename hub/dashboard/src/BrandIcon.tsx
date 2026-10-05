@@ -121,18 +121,10 @@ export function brandLogoId(name: string): string | null {
 export interface BrandIconProps {
   name: string;
   size?: number;
-  /** Accepted for compatibility; brand marks always follow the monochrome theme. */
-  color?: string;
-  className?: string;
-  title?: string;
 }
 
-export function BrandIcon({
-  name,
-  size = 34,
-  className = "",
-  title,
-}: BrandIconProps) {
+/** Brand marks are monochrome masks that follow the theme's ink colour. */
+export function BrandIcon({ name, size = 34 }: BrandIconProps) {
   const logo = brandLogoId(name);
   const style = {
     "--brand-size": `${size}px`,
@@ -144,13 +136,10 @@ export function BrandIcon({
   } as CSSProperties;
   return (
     <span
-      className={`brand-icon ${className}`.trim()}
+      className="brand-icon"
       style={style}
       data-brand={logo || "unknown"}
-      title={title}
-      role={title ? "img" : undefined}
-      aria-label={title}
-      aria-hidden={title ? undefined : true}
+      aria-hidden="true"
     >
       {logo ? (
         <span className="brand-icon-mark" />

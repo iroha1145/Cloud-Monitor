@@ -324,7 +324,6 @@ export default function AppDialogs({
               <DialogHeader>
                 <BrandIcon
                   name={shownModel.name}
-                  color={shownModel.color}
                   size={45}
                 />
                 <DialogTitle>{shownModel.name}</DialogTitle>

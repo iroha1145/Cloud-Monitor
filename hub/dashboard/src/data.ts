@@ -40,7 +40,6 @@ export interface UsageEntity {
   id: string;
   name: string;
   provider: string;
-  color: string;
   totalTokens: number;
   costUsd: number | null;
   components: UsageComponents;
@@ -482,14 +481,6 @@ function normalizeClientHealth(diagnostic: JsonRecord): ClientHealth[] {
     });
 }
 const periods: PeriodKey[] = ["today", "month", "allTime"];
-const colors = [
-  "#608ac5",
-  "#338b87",
-  "#c49462",
-  "#9c85b4",
-  "#7a9aaa",
-  "#9aa5b2",
-];
 
 export function providerFor(name: string): string {
   const key = name.toLowerCase();
@@ -772,7 +763,7 @@ export function normalizePeriod(source: unknown): PeriodUsage {
   const entities = (kind: "model" | "client"): UsageEntity[] =>
     Object.entries(record(period[kind + "s"]))
       .filter(([, value]) => validCounter(value) && value > 0)
-      .map(([id, value], index) => ({
+      .map(([id, value]) => ({
         id,
         name:
           kind === "client"
@@ -792,7 +783,6 @@ export function normalizePeriod(source: unknown): PeriodUsage {
               )[id] || id
             : id,
         provider: providerFor(id),
-        color: colors[index % colors.length],
         totalTokens: count(value),
         costUsd: optionalNumber(record(period[kind + "Costs"])[id]),
         components: normalizeComponents(period, kind, id),
@@ -1439,7 +1429,6 @@ const DEMO_MODELS = [
     output: 0.012,
     unknown: 0,
     rate: 0.65,
-    color: "#608ac5",
   },
   {
     id: "claude-sonnet-4-6",
@@ -1450,7 +1439,6 @@ const DEMO_MODELS = [
     output: 0.035,
     unknown: 0,
     rate: 1.25,
-    color: "#338b87",
   },
   {
     id: "claude-opus-4-6",
@@ -1461,7 +1449,6 @@ const DEMO_MODELS = [
     output: 0.05,
     unknown: 0,
     rate: 3.15,
-    color: "#9c85b4",
   },
   {
     id: "gemini-2.5-flash",
@@ -1472,7 +1459,6 @@ const DEMO_MODELS = [
     output: 0,
     unknown: 1,
     rate: 0.38,
-    color: "#c49462",
   },
   {
     id: "grok-bot-default",
@@ -1483,7 +1469,6 @@ const DEMO_MODELS = [
     output: 0,
     unknown: 1,
     rate: 1.08,
-    color: "#7a9aaa",
   },
   {
     id: "muse-spark-1",
@@ -1494,7 +1479,6 @@ const DEMO_MODELS = [
     output: 0,
     unknown: 1,
     rate: 0.42,
-    color: "#9aa5b2",
   },
   {
     id: "muse spark",
@@ -1505,7 +1489,6 @@ const DEMO_MODELS = [
     output: 0,
     unknown: 1,
     rate: 0.42,
-    color: "#8a95a2",
   },
 ];
 
@@ -1572,11 +1555,7 @@ function demoPeriod(total: number): PeriodUsage {
     ])
       raw[target] = count(raw[target]) + values[suffix as keyof typeof values];
   });
-  const normalized = normalizePeriod(raw);
-  normalized.models.forEach((model) => {
-    model.color = DEMO_MODELS.find((item) => item.id === model.id)!.color;
-  });
-  return normalized;
+  return normalizePeriod(raw);
 }
 
 function sumDemoPeriods(items: PeriodUsage[]): PeriodUsage {

@@ -462,7 +462,7 @@ export function ModelTable({
                       onClick={(event) => onSelect(m, event.currentTarget)}
                       aria-label={`查看 ${m.name} 详情`}
                     >
-                      <BrandIcon name={m.name} color={m.color} />
+                      <BrandIcon name={m.name} />
                       <span>
                         <strong>{m.name}</strong>
                         <small>{providerName(m.provider)}</small>
@@ -602,7 +602,7 @@ function Clients({ per }: { per: PeriodUsage }) {
           <div className="client-row" key={c.id}>
             <div className="client-head">
               <span>
-                <BrandIcon name={c.id} color={c.color} size={27} />
+                <BrandIcon name={c.id} size={27} />
                 <strong>{c.name}</strong>
               </span>
               <strong>
