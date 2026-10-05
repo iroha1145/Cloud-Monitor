@@ -194,7 +194,7 @@ agent 变量见 `agent/.env.example`。
 
 ## 界面开发
 
-新版面板源代码位于 `hub/dashboard/`，包含手机底部导航、模型纵向指标、缓存明细浮窗、设备与订阅卡片，以及日／周／月活动和每日归档。Docker 构建会自动编译前端；直接运行 Python 后端时，先执行 `cd hub/dashboard && npm ci && npm run build`，才会使用新版界面。未构建的源码环境仍保留原静态页面。
+新版面板源代码位于 `hub/dashboard/`，包含手机底部导航、模型纵向指标、缓存明细浮窗、设备与订阅卡片，以及日／周／月活动和每日归档。Docker 构建会自动编译前端；直接运行 Python 后端时，先执行 `cd hub/dashboard && npm ci && npm run build`；未构建时首页返回 404「未找到前端页面」。
 
 本地开发、演示构建、登录存储和完整测试命令见 [面板开发说明](hub/dashboard/README.md)。GitHub Pages 采用独立演示构建，不读取保存的访问密钥，也不会请求生产数据或更新服务。
 

@@ -16,7 +16,7 @@ hub/update-control/*.pid
 hub/update-control/*.lock
 !hub/update-control/.gitkeep
 
-# 前端测试工具链（hub/frontend/tests）
+# 前端依赖与测试产物
 node_modules
 playwright-report/
 test-results/
