@@ -243,13 +243,11 @@ def _has_today_usage(val: Any) -> bool:
 def discover_providers(
     stats: Optional[dict],
     subscriptions: Optional[Iterable[Any]] = None,
-    *,
-    extra_client_names: Optional[Iterable[str]] = None,
 ) -> dict[str, list[str]]:
     """只收集今日有上报的提供商：periods.today.clients / today.models。
 
     订阅清单与配额窗口不再单独出卡——今日用量里没出现则不显示。
-    extra_client_names 仅供测试注入。subscriptions 保留签名兼容，忽略。
+    subscriptions 保留签名兼容，忽略。
     """
     del subscriptions  # 今日上报口径，不用订阅清单凑卡
     observed: dict[str, list[str]] = {k: [] for k in STATUS_PAGES}
@@ -287,10 +285,6 @@ def discover_providers(
             for key, val in models.items():
                 if _has_today_usage(val):
                     add(key)
-
-    if extra_client_names:
-        for name in extra_client_names:
-            add(name)
 
     return {k: v for k, v in observed.items() if v}
 
@@ -673,10 +667,7 @@ async def _get_text(
     raw, error = await _read_capped_body(response)
     if raw is None:
         return None, error
-    try:
-        text = raw.decode("utf-8", errors="replace")
-    except (UnicodeDecodeError, LookupError):
-        return None, "invalid_json"
+    text = raw.decode("utf-8", errors="replace")
     if not text.strip():
         return None, "invalid_json"
     return text, None
@@ -694,12 +685,8 @@ async def fetch_one_provider(
         text, error = await _get_text(client, page.summary_url, timeout)
         if text is not None:
             return await asyncio.to_thread(parse_rss_payload, page, text), None
-        if error == "timeout" or page.status_url == page.summary_url:
-            return {}, error or "network"
-        text, error2 = await _get_text(client, page.status_url, timeout)
-        if text is not None:
-            return await asyncio.to_thread(parse_rss_payload, page, text), None
-        return {}, error2 or error or "network"
+        # RSS 页的 summary_url 与 status_url 是同一个 feed，没有第二个地址可回退
+        return {}, error or "network"
     payload, error = await _get_json(client, page.summary_url, timeout)
     if payload is not None:
         return parse_status_payload(page, payload), None
@@ -777,19 +764,14 @@ def assemble_envelope(
     errors: list[dict[str, str]],
     *,
     generated_at: Optional[str] = None,
-    stale: bool = False,
 ) -> dict[str, Any]:
-    payload = {
+    return {
         "schema_version": SCHEMA_VERSION,
         "generated_at": generated_at or utc_now_z(),
         "providers": providers,
         "partial": bool(errors) or any(p.get("status") == "unknown" for p in providers),
         "errors": errors,
     }
-    if stale:
-        for item in payload["providers"]:
-            item["stale"] = True
-    return payload
 
 
 @dataclass
@@ -832,7 +814,6 @@ class ProviderStatusService:
         self._inflight: Optional[asyncio.Task] = None
         self._inflight_key: Optional[tuple[tuple[str, tuple[str, ...]], ...]] = None
         self._cache: Optional[_CacheEntry] = None
-        self.fetch_count = 0
 
     def _mark_stale(self, payload: dict[str, Any], stale: bool) -> dict[str, Any]:
         cloned = copy.deepcopy(payload)
@@ -846,7 +827,6 @@ class ProviderStatusService:
         *,
         client: httpx.AsyncClient,
         observed: dict[str, list[str]],
-        wait_for_refresh: bool = True,
     ) -> dict[str, Any]:
         key = _observed_key(observed)
         now = self._monotonic()
@@ -862,12 +842,6 @@ class ProviderStatusService:
             self._spawn_refresh(client, observed, key)
             return self._mark_stale(cache.payload, True)
 
-        if not wait_for_refresh:
-            self._spawn_refresh(client, observed, key)
-            if cache is not None:
-                return self._mark_stale(cache.payload, True)
-            return assemble_envelope([], [], generated_at=utc_now_z())
-
         return await self._refresh_wait(client, observed, key)
 
     def _spawn_refresh(
@@ -878,10 +852,7 @@ class ProviderStatusService:
     ) -> None:
         if self._inflight is not None and not self._inflight.done() and self._inflight_key == key:
             return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return
+        loop = asyncio.get_running_loop()
         self._inflight = loop.create_task(self._do_fetch(client, observed, key))
         self._inflight_key = key
 
@@ -925,7 +896,6 @@ class ProviderStatusService:
         observed: dict[str, list[str]],
         key: tuple[tuple[str, tuple[str, ...]], ...],
     ) -> dict[str, Any]:
-        self.fetch_count += 1
         providers, errors = await fetch_provider_statuses(
             client,
             observed,

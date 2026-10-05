@@ -154,6 +154,14 @@ async def _client(mapping, delay=0.0, delays=None, timeout=5.0):
     return client, transport
 
 
+def test_rss_pages_have_a_single_feed_url():
+    # fetch_one_provider 对 RSS 页只取一次 summary_url，不回退 status_url；
+    # 若以后接入两个地址不同的 RSS 页，需要先恢复回退逻辑。
+    rss = [page for page in STATUS_PAGES.values() if page.parser == "rss"]
+    assert rss
+    assert all(page.summary_url == page.status_url for page in rss)
+
+
 def test_aliases_map_claude_codex_cursor():
     assert canonical_provider("claude") == "anthropic"
     assert canonical_provider("anthropic") == "anthropic"
@@ -441,7 +449,7 @@ def test_stale_while_revalidate_returns_old_value():
             return clock["t"]
 
         mapping = _ok_map()
-        client, _transport = await _client(mapping)
+        client, transport = await _client(mapping)
         svc = ProviderStatusService(cache_seconds=10, timeout_seconds=2.5, monotonic=mono)
         observed = {"anthropic": ["claude"]}
         try:
@@ -449,7 +457,7 @@ def test_stale_while_revalidate_returns_old_value():
             clock["t"] = 1011.0
             second = await svc.snapshot(client=client, observed=observed)
             await asyncio.sleep(0.05)
-            return first, second, svc.fetch_count
+            return first, second, len(transport.urls)
         finally:
             await client.aclose()
 
@@ -472,12 +480,11 @@ def test_singleflight_coalesces_concurrent_refresh():
                 svc.snapshot(client=client, observed=observed),
                 svc.snapshot(client=client, observed=observed),
             )
-            return svc.fetch_count, transport.urls, results
+            return transport.urls, results
         finally:
             await client.aclose()
 
-    fetches, urls, results = asyncio.run(run())
-    assert fetches == 1
+    urls, results = asyncio.run(run())
     assert len(urls) == 3  # 三个状态页各一次，不是 9 次
     assert all(r["providers"] for r in results)
 

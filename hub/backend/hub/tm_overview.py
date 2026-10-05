@@ -299,7 +299,6 @@ def _deltas_for_device(
         ),
     )
     prev_total: int | None = None
-    prev_max: int = 0
     prev_bucket: str | None = None
     prev_day: str | None = None
     for row in rows:
@@ -320,14 +319,12 @@ def _deltas_for_device(
                     "reset": False,
                 }
             )
-            prev_max = value
         else:
             gap_slots = _bucket_gap_slots(prev_bucket, stamp)
             gap = gap_slots > max(GAP_BUCKETS, expected_slots * 2)
             reset = value < prev_total
-            sql_prev = row.get("prev_day_max")
-            seen = int(sql_prev) if sql_prev is not None else prev_max
-            delta = max(0, value - seen)
+            # 本地日内的第二行起，SQL 窗口给出的此前最大值必然非空（today_total NOT NULL）
+            delta = max(0, value - int(row["prev_day_max"]))
             out.append(
                 {
                     "device_id": row["device_id"],
@@ -340,7 +337,6 @@ def _deltas_for_device(
                     "reset": reset,
                 }
             )
-            prev_max = max(prev_max, value)
         prev_total = value
         prev_bucket = stamp
         prev_day = local_day
@@ -531,33 +527,6 @@ def activity_report(
         if has_today_hourly
         else []
     )
-    if not by_device and not archive["items"]:
-        return {
-            "time_zone": str(tz),
-            "hourly": [],
-            "hourly_day": today_key,
-            "daily_day_basis": "dashboard-time-zone",
-            "daily_mixed_basis": False,
-            "daily_archive_cutover_day": None,
-            "hourly_today": {
-                "day": today_key,
-                "time_zone": str(tz),
-                "buckets": [],
-            },
-            "daily": [],
-            "coverage": {
-                "first_sample_at": None,
-                "last_sample_at": None,
-                "expected_buckets": 0,
-                "observed_buckets": 0,
-                "coverage_percent": 0.0,
-                "attribution_mode": "none",
-                "devices": [],
-                "gap_count": 0,
-                "reset_count": 0,
-            },
-        }
-
     return {
         "time_zone": str(tz),
         "hourly": hourly_buckets,
@@ -984,7 +953,7 @@ class OverviewCache:
             self._generation += 1
             self._expires_at = 0.0
 
-    def claim_refresh(self) -> tuple[bool, asyncio.Future | None]:
+    def claim_refresh(self) -> tuple[bool, asyncio.Future]:
         with self._lock:
             if self._inflight is not None:
                 return False, self._inflight
@@ -1102,28 +1071,24 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
             return cached
         owned, waiter = overview_cache.claim_refresh()
         if not owned:
-            if waiter is not None:
-                try:
-                    # One client cancelling/timing out must not cancel the
-                    # shared refresh result for every other request.
-                    return await asyncio.wait_for(
-                        asyncio.shield(waiter), OVERVIEW_REFRESH_TIMEOUT_SECONDS
-                    )
-                except Exception as exc:
-                    # asyncio.TimeoutError 在 3.11 起是内置 TimeoutError 的别名，
-                    # 更早版本两者无继承关系——wait_for 抛的是前者，必须按前者判。
-                    timed_out = isinstance(exc, asyncio.TimeoutError) or (
-                        isinstance(exc, HTTPException) and exc.status_code == 504
-                    )
-                    stale = _stale_overview("refresh_timeout" if timed_out else "refresh_failed")
-                    if stale is not None:
-                        return stale
-                    if isinstance(exc, asyncio.TimeoutError):
-                        raise HTTPException(504, "总览刷新超时，请稍后重试") from exc
-                    raise
-            stale = _stale_overview("refresh_failed")
-            if stale is not None:
-                return stale
+            try:
+                # One client cancelling/timing out must not cancel the
+                # shared refresh result for every other request.
+                return await asyncio.wait_for(
+                    asyncio.shield(waiter), OVERVIEW_REFRESH_TIMEOUT_SECONDS
+                )
+            except Exception as exc:
+                # asyncio.TimeoutError 在 3.11 起是内置 TimeoutError 的别名，
+                # 更早版本两者无继承关系——wait_for 抛的是前者，必须按前者判。
+                timed_out = isinstance(exc, asyncio.TimeoutError) or (
+                    isinstance(exc, HTTPException) and exc.status_code == 504
+                )
+                stale = _stale_overview("refresh_timeout" if timed_out else "refresh_failed")
+                if stale is not None:
+                    return stale
+                if isinstance(exc, asyncio.TimeoutError):
+                    raise HTTPException(504, "总览刷新超时，请稍后重试") from exc
+                raise
         from concurrent.futures import ThreadPoolExecutor
 
         from .tm_proxy import UpstreamUnavailable
