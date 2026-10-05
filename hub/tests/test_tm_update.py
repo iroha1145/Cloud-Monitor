@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from hub.main import create_app
 from hub.tm_update import UpdateService, parse_ref, version_gt, version_key
-from test_hub import READ, make_settings
+from test_hub import AUTH, READ, make_settings
 
 RELEASE = {
     "tag_name": "v0.2.0",
@@ -93,6 +93,9 @@ def test_http_requires_access_token(tmp_path):
             content=b"not-json",
             headers={"content-type": "application/json"},
         ).status_code == 401
+        assert client.post("/api/v1/system/update/cancel").status_code == 401
+        # 取消更新只认访问密钥，写入密钥也不行
+        assert client.post("/api/v1/system/update/cancel", headers=AUTH).status_code == 401
 
 
 def test_http_check_ok(tmp_path, monkeypatch):

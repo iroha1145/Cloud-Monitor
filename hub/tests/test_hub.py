@@ -688,6 +688,33 @@ def test_device_key_cannot_impersonate_other_device(tmp_path):
     assert denied.status_code == 401
 
 
+def test_unknown_write_token_is_rejected_with_only_api_key(client: TestClient):
+    # 未登记的令牌和只读密钥都不是写入密钥，不能被当成 admin 放行。
+    for token in ("not-a-registered-key", READ_KEY):
+        resp = client.post(
+            "/api/v1/sync/push",
+            json=push_payload(local_ids=(1,)),
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 401, token
+    assert client.get("/api/v1/records", headers=READ).json()["total"] == 0
+
+
+def test_unknown_write_token_is_rejected_with_device_keys(tmp_path):
+    settings = make_settings(tmp_path, device_keys={"dev-a": "device-a-key"})
+    with TestClient(create_app(settings)) as client:
+        # 载荷用 dev-a：若错误令牌被放行为 admin 会得 200，被当成设备密钥会得 403，
+        # 只有真正拒绝才是 401。
+        for token in ("device-b-key", READ_KEY):
+            resp = client.post(
+                "/api/v1/sync/push",
+                json=push_payload("dev-a", local_ids=(1,)),
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 401, token
+        assert client.get("/api/v1/records", headers=READ).json()["total"] == 0
+
+
 def test_strict_token_validation(client: TestClient):
     for bad in (True, -1, 1.5, "10"):
         payload = push_payload(local_ids=(77,))
