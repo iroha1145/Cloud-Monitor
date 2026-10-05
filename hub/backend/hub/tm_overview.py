@@ -64,8 +64,8 @@ from .tm_snapshots import (
     query_daily_archive,
     trend_by_day,
     utc_z,
-    valid_day_key,
 )
+from .tm_validate import valid_day_key
 
 log = logging.getLogger("tm-overview")
 

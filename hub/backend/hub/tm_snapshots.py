@@ -25,7 +25,9 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from .db import Database
+from .models import MAX_INT
 from .services import parse_iso_datetime, utc_now
+from .tm_validate import valid_day_key
 
 log = logging.getLogger("tm-snapshots")
 
@@ -158,16 +160,6 @@ def _parse_iso(value: Any) -> Optional[datetime]:
         return None
 
 
-def valid_day_key(key: Any) -> Optional[str]:
-    if not isinstance(key, str) or len(key) != 10:
-        return None
-    try:
-        datetime.strptime(key, "%Y-%m-%d")
-    except ValueError:
-        return None
-    return key
-
-
 def resolve_local_day(
     *, period_windows: Any, updated_at: Any, received_at: Any
 ) -> tuple[str, str]:
@@ -263,7 +255,7 @@ def _period_field(period: Any, key: str) -> int:
         value = int(value or 0)
     except (TypeError, ValueError):
         return 0
-    return min(max(value, 0), 2**53 - 1)
+    return min(max(value, 0), MAX_INT)
 
 
 def _period_cost(period: Any) -> float:

@@ -27,6 +27,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from .auth import constant_eq
 from .config import Settings
 from .db import Database
 from .tm_outbox import (
@@ -173,11 +174,8 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
                 "token_monitor_secret_unconfigured",
                 "未启用 token-monitor 接入（缺少 TOKEN_MONITOR_SECRET）",
             )
-        import hmac
-
-        secret = settings.tm_ingest_secret
         provided = request_tm_secret(request)
-        if not provided or not hmac.compare_digest(provided.encode(), secret.encode()):
+        if not provided or not constant_eq(provided, settings.tm_ingest_secret):
             raise HTTPException(status_code=401, detail="unauthorized")
 
     # ------------------------------------------------------------ health

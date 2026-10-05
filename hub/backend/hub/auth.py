@@ -15,7 +15,7 @@ def _bearer_token(request: Request) -> str:
     return ""
 
 
-def _constant_eq(a: str, b: str) -> bool:
+def constant_eq(a: str, b: str) -> bool:
     return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
 
 
@@ -33,7 +33,7 @@ def require_access_token(request: Request, settings: Settings) -> None:
         raise CodedHTTPException(
             500, "access_token_unconfigured", "服务器未配置访问密钥"
         )
-    if not _constant_eq(_bearer_token(request), expected):
+    if not constant_eq(_bearer_token(request), expected):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -49,10 +49,10 @@ def resolve_write_binding(request: Request, settings: Settings) -> WriteBinding:
     token = _bearer_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    if settings.api_key and _constant_eq(token, settings.api_key):
+    if settings.api_key and constant_eq(token, settings.api_key):
         return WriteBinding(role="admin")
     for device_id, key in settings.device_keys.items():
-        if _constant_eq(token, key):
+        if constant_eq(token, key):
             return WriteBinding(role="device", device_id=device_id)
     raise HTTPException(status_code=401, detail="Unauthorized")
 

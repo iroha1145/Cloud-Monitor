@@ -12,15 +12,16 @@ from __future__ import annotations
 import json
 import math
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .models import MAX_INT
 from .services import iso_to_utc
 
-MAX_SAFE_INT = 2**53 - 1
 MIN_TIMESTAMP = datetime(2000, 1, 1, tzinfo=timezone.utc)
 MAX_COST = 1e12
-MAX_FUTURE_SKEW = timedelta(hours=24)
+# 与 models.MAX_FUTURE_SKEW（v1 记录，48 小时）不是同一个限额
+MAX_INGEST_FUTURE_SKEW = timedelta(hours=24)
 # 配额窗口 resetsAt 常为数天到数周后（周/月重置），不能套用 ingest 时钟的 24h 上限。
 MAX_RESET_SKEW = timedelta(days=400)
 MAX_DEPTH = 12
@@ -72,14 +73,15 @@ PERIOD_NUMERIC_MAPS = (
 )
 
 
-def _valid_day_key(key: Any) -> bool:
+def valid_day_key(key: Any) -> Optional[str]:
+    """合法的 YYYY-MM-DD 原样返回，否则返回 None。"""
     if not isinstance(key, str) or len(key) != 10:
-        return False
+        return None
     try:
         datetime.strptime(key, "%Y-%m-%d")
     except ValueError:
-        return False
-    return True
+        return None
+    return key
 
 
 def _valid_month_key(key: Any) -> bool:
@@ -113,7 +115,7 @@ def _check_int(value: Any, path: str) -> int:
         _reject(f"{path}: token 数必须是数字（得到 {type(value).__name__}）")
     if value < 0:
         _reject(f"{path}: 负数不被接受（{value}）")
-    if value > MAX_SAFE_INT:
+    if value > MAX_INT:
         _reject(f"{path}: 超出 2^53-1 安全整数范围（{value}）")
     return value
 
@@ -187,14 +189,14 @@ def _walk(value: Any, path: str, depth: int) -> None:
                 if item is not None and not isinstance(item, str):
                     _reject(f"{child}: 时间戳必须是字符串")
                 else:
-                    _check_timestamp(item, child, allow_future=MAX_FUTURE_SKEW)
+                    _check_timestamp(item, child, allow_future=MAX_INGEST_FUTURE_SKEW)
             elif key == "resetsAt":
                 if item is not None and not isinstance(item, str):
                     _reject(f"{child}: 时间戳必须是字符串")
                 else:
                     _check_timestamp(item, child, allow_future=MAX_RESET_SKEW)
             elif key == "date" and item is not None:
-                if not isinstance(item, str) or not _valid_day_key(item[:10]):
+                if not isinstance(item, str) or valid_day_key(item[:10]) is None:
                     _reject(f"{child}: 非法日期 {item!r}")
             _walk(item, child, depth + 1)
     elif isinstance(value, list):
@@ -322,7 +324,7 @@ def validate_ingest_payload(payload: Any) -> dict:
             if isinstance(window, dict):
                 key = window.get("key")
                 if key is not None:
-                    valid = _valid_day_key(key) if name == "today" else _valid_month_key(key)
+                    valid = (valid_day_key(key) is not None) if name == "today" else _valid_month_key(key)
                     if not valid:
                         _reject(f"periodWindows.{name}.key 格式非法（{key!r}）")
                 _check_timestamp(
@@ -342,7 +344,7 @@ def validate_ingest_payload(payload: Any) -> dict:
         if isinstance(providers, list) and len(providers) > COUNT_LIMITS["limits_providers"]:
             _reject(f"limits.providers 超过 {COUNT_LIMITS['limits_providers']} 项")
 
-    _check_timestamp(payload.get("updatedAt"), "updatedAt", allow_future=MAX_FUTURE_SKEW)
+    _check_timestamp(payload.get("updatedAt"), "updatedAt", allow_future=MAX_INGEST_FUTURE_SKEW)
     _walk(payload, "$", 0)
     return payload
 
