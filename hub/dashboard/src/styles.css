@@ -1913,6 +1913,21 @@ kbd {
   overflow: auto;
   scrollbar-width: thin;
 }
+/* Fade only the edges that hide columns (useScrollEdges marks them). */
+.matrix-scroll[data-more-end] {
+  mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+}
+.matrix-scroll[data-more-start] {
+  mask-image: linear-gradient(to right, transparent, #000 40px);
+}
+.matrix-scroll[data-more-start][data-more-end] {
+  mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+}
+.matrix-scroll:focus-visible {
+  border-radius: var(--r-sm);
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
 /* Fixed cell dimensions preserve the same geometry on desktop and mobile. */
 .matrix-table {
   width: max-content;

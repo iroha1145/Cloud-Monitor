@@ -26,6 +26,7 @@ import { COMPOSITION } from "./palette";
 import { usd } from "./money";
 import { compact, count, pct } from "./lib/format";
 import { useSlidingIndicator } from "./lib/hooks/use-sliding-indicator";
+import { useScrollEdges } from "./lib/hooks/use-scroll-edges";
 
 
 /** A part the source did not report is unknown, never zero. */
@@ -755,6 +756,7 @@ export function Overview({
 export function ModelMatrix({ per }: { per: PeriodUsage }) {
   const [metric, setMetric] = useState<"tokens" | "cost">("tokens");
   const metricSwitch = useSlidingIndicator<HTMLDivElement>('[aria-pressed="true"]');
+  const matrixEdges = useScrollEdges<HTMLDivElement>();
   const source = metric === "tokens" ? per.clientModels : per.clientModelCosts;
   const clients = Object.keys(source || {});
   const models = per.models.filter((m) =>
@@ -785,7 +787,12 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
         </div>
       </div>
       {clients.length && models.length ? (
-        <div className="matrix-scroll">
+        <div
+          className="matrix-scroll"
+          ref={matrixEdges}
+          role="region"
+          aria-label="客户端与模型用量对照表"
+        >
           <table className="matrix-table">
             <caption className="sr-only">各客户端的模型用量对照表</caption>
             <thead>
