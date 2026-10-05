@@ -37,7 +37,7 @@ function Composition({
   const entries = Object.entries(values).sort((a, b) => b[1] - a[1]);
   return (
     <section className="archive-composition">
-      <h4>{title}</h4>
+      <h3>{title}</h3>
       {entries.length ? (
         <dl>
           {entries.map(([name, value]) => (

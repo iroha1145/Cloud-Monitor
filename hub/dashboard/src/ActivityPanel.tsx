@@ -87,6 +87,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
   data: DashboardData; selected: string | null; onSelect(day: string | null): void;
 }) {
   const [view, setView] = useState<ActivityView>("month");
+  const [focusKey, setFocusKey] = useState<string | null>(null);
   const uid = useId();
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
   const tabList = useSlidingIndicator<HTMLDivElement>('[aria-selected="true"]');
@@ -124,6 +125,12 @@ export function ActivityPanel({ data, selected, onSelect }: {
   const total = reported.reduce((sum, cell) => sum + (cell.total || 0), 0);
   const active = reported.filter((cell) => (cell.total || 0) > 0).length;
   const missing = cells.filter((cell) => !cell.future && cell.total === null).length;
+  // One cell in the grid takes Tab; arrow keys move within it (roving focus).
+  const cellKey = (cell: (typeof cells)[number]) => `${cell.day}|${cell.hour ?? ""}`;
+  const lastPast = cells.reduce((latest, cell, index) => (cell.future ? latest : index), -1);
+  const focusedIndex = cells.findIndex((cell) => !cell.future && cellKey(cell) === focusKey);
+  const selectedIndex = cells.findIndex((cell) => cell.hour === undefined && cell.day === selected);
+  const tabIndexAt = focusedIndex >= 0 ? focusedIndex : selectedIndex >= 0 ? selectedIndex : lastPast;
   const monthLabel = metadata.month ? `${Number(metadata.month.slice(0, 4))} 年 ${Number(metadata.month.slice(5))} 月` : "日期未提供";
   const subtitle = view === "day" ? `${metadata.hourlyDay || today || "日期未提供"} · 24 小时`
     : view === "week" ? "最近 12 周 · 每格一天" : `${monthLabel} · 每格一天`;
@@ -196,6 +203,8 @@ export function ActivityPanel({ data, selected, onSelect }: {
               <button type="button" className={`cm-activity-cell${selected === cell.day && view !== "day" ? " is-selected" : ""}`}
                 data-level={level} data-day={cell.day} data-hour={cell.hour} style={entrance}
                 aria-pressed={cell.hour === undefined ? selected === cell.day : undefined}
+                tabIndex={index === tabIndexAt ? 0 : -1}
+                onFocus={() => setFocusKey(cellKey(cell))}
                 aria-label={`${label}，${cell.total === null ? "未上报用量" : `${full(cell.total)} 词元`}${cell.hour === undefined ? "，点击筛选会话" : ""}`}
                 ref={(element) => { buttons.current[index] = element; }}
                 onClick={cell.hour === undefined ? () => onSelect(selected === cell.day ? null : cell.day) : undefined}

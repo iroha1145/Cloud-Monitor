@@ -80,6 +80,10 @@ const ModelMatrixView = lazyWithReload("matrix", async () => ({
   default: (await import("./Overview")).ModelMatrix,
 }));
 
+// The shortcut handler takes either modifier; the hint names the one this
+// platform's keyboard actually has.
+const SEARCH_SHORTCUT = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘ K" : "Ctrl K";
+
 // Showcase navigation is opt-in for a separate public demo build.
 const SHOWCASE_UI = import.meta.env.VITE_SHOWCASE_UI === "true";
 
@@ -489,7 +493,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
               >
                 <Search size={16} />
                 <span>搜索或快速跳转</span>
-                <kbd>⌘ K</kbd>
+                <kbd>{SEARCH_SHORTCUT}</kbd>
               </button>
               <span className="topbar-divider" />
               <MetricTooltip

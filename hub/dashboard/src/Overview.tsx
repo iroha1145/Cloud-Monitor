@@ -545,10 +545,13 @@ export function ModelTable({
                     {usd(m.costUsd)}
                   </td>
                   <td className="model-action-cell">
+                    {/* Pointer shortcut only: the name button is the keyboard and
+                        screen-reader entry, so this one stays out of both. */}
                     <button
                       className="row-arrow"
                       onClick={(event) => onSelect(m, event.currentTarget)}
-                      aria-label={`展开 ${m.name}`}
+                      tabIndex={-1}
+                      aria-hidden="true"
                     >
                       <ArrowUpRight size={15} />
                     </button>
