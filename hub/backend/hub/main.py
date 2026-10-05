@@ -4,10 +4,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from pydantic import ValidationError
+from starlette.concurrency import run_in_threadpool
+from starlette.responses import PlainTextResponse
 from starlette.staticfiles import StaticFiles as StarletteStaticFiles
 
 from .auth import (
@@ -29,8 +33,10 @@ from .services import (
     list_users,
     usage_report,
 )
+from .tm_outbox import set_overview_invalidator, snapshot_health
 from .tm_overview import build_tm_overview_router
-from .tm_proxy import bootstrap_tm_layer, build_tm_router
+from .tm_provider_status import ProviderStatusService
+from .tm_proxy import TmBackground, bootstrap_tm_layer, build_tm_router
 from .tm_update import UpdateService, build_update_router
 
 
@@ -47,6 +53,23 @@ def _cache_control_for(path: str) -> str:
     return "no-cache"
 
 
+def _validation_details(errors, *, under_body: bool = False) -> list[dict]:
+    """校验错误只回传诊断元数据（type/loc/msg），不回传提交的输入。
+
+    under_body：请求体模型在路由里手动校验时，loc 不带 "body" 前缀，补上以与
+    FastAPI 自动校验的形状一致。
+    """
+    details = []
+    for error in errors:
+        item = {key: error[key] for key in ("type", "loc", "msg") if key in error}
+        if under_body:
+            loc = item.get("loc")
+            if isinstance(loc, (list, tuple)) and (not loc or loc[0] != "body"):
+                item["loc"] = ["body", *loc]
+        details.append(item)
+    return details
+
+
 class SafeStaticFiles(StarletteStaticFiles):
     async def get_response(self, path: str, scope):
         normalized = path.replace("\\", "/").lstrip("/").lower()
@@ -55,8 +78,6 @@ class SafeStaticFiles(StarletteStaticFiles):
             or normalized.startswith("tests/")
             or "/tests/" in normalized
         ):
-            from starlette.responses import PlainTextResponse
-
             return PlainTextResponse("Not Found", status_code=404)
         return await super().get_response(path, scope)
 
@@ -70,10 +91,6 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     )
     @asynccontextmanager
     async def _lifespan(_app: FastAPI):
-        import httpx
-
-        from .tm_proxy import TmBackground
-
         _app.state.http_sync = httpx.Client(
             timeout=httpx.Timeout(5.0, read=15.0), limits=httpx.Limits(max_connections=20)
         )
@@ -115,8 +132,6 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     tm_core = bootstrap_tm_layer(settings, app.state.db)
     app.state.tm_core = tm_core
     app.state.tm_background = None
-    from .tm_provider_status import ProviderStatusService
-
     app.state.provider_status = ProviderStatusService(
         cache_seconds=settings.provider_status_cache_seconds,
         timeout_seconds=settings.provider_status_timeout_seconds,
@@ -127,8 +142,6 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     overview_router, overview_cache = build_tm_overview_router(settings, app.state.db)
     app.state.overview_cache = overview_cache
     app.include_router(overview_router)
-    from .tm_outbox import set_overview_invalidator
-
     set_overview_invalidator(overview_cache.invalidate)
     app.state.update_service = UpdateService(settings)
     app.include_router(build_update_router(settings, app.state.update_service))
@@ -219,13 +232,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     async def validation_error(_request: Request, exc: RequestValidationError):
         # Pydantic errors may retain NaN/Infinity or entire submitted objects in
         # input/ctx. Return only diagnostic metadata, never re-serialize input.
-        details = [
-            {key: error[key] for key in ("type", "loc", "msg") if key in error}
-            for error in exc.errors()
-        ]
         return JSONResponse(
             status_code=400,
-            content={"error": "请求体校验失败", "details": details},
+            content={"error": "请求体校验失败", "details": _validation_details(exc.errors())},
         )
 
     def settings_dep() -> Settings:
@@ -256,11 +265,9 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return {"ok": True, "role": "cloud-hub"}
 
     @app.get("/api/v1/health/ready")
-    def health_ready(request: Request) -> JSONResponse:
+    def health_ready() -> JSONResponse:
         """就绪探测：SQLite 读写、tm-core、快照/outbox 状态。"""
         components: dict[str, dict] = {}
-
-        from .tm_outbox import snapshot_health
 
         try:
             # Bound the Python mutex as well as external SQLite write-lock
@@ -318,24 +325,17 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         except (ValueError, UnicodeDecodeError, RecursionError) as exc:
             # json.loads 对深层嵌套抛 RecursionError，仍是客户端正文问题。
             raise HTTPException(status_code=400, detail="请求体不是合法 JSON") from exc
-        from pydantic import ValidationError
-
-        from starlette.concurrency import run_in_threadpool
 
         def _sync_push() -> dict:
             try:
                 payload = SyncPushRequest.model_validate(raw)
             except ValidationError as exc:
-                details = []
-                for error in exc.errors():
-                    item = {key: error[key] for key in ("type", "loc", "msg") if key in error}
-                    loc = item.get("loc")
-                    if isinstance(loc, (list, tuple)) and (not loc or loc[0] != "body"):
-                        item["loc"] = ["body", *loc]
-                    details.append(item)
                 return JSONResponse(
                     status_code=400,
-                    content={"error": "请求体校验失败", "details": details},
+                    content={
+                        "error": "请求体校验失败",
+                        "details": _validation_details(exc.errors(), under_body=True),
+                    },
                 )
             enforce_device_binding(binding, payload.device.id)
             if len(payload.records) > settings.max_records_per_push:

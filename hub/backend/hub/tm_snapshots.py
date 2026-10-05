@@ -25,7 +25,9 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from .db import Database
+from .models import MAX_INT
 from .services import parse_iso_datetime, utc_now
+from .tm_validate import PayloadValidationError, valid_day_key
 
 log = logging.getLogger("tm-snapshots")
 
@@ -93,6 +95,10 @@ def utc_z(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+def now_z() -> str:
+    return utc_z(datetime.now(timezone.utc))
+
+
 def utc_seconds_z(dt: datetime) -> str:
     """秒级精度的同款格式：状态文件与 HTTP 日期等只需要秒的场景。"""
     if dt.tzinfo is None:
@@ -154,23 +160,13 @@ def _parse_iso(value: Any) -> Optional[datetime]:
         return None
 
 
-def _valid_day_key(key: Any) -> Optional[str]:
-    if not isinstance(key, str) or len(key) != 10:
-        return None
-    try:
-        datetime.strptime(key, "%Y-%m-%d")
-    except ValueError:
-        return None
-    return key
-
-
 def resolve_local_day(
     *, period_windows: Any, updated_at: Any, received_at: Any
 ) -> tuple[str, str]:
     """返回 (local_day, 时区标注)。回退链按任务要求，UTC 回退显式标注。"""
     windows = period_windows if isinstance(period_windows, dict) else {}
 
-    key = _valid_day_key((windows.get("today") or {}).get("key"))
+    key = valid_day_key((windows.get("today") or {}).get("key"))
     tz_name = windows.get("timeZone")
     tz = None
     if isinstance(tz_name, str) and tz_name:
@@ -206,7 +202,7 @@ def norm_ts(value: Any) -> str:
     """
     dt = _parse_iso(value)
     if dt is None:
-        return utc_z(datetime.now(timezone.utc))
+        return now_z()
     return utc_z(dt)
 
 
@@ -214,11 +210,7 @@ def bucket_start_of(producer: Optional[datetime]) -> str:
     base = producer or datetime.now(timezone.utc)
     ms = int(base.timestamp() * 1000)
     floored = (ms // BUCKET_MS) * BUCKET_MS
-    return (
-        datetime.fromtimestamp(floored / 1000, tz=timezone.utc)
-        .isoformat(timespec="milliseconds")
-        .replace("+00:00", "Z")
-    )
+    return utc_z(datetime.fromtimestamp(floored / 1000, tz=timezone.utc))
 
 
 # ---------------------------------------------------------------- 写入
@@ -263,7 +255,7 @@ def _period_field(period: Any, key: str) -> int:
         value = int(value or 0)
     except (TypeError, ValueError):
         return 0
-    return min(max(value, 0), 2**53 - 1)
+    return min(max(value, 0), MAX_INT)
 
 
 def _period_cost(period: Any) -> float:
@@ -275,6 +267,11 @@ def _period_cost(period: Any) -> float:
     except (TypeError, ValueError):
         return 0.0
     return max(value, 0.0)
+
+
+def _row_cost(row: dict) -> float:
+    # today_cost 列是 REAL NOT NULL，所有写入方都先经 float() 转换，读回一定是数值
+    return max(float(row["today_cost"] or 0), 0.0)
 
 
 def _stringify_dict(period: Any, key: str) -> str:
@@ -350,8 +347,6 @@ def write_snapshot(
             received_at=record.get("receivedAt"),
         )
     except (OverflowError, ValueError) as exc:
-        from .tm_validate import PayloadValidationError
-
         raise PayloadValidationError(f"无法解析本地日: {exc}") from exc
     producer = _parse_iso(producer_stamp) or _parse_iso(record.get("updatedAt")) or _parse_iso(record.get("receivedAt"))
     received_at = force_received_at or record.get("receivedAt") or utc_now()
@@ -616,10 +611,6 @@ def _merge_daily_components(item: dict, row: dict) -> None:
     item["componentsPartial"] = item["componentsPartial"] or components["componentsPartial"]
 
 
-def valid_day_key(key: Any) -> Optional[str]:
-    return _valid_day_key(key)
-
-
 def _merge_token_map(dest: dict[str, int], raw: Any) -> bool:
     """合并 clients_json / models_json。损坏返回 False，调用方标 partial。"""
     if raw is None or raw == "":
@@ -736,10 +727,7 @@ def query_daily_archive(
             continue
         item["tokens"] += int(row["today_total"] or 0)
         _merge_daily_components(item, row)
-        try:
-            item["costUsd"] += max(float(row["today_cost"] or 0), 0.0)
-        except (TypeError, ValueError):
-            pass
+        item["costUsd"] += _row_cost(row)
         item["deviceCount"] += 1
         tz_name = str(row["device_time_zone"] or "").strip()
         if tz_name:
@@ -780,32 +768,42 @@ def query_daily_archive(
     }
 
 
-def trend_by_day(db: Database, days: int = 30) -> list[dict]:
-    """每设备每天取同一个最后桶的总量、费用和组成，按 local_day 汇总。
+def trend_last_rows(db: Database, days: int = 30) -> tuple[list[str], list[dict]]:
+    """近 days 个有数据的本地日（新到旧），以及这些日里每设备的最后一个桶。
 
-    先用日期索引选出所需日期，再只对这些日期开窗。与日归档共享最后行
-    的排序和组件判定，不从稀疏 allTime 锚点差分或借用当前周期组成。
+    先用日期索引选出所需日期，再只对这些日期开窗。总览的 trend 与 trend_models
+    共用这一次查询。
     """
     days = max(0, int(days))
     if not days:
-        return []
+        return [], []
     day_floor = (datetime.now(timezone.utc) - timedelta(days=days + 1)).date().isoformat()
     day_rows = db.fetchall(
         DISTINCT_DAYS_SQL.format(where="local_day >= ?"),
         (day_floor, days),
     )
     selected_days = [row["day"] for row in day_rows]
+    return selected_days, _last_rows_for_days(db, selected_days)
+
+
+def trend_by_day(db: Database, days: int = 30) -> list[dict]:
+    """每设备每天取同一个最后桶的总量、费用和组成，按 local_day 汇总。
+
+    与日归档共享最后行的排序和组件判定，不从稀疏 allTime 锚点差分或借用当前周期组成。
+    """
+    return summarize_trend(*trend_last_rows(db, days))
+
+
+def summarize_trend(selected_days: list[str], last_rows: list[dict]) -> list[dict]:
+    """把 trend_last_rows 的结果按日汇总，按日期升序返回。"""
     grouped = {
         day: {"day": day, "total": 0, "costUsd": 0.0, **_empty_daily_components()}
         for day in selected_days
     }
-    for row in _last_rows_for_days(db, selected_days):
+    for row in last_rows:
         item = grouped[row["local_day"]]
         item["total"] += int(row["today_total"] or 0)
-        try:
-            item["costUsd"] += max(float(row["today_cost"] or 0), 0.0)
-        except (TypeError, ValueError):
-            pass
+        item["costUsd"] += _row_cost(row)
         _merge_daily_components(item, row)
     for item in grouped.values():
         item["costUsd"] = round(item["costUsd"], 6)

@@ -6,29 +6,25 @@
 from __future__ import annotations
 
 import os
-import sys
 from datetime import datetime, timezone
-from pathlib import Path
 
-from sync_agent import AgentState, parse_health_stale_seconds
-
-
-def _state_path() -> Path:
-    return Path(
-        os.environ.get("STATE_PATH")
-        or (Path(__file__).resolve().parent / "agent-state.json")
-    )
+from sync_agent import (
+    AgentState,
+    StateCorruptError,
+    parse_health_stale_seconds,
+    resolve_state_path,
+)
 
 
 def main() -> int:
-    state_path = _state_path()
+    state_path = resolve_state_path(os.environ)
     if not state_path.is_file():
         print(f"unhealthy: 状态文件不存在 {state_path}")
         return 1
     state = AgentState(state_path)
     try:
         state.load(readonly=True)  # 健康检查不得改名/备份状态文件
-    except Exception as exc:  # StateCorruptError 等
+    except StateCorruptError as exc:  # load 把读文件与 JSON 解析失败都转成了它
         print(f"unhealthy: 状态文件不可用 ({exc})")
         return 1
 
@@ -53,8 +49,7 @@ def main() -> int:
         return 1
     dt = max(parsed)
     last_success = dt.isoformat()
-    # 与 sync_agent.load_config 同一解析规则（非法回退 3600、下限 60）：
-    # 两侧口径不一致会让容器在 agent 健康时被判 unhealthy
+    # 非法值回退 3600、下限 60（见 sync_agent.parse_health_stale_seconds）
     stale = parse_health_stale_seconds(os.environ.get("HEALTH_STALE_SECONDS"))
     age = (datetime.now(timezone.utc) - dt).total_seconds()
     if age > stale:

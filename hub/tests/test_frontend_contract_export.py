@@ -8,7 +8,7 @@ from pathlib import Path
 
 import httpx
 
-from conftest import READ_KEY, TM_SECRET, make_cloud_app, requires_node, widget_style_payload
+from conftest import READ_KEY, TM_SECRET, requires_node, widget_style_payload
 from hub.tm_provider_status import STATUS_PAGES, ProviderStatusService
 
 
@@ -45,8 +45,11 @@ FIXTURE_DIR = Path(__file__).parent / "fixtures" / "frontend-contract"
 def test_export_frontend_contract_fixtures(cloud, tmp_path):
     pa = widget_style_payload("dev-fixture")
     assert cloud.post("/api/ingest", json=pa, headers=HEADERS).status_code == 200
+    # 状态页走 http_provider（tm_overview 的 provider-status 路由），
+    # 换掉它才能保证测试不访问外网；http_async 留给 tm-core 代理。
     transport = _MapTransport(_ok_map())
-    cloud.app.state.http_async = httpx.AsyncClient(transport=transport, timeout=5.0)
+    cloud.portal.call(cloud.app.state.http_provider.aclose)
+    cloud.app.state.http_provider = httpx.AsyncClient(transport=transport, timeout=5.0)
     cloud.app.state.provider_status = ProviderStatusService(cache_seconds=300, timeout_seconds=2.5)
 
     overview = cloud.get("/api/v1/tm/overview", headers=READ)
@@ -64,6 +67,9 @@ def test_export_frontend_contract_fixtures(cloud, tmp_path):
     assert "hourly_day" in ov["activity"]
     assert hist["day_basis"] == "device-local"
     assert st["schema_version"] == 1
+    # 状态页数据必须来自上面的模拟映射，而不是真实网络
+    assert st["providers"]
+    assert {p["source_updated_at"] for p in st["providers"]} == {"2026-08-23T00:00:00Z"}
     assert len(ov["activity"]["daily"]) <= 90
 
     regenerate = os.environ.get("REGENERATE_FRONTEND_CONTRACT", "").strip().lower() in {
@@ -74,7 +80,6 @@ def test_export_frontend_contract_fixtures(cloud, tmp_path):
     (out / "overview.json").write_text(json.dumps(ov, ensure_ascii=False, indent=2), encoding="utf-8")
     (out / "history_daily.json").write_text(json.dumps(hist, ensure_ascii=False, indent=2), encoding="utf-8")
     (out / "provider_status.json").write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding="utf-8")
-    assert (out / "overview.json").is_file()
     assert ov["totals"]
     assert hist["items"] is not None
     assert st["schema_version"] == 1

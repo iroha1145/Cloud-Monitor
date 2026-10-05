@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+import threading
+from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -150,7 +151,6 @@ def test_env_device_id_wins_over_state(tmp_path):
     state = AgentState(cfg.state_path)
     state.device_id = "old-id"
     # P1-7：冲突默认失败关闭
-    import pytest
     with pytest.raises(SystemExit):
         resolve_device_id(cfg, state)
     # 显式放行则以环境变量为准（独立开关，与 ALLOW_LEGACY_FALLBACK 无关）
@@ -284,7 +284,7 @@ def test_cursor_not_advanced_on_bad_response(tmp_path):
     assert state.cursor == 2
 
 
-def test_cursor_advances_per_batch_and_resumes(tmp_path):
+def test_cursor_advances_per_batch_and_resumes(tmp_path, monkeypatch):
     cfg = make_config(tmp_path, batch_size=2)
     state = AgentState(cfg.state_path)
     state.device_id = cfg.device_id
@@ -293,20 +293,18 @@ def test_cursor_advances_per_batch_and_resumes(tmp_path):
 
     agent = make_agent(cfg, state, session)
     # 中途"崩溃"：第二批（1 条记录）的所有推送尝试都失败
-    import pytest as _pytest
-    real_sleep = sa.time.sleep
-    sa.time.sleep = lambda *_: None
     real_post = session.post
     def flaky_post(url, **kwargs):
         body = kwargs.get("json") or {}
         if len(body.get("records") or []) == 1:
             raise requests.ConnectionError("cloud down")
         return real_post(url, **kwargs)
-    session.post = flaky_post
-    with pytest.raises((requests.ConnectionError, sa.TransientError)):
-        agent.run_once()
-    session.post = real_post
-    sa.time.sleep = real_sleep
+    # sa.time 就是全局 time 模块：用 monkeypatch 替换，断言失败时也会还原
+    with monkeypatch.context() as patch:
+        patch.setattr(sa.time, "sleep", lambda *_: None)
+        patch.setattr(session, "post", flaky_post)
+        with pytest.raises((requests.ConnectionError, sa.TransientError)):
+            agent.run_once()
     assert state.cursor == 2  # 批1已持久化
 
     # 恢复：从 cursor=2 继续，只推批2
@@ -747,7 +745,6 @@ def test_tm_device_id_isolated_from_cloud_id(tmp_path):
 
 
 def test_bridge_not_started_without_config(tmp_path, caplog):
-    import threading
     cfg = tm_config(tmp_path, token_monitor_hub_url="", token_monitor_secret="")
     agent = make_agent(cfg, AgentState(cfg.state_path), FakeSession())
     assert tm.start_bridge_thread(agent) is None
@@ -858,6 +855,23 @@ def test_healthcheck_states(tmp_path, monkeypatch, capsys):
     assert healthcheck.main() == 1
 
 
+def test_healthcheck_finds_state_written_by_agent_for_home_relative_path(tmp_path, monkeypatch):
+    """STATE_PATH 写成 ~/… 时，agent 与 healthcheck 必须落到同一个文件。"""
+    import healthcheck
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    env = {"CLOUD_HUB_URL": "http://127.0.0.1:7878", "STATE_PATH": " ~/agent-state.json "}
+    config = sa.load_config(env)
+    assert config.state_path == tmp_path / "agent-state.json"
+    state = AgentState(config.state_path)
+    state.device_id = "d"
+    state.data["last_success_at"] = utc_now_iso()
+    state.save()
+
+    monkeypatch.setenv("STATE_PATH", env["STATE_PATH"])
+    assert healthcheck.main() == 0
+
+
 def test_healthcheck_does_not_rename_corrupt_state(tmp_path, monkeypatch, capsys):
     """健康检查不得把损坏/不支持的状态文件改名移走，否则 agent 可能换新身份。"""
     import healthcheck
@@ -903,8 +917,8 @@ def test_run_once_accepts_uppercase_bool(tmp_path):
     assert sa.load_config({**base, "RUN_ONCE": "0"}).run_once is False
 
 
-def test_parse_health_stale_seconds_shared_by_healthcheck():
-    """agent 配置与 healthcheck 必须同一解析规则，否则阈值口径分裂。"""
+def test_parse_health_stale_seconds():
+    """healthcheck 的阈值解析：非法回退 3600、下限 60。"""
     assert sa.parse_health_stale_seconds("abc") == 3600.0
     assert sa.parse_health_stale_seconds("10") == 60.0
     assert sa.parse_health_stale_seconds("7200") == 7200.0
@@ -1072,20 +1086,26 @@ def test_cursor_regression_latches_until_reset(tmp_path):
 def test_state_save_is_serialized_across_threads(tmp_path):
     state = AgentState(tmp_path / "agent-state.json")
     state.device_id = "dev"
+    errors: list[BaseException] = []
 
     def writer(mark: str) -> None:
-        for index in range(40):
-            state.data["last_error"] = f"{mark}-{index}"
-            state.save()
+        # 线程里的异常不会让测试失败，只会变成一条警告；收集起来断言
+        try:
+            for index in range(40):
+                state.data["last_error"] = f"{mark}-{index}"
+                state.save()
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
 
     threads = [
-        __import__("threading").Thread(target=writer, args=("a",)),
-        __import__("threading").Thread(target=writer, args=("b",)),
+        threading.Thread(target=writer, args=("a",)),
+        threading.Thread(target=writer, args=("b",)),
     ]
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join()
+    assert errors == []
     loaded = json.loads((tmp_path / "agent-state.json").read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
     assert loaded["device_id"] == "dev"

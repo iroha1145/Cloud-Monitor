@@ -6,9 +6,7 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import time
-from datetime import datetime, timezone
 
 import httpx
 import pytest
@@ -154,6 +152,14 @@ async def _client(mapping, delay=0.0, delays=None, timeout=5.0):
     return client, transport
 
 
+def test_rss_pages_have_a_single_feed_url():
+    # fetch_one_provider 对 RSS 页只取一次 summary_url，不回退 status_url；
+    # 若以后接入两个地址不同的 RSS 页，需要先恢复回退逻辑。
+    rss = [page for page in STATUS_PAGES.values() if page.parser == "rss"]
+    assert rss
+    assert all(page.summary_url == page.status_url for page in rss)
+
+
 def test_aliases_map_claude_codex_cursor():
     assert canonical_provider("claude") == "anthropic"
     assert canonical_provider("anthropic") == "anthropic"
@@ -186,19 +192,18 @@ def test_aliases_map_claude_codex_cursor():
 
 def test_discover_from_today_clients_when_limits_off():
     stats = {"periods": {"today": {"clients": {"claude": 10, "codex": 4}}}}
-    found = discover_providers(stats, subscriptions=None)
+    found = discover_providers(stats)
     assert found["anthropic"] == ["claude"]
     assert found["openai"] == ["codex"]
     assert "cursor" not in found
 
 
-def test_discover_only_today_usage_not_limits_or_subscriptions():
+def test_discover_only_today_usage_not_limits():
     stats = {
         "periods": {"today": {"clients": {}}},
         "limits": {"providers": [{"provider": "claude"}, {"provider": "openai"}]},
     }
-    subs = [{"provider": "cursor"}, {"provider": "anthropic"}]
-    found = discover_providers(stats, subs)
+    found = discover_providers(stats)
     assert found == {}
 
 
@@ -441,7 +446,7 @@ def test_stale_while_revalidate_returns_old_value():
             return clock["t"]
 
         mapping = _ok_map()
-        client, _transport = await _client(mapping)
+        client, transport = await _client(mapping)
         svc = ProviderStatusService(cache_seconds=10, timeout_seconds=2.5, monotonic=mono)
         observed = {"anthropic": ["claude"]}
         try:
@@ -449,7 +454,7 @@ def test_stale_while_revalidate_returns_old_value():
             clock["t"] = 1011.0
             second = await svc.snapshot(client=client, observed=observed)
             await asyncio.sleep(0.05)
-            return first, second, svc.fetch_count
+            return first, second, len(transport.urls)
         finally:
             await client.aclose()
 
@@ -472,14 +477,40 @@ def test_singleflight_coalesces_concurrent_refresh():
                 svc.snapshot(client=client, observed=observed),
                 svc.snapshot(client=client, observed=observed),
             )
-            return svc.fetch_count, transport.urls, results
+            return transport.urls, results
         finally:
             await client.aclose()
 
-    fetches, urls, results = asyncio.run(run())
-    assert fetches == 1
+    urls, results = asyncio.run(run())
     assert len(urls) == 3  # 三个状态页各一次，不是 9 次
     assert all(r["providers"] for r in results)
+
+
+def test_cancelling_one_waiter_does_not_cancel_the_shared_refresh():
+    """两个请求等同一次刷新：一个客户端断开（任务被取消）不得连累另一个。"""
+
+    async def run():
+        client, transport = await _client(_ok_map(), delay=0.3)
+        svc = ProviderStatusService(cache_seconds=300, timeout_seconds=2.5)
+        observed = {"anthropic": ["claude"]}
+        try:
+            first = asyncio.create_task(svc.snapshot(client=client, observed=observed))
+            second = asyncio.create_task(svc.snapshot(client=client, observed=observed))
+            await asyncio.sleep(0.05)  # 两者都已在等待同一个刷新任务
+            first.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await first
+            shared_cancelled = svc._inflight.cancelled()
+            result = await asyncio.wait_for(second, 2)
+            return shared_cancelled, result, transport.urls
+        finally:
+            await client.aclose()
+
+    shared_cancelled, result, urls = asyncio.run(run())
+    assert shared_cancelled is False
+    assert [p["provider"] for p in result["providers"]] == ["anthropic"]
+    assert result["providers"][0]["stale"] is False
+    assert len(urls) == 1  # 仍然只拉了一次
 
 
 def test_invalid_json_and_non_200_unknown_not_500():
@@ -577,6 +608,30 @@ def test_endpoint_today_usage_not_subscription_only(cloud):
 
 
 @requires_node
+def test_endpoint_reads_only_stats_from_tm_core(cloud, monkeypatch):
+    """提供商只按今日用量发现；订阅清单不参与，读不到也不该把响应标成 partial。"""
+    pa = widget_style_payload("dev-stats-only")
+    assert cloud.post("/api/ingest", json=pa, headers=HEADERS).status_code == 200
+    core = cloud.app.state.tm_core
+    real_request = core.request
+    paths = []
+
+    def request(method, path, **kwargs):
+        paths.append((method, path))
+        if path == "/api/subscriptions":
+            return httpx.Response(503, json={"error": "unavailable"})
+        return real_request(method, path, **kwargs)
+
+    monkeypatch.setattr(core, "request", request)
+    _install_transport(cloud, _ok_map())
+    body = cloud.get("/api/v1/tm/provider-status", headers=READ).json()
+    assert paths == [("GET", "/api/stats")]
+    assert body["partial"] is False
+    assert body["errors"] == []
+    assert {p["provider"] for p in body["providers"]} == {"anthropic", "openai"}
+
+
+@requires_node
 def test_ssrf_client_url_is_ignored(cloud):
     pa = widget_style_payload("dev-ssrf")
     cloud.post("/api/ingest", json=pa, headers=HEADERS)
@@ -645,10 +700,14 @@ def test_tm_core_down_does_not_take_ingest(tmp_path, node_hub):
     cloud = make_cloud_app(tmp_path, "http://127.0.0.1:9", background=False)
     with cloud:
         ingest = cloud.post("/api/ingest", json=widget_style_payload("d"), headers=HEADERS)
-        # tm-core 不可达：ingest 503，但 provider-status 不得 500
+        # tm-core 不可达：ingest 暂存并返回 503；provider-status 照常 200，只标 partial
         resp = cloud.get("/api/v1/tm/provider-status", headers=READ)
-        assert resp.status_code != 500
-        assert ingest.status_code in {200, 503}
+        assert ingest.status_code == 503
+        assert ingest.json()["error"] == "upstream_unavailable"
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["partial"] is True
+        assert body["errors"] == [{"error_code": "stats_unavailable", "source": "tm-core"}]
 
 
 def test_refuses_non_allowlisted_url():

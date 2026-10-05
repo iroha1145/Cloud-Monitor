@@ -10,7 +10,8 @@ from fastapi.testclient import TestClient
 
 from hub.main import create_app
 from hub.tm_update import UpdateService
-from test_hub import READ, make_settings
+from conftest import make_settings
+from test_hub import READ
 
 
 def test_process_exit_after_first_publication_keeps_a_consumable_request(tmp_path):

@@ -10,28 +10,15 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from conftest import API_KEY, READ_KEY, make_settings
 from hub.config import ConfigError, Settings, load_settings
 from hub.db import Database
 from hub.main import create_app
 from hub.models import DeviceInfo, RecordIn, SyncPushRequest, UserIn
 from hub.services import apply_sync_push
 
-API_KEY = "unit-test-admin-key"
-READ_KEY = "unit-test-read-key"
 AUTH = {"Authorization": f"Bearer {API_KEY}"}
 READ = {"Authorization": f"Bearer {READ_KEY}"}
-
-
-def make_settings(tmp_path, **overrides) -> Settings:
-    defaults = dict(
-        api_key=API_KEY,
-        access_token=READ_KEY,
-        database_path=tmp_path / "hub.sqlite3",
-        frontend_dir=tmp_path / "no-frontend",
-        max_records_per_push=500,
-    )
-    defaults.update(overrides)
-    return Settings(**defaults)
 
 
 @pytest.fixture()
@@ -603,16 +590,18 @@ def test_weak_api_key_rejected_at_startup(monkeypatch, tmp_path):
 def test_dashboard_time_zone_region_name_is_a_config_error(monkeypatch, tmp_path):
     """装了 tzdata 包时，区域名（如 Asia）会让 ZoneInfo 去打开一个目录、抛 IsADirectoryError；
     仍须给出清晰的配置错误。没装时抛的是 ZoneInfoNotFoundError，所以要打桩，结果才不随环境变化。"""
-    import zoneinfo
+    from hub import config
 
-    real = zoneinfo.ZoneInfo
+    real = config.ZoneInfo
+    calls = []
 
     def region_is_a_directory(key):
+        calls.append(key)
         if key == "Asia":
             raise IsADirectoryError(21, "Is a directory", key)
         return real(key)
 
-    monkeypatch.setattr(zoneinfo, "ZoneInfo", region_is_a_directory)
+    monkeypatch.setattr(config, "ZoneInfo", region_is_a_directory)
     monkeypatch.setenv("API_KEY", "a" * 32)
     monkeypatch.setenv("ACCESS_TOKEN", "b" * 32)
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "tz.db"))
@@ -620,6 +609,7 @@ def test_dashboard_time_zone_region_name_is_a_config_error(monkeypatch, tmp_path
         monkeypatch.setenv("DASHBOARD_TIME_ZONE", bad)
         with pytest.raises(ConfigError, match="DASHBOARD_TIME_ZONE"):
             load_settings()
+    assert calls == ["Asia", "Nope/Zone"]  # 桩确实被 load_settings 用到
 
 
 def test_shared_token_requires_opt_in(monkeypatch, tmp_path):
@@ -686,6 +676,33 @@ def test_device_key_cannot_impersonate_other_device(tmp_path):
         "/api/v1/records", headers={"Authorization": "Bearer device-a-key"}
     )
     assert denied.status_code == 401
+
+
+def test_unknown_write_token_is_rejected_with_only_api_key(client: TestClient):
+    # 未登记的令牌和只读密钥都不是写入密钥，不能被当成 admin 放行。
+    for token in ("not-a-registered-key", READ_KEY):
+        resp = client.post(
+            "/api/v1/sync/push",
+            json=push_payload(local_ids=(1,)),
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 401, token
+    assert client.get("/api/v1/records", headers=READ).json()["total"] == 0
+
+
+def test_unknown_write_token_is_rejected_with_device_keys(tmp_path):
+    settings = make_settings(tmp_path, device_keys={"dev-a": "device-a-key"})
+    with TestClient(create_app(settings)) as client:
+        # 载荷用 dev-a：若错误令牌被放行为 admin 会得 200，被当成设备密钥会得 403，
+        # 只有真正拒绝才是 401。
+        for token in ("device-b-key", READ_KEY):
+            resp = client.post(
+                "/api/v1/sync/push",
+                json=push_payload("dev-a", local_ids=(1,)),
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 401, token
+        assert client.get("/api/v1/records", headers=READ).json()["total"] == 0
 
 
 def test_strict_token_validation(client: TestClient):

@@ -18,16 +18,16 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import timezone
 from defusedxml import ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
 from email.utils import parsedate_to_datetime
-from typing import Any, Iterable, Optional
+from typing import Any, Optional
 from xml.etree.ElementTree import ParseError
 
 import httpx
 
-from .tm_snapshots import utc_seconds_z
+from .tm_snapshots import now_z, utc_seconds_z
 
 log = logging.getLogger("tm-provider-status")
 
@@ -181,14 +181,6 @@ ALLOWED_FETCH_URLS: frozenset[str] = frozenset(
 )
 
 
-def utc_now_z() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .isoformat(timespec="milliseconds")
-        .replace("+00:00", "Z")
-    )
-
-
 def _canonical_from_usage_name(key: str) -> Optional[str]:
     """模型名 / 复合客户端名 → canonical。无状态页的厂商（如 GLM）返回 None。"""
     if key in PROVIDER_ALIASES:
@@ -240,18 +232,11 @@ def _has_today_usage(val: Any) -> bool:
     return True
 
 
-def discover_providers(
-    stats: Optional[dict],
-    subscriptions: Optional[Iterable[Any]] = None,
-    *,
-    extra_client_names: Optional[Iterable[str]] = None,
-) -> dict[str, list[str]]:
+def discover_providers(stats: Optional[dict]) -> dict[str, list[str]]:
     """只收集今日有上报的提供商：periods.today.clients / today.models。
 
     订阅清单与配额窗口不再单独出卡——今日用量里没出现则不显示。
-    extra_client_names 仅供测试注入。subscriptions 保留签名兼容，忽略。
     """
-    del subscriptions  # 今日上报口径，不用订阅清单凑卡
     observed: dict[str, list[str]] = {k: [] for k in STATUS_PAGES}
 
     def add(raw: Any) -> None:
@@ -287,10 +272,6 @@ def discover_providers(
             for key, val in models.items():
                 if _has_today_usage(val):
                     add(key)
-
-    if extra_client_names:
-        for name in extra_client_names:
-            add(name)
 
     return {k: v for k, v in observed.items() if v}
 
@@ -673,10 +654,7 @@ async def _get_text(
     raw, error = await _read_capped_body(response)
     if raw is None:
         return None, error
-    try:
-        text = raw.decode("utf-8", errors="replace")
-    except (UnicodeDecodeError, LookupError):
-        return None, "invalid_json"
+    text = raw.decode("utf-8", errors="replace")
     if not text.strip():
         return None, "invalid_json"
     return text, None
@@ -694,12 +672,8 @@ async def fetch_one_provider(
         text, error = await _get_text(client, page.summary_url, timeout)
         if text is not None:
             return await asyncio.to_thread(parse_rss_payload, page, text), None
-        if error == "timeout" or page.status_url == page.summary_url:
-            return {}, error or "network"
-        text, error2 = await _get_text(client, page.status_url, timeout)
-        if text is not None:
-            return await asyncio.to_thread(parse_rss_payload, page, text), None
-        return {}, error2 or error or "network"
+        # RSS 页的 summary_url 与 status_url 是同一个 feed，没有第二个地址可回退
+        return {}, error or "network"
     payload, error = await _get_json(client, page.summary_url, timeout)
     if payload is not None:
         return parse_status_payload(page, payload), None
@@ -719,7 +693,7 @@ async def fetch_provider_statuses(
     budget_seconds: float = TOTAL_BUDGET_SECONDS,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     """并发拉取 allowlist 状态页。总预算默认 3s，不得串行 3×5s。"""
-    checked_at = utc_now_z()
+    checked_at = now_z()
     timeout = min(max(float(timeout_seconds), 0.1), budget_seconds)
     canonicals = [c for c in STATUS_PAGES if c in observed]
     if not canonicals:
@@ -777,19 +751,14 @@ def assemble_envelope(
     errors: list[dict[str, str]],
     *,
     generated_at: Optional[str] = None,
-    stale: bool = False,
 ) -> dict[str, Any]:
-    payload = {
+    return {
         "schema_version": SCHEMA_VERSION,
-        "generated_at": generated_at or utc_now_z(),
+        "generated_at": generated_at or now_z(),
         "providers": providers,
         "partial": bool(errors) or any(p.get("status") == "unknown" for p in providers),
         "errors": errors,
     }
-    if stale:
-        for item in payload["providers"]:
-            item["stale"] = True
-    return payload
 
 
 @dataclass
@@ -832,7 +801,6 @@ class ProviderStatusService:
         self._inflight: Optional[asyncio.Task] = None
         self._inflight_key: Optional[tuple[tuple[str, tuple[str, ...]], ...]] = None
         self._cache: Optional[_CacheEntry] = None
-        self.fetch_count = 0
 
     def _mark_stale(self, payload: dict[str, Any], stale: bool) -> dict[str, Any]:
         cloned = copy.deepcopy(payload)
@@ -846,7 +814,6 @@ class ProviderStatusService:
         *,
         client: httpx.AsyncClient,
         observed: dict[str, list[str]],
-        wait_for_refresh: bool = True,
     ) -> dict[str, Any]:
         key = _observed_key(observed)
         now = self._monotonic()
@@ -862,12 +829,6 @@ class ProviderStatusService:
             self._spawn_refresh(client, observed, key)
             return self._mark_stale(cache.payload, True)
 
-        if not wait_for_refresh:
-            self._spawn_refresh(client, observed, key)
-            if cache is not None:
-                return self._mark_stale(cache.payload, True)
-            return assemble_envelope([], [], generated_at=utc_now_z())
-
         return await self._refresh_wait(client, observed, key)
 
     def _spawn_refresh(
@@ -878,10 +839,7 @@ class ProviderStatusService:
     ) -> None:
         if self._inflight is not None and not self._inflight.done() and self._inflight_key == key:
             return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return
+        loop = asyncio.get_running_loop()
         self._inflight = loop.create_task(self._do_fetch(client, observed, key))
         self._inflight_key = key
 
@@ -917,7 +875,9 @@ class ProviderStatusService:
                 task = asyncio.create_task(self._do_fetch(client, observed, key))
                 self._inflight = task
                 self._inflight_key = key
-        return await task
+        # 多个请求共用这次刷新；某个请求被取消（客户端断开）时只取消它自己的等待，
+        # 不能把共享任务一起取消，否则其余等待者都会收到 CancelledError。
+        return await asyncio.shield(task)
 
     async def _do_fetch(
         self,
@@ -925,7 +885,6 @@ class ProviderStatusService:
         observed: dict[str, list[str]],
         key: tuple[tuple[str, tuple[str, ...]], ...],
     ) -> dict[str, Any]:
-        self.fetch_count += 1
         providers, errors = await fetch_provider_statuses(
             client,
             observed,

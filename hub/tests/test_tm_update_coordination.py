@@ -12,7 +12,7 @@ import pytest
 
 from hub import tm_update
 from hub.tm_update import UpdateService
-from test_hub import make_settings
+from conftest import make_settings
 
 
 ROOT = Path(__file__).resolve().parents[2]

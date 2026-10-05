@@ -211,7 +211,7 @@ class ForwardingQueue:
                      utc_z(now + timedelta(seconds=FORWARD_TTL_SECONDS)), fingerprint,
                      int(has_timestamp), request_id),
                 )
-        outbox._invalidate_overview(self.db)
+        outbox._invalidate_overview()
         return request_id
 
     def has_pending(self) -> bool:
@@ -302,7 +302,7 @@ class ForwardingQueue:
             outbox.mark_failed(self.db, row["request_id"], str(exc))
             outbox.set_snapshot_status(self.db, success=False, error=str(exc), request_id=row["request_id"])
             log.warning("快照写入失败（已确认记录留待本地重放）: %s", exc)
-        outbox._invalidate_overview(self.db)
+        outbox._invalidate_overview()
 
     def process_device(self, core, device_id: str) -> ForwardAttempt:
         from .tm_proxy import UpstreamUnavailable
@@ -373,7 +373,7 @@ class ForwardingQueue:
                             (row["request_id"],),
                         )
                     delay = RETRY_BASE_SECONDS
-                outbox._invalidate_overview(self.db)
+                outbox._invalidate_overview()
                 return ForwardAttempt(row["request_id"], response=response, retry_after=delay)
             try:
                 body = response.json()
@@ -389,7 +389,7 @@ class ForwardingQueue:
                 # overtake this retry while the acknowledgement is unavailable.
                 outbox.set_snapshot_status(self.db, success=False, error=str(exc), request_id=row["request_id"])
                 delay = self._retry(row, f"acknowledgement unavailable: {exc}")
-                outbox._invalidate_overview(self.db)
+                outbox._invalidate_overview()
                 return ForwardAttempt(row["request_id"], error_code="snapshot_ack_unavailable", message="上游已响应，确认保存后将继续处理后续上报", retry_after=delay)
             self._write_acknowledged_snapshot(row, incoming, record)
             return ForwardAttempt(row["request_id"], response=response)

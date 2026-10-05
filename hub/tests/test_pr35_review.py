@@ -111,7 +111,7 @@ def test_unconfirmed_row_is_not_replayable_and_keeps_its_attempts(tmp_path):
     record_pending(db, request_id="keep", device_id="dev", payload={"deviceId": "dev"})
 
     try:
-        result = replay_pending(db, None)
+        result = replay_pending(db)
         assert "stopped_by" not in result
         assert result["checked"] == 0  # no durable upstream acknowledgement
         row = db.fetchone(
@@ -200,10 +200,6 @@ def test_replay_finishes_current_item_then_stops(tmp_path):
         checks["n"] += 1
         return checks["n"] > 1
 
-    class UnusedCore:
-        def request(self, *_args, **_kwargs):
-            raise AssertionError("replay must not read the current device")
-
     try:
         record_pending(
             db,
@@ -230,7 +226,7 @@ def test_replay_finishes_current_item_then_stops(tmp_path):
         # These requests were accepted before shutdown interrupted snapshot writes.
         for row in db.fetchall("SELECT request_id, payload_json FROM tm_ingest_outbox"):
             save_normalized(db, row["request_id"], record_from_payload(json.loads(row["payload_json"])))
-        result = replay_pending(db, UnusedCore(), should_stop=should_stop)
+        result = replay_pending(db, should_stop=should_stop)
         assert result["stopped_by"] == "shutdown"
         states = {
             row["request_id"]: row["state"]

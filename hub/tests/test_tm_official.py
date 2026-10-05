@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sqlite3
-import threading
-import time
 from pathlib import Path
 
 import httpx
@@ -365,7 +362,6 @@ def test_body_limit_chunked_no_content_length(raw_app):
 
 def test_body_limit_forged_small_content_length_ignored(raw_app):
     """Content-Length 造假为 1：ASGI 层不看头，仍按实际正文判定。"""
-    scope_override = True
     pad = ("a" * (1024 * 1024 + 10)).encode()
     payload = b'{"deviceId":"forged","pad":"' + pad + b'"}'
     status, body = _asgi_call(raw_app, "/api/ingest", [payload])

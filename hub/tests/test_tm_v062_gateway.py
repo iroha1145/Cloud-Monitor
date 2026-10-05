@@ -53,7 +53,7 @@ def test_minimal_ingest_keeps_confirmed_record_for_snapshot_replay(cloud, monkey
     assert row["state"] == "pending"
     assert json.loads(row["normalized_json"])["periods"]["today"]["totalTokens"] == payload["today"]["totalTokens"]
     assert db.fetchone("SELECT COUNT(*) AS n FROM tm_snapshot_buckets")["n"] == 0
-    tm_outbox.replay_pending(db, cloud.app.state.tm_core)
+    tm_outbox.replay_pending(db)
     assert db.fetchone("SELECT state FROM tm_ingest_outbox")["state"] == "done"
     assert db.fetchone("SELECT today_total FROM tm_snapshot_buckets")["today_total"] == payload["today"]["totalTokens"]
 
