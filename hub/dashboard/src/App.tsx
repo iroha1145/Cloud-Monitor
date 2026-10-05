@@ -38,7 +38,6 @@ import {
   DialogTitle,
 } from "./components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
-import { TooltipProvider } from "./components/ui/tooltip";
 import { MetricTooltip } from "./MetricTooltip";
 import {
   StatefulButton,
@@ -515,366 +514,364 @@ export default function App({ initialData, initialToken = "", hosted = false, is
   );
   return (
     <MotionConfig reducedMotion="user">
-      <TooltipProvider delayDuration={80}>
-        <a className="skip-link" href="#main-content">
-          跳到主内容
-        </a>
-        <div
-          className={`app-shell ${SHOWCASE_UI ? "showcase-shell" : "dashboard-shell"}`}
-        >
-          <aside className="sidebar" aria-label="主导航">
-            {nav}
-          </aside>
-          <Dialog open={mobile} onOpenChange={setMobile}>
-            <DialogContent className="mobile-nav-dialog" placement="left" returnFocusRef={mobileReturnFocus}>
-              <DialogTitle className="sr-only">导航</DialogTitle>
-              <DialogDescription className="sr-only">
-                切换页面和工作区设置
-              </DialogDescription>
-              <nav className="mobile-nav-content" aria-label="侧边导航">
-                {nav}
-              </nav>
-            </DialogContent>
-          </Dialog>
-          <div className="workspace-main">
-            <header className="app-topbar">
-              <div className="breadcrumb">
-                <button
-                  className="icon-button mobile-menu"
-                  ref={mobileReturnFocus}
-                  onClick={() => setMobile(true)}
-                  aria-label="打开导航"
-                >
-                  <Menu size={19} />
-                </button>
-                <span className="breadcrumb-workspace">工作空间</span>
-                <ChevronRight size={13} />
-                <strong>{current.name}</strong>
-                {!hosted && <span className="preview-badge">{isolatedDemo ? "演示" : "本地预览"}</span>}
-              </div>
-              <div className="topbar-actions">
-                <button
-                  className="command-search"
-                  ref={searchButton}
-                  aria-label="搜索或快速跳转"
-                  onClick={(event) => { rememberDialogOpener(event.currentTarget); setSearchOpen(true); }}
-                >
-                  <Search size={16} />
-                  <span>搜索或快速跳转</span>
-                  <kbd>⌘ K</kbd>
-                </button>
-                <span className="topbar-divider" />
-                <MetricTooltip
-                  title="外观模式"
-                  preserveAction
-                  rows={[
-                    { label: "当前", value: dark ? "深色模式" : "浅色模式" },
-                    {
-                      label: "点击切换",
-                      value: dark ? "浅色模式" : "深色模式",
-                    },
-                  ]}
-                >
-                  <button
-                    className="icon-button"
-                    aria-label={dark ? "切换浅色模式" : "切换深色模式"}
-                    onClick={toggleTheme}
-                  >
-                    <span className="icon-swap" aria-hidden="true">
-                      <Sun size={17} data-active={dark} />
-                      <Moon size={17} data-active={!dark} />
-                    </span>
-                  </button>
-                </MetricTooltip>
-                {SHOWCASE_UI && (
-                  <NotificationBell
-                    count={statusCount}
-                    variant="dot"
-                    size={33}
-                    color="orange"
-                    onClick={(event) => { rememberDialogOpener(event.currentTarget); setNotifications(true); }}
-                    aria-label={`查看 ${statusCount} 条工作区提示`}
-                  />
-                )}
-                <button
-                  className="top-avatar"
-                  aria-label="打开工作区设置"
-                  onClick={openSettings}
-                >
-                  <UserRound size={16} />
-                </button>
-              </div>
-            </header>
-            <main id="main-content" className="main-content">
-              <section
-                className={`page-heading ${page === "overview" ? "overview-heading" : ""}`}
+      <a className="skip-link" href="#main-content">
+        跳到主内容
+      </a>
+      <div
+        className={`app-shell ${SHOWCASE_UI ? "showcase-shell" : "dashboard-shell"}`}
+      >
+        <aside className="sidebar" aria-label="主导航">
+          {nav}
+        </aside>
+        <Dialog open={mobile} onOpenChange={setMobile}>
+          <DialogContent className="mobile-nav-dialog" placement="left" returnFocusRef={mobileReturnFocus}>
+            <DialogTitle className="sr-only">导航</DialogTitle>
+            <DialogDescription className="sr-only">
+              切换页面和工作区设置
+            </DialogDescription>
+            <nav className="mobile-nav-content" aria-label="侧边导航">
+              {nav}
+            </nav>
+          </DialogContent>
+        </Dialog>
+        <div className="workspace-main">
+          <header className="app-topbar">
+            <div className="breadcrumb">
+              <button
+                className="icon-button mobile-menu"
+                ref={mobileReturnFocus}
+                onClick={() => setMobile(true)}
+                aria-label="打开导航"
               >
-                <div className="heading-copy" key={page}>
-                  <div className="heading-kicker">
-                    <span className="heading-line" />
-                    {page === "overview"
-                      ? "你的用量工作台"
-                      : current.name.toUpperCase()}
-                  </div>
-                  <h1>
-                    {page === "overview" ? "用量，一目了然。" : current.name}
-                  </h1>
-                  <p>
-                    {current.description}
-                    <span className="heading-mode">
-                      {data.mode === "demo"
-                        ? "当前展示示例数据"
-                        : "当前展示真实数据"}
-                    </span>
-                  </p>
-                </div>
-                {page === "overview" && (
-                  <div className="heading-art" aria-hidden="true">
-                    <div className="gradient-ribbon ribbon-one" />
-                    <div className="gradient-ribbon ribbon-two" />
-                    <div className="art-grid" />
-                  </div>
-                )}
-                <div className="heading-actions">
-                  <span className="sync-status">
-                    <i className={`status-dot ${freshData ? "is-fresh" : ""}`} key={data.generatedAt} />
-                    {data.mode === "demo" ? "示例数据" : `更新于 ${time}`}
+                <Menu size={19} />
+              </button>
+              <span className="breadcrumb-workspace">工作空间</span>
+              <ChevronRight size={13} />
+              <strong>{current.name}</strong>
+              {!hosted && <span className="preview-badge">{isolatedDemo ? "演示" : "本地预览"}</span>}
+            </div>
+            <div className="topbar-actions">
+              <button
+                className="command-search"
+                ref={searchButton}
+                aria-label="搜索或快速跳转"
+                onClick={(event) => { rememberDialogOpener(event.currentTarget); setSearchOpen(true); }}
+              >
+                <Search size={16} />
+                <span>搜索或快速跳转</span>
+                <kbd>⌘ K</kbd>
+              </button>
+              <span className="topbar-divider" />
+              <MetricTooltip
+                title="外观模式"
+                preserveAction
+                rows={[
+                  { label: "当前", value: dark ? "深色模式" : "浅色模式" },
+                  {
+                    label: "点击切换",
+                    value: dark ? "浅色模式" : "深色模式",
+                  },
+                ]}
+              >
+                <button
+                  className="icon-button"
+                  aria-label={dark ? "切换浅色模式" : "切换深色模式"}
+                  onClick={toggleTheme}
+                >
+                  <span className="icon-swap" aria-hidden="true">
+                    <Sun size={17} data-active={dark} />
+                    <Moon size={17} data-active={!dark} />
                   </span>
-                  <StatefulButton
-                    variant="outline"
-                    size="sm"
-                    state={refreshState}
-                    loadingText={
-                      <span className="beautiful-loading-text">刷新中</span>
-                    }
-                    successText="已更新"
-                    errorText="重试"
-                    icon={<RefreshCw size={14} />}
-                    onClick={refresh}
-                    disabled={refreshState === "loading"}
-                    className="refresh-button"
-                  >
-                    刷新数据
-                  </StatefulButton>
+                </button>
+              </MetricTooltip>
+              {SHOWCASE_UI && (
+                <NotificationBell
+                  count={statusCount}
+                  variant="dot"
+                  size={33}
+                  color="orange"
+                  onClick={(event) => { rememberDialogOpener(event.currentTarget); setNotifications(true); }}
+                  aria-label={`查看 ${statusCount} 条工作区提示`}
+                />
+              )}
+              <button
+                className="top-avatar"
+                aria-label="打开工作区设置"
+                onClick={openSettings}
+              >
+                <UserRound size={16} />
+              </button>
+            </div>
+          </header>
+          <main id="main-content" className="main-content">
+            <section
+              className={`page-heading ${page === "overview" ? "overview-heading" : ""}`}
+            >
+              <div className="heading-copy" key={page}>
+                <div className="heading-kicker">
+                  <span className="heading-line" />
+                  {page === "overview"
+                    ? "你的用量工作台"
+                    : current.name.toUpperCase()}
                 </div>
-              </section>
-              {notices.length > 0 && <details className="workspace-notices" open={!!refreshWarning}>
-                <summary>{refreshWarning ? "数据刷新未完成" : `${notices.length} 项数据与同步提示`}</summary>
-                <ul>{notices.map((notice, index) => <li key={index}>{notice}</li>)}</ul>
-              </details>}
-              {(page === "overview" || page === "models") && (
-                <div className="page-controls">
-                  <div className="period-group">
-                    <Tabs
-                      value={period}
-                      onValueChange={(v) => setPeriod(v as PeriodKey)}
-                    >
-                      <TabsList aria-label="统计周期" className="period-tabs">
-                        {Object.entries(PERIOD_LABELS).map(([key, label]) => (
-                          <TabsTrigger
-                            key={key}
-                            value={key}
-                            id={`period-${key}`}
-                            aria-controls="period-summary"
-                          >
-                            {label}
-                          </TabsTrigger>
-                        ))}
-                      </TabsList>
-                    </Tabs>
-                    <span className="date-label">
-                      <CalendarDays size={14} />
-                      {period === "today"
-                        ? date
-                        : period === "month"
-                          ? (() => {
-                              try {
-                                return new Date(data.generatedAt).toLocaleDateString(
-                                  "zh-CN",
-                                  {
-                                    timeZone: data.timeZone,
-                                    year: "numeric",
-                                    month: "long",
-                                  },
-                                );
-                              } catch {
-                                return new Date(data.generatedAt).toLocaleDateString(
-                                  "zh-CN",
-                                  { year: "numeric", month: "long" },
-                                );
-                              }
-                            })()
-                          : "全部历史记录"}
-                    </span>
-                  </div>
-                  <button className="plain-button" onClick={exportModels}>
-                    <Download size={14} />
-                    <span>导出数据</span>
-                  </button>
+                <h1>
+                  {page === "overview" ? "用量，一目了然。" : current.name}
+                </h1>
+                <p>
+                  {current.description}
+                  <span className="heading-mode">
+                    {data.mode === "demo"
+                      ? "当前展示示例数据"
+                      : "当前展示真实数据"}
+                  </span>
+                </p>
+              </div>
+              {page === "overview" && (
+                <div className="heading-art" aria-hidden="true">
+                  <div className="gradient-ribbon ribbon-one" />
+                  <div className="gradient-ribbon ribbon-two" />
+                  <div className="art-grid" />
                 </div>
               )}
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.div
-                  key={page}
-                  className={navigated ? "page-stage" : undefined}
-                  id="period-summary"
-                  role={
-                    page === "overview" || page === "models"
-                      ? "tabpanel"
-                      : undefined
+              <div className="heading-actions">
+                <span className="sync-status">
+                  <i className={`status-dot ${freshData ? "is-fresh" : ""}`} key={data.generatedAt} />
+                  {data.mode === "demo" ? "示例数据" : `更新于 ${time}`}
+                </span>
+                <StatefulButton
+                  variant="outline"
+                  size="sm"
+                  state={refreshState}
+                  loadingText={
+                    <span className="beautiful-loading-text">刷新中</span>
                   }
-                  aria-labelledby={
-                    page === "overview" || page === "models"
-                      ? `period-${period}`
-                      : undefined
-                  }
-                  initial={{ opacity: 0 }}
-                  animate={{
-                    opacity: 1,
-                    transition: { duration: reduce ? 0 : DURATION.fast, ease: EASE_SMOOTH_OUT },
-                  }}
-                  exit={{
-                    opacity: 0,
-                    transition: { duration: reduce ? 0 : DURATION.quick, ease: EASE_SMOOTH_OUT },
-                  }}
+                  successText="已更新"
+                  errorText="重试"
+                  icon={<RefreshCw size={14} />}
+                  onClick={refresh}
+                  disabled={refreshState === "loading"}
+                  className="refresh-button"
                 >
-                  {page === "overview" ? (
-                    <Overview
-                      data={data}
-                      period={period}
-                      onModel={openModel}
-                    />
-                  ) : page === "models" ? (
-                    <>
-                      <Stats data={data} period={period} />
-                      <ModelTable per={per} full onSelect={openModel} />
-                      <AppErrorBoundary title="模型矩阵已更新，请刷新。">
-                        <Suspense fallback={<PageSkeleton label="正在加载矩阵…" columns={1} height={320} />}>
-                          <ModelMatrixView per={per} />
-                        </Suspense>
-                      </AppErrorBoundary>
-                    </>
-                  ) : (
-                    <AppErrorBoundary>
-                      <Suspense fallback={<PageSkeleton label="正在加载…" summary />}>
-                        {page === "devices" ? (
-                          <DevicesView data={data} />
-                        ) : page === "quota" ? (
-                          <QuotaView data={data} />
-                        ) : (
-                          <>
-                            <HistoryView data={data} />
-                            <ArchivePanel accessToken={token.current} dataMode={data.mode} fallbackData={data} historyAvailable={data.features?.history_daily} onAuthExpired={onSignOut} />
-                          </>
-                        )}
+                  刷新数据
+                </StatefulButton>
+              </div>
+            </section>
+            {notices.length > 0 && <details className="workspace-notices" open={!!refreshWarning}>
+              <summary>{refreshWarning ? "数据刷新未完成" : `${notices.length} 项数据与同步提示`}</summary>
+              <ul>{notices.map((notice, index) => <li key={index}>{notice}</li>)}</ul>
+            </details>}
+            {(page === "overview" || page === "models") && (
+              <div className="page-controls">
+                <div className="period-group">
+                  <Tabs
+                    value={period}
+                    onValueChange={(v) => setPeriod(v as PeriodKey)}
+                  >
+                    <TabsList aria-label="统计周期" className="period-tabs">
+                      {Object.entries(PERIOD_LABELS).map(([key, label]) => (
+                        <TabsTrigger
+                          key={key}
+                          value={key}
+                          id={`period-${key}`}
+                          aria-controls="period-summary"
+                        >
+                          {label}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                  </Tabs>
+                  <span className="date-label">
+                    <CalendarDays size={14} />
+                    {period === "today"
+                      ? date
+                      : period === "month"
+                        ? (() => {
+                            try {
+                              return new Date(data.generatedAt).toLocaleDateString(
+                                "zh-CN",
+                                {
+                                  timeZone: data.timeZone,
+                                  year: "numeric",
+                                  month: "long",
+                                },
+                              );
+                            } catch {
+                              return new Date(data.generatedAt).toLocaleDateString(
+                                "zh-CN",
+                                { year: "numeric", month: "long" },
+                              );
+                            }
+                          })()
+                        : "全部历史记录"}
+                  </span>
+                </div>
+                <button className="plain-button" onClick={exportModels}>
+                  <Download size={14} />
+                  <span>导出数据</span>
+                </button>
+              </div>
+            )}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={page}
+                className={navigated ? "page-stage" : undefined}
+                id="period-summary"
+                role={
+                  page === "overview" || page === "models"
+                    ? "tabpanel"
+                    : undefined
+                }
+                aria-labelledby={
+                  page === "overview" || page === "models"
+                    ? `period-${period}`
+                    : undefined
+                }
+                initial={{ opacity: 0 }}
+                animate={{
+                  opacity: 1,
+                  transition: { duration: reduce ? 0 : DURATION.fast, ease: EASE_SMOOTH_OUT },
+                }}
+                exit={{
+                  opacity: 0,
+                  transition: { duration: reduce ? 0 : DURATION.quick, ease: EASE_SMOOTH_OUT },
+                }}
+              >
+                {page === "overview" ? (
+                  <Overview
+                    data={data}
+                    period={period}
+                    onModel={openModel}
+                  />
+                ) : page === "models" ? (
+                  <>
+                    <Stats data={data} period={period} />
+                    <ModelTable per={per} full onSelect={openModel} />
+                    <AppErrorBoundary title="模型矩阵已更新，请刷新。">
+                      <Suspense fallback={<PageSkeleton label="正在加载矩阵…" columns={1} height={320} />}>
+                        <ModelMatrixView per={per} />
                       </Suspense>
                     </AppErrorBoundary>
-                  )}
-                </motion.div>
-              </AnimatePresence>
-              <footer className="page-footer">
-                <span>
-                  <Cloud size={13} />
-                  Cloud Monitor<span className="footer-separator">/</span>
-                  每一份用量，都有迹可循。
-                </span>
-                <span>
-                  {data.mode === "demo"
-                    ? "示例数据，不代表实际账单"
-                    : `每 5 分钟自动刷新 · ${data.timeZone}`}
-                  {!hosted && <button onClick={openDesign}>
-                    关于这版设计 <ArrowUpRight size={12} />
-                  </button>}
-                </span>
-              </footer>
-            </main>
-          </div>
-          <MobileNavigation page={page} onNavigate={go} />
+                  </>
+                ) : (
+                  <AppErrorBoundary>
+                    <Suspense fallback={<PageSkeleton label="正在加载…" summary />}>
+                      {page === "devices" ? (
+                        <DevicesView data={data} />
+                      ) : page === "quota" ? (
+                        <QuotaView data={data} />
+                      ) : (
+                        <>
+                          <HistoryView data={data} />
+                          <ArchivePanel accessToken={token.current} dataMode={data.mode} fallbackData={data} historyAvailable={data.features?.history_daily} onAuthExpired={onSignOut} />
+                        </>
+                      )}
+                    </Suspense>
+                  </AppErrorBoundary>
+                )}
+              </motion.div>
+            </AnimatePresence>
+            <footer className="page-footer">
+              <span>
+                <Cloud size={13} />
+                Cloud Monitor<span className="footer-separator">/</span>
+                每一份用量，都有迹可循。
+              </span>
+              <span>
+                {data.mode === "demo"
+                  ? "示例数据，不代表实际账单"
+                  : `每 5 分钟自动刷新 · ${data.timeZone}`}
+                {!hosted && <button onClick={openDesign}>
+                  关于这版设计 <ArrowUpRight size={12} />
+                </button>}
+              </span>
+            </footer>
+          </main>
         </div>
-        {dialogsLoaded && (
-          <AppErrorBoundary
-            title="对话框已更新，请刷新。"
-            variant="dialog"
-            onFail={() => {
-              setDialogError(true);
-              setDialogsLoaded(false);
-              setSearchOpen(false);
-              setSettings(false);
-              setNotifications(false);
-              setDesign(false);
-              setSelected(null);
+        <MobileNavigation page={page} onNavigate={go} />
+      </div>
+      {dialogsLoaded && (
+        <AppErrorBoundary
+          title="对话框已更新，请刷新。"
+          variant="dialog"
+          onFail={() => {
+            setDialogError(true);
+            setDialogsLoaded(false);
+            setSearchOpen(false);
+            setSettings(false);
+            setNotifications(false);
+            setDesign(false);
+            setSelected(null);
+          }}
+        >
+        <Suspense fallback={null}>
+          <AppDialogs
+            returnFocusRef={dialogReturnFocus}
+            searchOpen={searchOpen}
+            setSearchOpen={setSearchOpen}
+            settings={settings}
+            setSettings={setSettings}
+            notifications={notifications}
+            setNotifications={setNotifications}
+            design={design}
+            setDesign={setDesign}
+            selected={selected}
+            setSelected={setSelected}
+            hosted={hosted}
+            isolatedDemo={isolatedDemo}
+            secret={secret}
+            setSecret={setSecret}
+            connect={connect}
+            connecting={connecting}
+            setConnecting={setConnecting}
+            connectError={connectError}
+            setConnectError={setConnectError}
+            keyRejected={keyRejected}
+            setKeyRejected={setKeyRejected}
+            showDemo={showDemo}
+            data={data}
+            period={period}
+            per={per}
+            token={token.current}
+            onSignOut={onSignOut}
+            pages={pages}
+            go={go}
+            statusCount={statusCount}
+            notices={notices}
+            requestVersion={requestVersion}
+            inFlight={inFlight}
+          />
+        </Suspense>
+        </AppErrorBoundary>
+      )}
+      {dialogError && <DialogErrorNotice onDismiss={() => setDialogError(false)} />}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            className="app-toast"
+            role="status"
+            initial={toastHidden}
+            animate={{
+              opacity: 1,
+              y: 0,
+              scale: 1,
+              filter: "blur(0px)",
+              // Drop the settled filter so the toast text is not left on a filter layer.
+              transitionEnd: { filter: "none" },
+              transition: { duration: DURATION.medium, ease: EASE_SMOOTH_OUT },
+            }}
+            exit={{
+              ...toastHidden,
+              transition: { duration: DURATION.fast, ease: EASE_SMOOTH_OUT },
             }}
           >
-          <Suspense fallback={null}>
-            <AppDialogs
-              returnFocusRef={dialogReturnFocus}
-              searchOpen={searchOpen}
-              setSearchOpen={setSearchOpen}
-              settings={settings}
-              setSettings={setSettings}
-              notifications={notifications}
-              setNotifications={setNotifications}
-              design={design}
-              setDesign={setDesign}
-              selected={selected}
-              setSelected={setSelected}
-              hosted={hosted}
-              isolatedDemo={isolatedDemo}
-              secret={secret}
-              setSecret={setSecret}
-              connect={connect}
-              connecting={connecting}
-              setConnecting={setConnecting}
-              connectError={connectError}
-              setConnectError={setConnectError}
-              keyRejected={keyRejected}
-              setKeyRejected={setKeyRejected}
-              showDemo={showDemo}
-              data={data}
-              period={period}
-              per={per}
-              token={token.current}
-              onSignOut={onSignOut}
-              pages={pages}
-              go={go}
-              statusCount={statusCount}
-              notices={notices}
-              requestVersion={requestVersion}
-              inFlight={inFlight}
-            />
-          </Suspense>
-          </AppErrorBoundary>
+            <Check size={16} />
+            <span>{toast}</span>
+            <button aria-label="关闭提示" onClick={() => setToast("")}>
+              <X size={14} />
+            </button>
+          </motion.div>
         )}
-        {dialogError && <DialogErrorNotice onDismiss={() => setDialogError(false)} />}
-        <AnimatePresence>
-          {toast && (
-            <motion.div
-              className="app-toast"
-              role="status"
-              initial={toastHidden}
-              animate={{
-                opacity: 1,
-                y: 0,
-                scale: 1,
-                filter: "blur(0px)",
-                // Drop the settled filter so the toast text is not left on a filter layer.
-                transitionEnd: { filter: "none" },
-                transition: { duration: DURATION.medium, ease: EASE_SMOOTH_OUT },
-              }}
-              exit={{
-                ...toastHidden,
-                transition: { duration: DURATION.fast, ease: EASE_SMOOTH_OUT },
-              }}
-            >
-              <Check size={16} />
-              <span>{toast}</span>
-              <button aria-label="关闭提示" onClick={() => setToast("")}>
-                <X size={14} />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </TooltipProvider>
+      </AnimatePresence>
     </MotionConfig>
   );
 }
