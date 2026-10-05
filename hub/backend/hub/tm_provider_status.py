@@ -22,7 +22,7 @@ from datetime import timezone
 from defusedxml import ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
 from email.utils import parsedate_to_datetime
-from typing import Any, Iterable, Optional
+from typing import Any, Optional
 from xml.etree.ElementTree import ParseError
 
 import httpx
@@ -232,16 +232,11 @@ def _has_today_usage(val: Any) -> bool:
     return True
 
 
-def discover_providers(
-    stats: Optional[dict],
-    subscriptions: Optional[Iterable[Any]] = None,
-) -> dict[str, list[str]]:
+def discover_providers(stats: Optional[dict]) -> dict[str, list[str]]:
     """只收集今日有上报的提供商：periods.today.clients / today.models。
 
     订阅清单与配额窗口不再单独出卡——今日用量里没出现则不显示。
-    subscriptions 保留签名兼容，忽略。
     """
-    del subscriptions  # 今日上报口径，不用订阅清单凑卡
     observed: dict[str, list[str]] = {k: [] for k in STATUS_PAGES}
 
     def add(raw: Any) -> None:

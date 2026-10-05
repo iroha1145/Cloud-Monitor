@@ -1144,13 +1144,8 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         if not settings.provider_status_enabled:
             raise HTTPException(status_code=404, detail="provider-status 未启用")
 
-        core = _core(request)
-
-        (stats, stats_error), (subs, subs_error) = await asyncio.gather(
-            asyncio.to_thread(_fetch_sync, core, "/api/stats"),
-            asyncio.to_thread(_fetch_sync, core, "/api/subscriptions"),
-        )
-        observed = discover_providers(stats, subs)
+        stats, stats_error = await asyncio.to_thread(_fetch_sync, _core(request), "/api/stats")
+        observed = discover_providers(stats)
         service = request.app.state.provider_status
         client = getattr(request.app.state, "http_provider", request.app.state.http_async)
         envelope = await service.snapshot(client=client, observed=observed)
@@ -1158,11 +1153,6 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
             envelope["partial"] = True
             envelope["errors"].append(
                 {"error_code": "stats_unavailable", "source": "tm-core"}
-            )
-        if subs_error:
-            envelope["partial"] = True
-            envelope["errors"].append(
-                {"error_code": "subscriptions_unavailable", "source": "tm-core"}
             )
         if request.query_params.get("url"):
             log.warning("provider-status ignored client url parameter")

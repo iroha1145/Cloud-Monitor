@@ -192,19 +192,18 @@ def test_aliases_map_claude_codex_cursor():
 
 def test_discover_from_today_clients_when_limits_off():
     stats = {"periods": {"today": {"clients": {"claude": 10, "codex": 4}}}}
-    found = discover_providers(stats, subscriptions=None)
+    found = discover_providers(stats)
     assert found["anthropic"] == ["claude"]
     assert found["openai"] == ["codex"]
     assert "cursor" not in found
 
 
-def test_discover_only_today_usage_not_limits_or_subscriptions():
+def test_discover_only_today_usage_not_limits():
     stats = {
         "periods": {"today": {"clients": {}}},
         "limits": {"providers": [{"provider": "claude"}, {"provider": "openai"}]},
     }
-    subs = [{"provider": "cursor"}, {"provider": "anthropic"}]
-    found = discover_providers(stats, subs)
+    found = discover_providers(stats)
     assert found == {}
 
 
@@ -606,6 +605,30 @@ def test_endpoint_today_usage_not_subscription_only(cloud):
     features = cloud.get("/api/v1/tm/overview", headers=READ).json()["features"]
     assert features["provider_status"] is True
     assert features["history_daily"] is True
+
+
+@requires_node
+def test_endpoint_reads_only_stats_from_tm_core(cloud, monkeypatch):
+    """提供商只按今日用量发现；订阅清单不参与，读不到也不该把响应标成 partial。"""
+    pa = widget_style_payload("dev-stats-only")
+    assert cloud.post("/api/ingest", json=pa, headers=HEADERS).status_code == 200
+    core = cloud.app.state.tm_core
+    real_request = core.request
+    paths = []
+
+    def request(method, path, **kwargs):
+        paths.append((method, path))
+        if path == "/api/subscriptions":
+            return httpx.Response(503, json={"error": "unavailable"})
+        return real_request(method, path, **kwargs)
+
+    monkeypatch.setattr(core, "request", request)
+    _install_transport(cloud, _ok_map())
+    body = cloud.get("/api/v1/tm/provider-status", headers=READ).json()
+    assert paths == [("GET", "/api/stats")]
+    assert body["partial"] is False
+    assert body["errors"] == []
+    assert {p["provider"] for p in body["providers"]} == {"anthropic", "openai"}
 
 
 @requires_node
