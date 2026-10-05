@@ -400,6 +400,7 @@ export default function AppDialogs({
                 "趋势曲线、快速搜索与导航反馈",
               ],
               ["beUI", "https://beui.dev", "数字变化与刷新状态"],
+              ["Arc UI", "https://uiarc.dev", "平面层次、胶囊控件与图表形状"],
               ["Rare UI", "https://www.rareui.com", "新提示出现时的通知铃"],
               [
                 "Transitions",

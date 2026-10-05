@@ -18,7 +18,7 @@
   border-radius: 10px;
   background: var(--surface);
   color: var(--ink);
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   box-shadow: var(--shadow-overlay);
   text-wrap: initial;
   visibility: hidden;
@@ -34,7 +34,7 @@
   display: block;
   margin-bottom: 10px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 .metric-tooltip-card dl {

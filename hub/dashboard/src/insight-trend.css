@@ -32,7 +32,7 @@
   display: block;
   margin: 6px 0 3px;
   font-size: clamp(20px, 1.7vw, 24px);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.2;
   letter-spacing: -0.035em;
 }
@@ -61,20 +61,19 @@
 .insight-trend-toolbar > span {
   color: var(--ink-2);
   font-size: var(--fs-label);
-  font-weight: 500;
 }
 .insight-trend-switch {
   position: relative;
   display: flex;
   padding: 2px;
-  border-radius: 8px;
+  border-radius: var(--r-pill);
   background: var(--canvas);
 }
 .insight-trend-switch button {
   min-height: 26px;
-  padding: 0 11px;
+  padding: 0 12px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--r-pill);
   background: transparent;
   color: var(--ink-2);
   font-size: var(--fs-label);
@@ -91,18 +90,16 @@
 .insight-trend-switch button[aria-pressed="true"] {
   background: var(--surface);
   color: var(--ink);
-  font-weight: 600;
-  box-shadow: 0 1px 2px rgb(20 27 40 / 0.08);
+  box-shadow: var(--shadow-thumb);
 }
 .insight-trend-switch > [data-sliding-indicator] {
-  border-radius: 6px;
+  border-radius: var(--r-pill);
   background: var(--surface);
-  box-shadow: 0 1px 2px rgb(20 27 40 / 0.08);
+  box-shadow: var(--shadow-thumb);
 }
 .dark .insight-trend-switch > [data-sliding-indicator],
 .dark .insight-trend-switch button[aria-pressed="true"] {
   background: var(--hover-2);
-  box-shadow: none;
 }
 .insight-trend-switch[data-indicator="ready"] button[aria-pressed="true"] {
   background: transparent;
@@ -148,7 +145,7 @@
 .insight-trend-no-line strong {
   color: var(--ink);
   font-size: var(--fs-strong);
-  font-weight: 550;
+  font-weight: 500;
 }
 .insight-trend-no-line span {
   max-width: 34ch;
@@ -184,7 +181,7 @@
   padding: 12px 13px;
   overflow: hidden;
   isolation: isolate;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--surface);
   color: var(--ink);
@@ -200,7 +197,7 @@
 }
 .insight-trend-tooltip-title time {
   color: var(--ink);
-  font-weight: 600;
+  font-weight: 500;
 }
 .insight-trend-tooltip-title span {
   color: var(--ink-3);

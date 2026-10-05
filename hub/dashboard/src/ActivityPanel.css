@@ -11,15 +11,15 @@
   padding: 18px 20px;
   border-bottom: 1px solid var(--line);
 }
-.cm-activity-head h2 { margin: 0; color: var(--ink); font-size: 14px; font-weight: 600; }
+.cm-activity-head h2 { margin: 0; color: var(--ink); font-size: 14px; font-weight: 500; }
 .cm-activity-head p { margin: 6px 0 0; color: var(--ink-2); font-size: var(--fs-meta); line-height: 1.5; }
-.cm-activity-tabs { display: flex; flex-shrink: 0; padding: 3px; gap: 2px; border-radius: 8px; background: var(--inset); border: 1px solid var(--line); }
-.cm-activity-tabs button { min-width: 30px; min-height: 30px; padding: 4px 7px; border-radius: 5px; color: var(--ink-2); font-size: 11px; }
-.cm-activity-tabs button[aria-selected="true"] { color: var(--nav-ink); background: var(--surface); box-shadow: 0 1px 2px rgb(20 27 40 / 0.08); }
+.cm-activity-tabs { display: flex; flex-shrink: 0; padding: 3px; gap: 2px; border-radius: var(--r-pill); background: var(--canvas); }
+.cm-activity-tabs button { min-width: 30px; min-height: 30px; padding: 4px 8px; border-radius: var(--r-pill); color: var(--ink-2); font-size: 11px; }
+.cm-activity-tabs button[aria-selected="true"] { color: var(--nav-ink); background: var(--surface); box-shadow: var(--shadow-thumb); }
 .cm-activity-tabs { position: relative; }
-.cm-activity-tabs > [data-sliding-indicator] { border-radius: 5px; background: var(--surface); box-shadow: 0 1px 2px rgb(20 27 40 / 0.08); }
+.cm-activity-tabs > [data-sliding-indicator] { border-radius: var(--r-pill); background: var(--surface); box-shadow: var(--shadow-thumb); }
 .cm-activity-tabs[data-indicator="ready"] button[aria-selected="true"] { background: transparent; box-shadow: none; }
-.dark .cm-activity-tabs > [data-sliding-indicator] { background: var(--hover); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.dark .cm-activity-tabs > [data-sliding-indicator] { background: var(--hover-2); }
 .cm-activity-tabs button { transition: color var(--duration-fast) var(--ease-smooth-out); }
 .cm-activity-body { padding: 18px 20px 14px; }
 .cm-activity-grid { display: grid; gap: 4px; min-width: 0; }
@@ -30,7 +30,7 @@
 .cm-activity-cell { display: grid; place-items: center; width: 100%; height: auto; aspect-ratio: 1; min-width: 0; min-height: 0; padding: 0; border-radius: 4px; font-size: 11px; font-variant-numeric: tabular-nums; border: 1px solid transparent; color: var(--ink-2); background: var(--inset); }
 .cm-activity-grid-week .cm-activity-cell { height: var(--cm-activity-week-cell); }
 /* Zero is an empty outline, so it never reads as the faintest heat level. */
-.cm-activity-cell[data-level="0"], .cm-activity-legend i[data-level="0"] { background: transparent; box-shadow: inset 0 0 0 1px var(--line-strong); }
+.cm-activity-cell[data-level="0"], .cm-activity-legend i[data-level="0"] { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
 .cm-activity-cell[data-level="1"], .cm-activity-legend i[data-level="1"] { background: var(--activity-1); color: var(--activity-1-ink); }
 .cm-activity-cell[data-level="2"], .cm-activity-legend i[data-level="2"] { background: var(--activity-2); color: var(--activity-2-ink); }
 .cm-activity-cell[data-level="3"], .cm-activity-legend i[data-level="3"] { background: var(--activity-3); color: var(--activity-3-ink); }
@@ -39,11 +39,11 @@
 .cm-activity-cell.is-future { background: transparent; color: var(--ink-3); }
 /* beUI heat calendar: cells pop in along the diagonal when a range opens, and
    the pointed cell lifts. */
-.cm-activity-cell { animation: t-cell-in var(--duration-medium) var(--ease-bounce) var(--cell-delay, 0ms) backwards; transition: transform var(--duration-quick) var(--ease-bounce), box-shadow var(--duration-quick) var(--ease-smooth-out); }
+.cm-activity-cell { animation: t-cell-in var(--duration-medium) var(--ease-bounce) var(--cell-delay, 0ms) backwards; transition: transform var(--duration-quick) var(--ease-bounce); }
 @keyframes t-cell-in { from { opacity: 0; transform: scale(0.4); } to { opacity: 1; transform: none; } }
 @media (hover: hover) and (pointer: fine) {
   /* The lift is direct; only the return keeps the spring. */
-  button.cm-activity-cell:hover { position: relative; z-index: 1; transform: scale(1.14); box-shadow: 0 3px 8px rgb(20 27 40 / 0.16); transition-timing-function: var(--ease-smooth-out); }
+  button.cm-activity-cell:hover { position: relative; z-index: 1; transform: scale(1.14); transition-timing-function: var(--ease-smooth-out); }
 }
 .cm-activity-cell.is-selected { outline: 2px solid var(--primary); outline-offset: 2px; }
 .cm-activity-cell:focus-visible, .cm-activity-tabs button:focus-visible, .cm-activity-selection:focus-visible, .cm-activity-coverage summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
@@ -53,7 +53,7 @@
 .cm-activity-summary { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 9px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .cm-activity-summary > span { min-width: 0; }
 .cm-activity-summary small { display: block; margin-bottom: 5px; color: var(--ink-2); font-size: var(--fs-meta); }
-.cm-activity-summary strong { display: block; color: var(--ink); font-size: 13px; font-weight: 550; font-variant-numeric: tabular-nums; }
+.cm-activity-summary strong { display: block; color: var(--ink); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .cm-activity-missing, .cm-activity-empty, .cm-activity-coverage-missing { color: var(--ink-2); font-size: var(--fs-meta); line-height: 1.65; }
 .cm-activity-missing { margin: 12px 0 0; }
 .cm-activity-empty { margin: 0 0 14px; }
@@ -63,7 +63,7 @@
 .cm-activity-coverage summary { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: var(--fs-meta); color: var(--ink-2); list-style: none; cursor: pointer; }
 .cm-activity-coverage summary::-webkit-details-marker { display: none; }
 .cm-activity-coverage summary > span:last-child { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
-.cm-activity-coverage summary strong { color: var(--ink); font-weight: 550; }
+.cm-activity-coverage summary strong { color: var(--ink); font-weight: 500; }
 .cm-activity-coverage summary svg { transition: transform var(--duration-fast) var(--ease-smooth-out); }
 .cm-activity-coverage details[open] summary svg { transform: rotate(180deg); }
 .cm-activity-sampling-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 15px 0 0; font-size: var(--fs-meta); }

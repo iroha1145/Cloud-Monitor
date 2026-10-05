@@ -165,9 +165,10 @@
     padding: 5px max(5px, env(safe-area-inset-right, 0px))
       calc(5px + env(safe-area-inset-bottom, 0px))
       max(5px, env(safe-area-inset-left, 0px));
-    border-top: 1px solid var(--line-strong);
-    background: var(--surface);
-    box-shadow: 0 -4px 16px rgb(20 27 40 / 0.06);
+    border-top: 1px solid var(--line);
+    background: color-mix(in srgb, var(--surface) 86%, transparent);
+    -webkit-backdrop-filter: saturate(1.6) blur(14px);
+    backdrop-filter: saturate(1.6) blur(14px);
   }
   .mobile-bottom-nav a {
     min-width: 0;
@@ -188,11 +189,13 @@
   .mobile-bottom-nav a[aria-current="page"] {
     color: var(--ink);
     background: var(--canvas);
-    font-weight: 600;
   }
   .mobile-bottom-nav > [data-sliding-indicator] {
     border-radius: 8px;
     background: var(--canvas);
+  }
+  .mobile-bottom-nav a[aria-current="page"] .lucide {
+    stroke-width: 2;
   }
   .dark .mobile-bottom-nav a[aria-current="page"],
   .dark .mobile-bottom-nav > [data-sliding-indicator] {
@@ -373,11 +376,12 @@
   .composition-legend > div {
     min-height: 38px;
   }
-  /* The model dialog at 320px: "100.0%" and the ring must share ~250px. */
+  /* The model dialog at 320px: "100.0%" and the ring share the sheet's
+     ~244px, so the composition takes no inset of its own. */
   .composition-hero,
   .composition-panel .composition-legend {
-    margin-left: 16px;
-    margin-right: 16px;
+    margin-left: 0;
+    margin-right: 0;
   }
   .composition-hero strong {
     font-size: clamp(24px, 7.5vw, 30px);
@@ -595,9 +599,8 @@
   }
   .matrix-cell {
     width: min(100%, 86px);
-    height: auto;
+    height: 48px;
     min-height: 0;
-    aspect-ratio: 1;
     font-size: 11px;
   }
   .matrix-panel .table-foot > span:last-child {

@@ -18,19 +18,19 @@
 .sv-page h1 {
   margin: 0;
   font-size: clamp(25px, 3vw, 30px);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.3;
   letter-spacing: -0.7px;
 }
 .sv-page h2 {
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.5;
   margin: 0;
 }
 .sv-page h3 {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   margin: 0;
   line-height: 1.5;
 }
@@ -45,11 +45,8 @@
 .sv-card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   overflow: hidden;
-  box-shadow:
-    0 3px 7px rgb(25 52 66 / 3%),
-    0 12px 28px rgb(25 52 66 / 3%);
   min-width: 0;
 }
 .sv-card-padding {
@@ -74,31 +71,31 @@
   min-height: 35px;
   padding: 7px 12px;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--r-pill);
   background: var(--surface);
   color: var(--ink-2);
   cursor: pointer;
   font-size: 12px;
-  font-weight: 550;
+  font-weight: 500;
   white-space: nowrap;
   line-height: 1.4;
   transition:
     background var(--duration-quick) var(--ease-smooth-out),
-    border-color var(--duration-quick) var(--ease-smooth-out),
-    box-shadow var(--duration-quick) var(--ease-smooth-out);
+    color var(--duration-quick) var(--ease-smooth-out),
+    scale var(--duration-quick) var(--ease-smooth-out);
 }
 .sv-button:hover {
   background: var(--hover);
-  border-color: var(--line-strong);
-  box-shadow: 0 1px 2px rgb(30 45 75 / 5%);
+  color: var(--ink);
 }
 .sv-button:active {
   background: var(--hover);
+  scale: 0.97;
 }
 .sv-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  box-shadow: none;
+  scale: 1;
 }
 .sv-button:focus-visible,
 .sv-search input:focus-visible,
@@ -118,7 +115,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   overflow: hidden;
 }
 .sv-summary-item {
@@ -153,7 +150,7 @@
   font-size: 28px;
   letter-spacing: -0.7px;
   line-height: 1.2;
-  font-weight: 550;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 .sv-summary-value small {
@@ -191,19 +188,25 @@
 .sv-search input {
   width: 100%;
   min-height: 37px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--surface);
-  padding: 8px 12px 8px 35px;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: var(--field);
+  padding: 8px 14px 8px 35px;
   font-size: 12px;
   color: var(--ink);
-  transition: border-color var(--duration-quick) var(--ease-smooth-out);
+  transition:
+    border-color var(--duration-quick) var(--ease-smooth-out),
+    background var(--duration-quick) var(--ease-smooth-out);
+}
+.sv-search input:hover {
+  background: var(--hover-2);
 }
 .sv-search input::placeholder {
   color: var(--ink-3);
 }
 .sv-search input:focus {
   border-color: var(--primary);
+  background: var(--surface);
   outline: none;
 }
 .sv-toolbar-actions {
@@ -215,7 +218,7 @@
 .sv-select {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--r-pill);
   min-height: 37px;
   padding: 7px 28px 7px 11px;
   max-width: 220px;
@@ -235,15 +238,10 @@
   align-items: start;
 }
 .sv-device-card {
-  transition:
-    border-color var(--duration-quick) var(--ease-smooth-out),
-    box-shadow var(--duration-quick) var(--ease-smooth-out);
+  transition: border-color var(--duration-quick) var(--ease-smooth-out);
 }
 .sv-device-card:hover {
   border-color: var(--line-strong);
-  box-shadow:
-    0 5px 12px rgb(25 52 66 / 5%),
-    0 18px 34px rgb(25 52 66 / 4%);
 }
 .sv-device-main {
   padding: 23px 24px 20px;
@@ -272,12 +270,7 @@
   place-items: center;
   border-radius: 10px;
   color: var(--ink-2);
-  background: linear-gradient(
-    150deg,
-    var(--hover),
-    var(--line)
-  );
-  border: 1px solid var(--line);
+  background: var(--hover);
 }
 .sv-device-icon svg {
   width: 21px;
@@ -287,19 +280,17 @@
 .sv-status {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   border-radius: 20px;
   font-size: var(--fs-meta);
-  font-weight: 550;
-  padding: 4px 8px;
+  padding: 3px 0;
   white-space: nowrap;
   color: var(--ink-2);
-  background: var(--hover);
 }
 .sv-status::before {
   content: "";
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--ink-3);
 }
@@ -307,7 +298,6 @@
 .sv-status-online,
 .sv-status-active {
   color: var(--ink-2);
-  background: var(--hover);
 }
 .sv-status-online::before,
 .sv-status-active::before {
@@ -315,6 +305,7 @@
 }
 .sv-status-stale,
 .sv-status-warning {
+  padding-inline: 8px;
   color: var(--orange);
   background: var(--orange-tint);
 }
@@ -337,7 +328,7 @@
 .sv-metric-value {
   display: block;
   font-size: 23px;
-  font-weight: 550;
+  font-weight: 500;
   line-height: 1.3;
   letter-spacing: -0.6px;
   font-variant-numeric: tabular-nums;
@@ -352,7 +343,6 @@
 .sv-device-footer {
   padding: 12px 23px;
   border-top: 1px solid var(--line);
-  background: var(--hover);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -425,7 +415,6 @@
 .sv-empty-icon {
   width: 43px;
   height: 43px;
-  border: 1px solid var(--line);
   background: var(--hover);
   color: var(--ink-3);
   display: grid;
@@ -457,14 +446,9 @@
   width: 36px;
   height: 36px;
   border-radius: 9px;
-  background: color-mix(
-    in srgb,
-    var(--primary) 8%,
-    var(--surface)
-  );
-  border: 1px solid var(--line-strong);
+  background: var(--hover);
   color: var(--primary);
-  font-weight: 650;
+  font-weight: 500;
   font-size: 15px;
   flex-shrink: 0;
 }
@@ -493,7 +477,7 @@
 .sv-progress-label strong {
   font-size: 13px;
   color: var(--ink-2);
-  font-weight: 550;
+  font-weight: 500;
 }
 .sv-progress-label strong small {
   font-size: var(--fs-meta);
@@ -549,8 +533,7 @@
   align-items: flex-start;
   gap: 9px;
   background: var(--hover);
-  border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: var(--r-md);
   padding: 13px 16px;
   font-size: 11px;
   color: var(--ink-3);
@@ -575,7 +558,7 @@
 }
 .sv-subscription strong {
   font-size: 14px;
-  font-weight: 550;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 .sv-subscription small {
@@ -631,8 +614,7 @@
 .sv-session-table th {
   text-align: left;
   padding: 11px 16px;
-  font-weight: 450;
-  background: var(--hover);
+  font-weight: 400;
   color: var(--ink-3);
   border-bottom: 1px solid var(--line);
   font-size: var(--fs-meta);
@@ -667,7 +649,7 @@
 .sv-session-table strong {
   display: block;
   font-size: 11px;
-  font-weight: 550;
+  font-weight: 500;
   color: var(--ink-2);
 }
 .sv-session-table small {
@@ -1010,7 +992,6 @@
 .sv-date-filter {
   color: var(--primary);
 }
-.sv-provider-icon,
 .sv-date-filter {
   border-color: color-mix(in srgb, var(--primary) 18%, var(--surface));
 }
@@ -1029,7 +1010,7 @@
 .sv-quota-balance strong {
   color: var(--ink-2);
   font-size: 14px;
-  font-weight: 550;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 @media (max-width: 1050px) {
@@ -1066,15 +1047,7 @@
 
 /* Brand marks stay monochrome; chart and status colors provide the accents. */
 .sv-provider-icon {
-  background: var(--surface);
-  border-color: var(--line);
   color: var(--ink);
-  box-shadow: 0 2px 4px rgb(22 42 52 / 4%);
-}
-.sv-summary {
-  box-shadow:
-    0 3px 7px rgb(25 52 66 / 3%),
-    0 12px 28px rgb(25 52 66 / 3%);
 }
 /* The summary icons keep the original colours, one per figure. */
 .sv-summary-label > span {
@@ -1195,20 +1168,20 @@
 .sv-device-tools {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 13px;
+  margin-top: 10px;
 }
 .sv-client-health {
   display: flex;
   align-items: center;
   gap: 5px;
   min-width: 0;
-  padding: 3px 7px 3px 2px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface);
+  margin-inline: -6px;
+  padding: 6px;
   color: var(--ink-2);
   font-size: 11px;
+}
+.sv-client-health + .sv-client-health {
+  border-top: 1px solid var(--line-soft);
 }
 .sv-client-health > span:nth-child(2) {
   min-width: 0;
@@ -1253,7 +1226,7 @@
   gap: 8px;
   border-top: 1px solid var(--line);
   padding-top: 12px;
-  margin: 14px 0 0;
+  margin: 12px 0 0;
 }
 .sv-device-metrics .sv-metric-label {
   font-size: var(--fs-meta);
@@ -1279,8 +1252,8 @@
   line-height: 1.55;
 }
 .sv-device-footer strong {
-  color: var(--ink-2);
-  font-weight: 500;
+  color: var(--ink);
+  font-weight: 400;
 }
 .sv-device-toggle {
   white-space: nowrap;
@@ -1387,10 +1360,10 @@
   padding-top: 14px;
   border-top: 1px solid var(--line);
 }
+/* Square corners: a rounded box bends its top hairline into hooks. */
 .sv-quota-window {
   width: 100%;
   min-width: 0;
-  border-radius: 5px;
 }
 .sv-quota-window + .sv-quota-window {
   margin: 0;
@@ -1417,9 +1390,6 @@
 .sv-progress {
   display: block;
   height: 7px;
-}
-.sv-quota-window:hover .sv-progress {
-  box-shadow: 0 1px 4px color-mix(in srgb, var(--primary) 15%, transparent);
 }
 .sv-quota-window-foot {
   flex-direction: column;
@@ -1452,7 +1422,7 @@
 .sv-quota-extras p { margin: 0; }
 .sv-quota-action { color: var(--danger); }
 .sv-quota-reset { display: grid; gap: 2px; }
-.sv-quota-reset strong { color: var(--ink); font-weight: 600; }
+.sv-quota-reset strong { color: var(--ink); font-weight: 500; }
 .sv-quota-extras summary { cursor: pointer; min-height: 36px; display: flex; align-items: center; }
 .sv-quota-extras summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .sv-quota-grant { display: grid; gap: 2px; padding: 6px 0; }
@@ -1499,7 +1469,7 @@
   gap: 5px;
   color: var(--ink-2);
   font-size: 12px;
-  font-weight: 550;
+  font-weight: 500;
 }
 .sv-subscription h3.sv-subscription-plan {
   margin: 0;
@@ -1551,7 +1521,7 @@
   flex-direction: column;
   gap: 9px;
   padding-top: 11px;
-  border-top: 1px dashed var(--line);
+  border-top: 1px solid var(--line-soft);
   min-width: 0;
 }
 .sv-records-label {
