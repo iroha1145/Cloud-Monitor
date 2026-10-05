@@ -34,7 +34,10 @@ import {
 } from "./data";
 import { SystemUpdate } from "./SystemUpdate";
 import { useErrorShake } from "./lib/hooks/use-error-shake";
-import { BrandIcon, compact, CompositionCard, count, money } from "./Overview";
+import { CompositionCard } from "./Overview";
+import { BrandIcon } from "./BrandIcon";
+import { compact, count } from "./lib/format";
+import { usd } from "./money";
 import { COMPOSITION } from "./palette";
 
 const SHOWCASE_UI = import.meta.env.VITE_SHOWCASE_UI === "true";
@@ -340,7 +343,7 @@ export default function AppDialogs({
                 </div>
                 <div>
                   <span>使用费用</span>
-                  <strong>{money(shownModel.costUsd)}</strong>
+                  <strong>{usd(shownModel.costUsd)}</strong>
                   <small>美元 · 已上报费用</small>
                 </div>
               </div>

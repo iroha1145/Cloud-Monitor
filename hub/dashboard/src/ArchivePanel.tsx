@@ -22,8 +22,6 @@ export interface ArchivePanelProps {
   fallbackData?: ArchiveFallbackData;
   historyAvailable?: boolean;
 }
-const formatCount = full;
-const formatCost = usd;
 function Composition({
   title,
   values,
@@ -40,7 +38,7 @@ function Composition({
           {entries.map(([name, value]) => (
             <div key={name}>
               <dt>{name}</dt>
-              <dd>{formatCount(value)}</dd>
+              <dd>{full(value)}</dd>
             </div>
           ))}
         </dl>
@@ -68,11 +66,11 @@ function ArchiveRow({ row }: { row: ArchiveDay }) {
         </span>
         <span className="archive-number">
           <small>用量（Token）</small>
-          <strong>{formatCount(row.tokens)}</strong>
+          <strong>{full(row.tokens)}</strong>
         </span>
         <span className="archive-cost">
           <small>费用（美元）</small>
-          <strong>{formatCost(row.costUsd)}</strong>
+          <strong>{usd(row.costUsd)}</strong>
         </span>
         <ChevronDown size={16} className="archive-chevron" aria-hidden="true" />
       </summary>

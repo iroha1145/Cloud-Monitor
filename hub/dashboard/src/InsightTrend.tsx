@@ -34,9 +34,6 @@ const Liveline = lazyWithReload("liveline", () =>
 );
 
 const DAY = 86_400;
-const exact = count;
-const money = usd;
-const percent = pct;
 const shortDay = (day: string) =>
   `${Number(day.slice(5, 7))}/${Number(day.slice(8))}`;
 const utcDay = (day: string) => Date.parse(`${day}T00:00:00Z`) / 1000;
@@ -62,27 +59,27 @@ function DayDetails({ point }: { point: TrendPoint }) {
   const rows = [
     {
       label: "缓存读取",
-      value: parts?.cacheReadKnown ? exact(parts.cacheRead) : "未提供",
+      value: parts?.cacheReadKnown ? count(parts.cacheRead) : "未提供",
       color: PART_COLOR.cacheRead,
     },
     {
       label: "非缓存输入",
-      value: parts?.inputKnown ? exact(parts.input) : "未提供",
+      value: parts?.inputKnown ? count(parts.input) : "未提供",
       color: PART_COLOR.input,
     },
     {
       label: "输出",
-      value: parts?.outputKnown ? exact(parts.output) : "未提供",
+      value: parts?.outputKnown ? count(parts.output) : "未提供",
       color: PART_COLOR.output,
     },
     {
       label: "缓存写入",
-      value: parts?.cacheWriteKnown ? exact(parts.cacheWrite) : "未提供",
+      value: parts?.cacheWriteKnown ? count(parts.cacheWrite) : "未提供",
       color: PART_COLOR.cacheWrite,
     },
     {
       label: "未分类",
-      value: parts ? exact(parts.unclassified) : "未提供",
+      value: parts ? count(parts.unclassified) : "未提供",
       color: PART_COLOR.unclassified,
     },
   ];
@@ -93,13 +90,13 @@ function DayDetails({ point }: { point: TrendPoint }) {
         <span>每日明细</span>
       </div>
       <strong className="insight-trend-tooltip-total">
-        {exact(point.totalTokens)}
+        {count(point.totalTokens)}
         <small>词元（Tokens）</small>
       </strong>
       <div className="insight-trend-tooltip-metrics">
         <span>
           <small>当天花费</small>
-          <b>{money(point.costUsd)}</b>
+          <b>{usd(point.costUsd)}</b>
         </span>
         <span>
           <small>
@@ -107,7 +104,7 @@ function DayDetails({ point }: { point: TrendPoint }) {
               ? "已识别缓存占比"
               : "缓存占比"}
           </small>
-          <b>{percent(parts?.cacheRate ?? null)}</b>
+          <b>{pct(parts?.cacheRate ?? null)}</b>
         </span>
       </div>
       <dl className="insight-trend-tooltip-rows">
@@ -429,7 +426,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
             <i style={{ background: PART_COLOR.output }} />
             {allCosts ? "区间花费" : hasCost ? "已知花费" : "区间花费"}
           </span>
-          <strong>{money(costTotal)}</strong>
+          <strong>{usd(costTotal)}</strong>
           <small>美元（USD）</small>
         </div>
         <div>
@@ -437,7 +434,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
             <i style={{ background: PART_COLOR.cacheRead }} />
             {partialCache && cacheRate !== null ? "已识别缓存占比" : "缓存占比"}
           </span>
-          <strong>{percent(cacheRate)}</strong>
+          <strong>{pct(cacheRate)}</strong>
           <small>
             {cacheSkippedDays > 0
               ? cacheDays > 0
@@ -497,7 +494,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
               aria-valuenow={Math.max(0, pointIndex)}
               aria-valuetext={
                 point
-                  ? `${point.day}，${exact(point.totalTokens)} 词元，当天花费 ${money(point.costUsd)}，${point.components?.partial && point.components.cacheRate !== null ? "已识别缓存占比" : "缓存占比"} ${percent(point.components?.cacheRate ?? null)}`
+                  ? `${point.day}，${count(point.totalTokens)} 词元，当天花费 ${usd(point.costUsd)}，${point.components?.partial && point.components.cacheRate !== null ? "已识别缓存占比" : "缓存占比"} ${pct(point.components?.cacheRate ?? null)}`
                   : "暂无记录"
               }
               aria-describedby={`${uid}-hint${tooltipVisible ? ` ${uid}-details` : ""}`}
@@ -571,7 +568,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
                         lineWidth={2.25}
                         padding={{ top: 38, right: 0, bottom: 24, left: 0 }}
                         formatValue={(value) =>
-                          metric === "tokens" ? compact(value) : money(value)
+                          metric === "tokens" ? compact(value) : usd(value)
                         }
                         formatTime={() => ""}
                       />
@@ -679,4 +676,3 @@ export function InsightTrend({ data }: { data: DashboardData }) {
   );
 }
 
-export default InsightTrend;

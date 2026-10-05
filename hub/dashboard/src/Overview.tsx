@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { BrandIcon } from "./BrandIcon";
 import GlideMenu from "./components/primitives/GlideMenu";
-export { BrandIcon } from "./BrandIcon";
 import { NumberTicker } from "./components/motion/number-ticker";
 import { MetricTooltip, type MetricDetailRow } from "./MetricTooltip";
 
@@ -39,8 +38,6 @@ import { usd } from "./money";
 import { compact, count, pct } from "./lib/format";
 import { useSlidingIndicator } from "./lib/hooks/use-sliding-indicator";
 
-const money = usd;
-export { compact, count, money, pct };
 const composition = COMPOSITION;
 
 function usageDetails(
@@ -51,7 +48,7 @@ function usageDetails(
     { label: "总用量", value: count(item.totalTokens) },
     {
       label: "费用",
-      value: item.costUsd === null ? "来源未提供" : money(item.costUsd),
+      value: item.costUsd === null ? "来源未提供" : usd(item.costUsd),
     },
     {
       label: parts.partial ? "已识别缓存占比" : "缓存占比",
@@ -549,7 +546,7 @@ export function ModelTable({
                     )}
                   </td>
                   <td data-label="使用费用" className="money-cell">
-                    {money(m.costUsd)}
+                    {usd(m.costUsd)}
                   </td>
                   <td className="model-action-cell">
                     <button
@@ -648,7 +645,7 @@ function Clients({ per }: { per: PeriodUsage }) {
             </MetricTooltip>
             <div className="client-foot">
               <span>{compact(c.totalTokens)} Tokens</span>
-              <span>{money(c.costUsd)}</span>
+              <span>{usd(c.costUsd)}</span>
             </div>
           </div>
         ))}
@@ -800,7 +797,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
                                   ? "未提供该组合的记录"
                                   : metric === "tokens"
                                     ? count(v)
-                                    : money(v),
+                                    : usd(v),
                             },
                           ]}
                         >
@@ -811,7 +808,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
                               ? "未提供"
                               : metric === "tokens"
                                 ? compact(v)
-                                : money(v)}
+                                : usd(v)}
                           </span>
                         </MetricTooltip>
                       </td>

@@ -61,9 +61,9 @@ import { DURATION, EASE_SMOOTH_OUT } from "./lib/motion";
 import {
   ModelTable,
   Overview,
-  pct,
   Stats,
 } from "./Overview";
+import { pct } from "./lib/format";
 import "./mobile.css";
 
 const DevicesView = lazyWithReload("secondary", async () => ({

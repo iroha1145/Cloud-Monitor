@@ -29,7 +29,7 @@ import "./secondary.css";
 import { BrandIcon } from "./BrandIcon";
 import { MetricTooltip } from "./MetricTooltip";
 import { ActivityPanel } from "./ActivityPanel";
-import { compact as compactNumber } from "./Overview";
+import { compact } from "./lib/format";
 import { dayKeyZoned, formatZoned } from "./lib/datetime";
 import { escapeCsv, downloadCsv } from "./lib/csv";
 import { usd } from "./money";
@@ -353,7 +353,7 @@ function DeviceCard({
               <div className="sv-device-stat sv-detail-trigger">
                 <span className="sv-metric-label">{label}</span>
                 <span className="sv-metric-value">
-                  {compactNumber(device.periods[key].totalTokens)}
+                  {compact(device.periods[key].totalTokens)}
                 </span>
               </div>
             </MetricTooltip>
@@ -455,7 +455,7 @@ export function DevicesView({ data }: SecondaryProps) {
         <SummaryItem
           icon={<Activity />}
           label="今日设备用量"
-          value={compactNumber(total)}
+          value={compact(total)}
           foot="来自全部已上报设备"
         />
       </section>
@@ -1291,7 +1291,7 @@ export function HistoryView({ data }: SecondaryProps) {
         <SummaryItem
           icon={<Activity />}
           label="历史上报用量"
-          value={compactNumber(activityTotal)}
+          value={compact(activityTotal)}
           foot="按活动记录汇总"
         />
         <SummaryItem
@@ -1460,7 +1460,7 @@ export function HistoryView({ data }: SecondaryProps) {
                             ]}
                           >
                             <span className="sv-inline-detail">
-                              {compactNumber(session.totalTokens)}
+                              {compact(session.totalTokens)}
                             </span>
                           </MetricTooltip>
                         </td>
