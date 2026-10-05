@@ -675,7 +675,7 @@ function FirstReport() {
       <div>
         <h2 id="first-report-title">还没有设备上报用量</h2>
         <p>
-          在本机 token-monitor 里打开「设置 → 多设备同步」，填好右边两项后保存。widget
+          在本机 token-monitor 里打开「设置 → 多设备同步」，填好 hub 与密钥两项后保存。widget
           按自己的同步间隔推送，第一次上报后这里就会出现用量。
         </p>
       </div>

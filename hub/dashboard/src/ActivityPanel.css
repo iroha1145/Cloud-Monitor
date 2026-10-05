@@ -29,7 +29,8 @@
 .cm-activity-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin: 0 0 7px; color: var(--ink-2); text-align: center; font-size: var(--fs-meta); }
 .cm-activity-cell { display: grid; place-items: center; width: 100%; height: auto; aspect-ratio: 1; min-width: 0; min-height: 0; padding: 0; border-radius: 4px; font-size: 11px; font-variant-numeric: tabular-nums; border: 1px solid transparent; color: var(--ink-2); background: var(--inset); }
 .cm-activity-grid-week .cm-activity-cell { height: var(--cm-activity-week-cell); }
-.cm-activity-cell[data-level="0"], .cm-activity-legend i[data-level="0"] { background: var(--hover); }
+/* Zero is an empty outline, so it never reads as the faintest heat level. */
+.cm-activity-cell[data-level="0"], .cm-activity-legend i[data-level="0"] { background: transparent; box-shadow: inset 0 0 0 1px var(--line-strong); }
 .cm-activity-cell[data-level="1"], .cm-activity-legend i[data-level="1"] { background: var(--heat-1); color: var(--heat-1-ink); }
 .cm-activity-cell[data-level="2"], .cm-activity-legend i[data-level="2"] { background: var(--heat-2); color: var(--heat-2-ink); }
 .cm-activity-cell[data-level="3"], .cm-activity-legend i[data-level="3"] { background: var(--heat-3); color: var(--heat-3-ink); }
