@@ -30,8 +30,8 @@ import { BrandIcon } from "./BrandIcon";
 import { MetricTooltip } from "./MetricTooltip";
 import { ActivityPanel } from "./ActivityPanel";
 import { compact } from "./lib/format";
-import { dayKeyZoned, formatZoned } from "./lib/datetime";
-import { escapeCsv, downloadCsv } from "./lib/csv";
+import { DAY_MS, dayKeyZoned, formatZoned } from "./lib/datetime";
+import { downloadCsv, rowsToCsv } from "./lib/csv";
 import { usd } from "./money";
 import { quotaAmount, quotaBalance, quotaBoundaryLabel, quotaHeadline, quotaPercent } from "./quota-presentation";
 import { sessionActivity, sessionContext } from "./session-presentation";
@@ -44,7 +44,7 @@ export interface SecondaryProps {
 
 const fullNumber = (value: number) =>
   new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
-const DAY = 86_400_000;
+const DAY = DAY_MS;
 
 function dateLabel(
   value: string | null,
@@ -812,17 +812,15 @@ function QuotaWindow({ quota, data }: { quota: Quota; data: DashboardData }) {
               ? quota.balanceCurrency?.toUpperCase() === "CREDITS" ? "账户点数" : "账户余额"
               : quota.limit !== null && quota.metric !== "percentage" && quota.metric !== "credits" && quota.metric !== "spend"
                 ? `上限 ${quotaAmount(quota.limit, quota)}`
-                : quota.metric === "credits" && quota.limit !== null
+                : (quota.metric === "credits" || quota.metric === "spend") && quota.limit !== null
                   ? `上限 ${quotaAmount(quota.limit, quota)}${percent !== null ? ` · 已用 ${fullNumber(percent)}%` : ""}`
-                  : quota.metric === "spend" && quota.limit !== null
-                    ? `上限 ${quotaAmount(quota.limit, quota)}${percent !== null ? ` · 已用 ${fullNumber(percent)}%` : ""}`
-                    : percent !== null
-                  ? `剩余 ${fullNumber(100 - percent)}%`
-                  : quota.used !== null
-                    ? "已上报使用金额"
-                    : quota.remaining !== null
-                      ? "已上报剩余额度"
-                      : "用量未提供"}
+                  : percent !== null
+                    ? `剩余 ${fullNumber(100 - percent)}%`
+                    : quota.used !== null
+                      ? "已上报使用金额"
+                      : quota.remaining !== null
+                        ? "已上报剩余额度"
+                        : "用量未提供"}
             {quota.used !== null && !isBalance && quota.metric === "percentage" && (
               <> · 已用 {quotaAmount(quota.used, quota)}</>
             )}
@@ -1170,8 +1168,7 @@ export function QuotaView({ data }: SecondaryProps) {
 
 /** Quote every cell and neutralize formula prefixes before spreadsheet export. */
 export function sessionsToCsv(sessions: Session[]): string {
-  const cell = (value: string | number | null) => escapeCsv(value);
-  const rows: (string | number | null)[][] = [
+  return rowsToCsv([
     [
       "会话",
       "项目",
@@ -1194,8 +1191,7 @@ export function sessionsToCsv(sessions: Session[]): string {
       session.startedAt,
       session.lastUsedAt,
     ]),
-  ];
-  return "\uFEFF" + rows.map((row) => row.map(cell).join(",")).join("\r\n");
+  ]);
 }
 
 export function HistoryView({ data }: SecondaryProps) {

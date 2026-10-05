@@ -26,6 +26,7 @@ import { compact, count, pct } from "./lib/format";
 import { AppErrorBoundary, lazyWithReload } from "./chunkLoad";
 import { indexForSelectedDay } from "./trend-math";
 import { PART_COLOR } from "./palette";
+import { DAY_MS } from "./lib/datetime";
 import { useSlidingIndicator } from "./lib/hooks/use-sliding-indicator";
 import "./insight-trend.css";
 
@@ -33,7 +34,8 @@ const Liveline = lazyWithReload("liveline", () =>
   import("liveline").then((mod) => ({ default: mod.Liveline })),
 );
 
-const DAY = 86_400;
+// Liveline plots in seconds.
+const DAY = DAY_MS / 1000;
 const shortDay = (day: string) =>
   `${Number(day.slice(5, 7))}/${Number(day.slice(8))}`;
 const utcDay = (day: string) => Date.parse(`${day}T00:00:00Z`) / 1000;

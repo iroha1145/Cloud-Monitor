@@ -15,11 +15,7 @@ import {
   ChevronRight,
   Cloud,
   Download,
-  FileClock,
-  Grid2X2,
-  Layers3,
   Menu,
-  Monitor,
   Moon,
   Palette,
   RefreshCw,
@@ -27,7 +23,6 @@ import {
   Settings2,
   ShieldCheck,
   Sun,
-  Wallet,
   UserRound,
   X,
 } from "lucide-react";
@@ -45,8 +40,9 @@ import {
 } from "./components/motion/button/stateful";
 import { NotificationBell } from "./components/rareui/notification-bell";
 import GlideMenu from "./components/primitives/GlideMenu";
-import { downloadCsv, escapeCsv } from "./lib/csv";
+import { downloadCsv, rowsToCsv } from "./lib/csv";
 import { scrollToTop } from "./lib/scroll";
+import { formatZoned } from "./lib/datetime";
 import {
   createDemoData,
   PERIOD_LABELS,
@@ -56,6 +52,7 @@ import {
 } from "./data";
 import { loadDashboard, isAuthFailure } from "./api";
 import { MobileNavigation } from "./MobileNavigation";
+import { PAGES, type PageId } from "./pages";
 import { PageSkeleton } from "./PageSkeleton";
 import { DURATION, EASE_SMOOTH_OUT } from "./lib/motion";
 import {
@@ -86,41 +83,8 @@ const ModelMatrixView = lazyWithReload("matrix", async () => ({
 // Showcase navigation is opt-in for a separate public demo build.
 const SHOWCASE_UI = import.meta.env.VITE_SHOWCASE_UI === "true";
 
-const pages = [
-  {
-    id: "overview",
-    name: "总览",
-    icon: Grid2X2,
-    description: "所有用量，汇聚一处。",
-  },
-  {
-    id: "models",
-    name: "模型分析",
-    icon: Layers3,
-    description: "找到最适合你的模型，理解每一份用量。",
-  },
-  {
-    id: "devices",
-    name: "设备",
-    icon: Monitor,
-    description: "随时了解各台设备的用量与同步状态。",
-  },
-  {
-    id: "quota",
-    name: "配额与订阅",
-    icon: Wallet,
-    description: "额度还有多少，下一次何时续费。",
-  },
-  {
-    id: "history",
-    name: "历史记录",
-    icon: FileClock,
-    description: "把每一次使用，放回时间里。",
-  },
-] as const;
-type PageId = (typeof pages)[number]["id"];
 const getPage = (): PageId =>
-  pages.find((p) => p.id === location.hash.slice(1))?.id || "overview";
+  PAGES.find((p) => p.id === location.hash.slice(1))?.id || "overview";
 function safePreference() {
   return document.documentElement.classList.contains("dark");
 }
@@ -171,7 +135,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
   const [dialogsLoaded, setDialogsLoaded] = useState(false);
   if (!dialogsLoaded && (searchOpen || settings || notifications || !!selected || design))
     setDialogsLoaded(true);
-  const current = pages.find((p) => p.id === page)!;
+  const current = PAGES.find((p) => p.id === page)!;
   const per = data.periods[period];
   const notices = [...new Set([
     ...(refreshWarning ? [refreshWarning] : []),
@@ -192,7 +156,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     const onHash = () => {
       const id = location.hash.slice(1);
       // In-page anchors such as the skip link are not pages.
-      if (id && !pages.some((p) => p.id === id)) return;
+      if (id && !PAGES.some((p) => p.id === id)) return;
       const next = getPage();
       if (next !== pageRef.current) setNavigated(true);
       setPage(next);
@@ -395,35 +359,16 @@ export default function App({ initialData, initialToken = "", hosted = false, is
         m.costUsd ?? "",
       ]),
     ];
-    downloadCsv(
-      `cloud-monitor-${data.mode}-${period}.csv`,
-      "\ufeff" + rows.map((r) => r.map(escapeCsv).join(",")).join("\r\n"),
-    );
+    downloadCsv(`cloud-monitor-${data.mode}-${period}.csv`, rowsToCsv(rows));
     setToast("模型用量表已导出。");
   };
-  let time = "";
-  let date = "";
-  try {
-    time = new Date(data.generatedAt).toLocaleTimeString("zh-CN", {
-      timeZone: data.timeZone,
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    date = new Date(data.generatedAt).toLocaleDateString("zh-CN", {
-      timeZone: data.timeZone,
-      month: "long",
-      day: "numeric",
-    });
-  } catch {
-    time = new Date(data.generatedAt).toLocaleTimeString("zh-CN", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    date = new Date(data.generatedAt).toLocaleDateString("zh-CN", {
-      month: "long",
-      day: "numeric",
-    });
-  }
+  const generated = new Date(data.generatedAt);
+  // An unknown time zone falls back to the browser's own clock.
+  const zoned = (options: Intl.DateTimeFormatOptions) =>
+    formatZoned(generated, data.timeZone, options) ??
+    generated.toLocaleString("zh-CN", options);
+  const time = zoned({ hour: "2-digit", minute: "2-digit" });
+  const date = zoned({ month: "long", day: "numeric" });
   const nav = (
     <>
       <a className="app-brand" href="#overview" aria-label="Cloud Monitor 首页">
@@ -451,7 +396,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
       )}
       <p className="nav-label">工作空间</p>
       <GlideMenu className="nav-list" highlightClassName="nav-hover">
-        {pages.map((p) => (
+        {PAGES.map((p) => (
           <a
             data-menu-row
             key={p.id}
@@ -685,23 +630,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                     {period === "today"
                       ? date
                       : period === "month"
-                        ? (() => {
-                            try {
-                              return new Date(data.generatedAt).toLocaleDateString(
-                                "zh-CN",
-                                {
-                                  timeZone: data.timeZone,
-                                  year: "numeric",
-                                  month: "long",
-                                },
-                              );
-                            } catch {
-                              return new Date(data.generatedAt).toLocaleDateString(
-                                "zh-CN",
-                                { year: "numeric", month: "long" },
-                              );
-                            }
-                          })()
+                        ? zoned({ year: "numeric", month: "long" })
                         : "全部历史记录"}
                   </span>
                 </div>
@@ -833,7 +762,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
             per={per}
             token={token.current}
             onSignOut={onSignOut}
-            pages={pages}
+            pages={PAGES}
             go={go}
             statusCount={statusCount}
             notices={notices}

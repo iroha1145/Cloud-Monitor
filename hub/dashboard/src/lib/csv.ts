@@ -8,6 +8,11 @@ export function escapeCsv(value: unknown): string {
   return `"${safe.replace(/"/g, '""')}"`;
 }
 
+/** A UTF-8 BOM keeps Excel from guessing a legacy code page for Chinese text. */
+export function rowsToCsv(rows: unknown[][]): string {
+  return "\ufeff" + rows.map((row) => row.map(escapeCsv).join(",")).join("\r\n");
+}
+
 export function downloadCsv(filename: string, content: string) {
   const url = URL.createObjectURL(
     new Blob([content], { type: "text/csv;charset=utf-8;" }),

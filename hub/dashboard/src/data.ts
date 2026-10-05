@@ -3,7 +3,7 @@
  * All demo records are synthetic. The live adapter consumes the existing v2
  * /api/v1/tm/overview contract without changing aggregation or fetching secrets.
  */
-import { dayKeyZoned, isValidTimeZone } from "./lib/datetime";
+import { DAY_MS, dayKeyZoned, isValidTimeZone } from "./lib/datetime";
 
 export type PeriodKey = "today" | "month" | "allTime";
 export const PERIOD_LABELS: Record<PeriodKey, string> = {
@@ -1409,15 +1409,9 @@ export function normalizeOverview(
   };
 }
 
-const DAY = 86_400_000;
+const DAY = DAY_MS;
 const DEMO_TIME_ZONE = "Asia/Tokyo";
-const dayKey = (date: Date): string =>
-  new Intl.DateTimeFormat("en-CA", {
-    timeZone: DEMO_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+const dayKey = (date: Date): string => dayKeyZoned(date, DEMO_TIME_ZONE) ?? "";
 const cents = (value: number): number => Math.round(value * 100) / 100;
 const DEMO_MODELS = [
   {

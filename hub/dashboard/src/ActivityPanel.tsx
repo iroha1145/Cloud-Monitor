@@ -3,7 +3,7 @@ import type { CSSProperties, KeyboardEvent } from "react";
 import { ChevronDown, Info, X } from "lucide-react";
 import { MetricTooltip } from "./MetricTooltip";
 import { compact, full } from "./lib/format";
-import { dayKeyZoned, formatZoned } from "./lib/datetime";
+import { DAY_MS, dayKeyZoned, formatZoned } from "./lib/datetime";
 import { useSlidingIndicator } from "./lib/hooks/use-sliding-indicator";
 import type { ActivityCoverage, ActivityMetadata, DashboardData } from "./data";
 import "./ActivityPanel.css";
@@ -13,7 +13,7 @@ type Cell = { day: string; label: string; total: number | null; future?: boolean
 const VIEWS: ActivityView[] = ["day", "week", "month"];
 const VIEW_LABELS = { day: "日", week: "周", month: "月" };
 const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
-const DAY = 86_400_000;
+const DAY = DAY_MS;
 const addDay = (day: string, offset: number) =>
   new Date(Date.parse(`${day}T12:00:00Z`) + offset * DAY).toISOString().slice(0, 10);
 const mondayIndex = (day: string) => (new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7;
