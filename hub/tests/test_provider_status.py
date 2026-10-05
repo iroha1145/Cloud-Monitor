@@ -487,6 +487,33 @@ def test_singleflight_coalesces_concurrent_refresh():
     assert all(r["providers"] for r in results)
 
 
+def test_cancelling_one_waiter_does_not_cancel_the_shared_refresh():
+    """两个请求等同一次刷新：一个客户端断开（任务被取消）不得连累另一个。"""
+
+    async def run():
+        client, transport = await _client(_ok_map(), delay=0.3)
+        svc = ProviderStatusService(cache_seconds=300, timeout_seconds=2.5)
+        observed = {"anthropic": ["claude"]}
+        try:
+            first = asyncio.create_task(svc.snapshot(client=client, observed=observed))
+            second = asyncio.create_task(svc.snapshot(client=client, observed=observed))
+            await asyncio.sleep(0.05)  # 两者都已在等待同一个刷新任务
+            first.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await first
+            shared_cancelled = svc._inflight.cancelled()
+            result = await asyncio.wait_for(second, 2)
+            return shared_cancelled, result, transport.urls
+        finally:
+            await client.aclose()
+
+    shared_cancelled, result, urls = asyncio.run(run())
+    assert shared_cancelled is False
+    assert [p["provider"] for p in result["providers"]] == ["anthropic"]
+    assert result["providers"][0]["stale"] is False
+    assert len(urls) == 1  # 仍然只拉了一次
+
+
 def test_invalid_json_and_non_200_unknown_not_500():
     async def run():
         mapping = {

@@ -880,7 +880,9 @@ class ProviderStatusService:
                 task = asyncio.create_task(self._do_fetch(client, observed, key))
                 self._inflight = task
                 self._inflight_key = key
-        return await task
+        # 多个请求共用这次刷新；某个请求被取消（客户端断开）时只取消它自己的等待，
+        # 不能把共享任务一起取消，否则其余等待者都会收到 CancelledError。
+        return await asyncio.shield(task)
 
     async def _do_fetch(
         self,
