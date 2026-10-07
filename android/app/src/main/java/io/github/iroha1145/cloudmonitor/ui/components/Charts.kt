@@ -99,8 +99,8 @@ fun DailyTrendChart(rows: List<TrendRow>, page: io.github.iroha1145.cloudmonitor
             "缓存写入" to if (data?.cacheWriteKnown == true) Format.fmtInt(data.cacheWrite) else "未提供",
             "未分类" to (data?.let { Format.fmtInt(it.unclassified) } ?: "未提供")))
     }
-    Column(modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(cm.inset)
-        .border(1.dp, cm.border, RoundedCornerShape(10.dp))) {
+    Column(modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cm.card)
+        .border(1.dp, cm.border, RoundedCornerShape(16.dp))) {
         FlowRow(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp),
             horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(4.dp),
             itemVerticalAlignment = Alignment.CenterVertically) {

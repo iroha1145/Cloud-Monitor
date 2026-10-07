@@ -115,7 +115,7 @@ fun Panel(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val cm = CmColorsCurrent
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(16.dp)
     Column(
         modifier
             .fillMaxWidth()
@@ -132,7 +132,7 @@ fun PanelHead(title: String, sub: String, trailing: @Composable (() -> Unit)? = 
     val cm = CmColorsCurrent
     val copy: @Composable (Modifier) -> Unit = { modifier ->
         Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, color = cm.ink, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(title, color = cm.ink, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
             if (sub.isNotEmpty()) Text(sub, color = cm.mute, style = MaterialTheme.typography.bodySmall)
         }
     }
@@ -170,12 +170,12 @@ fun WebSegmentedControl(
     val haptic = LocalHapticFeedback.current
     val bounds = remember { mutableStateMapOf<Int, Rect>() }
     var origin by remember { mutableStateOf(Offset.Zero) }
+    val pill = RoundedCornerShape(999.dp)
+    val track = if (cm.canvas == Color(0xFFFAFAFA)) Color(0xFFF2F2F2) else Color(0xFF1D1D1D)
     Box(modifier.horizontalScroll(rememberScrollState()).onGloballyPositioned { origin = it.positionInRoot() }) {
-        Box(Modifier.matchParentSize().padding(vertical = 6.dp)
-            .background(cm.hover, RoundedCornerShape(7.dp))
-            .border(1.dp, cm.border, RoundedCornerShape(7.dp)))
-        SlidingThumb(selected.coerceAtLeast(0), bounds, cm.card, RoundedCornerShape(5.dp))
-        Row(Modifier.selectableGroup().padding(horizontal = 3.dp)) {
+        Box(Modifier.matchParentSize().padding(vertical = 4.dp).background(track, pill))
+        SlidingThumb(selected.coerceAtLeast(0), bounds, cm.card, pill)
+        Row(Modifier.selectableGroup().padding(3.dp)) {
             options.forEachIndexed { index, label ->
                 val on = index == selected
                 val itemEnabled = enabled.getOrNull(index) != false
@@ -190,18 +190,17 @@ fun WebSegmentedControl(
                             onSelect(index)
                         },
                     )
-                    .heightIn(min = 48.dp)
-                    .widthIn(min = 60.dp)
-                    .padding(vertical = 9.dp, horizontal = 1.dp),
+                    .heightIn(min = 40.dp)
+                    .widthIn(min = 56.dp)
+                    .onGloballyPositioned { coords ->
+                        val pos = coords.positionInRoot() - origin
+                        bounds[index] = Rect(pos.x, pos.y, pos.x + coords.size.width, pos.y + coords.size.height)
+                    }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(label, color = if (!itemEnabled) cm.mute else if (on) cm.ink else cm.mute,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
-                        modifier = Modifier.onGloballyPositioned { coords ->
-                            val pos = coords.positionInRoot() - origin
-                            bounds[index] = Rect(pos.x, pos.y, pos.x + coords.size.width, pos.y + coords.size.height)
-                        }.padding(horizontal = 12.dp, vertical = 6.dp))
+                    Text(label, color = if (!itemEnabled) cm.mute else if (on) cm.ink else cm.ink2,
+                        fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 }
             }
         }
@@ -226,9 +225,9 @@ fun WebPill(label: String, selected: Boolean, onClick: () -> Unit, modifier: Mod
         Text(label, color = if (selected) cm.ink else cm.ink2,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            modifier = Modifier.background(if (selected) cm.card else cm.hover, RoundedCornerShape(6.dp))
-                .border(1.dp, if (selected) cm.borderStrong else cm.border, RoundedCornerShape(6.dp))
-                .padding(horizontal = 12.dp, vertical = 7.dp))
+            modifier = Modifier.background(if (selected) cm.card else cm.hover, RoundedCornerShape(999.dp))
+                .border(1.dp, cm.border, RoundedCornerShape(999.dp))
+                .padding(horizontal = 14.dp, vertical = 8.dp))
     }
 }
 
@@ -239,6 +238,7 @@ fun WebActionButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     icon: ImageVector? = null,
+    iconEnd: Boolean = false,
     loading: Boolean = false,
 ) {
     val cm = CmColorsCurrent
@@ -251,17 +251,19 @@ fun WebActionButton(
         tween(Motion.Quick, easing = EaseSmoothOut),
         label = "press",
     )
+    val pill = RoundedCornerShape(999.dp)
     Box(modifier.graphicsLayer { scaleX = scale; scaleY = scale }
-        .clip(RoundedCornerShape(7.dp))
+        .clip(pill)
         .clickable(interaction, LocalIndication.current, enabled = enabled, role = Role.Button, onClick = onClick)
-        .heightIn(min = 48.dp).padding(vertical = 2.dp), contentAlignment = Alignment.Center) {
-        Row(Modifier.background(cm.card, RoundedCornerShape(7.dp))
-            .border(1.dp, cm.borderStrong, RoundedCornerShape(7.dp))
-            .heightIn(min = 44.dp).padding(horizontal = 13.dp, vertical = 9.dp),
+        .heightIn(min = 44.dp), contentAlignment = Alignment.Center) {
+        Row(Modifier.background(cm.card, pill)
+            .border(1.dp, cm.border, pill)
+            .heightIn(min = 34.dp).padding(horizontal = 14.dp),
             horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
             if (loading) CircularProgressIndicator(Modifier.size(14.dp), color = color, strokeWidth = 1.5.dp)
-            else if (icon != null) Icon(icon, null, Modifier.size(14.dp), tint = color)
-            Text(label, color = color, style = MaterialTheme.typography.labelLarge)
+            else if (icon != null && !iconEnd) Icon(icon, null, Modifier.size(14.dp), tint = cm.mute)
+            Text(label, color = if (enabled) cm.ink else cm.mute, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            if (!loading && icon != null && iconEnd) Icon(icon, null, Modifier.size(14.dp), tint = cm.mute)
         }
     }
 }
@@ -285,8 +287,8 @@ fun WebSearchField(
         keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }),
         decorationBox = { innerTextField ->
             Row(Modifier.padding(vertical = 3.dp).heightIn(min = 42.dp)
-                .background(cm.card, RoundedCornerShape(6.dp))
-                .border(1.dp, cm.borderStrong, RoundedCornerShape(6.dp))
+                .background(cm.card, RoundedCornerShape(999.dp))
+                .border(1.dp, cm.border, RoundedCornerShape(999.dp))
                 .padding(horizontal = 12.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
                 Canvas(Modifier.size(15.dp)) {
@@ -415,16 +417,20 @@ fun NumberTicker(
                     if (!entered) delay((index * staggerMillis).toLong())
                     progress.animateTo(1f, tween(durationMillis, easing = EaseTicker))
                 }
-                Box(
-                    Modifier
-                        .clearAndSetSemantics { }
-                        .height(cell)
-                        .clip(RoundedCornerShape(0.dp)),
-                ) {
-                    Column(Modifier.graphicsLayer { translationY = -digit * digitHeight * progress.value }) {
-                        (0..9).forEach { n ->
-                            Box(Modifier.height(cell), contentAlignment = Alignment.Center) {
-                                Text(n.toString(), color = color, style = digitStyle)
+                if (progress.value >= 0.98f) {
+                    Text(char.toString(), color = color, style = style, modifier = Modifier.clearAndSetSemantics { })
+                } else {
+                    Box(
+                        Modifier
+                            .clearAndSetSemantics { }
+                            .height(cell)
+                            .clip(RoundedCornerShape(0.dp)),
+                    ) {
+                        Column(Modifier.graphicsLayer { translationY = -digit * digitHeight * progress.value }) {
+                            (0..9).forEach { n ->
+                                Box(Modifier.height(cell), contentAlignment = Alignment.Center) {
+                                    Text(n.toString(), color = color, style = digitStyle)
+                                }
                             }
                         }
                     }

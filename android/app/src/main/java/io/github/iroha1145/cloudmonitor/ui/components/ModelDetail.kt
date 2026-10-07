@@ -6,6 +6,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,7 +31,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -73,8 +74,12 @@ fun ExportModelsButton(period: PeriodTotals, periodLabel: String, modifier: Modi
         }
     }
     Column(modifier) {
-        TextButton(onClick = { export.launch("cloud-monitor-models.csv") }, enabled = models.isNotEmpty(), modifier = Modifier.heightIn(min = 48.dp)) {
-            Text("导出数据", fontSize = 12.sp)
+        TextButton(onClick = { export.launch("cloud-monitor-models.csv") }, enabled = models.isNotEmpty(), modifier = Modifier.heightIn(min = 44.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp),
+                modifier = Modifier.border(1.dp, cm.border, RoundedCornerShape(999.dp)).padding(horizontal = 14.dp, vertical = 8.dp)) {
+                Icon(io.github.iroha1145.cloudmonitor.ui.AppIcons.Download, null, Modifier.size(14.dp), tint = cm.mute)
+                Text("导出数据", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = cm.ink)
+            }
         }
         if (status.isNotEmpty()) Text(status, color = cm.ink2, fontSize = 11.sp)
     }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -144,6 +145,7 @@ fun AppRoot(vm: AppViewModel) {
                 val cm = CmColorsCurrent
                 val current = TABS.first { it.tab == state.tab }
                 var menu by remember { mutableStateOf(false) }
+                var searchOpen by remember { mutableStateOf(false) }
                 var navMenu by remember { mutableStateOf(false) }
                 var logout by rememberSaveable { mutableStateOf(false) }
                 val saveable = rememberSaveableStateHolder()
@@ -188,12 +190,18 @@ fun AppRoot(vm: AppViewModel) {
                                         }
                                         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp),
                                             verticalAlignment = Alignment.CenterVertically) {
-                                            Text(current.title, color = cm.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                            Text(current.title, color = cm.ink, fontSize = 13.sp, fontWeight = FontWeight.Medium,
                                                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                                             if (state.demo) Text("演示", color = cm.mute, fontSize = 9.sp,
                                                 modifier = Modifier.background(cm.inset, RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 3.dp))
                                         }
-                                        IconButton(onClick = { vm.toggleDark(systemDark) }, modifier = Modifier.size(48.dp).testTag("theme-toggle")) {
+                                        IconButton(
+                                            onClick = { searchOpen = true },
+                                            modifier = Modifier.size(44.dp).background(cm.hover, CircleShape).testTag("command-search"),
+                                        ) {
+                                            Icon(AppIcons.Search, "搜索或快速跳转", Modifier.size(16.dp), tint = cm.ink2)
+                                        }
+                                        IconButton(onClick = { vm.toggleDark(systemDark) }, modifier = Modifier.size(44.dp).testTag("theme-toggle")) {
                                             IconSwap(dark, if (dark) "切换浅色外观" else "切换深色外观")
                                         }
                                         Box {
@@ -329,7 +337,7 @@ fun AppRoot(vm: AppViewModel) {
                                                                 color = cm.mute, style = MaterialTheme.typography.bodySmall)
                                                         }
                                                         WebActionButton(if (state.refreshing) "刷新中" else "刷新数据", { vm.refresh(fromUser = true) },
-                                                            Modifier.testTag("refresh"), enabled = !state.refreshing, icon = AppIcons.Refresh, loading = state.refreshing)
+                                                            Modifier.testTag("refresh"), enabled = !state.refreshing, icon = AppIcons.Refresh, iconEnd = true, loading = state.refreshing)
                                                     }
                                                     if (notices.isNotEmpty()) WorkspaceNotices(notices, state.staleData || state.error != null)
                                                     state.sessionWarning?.let { Text(it, color = cm.warnInk, style = MaterialTheme.typography.bodySmall) }
@@ -372,6 +380,20 @@ fun AppRoot(vm: AppViewModel) {
                     state.update,
                     vm::closeUpdate,
                     onRefresh = { vm.openUpdate(refresh = true) },
+                )
+                if (searchOpen) AlertDialog(
+                    onDismissRequest = { searchOpen = false },
+                    title = { Text("搜索或快速跳转", fontWeight = FontWeight.Medium) },
+                    text = {
+                        Column {
+                            TABS.forEach { spec ->
+                                TextButton(onClick = { searchOpen = false; vm.selectTab(spec.tab) }, modifier = Modifier.fillMaxWidth()) {
+                                    Text(spec.title, modifier = Modifier.fillMaxWidth())
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = { TextButton(onClick = { searchOpen = false }) { Text("关闭") } },
                 )
                 if (logout) AlertDialog(onDismissRequest = { logout = false },
                     title = { Text(if (state.demo) "退出演示？" else "断开服务器连接？", modifier = Modifier.modalEnter(logout)) },
