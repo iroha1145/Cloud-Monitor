@@ -107,7 +107,9 @@ fun AppRoot(vm: AppViewModel) {
     val tip = remember { FloatTipController() }
     CloudMonitorTheme(darkTheme = dark) {
         ApplyEdgeToEdge(dark)
-        SecureScreen(enabled = !state.signedIn)
+        // Release builds keep the login page out of screenshots and recents.
+        // Debug builds stay capturable so device tests can record the signed-in UI.
+        SecureScreen(enabled = !BuildConfig.DEBUG && !state.signedIn)
         CompositionLocalProvider(LocalReducedMotion provides reduced, LocalFloatTip provides tip) {
             if (!state.signedIn) {
                 GateScreen(state, dark, vm::onUrl, vm::onToken, vm::onRememberToken, vm::login, vm::enterDemo) {

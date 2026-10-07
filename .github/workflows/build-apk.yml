@@ -135,7 +135,7 @@ jobs:
   device-tests:
     if: github.event_name == 'pull_request' || inputs.run_device_tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       ANDROID_SERIAL: emulator-5554
     strategy:
@@ -167,7 +167,7 @@ jobs:
         run: |
           # The emulator links libpulse even when started with -no-audio.
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libpulse0
+          sudo apt-get install --yes --no-install-recommends libpulse0 python3-pil
       - name: 启用模拟器硬件加速
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -188,7 +188,7 @@ jobs:
           "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx cloud-monitor-ci
       - name: 启动设备并运行界面测试
         id: device_tests
-        timeout-minutes: 25
+        timeout-minutes: 35
         working-directory: android
         env:
           TEST_API: ${{ matrix.api }}
@@ -276,9 +276,65 @@ jobs:
               for tag in ("failure", "error", "skipped"):
                   if next(root.iter(tag), None) is not None:
                       raise SystemExit(f"::error::{report.name}: 存在 {tag} 用例")
-          if len(test_cases) < 6:
-              raise SystemExit(f"::error::设备测试实际执行 {len(test_cases)} 项，少于要求的 6 项")
+          if len(test_cases) < 7:
+              raise SystemExit(f"::error::设备测试实际执行 {len(test_cases)} 项，少于要求的 7 项")
           print(f"设备测试报告验证通过：{len(test_cases)} 项，失败、错误及跳过均为 0")
+          PY
+          mkdir -p "$RUNNER_TEMP/motion-capture"
+          timeout 30 adb pull /sdcard/Android/data/io.github.iroha1145.cloudmonitor.debug/files/screenshots "$RUNNER_TEMP/motion-capture/"
+          timeout 20 adb pull /data/local/tmp/cm-motion.mp4 "$RUNNER_TEMP/motion-capture/motion.mp4"
+          find "$RUNNER_TEMP/motion-capture" -type f -printf '%s %p\n'
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          from PIL import Image
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "motion-capture"
+          found = {}
+          for path in root.rglob("*"):
+              if path.is_file():
+                  found.setdefault(path.name, path)
+          required = [
+              "overview-light.png", "overview-dark.png",
+              "heatmap-light.png", "heatmap-dark.png",
+              "sessions-light.png", "sessions-dark.png",
+              "quota-light.png", "quota-dark.png",
+          ]
+          missing = [name for name in required if name not in found]
+          if missing:
+              raise SystemExit("::error::缺少页面截图: " + ", ".join(missing))
+
+          def frame_ok(path: Path) -> None:
+              image = Image.open(path).convert("RGB")
+              width, height = image.size
+              if width < 1000 or height < 1600:
+                  raise SystemExit(f"::error::{path.name} 尺寸异常 {width}x{height}")
+              sample = image.resize((48, 96))
+              pixels = list(sample.getdata())
+              unique = len(set(pixels))
+              top = max(pixels.count(color) for color in set(pixels)) / len(pixels)
+              # Edges of a real page are the canvas. A black screen or an ANR
+              # dialog leaves a near-black frame around the picture.
+              edge = []
+              for box in (
+                  (0, 0, width, height // 12),
+                  (0, height - height // 12, width, height),
+              ):
+                  edge.extend(image.crop(box).resize((24, 8)).getdata())
+              black = sum(1 for r, g, b in edge if r + g + b < 24) / len(edge)
+              if unique < 8 or top > 0.97 or black > 0.9:
+                  raise SystemExit(
+                      f"::error::{path.name} 不像真实页面 unique={unique} top={top:.2f} black_edge={black:.2f}"
+                  )
+              print(f"{path.name} {width}x{height} unique={unique} top={top:.2f}")
+
+          for name in required:
+              frame_ok(found[name])
+          videos = [path for path in root.rglob("motion.mp4") if path.is_file()]
+          video = max(videos, key=lambda path: path.stat().st_size, default=None)
+          if video is None or video.stat().st_size < 50_000:
+              raise SystemExit("::error::动效录像缺失或过小")
+          print(f"motion.mp4 {video.stat().st_size} bytes")
           PY
       - name: 收集设备日志
         if: always()
@@ -291,6 +347,7 @@ jobs:
               exit 1
             fi
           fi
+          timeout 20 adb pull /data/local/tmp/cm-motion.mp4 "$RUNNER_TEMP/screenshots/motion.mp4" || true
       - name: 关闭测试设备
         if: always()
         timeout-minutes: 1
@@ -310,4 +367,5 @@ jobs:
             ${{ runner.temp }}/emulator.log
             ${{ runner.temp }}/logcat.txt
             ${{ runner.temp }}/screenshots/
+            ${{ runner.temp }}/motion-capture/
           if-no-files-found: ignore
