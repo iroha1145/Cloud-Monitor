@@ -92,7 +92,7 @@ class MotionCaptureTest {
         saveShot(shots, "overview-$theme.png")
 
         compose.onNodeWithTag("nav-Models").performClick()
-        compose.onNodeWithTag("screen-Models").performScrollToNode(hasText("opus-4.5"))
+        compose.onNodeWithTag("screen-Models").performScrollToNode(hasText("已识别部分"))
         compose.waitForIdle()
         Thread.sleep(700)
         saveShot(shots, "models-$theme.png")
@@ -118,6 +118,7 @@ class MotionCaptureTest {
         saveShot(shots, "sessions-$theme.png")
 
         compose.onNodeWithTag("nav-Quota").performClick()
+        compose.onNodeWithTag("screen-Quota").performScrollToNode(hasText("下次续订"))
         compose.waitForIdle()
         Thread.sleep(700)
         saveShot(shots, "quota-$theme.png")

@@ -54,12 +54,11 @@ fun LazyListScope.modelsItems(
         }
         val cm = CmColorsCurrent
         Panel(Modifier.padding(bottom = 16.dp)) {
-            PanelHead("模型用量", "按总用量排序，展开查看每个模型的组成", trailing = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    ExportModelsButton(per, state.modelPeriod.label)
-                    PeriodSeg(state.modelPeriod, onPeriod)
-                }
-            })
+            Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                PeriodSeg(state.modelPeriod, onPeriod)
+                ExportModelsButton(per, state.modelPeriod.label)
+            }
+            PanelHead("模型用量", "按总用量排序，展开查看每个模型的组成")
             Spacer(Modifier.height(14.dp))
             if (LocalDensity.current.fontScale > 1.5f) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

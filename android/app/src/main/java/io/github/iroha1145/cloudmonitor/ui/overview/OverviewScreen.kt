@@ -291,18 +291,12 @@ private fun LedgerCell(figure: LedgerFigure, modifier: Modifier) {
     }
 }
 
-/** The phrase after the separator wraps as a whole, the way CSS text-wrap: pretty avoids a one-character last line. */
+/** Keep the phrase after the separator on one line. A word joiner avoids a one-character last line without a nested flow layout. */
 @Composable
 private fun LedgerNote(text: String, color: Color, modifier: Modifier = Modifier) {
     val pieces = text.split(" · ", limit = 2)
-    if (pieces.size < 2) {
-        Text(text, modifier, color = color, fontSize = 11.sp, lineHeight = 16.sp)
-        return
-    }
-    FlowRow(modifier) {
-        Text("${pieces[0]} · ", color = color, fontSize = 11.sp, lineHeight = 16.sp, softWrap = false)
-        Text(pieces[1], color = color, fontSize = 11.sp, lineHeight = 16.sp, softWrap = false, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
+    val shown = if (pieces.size < 2) text else pieces[0] + " · " + pieces[1].toList().joinToString("\u2060")
+    Text(shown, modifier, color = color, fontSize = 11.sp, lineHeight = 16.sp, overflow = TextOverflow.Ellipsis)
 }
 
 @Composable
