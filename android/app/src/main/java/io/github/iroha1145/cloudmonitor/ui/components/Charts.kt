@@ -23,7 +23,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -213,12 +212,12 @@ fun MatrixGrid(rows: List<String>, cols: List<String>, modifier: Modifier = Modi
                     Text(row, Modifier.width(110.dp), style = MaterialTheme.typography.bodySmall)
                     cols.forEach { column ->
                         val value = valueAt(row, column)
-                        val level = hmLevel(value, max).coerceIn(cm.hm.indices)
+                        val level = matrixHeatLevel(value, max).coerceIn(cm.hm.indices)
                         val formatted = if (cost) Format.fmtUsd(value) else Format.fmtCompact(value)
                         Box(Modifier.width(112.dp).heightIn(min = 56.dp).clip(RoundedCornerShape(10.dp)).background(cm.hm[level])
                             .clickable(role = Role.Button) { tip.show("$row · $column", listOf((if (cost) "费用" else "词元用量") to if (cost) Format.fmtUsd(value) else Format.fmtInt(value))) }
                             .semantics { contentDescription = "$row，$column，$formatted" }.padding(10.dp), contentAlignment = Alignment.Center) {
-                            Text(formatted, color = if (cm.hm[level].luminance() > 0.179f) Color.Black else Color.White, style = MaterialTheme.typography.bodySmall,
+                            Text(formatted, color = cm.hmInk[level], style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier.clearAndSetSemantics {})
                         }
                     }

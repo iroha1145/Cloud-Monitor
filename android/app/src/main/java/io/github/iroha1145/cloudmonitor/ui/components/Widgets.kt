@@ -2,22 +2,17 @@
 
 package io.github.iroha1145.cloudmonitor.ui.components
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
@@ -46,7 +41,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -54,14 +48,18 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
@@ -77,11 +75,16 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -90,11 +93,16 @@ import coil.request.ImageRequest
 import io.github.iroha1145.cloudmonitor.EagerSvgDecoderFactory
 import io.github.iroha1145.cloudmonitor.data.logoAssetPath
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
+import io.github.iroha1145.cloudmonitor.ui.theme.EaseBounce
+import io.github.iroha1145.cloudmonitor.ui.theme.EaseInOut
+import io.github.iroha1145.cloudmonitor.ui.theme.EaseSmoothOut
 import io.github.iroha1145.cloudmonitor.ui.theme.LocalReducedMotion
 import io.github.iroha1145.cloudmonitor.ui.theme.Motion
+import io.github.iroha1145.cloudmonitor.ui.theme.SlidingThumb
 import io.github.iroha1145.cloudmonitor.ui.theme.applyEnterBlur
 import io.github.iroha1145.cloudmonitor.ui.theme.rememberGrow
 import io.github.iroha1145.cloudmonitor.vm.Period
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -156,18 +164,22 @@ fun WebSegmentedControl(
 ) {
     val cm = CmColorsCurrent
     val haptic = LocalHapticFeedback.current
-    Box(modifier.horizontalScroll(rememberScrollState())) {
+    val bounds = remember { mutableStateMapOf<Int, Rect>() }
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    Box(modifier.horizontalScroll(rememberScrollState()).onGloballyPositioned { origin = it.positionInRoot() }) {
         Box(Modifier.matchParentSize().padding(vertical = 6.dp)
             .background(cm.hover, RoundedCornerShape(7.dp))
             .border(1.dp, cm.border, RoundedCornerShape(7.dp)))
+        SlidingThumb(selected.coerceAtLeast(0), bounds, cm.card, RoundedCornerShape(5.dp))
         Row(Modifier.selectableGroup().padding(horizontal = 3.dp)) {
             options.forEachIndexed { index, label ->
                 val on = index == selected
+                val itemEnabled = enabled.getOrNull(index) != false
                 Box(
                     Modifier.then(tags.getOrNull(index)?.let { Modifier.testTag(it) } ?: Modifier)
                     .selectable(
                         selected = on,
-                        enabled = enabled.getOrNull(index) != false,
+                        enabled = itemEnabled,
                         role = Role.Tab,
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -179,11 +191,13 @@ fun WebSegmentedControl(
                     .padding(vertical = 9.dp, horizontal = 1.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(label, color = if (enabled.getOrNull(index) == false) cm.mute else if (on) cm.ink else cm.mute,
+                    Text(label, color = if (!itemEnabled) cm.mute else if (on) cm.ink else cm.mute,
                         style = MaterialTheme.typography.labelLarge,
-                        fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium,
-                        modifier = Modifier.background(if (on) cm.card else Color.Transparent, RoundedCornerShape(5.dp))
-                            .padding(horizontal = 12.dp, vertical = 6.dp))
+                        fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
+                        modifier = Modifier.onGloballyPositioned { coords ->
+                            val pos = coords.positionInRoot() - origin
+                            bounds[index] = Rect(pos.x, pos.y, pos.x + coords.size.width, pos.y + coords.size.height)
+                        }.padding(horizontal = 12.dp, vertical = 6.dp))
                 }
             }
         }
@@ -225,7 +239,17 @@ fun WebActionButton(
 ) {
     val cm = CmColorsCurrent
     val color = if (enabled) cm.ink2 else cm.mute
-    Box(modifier.clip(RoundedCornerShape(7.dp)).clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val reduced = LocalReducedMotion.current
+    val scale by animateFloatAsState(
+        if (pressed && enabled && !reduced) 0.96f else 1f,
+        tween(Motion.Quick, easing = EaseSmoothOut),
+        label = "press",
+    )
+    Box(modifier.graphicsLayer { scaleX = scale; scaleY = scale }
+        .clip(RoundedCornerShape(7.dp))
+        .clickable(interaction, LocalIndication.current, enabled = enabled, role = Role.Button, onClick = onClick)
         .heightIn(min = 48.dp).padding(vertical = 2.dp), contentAlignment = Alignment.Center) {
         Row(Modifier.background(cm.card, RoundedCornerShape(7.dp))
             .border(1.dp, cm.borderStrong, RoundedCornerShape(7.dp))
@@ -311,7 +335,13 @@ fun ClientLogo(name: String?, size: Dp = 16.dp, tint: Color = CmColorsCurrent.in
 }
 
 @Composable
-fun StatusDot(ok: Boolean?, unknown: Boolean = false, pulse: Boolean = false, delayed: Boolean = false) {
+fun StatusDot(
+    ok: Boolean?,
+    unknown: Boolean = false,
+    pulse: Boolean = false,
+    delayed: Boolean = false,
+    freshKey: Any? = null,
+) {
     val cm = CmColorsCurrent
     val c = when {
         delayed -> cm.warn
@@ -320,25 +350,28 @@ fun StatusDot(ok: Boolean?, unknown: Boolean = false, pulse: Boolean = false, de
         else -> cm.crit
     }
     val reduced = LocalReducedMotion.current
-    val shouldPulse = pulse && ok == true && !reduced
-    val scale = if (shouldPulse) {
-        val inf = rememberInfiniteTransition(label = "dot-pulse")
-        val pulseScale by inf.animateFloat(
-            1f, 1.35f,
-            infiniteRepeatable(tween(1100, easing = LinearEasing), RepeatMode.Reverse),
-            label = "pulse",
-        )
-        pulseScale
-    } else {
-        1f
+    val ping = remember { Animatable(1f) }
+    LaunchedEffect(freshKey) {
+        if (freshKey == null || reduced || !pulse) {
+            ping.snapTo(1f)
+            return@LaunchedEffect
+        }
+        ping.snapTo(0f)
+        ping.animateTo(1f, tween(Motion.VerySlow, easing = EaseSmoothOut))
     }
-    Box(
-        Modifier
-            .size(8.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(CircleShape)
-            .background(c),
-    )
+    Canvas(Modifier.size(16.dp)) {
+        val dot = 4.dp.toPx()
+        drawCircle(c, radius = dot, center = center)
+        val t = ping.value
+        if (pulse && freshKey != null && t < 0.999f) {
+            drawCircle(
+                color = c.copy(alpha = 0.55f * (1f - t)),
+                radius = dot + 7.dp.toPx() * t,
+                center = center,
+                style = Stroke(1.5.dp.toPx()),
+            )
+        }
+    }
 }
 
 @Composable
@@ -398,22 +431,75 @@ fun ShimmerPanel(height: Dp = 128.dp) {
     val cm = CmColorsCurrent
     val reduced = LocalReducedMotion.current
     val inf = rememberInfiniteTransition(label = "sk")
-    val v by inf.animateFloat(
-        0f, 1f,
-        infiniteRepeatable(tween(1200, easing = LinearEasing), RepeatMode.Restart),
-        label = "sk-x",
-    )
-    val x = if (reduced) 0.5f else v
-    val brush = Brush.linearGradient(
-        colors = listOf(cm.brand25, cm.border, cm.brand25),
-        start = Offset(x * 900f - 240f, 0f),
-        end = Offset(x * 900f + 80f, 180f),
+    val alpha by inf.animateFloat(
+        1f, 0.5f,
+        infiniteRepeatable(tween(1000, easing = EaseInOut), RepeatMode.Reverse),
+        label = "sk-pulse",
     )
     Box(
         Modifier
             .fillMaxWidth()
             .height(height)
             .clip(RoundedCornerShape(10.dp))
-            .background(brush),
-    )
+            .border(1.dp, cm.border, RoundedCornerShape(10.dp))
+            .background(cm.card)
+            .padding(18.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            repeat(3) { index ->
+                Box(
+                    Modifier
+                        .fillMaxWidth(if (index == 2) 0.55f else 1f)
+                        .height(if (index == 0) 10.dp else 8.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .graphicsLayer { this.alpha = if (reduced) 1f else alpha }
+                        .background(cm.hover),
+                )
+            }
+        }
+    }
+}
+
+/** Number pop-in: changed characters rise 8px with a 2px blur; the last two digits follow. */
+@Composable
+fun PopValue(
+    value: String,
+    color: Color,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+) {
+    val reduced = LocalReducedMotion.current
+    val first = remember { value }
+    val animate = !reduced && value != first
+    val digits = value.indices.filter { value[it].isDigit() }
+    val stagger = mapOf(digits.getOrNull(digits.lastIndex - 1) to 1, digits.lastOrNull() to 2)
+    Row(modifier.semantics { contentDescription = value }, verticalAlignment = Alignment.Bottom) {
+        value.forEachIndexed { index, char ->
+            key("$value#$index") {
+            val progress = remember(value, index) { Animatable(if (animate) 0f else 1f) }
+            val shift = with(LocalDensity.current) { 8.dp.toPx() }
+            LaunchedEffect(value, animate) {
+                if (!animate) {
+                    progress.snapTo(1f)
+                } else {
+                    progress.snapTo(0f)
+                    delay((stagger[index] ?: 0) * Motion.Stagger.toLong())
+                    progress.animateTo(1f, tween(Motion.Digit, easing = EaseBounce))
+                }
+            }
+            Text(
+                char.toString(),
+                color = color,
+                style = style,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.clearAndSetSemantics { }.graphicsLayer {
+                    val p = progress.value
+                    alpha = p
+                    translationY = (1f - p) * shift
+                    if (animate) applyEnterBlur(p, 2f)
+                },
+            )
+            }
+        }
+    }
 }

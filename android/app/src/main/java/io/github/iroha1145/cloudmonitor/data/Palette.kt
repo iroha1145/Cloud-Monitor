@@ -104,8 +104,11 @@ fun connBanner(overview: Overview, demo: Boolean, staleData: Boolean): Pair<Stri
         overview.partial -> if (codes.isEmpty()) "部分数据不可用" else "部分数据不可用（${codes.joinToString("、")}）"
         else -> "正常"
     }
-    val outbox = overview.pendingOutbox
-    if (outbox > 0) text += " · 待同步快照 $outbox 条"
+    val forwarding = overview.forwardingOutbox.coerceAtLeast(0)
+    val pendingSnapshots = (overview.pendingOutbox - forwarding).coerceAtLeast(0)
+    if (forwarding > 0) text += " · 待确认上报 $forwarding 条"
+    if (pendingSnapshots > 0) text += " · 待同步快照 $pendingSnapshots 条"
+    if (overview.expiredUnconfirmedOutbox > 0) text += " · 未完成同步 ${overview.expiredUnconfirmedOutbox} 条"
     val ok = text == "正常"
     return text to ok
 }
@@ -118,10 +121,22 @@ fun isWindowsPlatform(platform: String?, osName: String?): Boolean {
     return "win" in s
 }
 
-fun hmLevel(v: Double, max: Double): Int {
-    if (v <= 0 || max <= 0) return 0
-    return minOf(5, maxOf(1, kotlin.math.ceil(v / max * 5).toInt()))
+/** Same 5-stop scale as hub/dashboard `matrixHeatLevel`. Level 0 is empty. */
+fun matrixHeatLevel(value: Double, peak: Double): Int {
+    if (!(value > 0.0)) return 0
+    if (!(peak > 0.0)) return 1
+    return maxOf(1, minOf(4, kotlin.math.floor(value / peak * 4).toInt()))
 }
+
+/** Same steps as the web activity grid: unknown is null, zero is 0, else ceil into 1..4. */
+fun activityHeatLevel(total: Double?, maximum: Double): Int? {
+    if (total == null) return null
+    if (total == 0.0) return 0
+    val peak = maximum.coerceAtLeast(1.0)
+    return minOf(4, maxOf(1, kotlin.math.ceil(total / peak * 4).toInt()))
+}
+
+fun hmLevel(v: Double, max: Double): Int = matrixHeatLevel(v, max)
 
 /** Keep the old chart entry point without inventing days or mixing activity totals. */
 @Suppress("UNUSED_PARAMETER")

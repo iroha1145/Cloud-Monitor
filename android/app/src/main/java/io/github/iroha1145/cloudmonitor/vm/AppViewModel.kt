@@ -46,6 +46,9 @@ data class UiState(
     val hubUrl: String = "",
     val token: String = "",
     val encryptionAvailable: Boolean = true,
+    val rememberToken: Boolean = true,
+    val keyRejected: Boolean = false,
+    val shakeNonce: Int = 0,
     val sessionWarning: String? = null,
     val dark: Boolean? = null,
     val tab: AppTab = AppTab.Overview,
@@ -134,6 +137,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     sessionWarning = secretsError,
                     error = secretsError ?: it.error,
                     encryptionAvailable = store.encryptionAvailable,
+                    rememberToken = store.rememberToken,
                     dark = when (store.darkOverride) {
                         "dark" -> true
                         "light" -> false
@@ -150,7 +154,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onUrl(v: String) = _state.update { it.copy(hubUrl = v) }
-    fun onToken(v: String) = _state.update { it.copy(token = v) }
+    fun onToken(v: String) = _state.update { it.copy(token = v, keyRejected = false) }
+    fun onRememberToken(value: Boolean) {
+        _state.update { it.copy(rememberToken = value) }
+        viewModelScope.launch(Dispatchers.IO) { store.rememberToken = value }
+    }
     fun selectTab(t: AppTab) = _state.update { it.copy(tab = t) }
     fun setModelPeriod(p: Period) = _state.update { it.copy(modelPeriod = p) }
     fun setClientPeriod(p: Period) = _state.update { it.copy(clientPeriod = p) }
@@ -210,8 +218,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         bumpSession()
         val gen = sessionGen
+        val remember = _state.value.rememberToken
         dataJob = viewModelScope.launch {
-            _state.update { it.copy(loading = true, gateError = null) }
+            _state.update { it.copy(loading = true, gateError = null, keyRejected = false) }
             try {
                 withContext(Dispatchers.IO) { store.ensureSecrets() }
                 if (!sameSession(gen)) return@launch
@@ -220,10 +229,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 sessionToken = token
                 withContext(Dispatchers.IO) {
                     store.hubUrl = HubClient.normalizeBase(url)
-                    store.persistSession(demoMode = false, accessToken = token)
+                    store.persistSession(demoMode = false, accessToken = token, rememberAccessToken = remember)
                 }
                 if (!sameSession(gen)) return@launch
-                val warn = if (store.encryptionAvailable) null else "系统密钥库不可用，本次不会记住密钥"
+                val warn = if (remember && !store.encryptionAvailable) "系统密钥库不可用，本次不会记住密钥" else null
                 _state.update {
                     it.copy(
                         signedIn = true,
@@ -245,7 +254,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 throw e
             } catch (e: ApiException) {
                 if (!sameSession(gen)) return@launch
-                _state.update { it.copy(loading = false, gateError = gateMessage(e)) }
+                val rejected = e.status == 401 || e.status == 403
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        gateError = gateMessage(e),
+                        keyRejected = rejected,
+                        shakeNonce = if (rejected) it.shakeNonce + 1 else it.shakeNonce,
+                    )
+                }
             } catch (e: Exception) {
                 if (!sameSession(gen)) return@launch
                 _state.update { it.copy(loading = false, gateError = e.message ?: "登录失败") }
@@ -430,6 +447,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 signedIn = false,
                 hubUrl = store.hubUrl,
                 encryptionAvailable = store.encryptionAvailable,
+                rememberToken = store.rememberToken,
                 dark = it.dark,
                 gateError = gateError,
             )

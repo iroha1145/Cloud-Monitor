@@ -2,15 +2,26 @@ package io.github.iroha1145.cloudmonitor.ui.history
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -27,6 +38,9 @@ import io.github.iroha1145.cloudmonitor.data.*
 import io.github.iroha1145.cloudmonitor.ui.PageState
 import io.github.iroha1145.cloudmonitor.ui.components.*
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
+import io.github.iroha1145.cloudmonitor.ui.theme.EaseSmoothOut
+import io.github.iroha1145.cloudmonitor.ui.theme.Motion
+import io.github.iroha1145.cloudmonitor.ui.theme.riseIn
 import io.github.iroha1145.cloudmonitor.vm.AuxStatus
 import io.github.iroha1145.cloudmonitor.vm.UiState
 import kotlinx.coroutines.Dispatchers
@@ -47,7 +61,7 @@ fun LazyListScope.historyItems(
     val overview = state.overview ?: return
     val zone = overview.dashboardPeriod?.timeZone ?: overview.dashboardTimeZone
     val today = overview.dashboardPeriod?.today?.key ?: Format.dayKeyTz(System.currentTimeMillis(), zone)
-    item("activity") { ActivityCard(overview, today, zone, state.actView, onActView) }
+    item("activity") { ActivityCard(overview, today, zone, state.actView, onActView, page) }
     item("sessions") { SessionsCard(overview, zone, today, modelColors, page) }
     val rows = (if (state.history.isNotEmpty()) state.history else overview.activity.daily.map {
         HistoryDay(it.day, it.total, perModel = it.models)
@@ -80,82 +94,171 @@ fun LazyListScope.historyItems(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ActivityCard(overview: Overview, today: String, zone: String, view: Int, onView: (Int) -> Unit) {
+private fun ActivityCard(overview: Overview, today: String, zone: String, view: Int, onView: (Int) -> Unit, page: PageState) {
     val cm = CmColorsCurrent
     val daily = overview.activity.daily.associate { it.day to it.total }
     Panel(Modifier.padding(bottom = 16.dp)) {
         PanelHead("活动日历", "时间按 $zone 显示")
         WebSegmentedControl(listOf("今日", "近 12 周", "本月"), view, onView)
         Spacer(Modifier.height(12.dp))
-        when (view) {
-            0 -> {
-                val current = overview.activity.hourlyToday
-                val hourly = when {
-                    current != null && current.day == today -> current.buckets
-                    overview.activity.hourlyDay == today -> overview.activity.hourly
-                    else -> emptyList()
-                }
-                if (hourly.isEmpty()) EmptyHint("今日小时分布尚未提供")
-                else {
-                    val byHour = hourly.associate { it.hour to it.total }
-                    ActivityTiles((0..23).map { "${it}时" to byHour[it] })
-                    Text("按上报采样归属到小时；空白数据以“—”标记。", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-            1 -> {
-                val date = runCatching { LocalDate.parse(today) }.getOrNull()
-                if (date != null) {
-                    val monday = date.minusDays((date.dayOfWeek.value - 1).toLong())
-                    val weeks = (11 downTo 0).map { offset ->
-                        val start = monday.minusWeeks(offset.toLong())
-                        val reported = (0..6).mapNotNull { day -> daily[start.plusDays(day.toLong()).toString()] }
-                        "${start.monthValue}/${start.dayOfMonth}" to reported.takeIf { it.isNotEmpty() }?.sum()
+        val selectedDay = page.activityDay.value
+        val cells = activityCells(view, today, overview, daily)
+        if (cells.isEmpty()) EmptyHint("活动日期未提供，收到有效的数据日期后显示活动。")
+        else {
+            val maximum = cells.mapNotNull { it.total }.maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
+            if (view == 2) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    listOf("一", "二", "三", "四", "五", "六", "日").forEach { day ->
+                        Text(day, color = cm.mute, fontSize = 11.sp, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
-                    ActivityTiles(weeks)
-                    Text("每格为该周已上报日期的合计；缺失日期不补为零。", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+            ActivityHeat(cells, maximum, view, selectedDay, zone) { day ->
+                page.activityDay.value = if (page.activityDay.value == day) "" else day
+                page.limit.intValue = 8
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(zone, color = cm.mute, fontSize = 11.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("少", color = cm.mute, fontSize = 11.sp)
+                    (0..4).forEach { level ->
+                        Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(if (level == 0) Color.Transparent else cm.activity[level])
+                            .border(1.dp, if (level == 0) cm.border else Color.Transparent, RoundedCornerShape(2.dp)))
+                    }
+                    Text("多", color = cm.mute, fontSize = 11.sp)
                 }
             }
-            else -> {
-                val month = runCatching { YearMonth.parse(overview.dashboardPeriod?.month?.key ?: today.take(7)) }.getOrNull()
-                if (month != null) {
-                    val days = (1..month.lengthOfMonth()).map { day -> "$day 日" to daily[month.atDay(day).toString()] }
-                    ActivityTiles(days)
-                    val reported = days.mapNotNull { it.second }
-                    Spacer(Modifier.height(12.dp))
-                    Text("${month.monthValue} 月已上报 ${reported.size} 天 · 合计 ${Format.fmtCompact(reported.sum())} 词元", color = cm.ink, style = MaterialTheme.typography.bodyMedium)
-                    Text("“—”表示未提供记录，也可能是尚未到达的日期。", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+            if (selectedDay.isNotBlank()) {
+                TextButton(onClick = { page.activityDay.value = "" }, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text("已筛选 $selectedDay，点击清除", fontSize = 12.sp)
                 }
             }
+            Text("斜线格表示未上报，与零用量分开显示。点击日期筛选会话。", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
         }
         CoverageBlock(overview)
     }
 }
 
+private data class ActivityCell(val key: String, val label: String, val day: String?, val total: Double?, val future: Boolean, val column: Int, val row: Int)
+
+private fun activityCells(view: Int, today: String, overview: Overview, daily: Map<String, Double>): List<ActivityCell> {
+    val todayDate = runCatching { LocalDate.parse(today) }.getOrNull() ?: return emptyList()
+    return when (view) {
+        0 -> {
+            val current = overview.activity.hourlyToday
+            val hourly = when {
+                current != null && current.day == today -> current.buckets
+                overview.activity.hourlyDay == today -> overview.activity.hourly
+                else -> emptyList()
+            }
+            if (hourly.isEmpty() && overview.features.activityHourly.not() && current == null && overview.activity.hourlyDay != today) emptyList()
+            else {
+                val byHour = hourly.associate { it.hour to it.total }
+                (0..23).map { hour ->
+                    ActivityCell("$today-$hour", hour.toString().padStart(2, '0'), null, byHour[hour], false, hour % 6, hour / 6)
+                }
+            }
+        }
+        1 -> {
+            val monday = todayDate.minusDays((todayDate.dayOfWeek.value - 1).toLong())
+            val start = monday.minusWeeks(11)
+            (0 until 84).map { index ->
+                val day = start.plusDays(index.toLong())
+                val key = day.toString()
+                ActivityCell(key, "", key, daily[key], day.isAfter(todayDate), index / 7, index % 7)
+            }
+        }
+        else -> {
+            val month = runCatching { YearMonth.parse(overview.dashboardPeriod?.month?.key ?: today.take(7)) }.getOrNull() ?: return emptyList()
+            val leading = month.atDay(1).dayOfWeek.value - 1
+            (0 until leading).map { index -> ActivityCell("pad-$index", "", null, null, false, index % 7, index / 7) } +
+                (1..month.lengthOfMonth()).map { dayNumber ->
+                    val day = month.atDay(dayNumber)
+                    val index = leading + dayNumber - 1
+                    ActivityCell(day.toString(), dayNumber.toString(), day.toString(), daily[day.toString()], day.isAfter(todayDate), index % 7, index / 7)
+                }
+        }
+    }
+}
+
 @Composable
-private fun ActivityTiles(values: List<Pair<String, Double?>>) {
+private fun ActivityHeat(
+    cells: List<ActivityCell>,
+    maximum: Double,
+    view: Int,
+    selectedDay: String,
+    zone: String,
+    onDay: (String) -> Unit,
+) {
     val cm = CmColorsCurrent
-    val fontScale = LocalDensity.current.fontScale
-    val max = values.mapNotNull { it.second }.maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val columns = (maxWidth.value / (72 * fontScale)).toInt().coerceIn(2, 7)
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            values.chunked(columns).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    row.forEach { (label, value) ->
-                        val strength = if (value == null || value <= 0) 0f else (value / max).toFloat().coerceIn(0.15f, 1f)
-                        Column(Modifier.weight(1f).heightIn(min = 56.dp).clip(RoundedCornerShape(5.dp))
-                            .background(if (value == null) cm.canvas else cm.brand.copy(alpha = 0.06f + strength * 0.14f))
-                            .semantics(mergeDescendants = true) { contentDescription = "$label，${value?.let { "${Format.fmtInt(it)} 词元" } ?: "数据未提供"}" }
-                            .padding(horizontal = 7.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(label, color = cm.ink2, fontSize = 11.sp, lineHeight = 15.sp)
-                            Text(value?.let { Format.fmtCompact(it, tight = true) } ?: "—", color = cm.ink,
-                                fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold)
-                        }
+    val columns = if (view == 0) 6 else 7
+    if (view == 1) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            cells.chunked(7).forEach { week ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    week.forEach { cell -> ActivityHeatCell(cell, maximum, selectedDay, zone, onDay, Modifier.size(48.dp)) }
+                }
+            }
+        }
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            cells.chunked(columns).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    row.forEach { cell ->
+                        ActivityHeatCell(cell, maximum, selectedDay, zone, onDay, Modifier.weight(1f).heightIn(min = 48.dp))
                     }
                     repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ActivityHeatCell(
+    cell: ActivityCell,
+    maximum: Double,
+    selectedDay: String,
+    zone: String,
+    onDay: (String) -> Unit,
+    modifier: Modifier,
+) {
+    val cm = CmColorsCurrent
+    if (cell.key.startsWith("pad-")) {
+        Spacer(modifier)
+        return
+    }
+    val level = activityHeatLevel(cell.total, maximum)
+    val bg = when {
+        cell.future -> cm.hover
+        level == null -> cm.card
+        level == 0 -> Color.Transparent
+        else -> cm.activity[level]
+    }
+    val ink = when {
+        cell.future -> cm.mute
+        level == null -> cm.ink2
+        else -> cm.activityInk[level]
+    }
+    val label = cell.day ?: cell.label
+    val description = buildString {
+        append(cell.day ?: cell.label)
+        append("，")
+        append(if (cell.future) "尚未到来" else if (cell.total == null) "未上报用量" else "${Format.fmtInt(cell.total)} 词元")
+        if (cell.day != null) append("，点击筛选会话")
+    }
+    val selected = cell.day != null && cell.day == selectedDay
+    Box(
+        modifier.riseIn(cell.column + cell.row, cell.key).clip(RoundedCornerShape(6.dp)).background(bg)
+            .border(1.dp, if (selected) cm.ink else if (level == 0 || cell.future) cm.border else Color.Transparent, RoundedCornerShape(6.dp))
+            .then(if (cell.day != null && !cell.future) Modifier.clickable { onDay(cell.day) } else Modifier)
+            .semantics { contentDescription = "$description。时区 $zone" }
+            .padding(2.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(cell.label, color = ink, fontSize = 11.sp, maxLines = 1)
     }
 }
 
@@ -225,6 +328,7 @@ private fun SessionsCard(overview: Overview, zone: String, today: String, modelC
     var query by page.query
     var client by page.selection
     var onlyToday by page.todayOnly
+    var activityDay by page.activityDay
     var limit by page.limit
     var exportStatus by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
@@ -235,7 +339,9 @@ private fun SessionsCard(overview: Overview, zone: String, today: String, modelC
     SideEffect { if (resolvedClient != client) client = resolvedClient }
     val filtered = overview.sessions.filter { session ->
         (resolvedClient.isBlank() || session.client == resolvedClient) && (!onlyToday || sessionDay(session) == today) &&
-            (query.isBlank() || listOfNotNull(session.sessionId, session.project, session.client, session.device).plus(session.models.keys).any { it.contains(query.trim(), true) })
+            (activityDay.isBlank() || sessionDay(session) == activityDay) &&
+            (query.isBlank() || listOfNotNull(session.sessionId, session.project, session.title, session.client, session.device, session.sessionKind)
+                .plus(session.models.keys).any { it.contains(query.trim(), true) })
     }.sortedByDescending { Format.parseMillis(it.lastUsedAt ?: it.startedAt) ?: 0L }
     val latestRows by rememberUpdatedState(filtered)
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
@@ -267,7 +373,7 @@ private fun SessionsCard(overview: Overview, zone: String, today: String, modelC
             Spacer(Modifier.height(16.dp))
             Text(if (day == today) "今天 · $day" else day ?: "活动日期未提供", color = cm.brand,
                 style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
-            sessions.forEach { session -> key(session.key) { SessionDetail(session, zone, modelColors) } }
+            sessions.forEach { session -> key(session.key) { SessionDetail(session, zone, overview.generatedAt, modelColors) } }
         }
         if (filtered.size > limit) TextButton(onClick = { limit += 8 }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(6.dp)) { Text("再显示 8 条会话", fontSize = 12.sp) }
         OutlinedButton(onClick = { export.launch("cloud-monitor-sessions-${if (onlyToday) today else "all"}.csv") }, enabled = filtered.isNotEmpty(),
@@ -279,16 +385,17 @@ private fun SessionsCard(overview: Overview, zone: String, today: String, modelC
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SessionDetail(session: SessionRow, zone: String, modelColors: Map<String, Color>) {
+private fun SessionDetail(session: SessionRow, zone: String, generatedAt: String?, modelColors: Map<String, Color>) {
     val cm = CmColorsCurrent
     var expanded by rememberSaveable(session.key) { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             ClientLogo(session.client, size = 20.dp)
             Column(Modifier.weight(1f)) {
-                Text(session.project?.takeIf { it.isNotBlank() } ?: session.sessionId?.take(24) ?: "未命名会话", color = cm.ink, fontSize = 14.sp,
-                    lineHeight = 20.sp, fontWeight = FontWeight.SemiBold)
-                Text(session.client ?: "客户端未提供", color = cm.ink2, fontSize = 11.sp, lineHeight = 16.sp)
+                Text(sessionTitle(session), color = cm.ink, fontSize = 14.sp,
+                    lineHeight = 20.sp, fontWeight = FontWeight.Medium)
+                Text("${session.client ?: "客户端未提供"} · ${sessionActivity(session, generatedAt)}",
+                    color = cm.ink2, fontSize = 11.sp, lineHeight = 16.sp)
             }
         }
         Text("最后活动 ${Format.fmtDateTime(session.lastUsedAt, zone).ifBlank { "未提供" }}", color = cm.ink2, fontSize = 11.sp, lineHeight = 16.sp)
@@ -303,11 +410,26 @@ private fun SessionDetail(session: SessionRow, zone: String, modelColors: Map<St
                 HistoryMetric("估算费用", session.costUsd?.let(Format::fmtUsd) ?: "未提供", Modifier.weight(1f))
             }
         }
-        if (expanded) {
+        AnimatedVisibility(
+            expanded,
+            enter = fadeIn(tween(Motion.Fast, easing = EaseSmoothOut)) + expandVertically(tween(Motion.Fast, easing = EaseSmoothOut)),
+            exit = fadeOut(tween(Motion.Quick, easing = EaseSmoothOut)) + shrinkVertically(tween(Motion.Quick, easing = EaseSmoothOut)),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("来源设备 · ${session.device ?: session.deviceId ?: "未提供"}", color = cm.ink2, style = MaterialTheme.typography.bodyMedium)
+            session.sessionKind?.takeIf { it.isNotBlank() }?.let { Text("会话类型 · $it", color = cm.ink2, style = MaterialTheme.typography.bodyMedium) }
+            Text("活动状态 · ${sessionActivity(session, generatedAt)}", color = cm.ink2, style = MaterialTheme.typography.bodyMedium)
+            sessionContext(session)?.let { (used, remaining) ->
+                Text("上次上报的上下文 · ${Format.fmtInt(session.contextTokens ?: 0.0)} / ${Format.fmtInt(session.contextWindow ?: 0.0)} 词元 · 已用 $used% · 剩余 $remaining%",
+                    color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+                Box(Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(4.dp)).background(cm.inset)) {
+                    Box(Modifier.fillMaxWidth(used.coerceIn(0, 100) / 100f).fillMaxHeight().background(cm.brand))
+                }
+            }
             Text("会话标识 · ${session.sessionId ?: "未提供"}", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
             Text("开始于 ${Format.fmtDateTime(session.startedAt, zone).ifBlank { "未提供" }}", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
             HistoryBreakdown("使用模型", session.models, modelColors)
+            }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.heightIn(min = 48.dp), shape = RoundedCornerShape(6.dp)) {

@@ -1,5 +1,11 @@
 package io.github.iroha1145.cloudmonitor.ui.quota
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
@@ -24,11 +30,10 @@ import io.github.iroha1145.cloudmonitor.ui.components.EmptyHint
 import io.github.iroha1145.cloudmonitor.ui.components.Panel
 import io.github.iroha1145.cloudmonitor.ui.components.PanelHead
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
+import io.github.iroha1145.cloudmonitor.ui.theme.EaseSmoothOut
+import io.github.iroha1145.cloudmonitor.ui.theme.Motion
 import io.github.iroha1145.cloudmonitor.vm.AuxStatus
 import io.github.iroha1145.cloudmonitor.vm.UiState
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.doubleOrNull
 import java.text.NumberFormat
 import java.util.Currency
 import java.util.Locale
@@ -102,20 +107,8 @@ private fun QuotaContent(state: UiState) {
 @Composable
 private fun ProviderQuota(provider: LimitProvider, overview: Overview?, zone: String?) {
     val cm = CmColorsCurrent
-    val status = provider.sourceStatus ?: provider.status
-    val stale = provider.stale || provider.windows.any { it.stale }
-    val statusText = when {
-        stale -> "数据已过期"
-        status == "ok" -> "已同步"
-        status == "unauthorized" -> "授权失效"
-        status == "error" -> "读取失败"
-        else -> "同步状态未知"
-    }
-    val balance = when (val raw = provider.balance) {
-        is JsonPrimitive -> raw.doubleOrNull
-        is JsonObject -> listOf("remaining", "total", "value", "amount").firstNotNullOfOrNull { (raw[it] as? JsonPrimitive)?.doubleOrNull }
-        else -> null
-    }?.takeIf { it.isFinite() }
+    val statusText = quotaGroupStatus(provider)
+    val balance = providerBalance(provider)
     Panel {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)).background(cm.inset), contentAlignment = Alignment.Center) {
@@ -128,7 +121,7 @@ private fun ProviderQuota(provider: LimitProvider, overview: Overview?, zone: St
             }
         }
         Spacer(Modifier.height(12.dp))
-        Text(statusText, color = if (status == "ok" && !stale) cm.okInk else cm.warnInk, fontSize = 11.sp, lineHeight = 16.sp)
+        Text(statusText, color = if (statusText == "额度充足" || statusText == "已同步") cm.okInk else cm.warnInk, fontSize = 11.sp, lineHeight = 16.sp)
         val account = listOfNotNull(provider.accountLabel, provider.accountName, provider.accountEmail?.let(Format::maskEmail)).filter { it.isNotBlank() }.distinct().joinToString(" · ")
         Text(account.ifBlank { "账户名称未提供" }, color = cm.ink2, fontSize = 11.sp, lineHeight = 16.sp)
         provider.sourceMessage?.takeIf { it.isNotBlank() }?.let { Text(it, color = cm.warnInk, style = MaterialTheme.typography.bodySmall) }
@@ -146,8 +139,9 @@ private fun ProviderQuota(provider: LimitProvider, overview: Overview?, zone: St
                 HorizontalDivider(color = cm.border)
                 Spacer(Modifier.height(13.dp))
             }
-            QuotaWindow(window, overview?.generatedAt, zone)
+            QuotaWindow(window, provider, overview?.generatedAt, zone)
         }
+        QuotaExtras(provider, zone)
         Spacer(Modifier.height(16.dp))
         HorizontalDivider(color = cm.border)
         Spacer(Modifier.height(12.dp))
@@ -162,7 +156,7 @@ private fun ProviderQuota(provider: LimitProvider, overview: Overview?, zone: St
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun QuotaWindow(window: LimitWindow, generatedAt: String?, zone: String?) {
+private fun QuotaWindow(window: LimitWindow, provider: LimitProvider, generatedAt: String?, zone: String?) {
     val cm = CmColorsCurrent
     val used = window.used?.takeIf { it.isFinite() && it >= 0 }
     val remaining = window.remaining?.takeIf { it.isFinite() && it >= 0 }
@@ -174,16 +168,13 @@ private fun QuotaWindow(window: LimitWindow, generatedAt: String?, zone: String?
     val currency = window.currency ?: if (metric == "spend") "USD" else null
     val color = when { percent == null -> cm.ink2; percent >= 90 -> cm.crit; percent >= 75 -> cm.warnInk; else -> cm.brand }
     val label = window.label ?: window.name ?: window.window ?: window.kind ?: "使用额度"
-    val headline = when {
-        explicitPercent != null -> "已用 ${percentText(explicitPercent)}"
-        remaining != null -> "剩余 ${quotaAmount(remaining, currency)}"
-        used != null -> "已用 ${quotaAmount(used, currency)}"
-        else -> "用量未提供"
-    }
+    val headline = quotaHeadline(window, provider)
+    val boundary = quotaBoundaryLabel(window.boundaryKind)
     Column(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(label, color = cm.ink2, fontSize = 12.sp, lineHeight = 18.sp)
-            Text(headline, color = cm.ink, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text(listOf(headline.value, headline.label).filter { it.isNotBlank() }.joinToString(" "),
+                color = cm.ink, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium)
         }
         if (window.showMeter && percent != null && metric != "balance") {
             val progress = (percent / 100).toFloat()
@@ -201,15 +192,68 @@ private fun QuotaWindow(window: LimitWindow, generatedAt: String?, zone: String?
         if (explicitPercent == null && derived != null) Text("已用比例 ${percentText(derived)}，按已用额度与上限计算。", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
         val reset = Format.parseMillis(window.resetsAt)
         val snapshot = Format.parseMillis(generatedAt) ?: System.currentTimeMillis()
+        val boundaryName = if (window.resetsAt.isNullOrBlank()) "期限" else "${boundary}时间"
         Text(when {
-            reset == null -> "重置时间未提供"
-            reset <= snapshot -> "重置时间已过，等待来源更新 · ${Format.fmtDateTime(window.resetsAt, zone)}"
-            else -> "${Format.fmtReset(window.resetsAt, snapshot)} · ${Format.fmtDateTime(window.resetsAt, zone)}"
+            reset == null -> "${boundaryName}未提供"
+            reset <= snapshot -> "${boundaryName}已过，等待来源更新 · ${Format.fmtDateTime(window.resetsAt, zone)}"
+            else -> "$boundaryName ${Format.fmtReset(window.resetsAt, snapshot)} · ${Format.fmtDateTime(window.resetsAt, zone)}"
         }, color = if (reset != null && reset <= snapshot) cm.warnInk else cm.ink2, style = MaterialTheme.typography.bodySmall)
+        window.resetDescription?.takeIf { it.isNotBlank() }?.let { Text(it, color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
+        window.detail?.takeIf { it.isNotBlank() }?.let { Text(it, color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
         if (window.stale) Text("此周期数据已过期", color = cm.warnInk, style = MaterialTheme.typography.bodySmall)
         window.sourceMessage?.takeIf { it.isNotBlank() }?.let { Text(it, color = cm.warnInk, style = MaterialTheme.typography.bodySmall) }
         window.sourceLabel?.takeIf { it.isNotBlank() }?.let { Text("来源 · $it", color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
         window.updatedAt?.let { Text("更新于 ${Format.fmtDateTime(it, zone)}", color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
+    }
+}
+
+@Composable
+private fun QuotaExtras(provider: LimitProvider, zone: String?) {
+    val cm = CmColorsCurrent
+    val action = quotaActionText(provider)
+    val reset = provider.resetCredits
+    val tranches = balanceTranches(provider)
+    val rows = quotaExtraRows(provider, zone)
+    var open by rememberSaveable(provider.provider, provider.id, provider.accountKey) { mutableStateOf(false) }
+    if (action.isBlank() && reset == null && tranches.isEmpty() && rows.isEmpty()) return
+    Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (action.isNotBlank()) Text(action, color = cm.warnInk, style = MaterialTheme.typography.bodySmall)
+        reset?.let { credits ->
+            Text("可用重置次数：${credits.availableCount?.let(::quotaNumber) ?: "未提供"}", color = cm.ink, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+            credits.nextExpiresAt?.let { Text("最近到期：${Format.fmtDateTime(it, zone).ifBlank { it }}", color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
+        }
+        if (reset?.grants?.isNotEmpty() == true || tranches.isNotEmpty() || rows.isNotEmpty()) {
+            TextButton(onClick = { open = !open }, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(if (open) "收起额度明细" else "查看额度明细", fontSize = 12.sp)
+            }
+            AnimatedVisibility(
+                open,
+                enter = fadeIn(tween(Motion.Fast, easing = EaseSmoothOut)) + expandVertically(tween(Motion.Fast, easing = EaseSmoothOut)),
+                exit = fadeOut(tween(Motion.Quick, easing = EaseSmoothOut)) + shrinkVertically(tween(Motion.Quick, easing = EaseSmoothOut)),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    reset?.grants?.forEachIndexed { index, grant ->
+                        Text(grant.label.ifBlank { "额度 ${index + 1}" }, color = cm.ink, style = MaterialTheme.typography.bodyMedium)
+                        Text(buildString {
+                            append(grant.resetsLeft?.let { "剩余 ${quotaNumber(it)} 次" } ?: "剩余次数未提供")
+                            grant.resetsTotal?.let { append(" / 共 ${quotaNumber(it)} 次") }
+                        }, color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+                        grant.endsAt?.let { Text("到期：${Format.fmtDateTime(it, zone)}", color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
+                        if (grant.clears.isNotEmpty()) Text("可重置：${grant.clears.joinToString("、", transform = ::grantWindowName)}", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+                        if (grant.paused == true) Text("当前暂停使用", color = cm.warnInk, style = MaterialTheme.typography.bodySmall)
+                        if (grant.useRequiresLimit == true) Text("达到额度上限后可用", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+                        if (grant.usableNow == false && grant.paused != true) Text("当前不可使用", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+                    }
+                    tranches.forEach { tranche ->
+                        Text("${quotaBalanceAmount(tranche.amount, tranche.currency, balanceCurrency(provider))} · ${tranche.expiresAt?.let { "到期 ${Format.fmtDateTime(it, zone)}" } ?: "到期时间未提供"}",
+                            color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+                    }
+                    rows.forEach { (label, value) ->
+                        Text("$label · $value", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
     }
 }
 

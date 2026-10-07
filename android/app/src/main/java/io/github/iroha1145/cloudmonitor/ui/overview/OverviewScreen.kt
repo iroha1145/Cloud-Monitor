@@ -221,8 +221,8 @@ private fun StatCell(label: String, value: String, note: String, icon: androidx.
             Icon(icon, null, tint = color, modifier = Modifier.size(14.dp))
             Text(label, color = cm.ink2, fontSize = 11.sp)
         }
-        Text(value, fontSize = 29.sp, lineHeight = 36.sp, letterSpacing = (-.7).sp, fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(top = 8.dp, bottom = 10.dp), color = cm.ink)
+        PopValue(value, cm.ink, MaterialTheme.typography.headlineMedium.copy(fontSize = 29.sp, lineHeight = 36.sp, letterSpacing = (-.7).sp, fontWeight = FontWeight.Medium),
+            Modifier.padding(top = 8.dp, bottom = 10.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(note, color = if (label.contains("缓存")) cm.okInk else cm.mute, fontSize = 10.sp, lineHeight = 16.sp, modifier = Modifier.weight(1f))
             if (spark.size >= 2 && LocalDensity.current.fontScale < 1.5f) Canvas(Modifier.width(52.dp).height(20.dp)) {

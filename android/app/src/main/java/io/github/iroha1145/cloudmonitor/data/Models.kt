@@ -329,12 +329,54 @@ data class LimitWindow(
     val showMeter: Boolean = true,
     val name: String? = null,
     val window: String? = null,
+    val limitId: String? = null,
+    val additional: Boolean = false,
+    val boundaryKind: String? = null,
+    val resetDescription: String? = null,
+    val detail: String? = null,
     val currency: String? = null,
     val sourceStatus: String? = null,
     val sourceMessage: String? = null,
     val sourceLabel: String? = null,
     val updatedAt: String? = null,
     val stale: Boolean = false,
+)
+
+@Serializable
+data class ResetGrant(
+    val label: String = "",
+    val resetsLeft: Double? = null,
+    val resetsTotal: Double? = null,
+    val startsAt: String? = null,
+    val endsAt: String? = null,
+    val clears: List<String> = emptyList(),
+    val usableNow: Boolean? = null,
+    val useRequiresLimit: Boolean? = null,
+    val paused: Boolean? = null,
+)
+
+@Serializable
+data class ResetCredits(
+    val availableCount: Double? = null,
+    val nextExpiresAt: String? = null,
+    val expirations: List<String> = emptyList(),
+    val grants: List<ResetGrant> = emptyList(),
+)
+
+@Serializable
+data class UsageSummary(
+    val period: String = "",
+    val requests: Double? = null,
+    val todayTokens: Double? = null,
+    val weekTokens: Double? = null,
+    val totalTokens: Double? = null,
+    val inputTokens: Double? = null,
+    val outputTokens: Double? = null,
+    val cacheReadTokens: Double? = null,
+    val cacheCreationTokens: Double? = null,
+    val standardCost: Double? = null,
+    val actualCost: Double? = null,
+    val averageDurationMs: Double? = null,
 )
 
 @Serializable
@@ -357,6 +399,10 @@ data class LimitProvider(
     val updatedAt: String? = null,
     val stale: Boolean = false,
     val balance: JsonElement? = null,
+    val resetCredits: ResetCredits? = null,
+    val adapterId: String? = null,
+    val usageSummary: UsageSummary? = null,
+    val actionRequired: String? = null,
 )
 
 @Serializable
@@ -371,8 +417,15 @@ data class SessionRow(
     @Serializable(with = TokenMapSerializer::class)
     val models: Map<String, Double> = emptyMap(),
     val project: String? = null,
+    val title: String? = null,
     val startedAt: String? = null,
     val lastUsedAt: String? = null,
+    val contextTokens: Double? = null,
+    val contextWindow: Double? = null,
+    val turnEnded: Boolean? = null,
+    val archived: Boolean? = null,
+    val sessionKind: String? = null,
+    val deviceStale: Boolean? = null,
 )
 
 @Serializable
@@ -413,6 +466,10 @@ data class Overview(
     @Serializable(with = ErrorCodesSerializer::class)
     @SerialName("partial_errors") val partialErrors: List<String> = emptyList(),
     @SerialName("pending_outbox") val pendingOutbox: Int = 0,
+    @SerialName("forwarding_outbox") val forwardingOutbox: Int = 0,
+    @SerialName("expired_unconfirmed_outbox") val expiredUnconfirmedOutbox: Int = 0,
+    val stale: Boolean = false,
+    @SerialName("stale_data") val staleData: Boolean = false,
     @SerialName("last_snapshot_success_at") val lastSnapshotSuccessAt: String? = null,
     @SerialName("last_snapshot_error") val lastSnapshotError: String? = null,
     @SerialName("snapshot_degraded") val snapshotDegraded: Boolean = false,
