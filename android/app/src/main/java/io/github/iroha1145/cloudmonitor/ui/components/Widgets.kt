@@ -81,6 +81,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.font.FontWeight
@@ -473,7 +475,13 @@ fun PopValue(
     val animate = !reduced && value != first
     val digits = value.indices.filter { value[it].isDigit() }
     val stagger = mapOf(digits.getOrNull(digits.lastIndex - 1) to 1, digits.lastOrNull() to 2)
-    Row(modifier.semantics { contentDescription = value }, verticalAlignment = Alignment.Bottom) {
+    Row(
+        modifier.semantics {
+            this.text = AnnotatedString(value)
+            contentDescription = value
+        },
+        verticalAlignment = Alignment.Bottom,
+    ) {
         value.forEachIndexed { index, char ->
             key("$value#$index") {
             val progress = remember(value, index) { Animatable(if (animate) 0f else 1f) }
