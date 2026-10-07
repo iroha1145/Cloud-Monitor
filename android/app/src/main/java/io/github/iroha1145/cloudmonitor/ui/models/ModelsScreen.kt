@@ -81,12 +81,16 @@ fun LazyListScope.modelsItems(
             visible.forEachIndexed { index, entry ->
                 val segments = modelBreakdown(per, entry.id)
                 val data = entry.components
-                Column(Modifier.fillMaxWidth().tipClick(entry.name, listOf(
-                    "词元用量" to Format.fmtInt(entry.totalTokens),
-                    "费用" to (entry.costUsd?.let(Format::fmtUsd) ?: "未提供"),
-                    data.cacheLabel to (data.cacheRate?.let(Format::fmtPct) ?: "未提供"),
-                    "构成明细" to if (!data.known) "未提供" else if (data.partial || !data.complete) "部分明细" else "完整",
-                ) + segments.map { it.label to Format.fmtInt(it.value) }).padding(vertical = 17.dp)) {
+                val cacheValue = data.cacheRate?.let(Format::fmtPct) ?: "未提供"
+                val tipRows = buildList {
+                    add("词元用量" to Format.fmtInt(entry.totalTokens))
+                    add("费用" to (entry.costUsd?.let(Format::fmtUsd) ?: "未提供"))
+                    add(data.cacheLabel to cacheValue)
+                    add("构成明细" to if (!data.known) "未提供" else if (data.partial || !data.complete) "部分明细" else "完整")
+                    if (data.known && !data.complete) add("说明" to "组成与总量不一致，暂不计算比例。")
+                    addAll(segments.map { it.label to Format.fmtInt(it.value) })
+                }
+                Column(Modifier.fillMaxWidth().tipClick(entry.name, tipRows).padding(vertical = 17.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Box(Modifier.size(9.dp).clip(CircleShape).background(colors[entry.id] ?: cm.brand))
                         Column(Modifier.weight(1f)) {
@@ -99,7 +103,7 @@ fun LazyListScope.modelsItems(
                         "词元用量" to Format.fmtCompact(entry.totalTokens),
                         "估算费用" to (entry.costUsd?.let(Format::fmtUsd) ?: "未提供"),
                         "缓存读取" to if (data.cacheReadKnown) Format.fmtCompact(data.cacheRead) else "未提供",
-                        data.cacheLabel to (data.cacheRate?.let(Format::fmtPct) ?: "未提供"),
+                        "缓存占比" to cacheValue,
                     )
                     val columns = if (LocalDensity.current.fontScale > 1.5f) 1 else 2
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -107,13 +111,24 @@ fun LazyListScope.modelsItems(
                             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                                 row.forEach { (label, value) ->
                                     ModelMetric(label, value, Modifier.weight(1f),
-                                        color = if (label == data.cacheLabel && data.cacheRate != null) cm.okInk else cm.ink)
+                                        color = if (label == "缓存占比" && data.cacheRate != null) cm.okInk else cm.ink)
                                 }
                             }
                         }
                     }
+                    if (data.partial) {
+                        Text(
+                            if (data.cacheReadKnown) "已识别部分" else "组成未知",
+                            color = cm.mute, fontSize = 11.sp, lineHeight = 16.sp,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
                     Spacer(Modifier.height(12.dp))
-                    MixBar(if (segments.isEmpty()) listOf(SEG_UNCLS to entry.totalTokens) else segments.map { it.color to it.value }, Modifier.fillMaxWidth())
+                    if (data.complete) {
+                        MixBar(if (segments.isEmpty()) listOf(SEG_UNCLS to entry.totalTokens) else segments.map { it.color to it.value }, Modifier.fillMaxWidth(), height = 10.dp)
+                    } else {
+                        IncompleteTrack(Modifier.fillMaxWidth())
+                    }
                     TextButton(onClick = { selectedModel = entry }, modifier = Modifier.heightIn(min = 48.dp)) { Text("用量组成", fontSize = 12.sp) }
                     Spacer(Modifier.height(8.dp))
                     ComponentLegend(segments)

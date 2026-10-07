@@ -283,6 +283,12 @@ class UsageAnalysisTest {
         assertEquals(period.totalTokens, models.sumOf { it.totalTokens }, 0.0)
         assertEquals(4.82, periodCost(period)!!, 1e-12)
         assertTrue(models.all { it.components.cacheReadKnown })
+        val opus = models.first { it.id == "opus-4.5" }
+        assertEquals(700_000.0, opus.components.cacheRead, 0.0)
+        assertTrue(opus.components.partial)
+        assertFalse(opus.components.complete)
+        assertNull(opus.components.cacheRate)
+        assertNotNull(models.first { it.id == "gpt-5.2" }.components.cacheRate)
         assertEquals(overview.trend.size, analyzeTrend(overview).size)
     }
 

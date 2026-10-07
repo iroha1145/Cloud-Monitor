@@ -58,8 +58,9 @@ class MotionCaptureTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val overview = instrumentation.context.assets.open("connection/overview.json").bufferedReader().use { it.readText() }
         val history = instrumentation.context.assets.open("connection/history_daily.json").bufferedReader().use { it.readText() }
+        val subscriptions = instrumentation.context.assets.open("connection/subscriptions.json").bufferedReader().use { it.readText() }
         val shots = File(instrumentation.targetContext.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
-        FixtureHub(overview, history).use { server ->
+        FixtureHub(overview, history, subscriptions).use { server ->
             compose.waitUntil(20_000) {
                 compose.onAllNodes(hasText("查看你的用量")).fetchSemanticsNodes().isNotEmpty()
             }
@@ -90,7 +91,22 @@ class MotionCaptureTest {
         Thread.sleep(1_200)
         saveShot(shots, "overview-$theme.png")
 
+        compose.onNodeWithTag("nav-Models").performClick()
+        compose.onNodeWithTag("screen-Models").performScrollToNode(hasText("opus-4.5"))
+        compose.waitForIdle()
+        Thread.sleep(700)
+        saveShot(shots, "models-$theme.png")
+
+        compose.onNodeWithTag("nav-Devices").performClick()
+        compose.waitForIdle()
+        Thread.sleep(700)
+        saveShot(shots, "devices-$theme.png")
+
         compose.onNodeWithTag("nav-History").performClick()
+        compose.waitForIdle()
+        Thread.sleep(700)
+        saveShot(shots, "history-$theme.png")
+
         compose.onNodeWithTag("screen-History").performScrollToNode(hasText("活动一览"))
         compose.waitForIdle()
         Thread.sleep(700)
@@ -212,7 +228,11 @@ class MotionCaptureTest {
         return context
     }
 
-    private class FixtureHub(private val overview: String, private val history: String) : Closeable {
+    private class FixtureHub(
+        private val overview: String,
+        private val history: String,
+        private val subscriptions: String,
+    ) : Closeable {
         private val closed = AtomicBoolean(false)
         private val listener = ServerSocket().apply {
             reuseAddress = true
@@ -259,7 +279,7 @@ class MotionCaptureTest {
                 !authorized -> """{"error":"synthetic test access denied"}"""
                 path == "/api/v1/tm/overview" -> overview
                 path == "/api/v1/tm/history/daily" -> history
-                path == "/api/v1/tm/subscriptions" -> """{"subscriptions":[]}"""
+                path == "/api/v1/tm/subscriptions" -> subscriptions
                 path == "/api/v1/tm/provider-status" -> """{"providers":[]}"""
                 else -> """{"error":"fixture endpoint unavailable"}"""
             }

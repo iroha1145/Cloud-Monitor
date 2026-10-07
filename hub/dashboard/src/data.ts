@@ -906,6 +906,79 @@ const PARTIAL_ERROR_NOTICE: Record<string, string> = {
   models_json_corrupt: "日归档的模型明细损坏。",
 };
 
+function localDay(now: Date): string {
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function renewalParts(value: string | null | undefined) {
+  const head = String(value ?? "").trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(head)) return null;
+  const [year, month, day] = head.split("-").map(Number);
+  const length = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (month < 1 || month > 12 || day < 1 || day > length) return null;
+  return { year, month, day };
+}
+
+function renewalText(parts: { year: number; month: number; day: number }): string {
+  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+function addRenewalMonths(
+  anchor: { year: number; month: number; day: number },
+  monthsToAdd: number,
+) {
+  const total = anchor.year * 12 + (anchor.month - 1) + monthsToAdd;
+  const year = Math.floor(total / 12);
+  const month = (total % 12) + 1;
+  const length = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return { year, month, day: Math.min(anchor.day, length) };
+}
+
+/** Same schedule as hub/tm-core subscriptionDisplay.nextRenewalDate. */
+export function nextRenewalDate(
+  subscription: {
+    kind?: string | null;
+    autoRenew?: boolean | null;
+    nextRenewalOverride?: string | null;
+    startDate?: string | null;
+    interval?: string | null;
+    intervalCount?: number | null;
+  },
+  today = localDay(new Date()),
+): string | null {
+  if (String(subscription.kind || "").toLowerCase() === "topup") return null;
+  if (subscription.autoRenew === false) return null;
+  const override = renewalParts(subscription.nextRenewalOverride);
+  const overrideText = override ? renewalText(override) : "";
+  if (overrideText && overrideText >= today) return overrideText;
+  const anchor = renewalParts(subscription.startDate);
+  const todayParts = renewalParts(today);
+  if (!anchor || !todayParts) return null;
+  const interval = String(subscription.interval || "").trim().toLowerCase();
+  const rawCount = Number(subscription.intervalCount);
+  const count = Number.isFinite(rawCount)
+    ? Math.max(1, Math.min(24, Math.round(rawCount)))
+    : 1;
+  const step = (interval === "year" ? 12 : 1) * count;
+  const monthsElapsed =
+    (todayParts.year - anchor.year) * 12 + (todayParts.month - anchor.month);
+  let periods = Math.max(0, Math.floor(monthsElapsed / step));
+  let candidate = renewalText(addRenewalMonths(anchor, periods * step));
+  while (candidate < today) {
+    periods += 1;
+    candidate = renewalText(addRenewalMonths(anchor, periods * step));
+  }
+  while (periods > 0) {
+    const previous = renewalText(addRenewalMonths(anchor, (periods - 1) * step));
+    if (previous < today) break;
+    periods -= 1;
+    candidate = previous;
+  }
+  return candidate;
+}
+
 export function normalizeOverview(
   payload: unknown,
   extras: OverviewExtras = {},
@@ -1185,7 +1258,17 @@ export function normalizeOverview(
       interval: text(item.interval, "month"),
       intervalCount: count(item.intervalCount) || 1,
       autoRenew: item.autoRenew !== false,
-      renewsAt: optionalText(item.nextRenewalOverride),
+      renewsAt: nextRenewalDate(
+        {
+          kind: item.kind === "topup" ? "topup" : "subscription",
+          autoRenew: item.autoRenew !== false,
+          nextRenewalOverride: optionalText(item.nextRenewalOverride),
+          startDate: optionalText(item.startDate),
+          interval: text(item.interval, "month"),
+          intervalCount: count(item.intervalCount) || 1,
+        },
+        localDay(now),
+      ),
       startDate: optionalText(item.startDate),
       topUpTotal:
         Array.isArray(item.topUps) &&

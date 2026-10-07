@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createDemoData,
+  nextRenewalDate,
   normalizeComponents,
   normalizeOverview,
   normalizePeriod,
@@ -659,6 +660,74 @@ test("account and subscription detail survives adaptation without exposing full 
   assert.equal(source.limits[0].accountEmail, "reviewer@example.invalid");
   assert.ok(!JSON.stringify(data).includes("account-1234567890"));
   assert.ok(!JSON.stringify(data).includes("reviewer@example.invalid"));
+});
+
+test("next renewal follows the start date unless a future override is set", () => {
+  assert.equal(
+    nextRenewalDate(
+      { startDate: "2026-01-15", interval: "month", autoRenew: true },
+      "2026-10-07",
+    ),
+    "2026-10-15",
+  );
+  assert.equal(
+    nextRenewalDate(
+      { startDate: "2026-01-31", interval: "month", autoRenew: true },
+      "2026-03-15",
+    ),
+    "2026-03-31",
+  );
+  assert.equal(
+    nextRenewalDate(
+      {
+        startDate: "2026-01-15",
+        interval: "month",
+        nextRenewalOverride: "2026-12-01",
+        autoRenew: true,
+      },
+      "2026-10-07",
+    ),
+    "2026-12-01",
+  );
+  assert.equal(
+    nextRenewalDate(
+      {
+        startDate: "2026-01-01",
+        interval: "month",
+        nextRenewalOverride: "2026-09-01",
+        autoRenew: true,
+      },
+      "2026-10-07",
+    ),
+    "2026-11-01",
+  );
+  assert.equal(
+    nextRenewalDate(
+      { startDate: "2026-01-15", interval: "month", autoRenew: false },
+      "2026-10-07",
+    ),
+    null,
+  );
+  const data = normalizeOverview(
+    { totals: { today: { totalTokens: 0 } }, generated_at: "2026-10-07T00:00:00Z" },
+    {
+      now: new Date("2026-10-07T12:00:00Z"),
+      subscriptions: {
+        subscriptions: [
+          {
+            id: "sub",
+            provider: "anthropic",
+            planName: "Claude Pro",
+            startDate: "2026-01-15",
+            interval: "month",
+            autoRenew: true,
+          },
+        ],
+      },
+    },
+  );
+  assert.equal(data.subscriptions[0].startDate, "2026-01-15");
+  assert.ok(data.subscriptions[0].renewsAt);
 });
 
 test("providerFor maps composer to Cursor, K3 to Kimi, glm-5.3-flash to GLM, and muse-spark to Meta", () => {

@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.iroha1145.cloudmonitor.data.*
@@ -285,8 +286,22 @@ private fun LedgerCell(figure: LedgerFigure, modifier: Modifier) {
         }
         Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (figure.syncDot) Box(Modifier.size(6.dp).background(cm.ok, CircleShape))
-            Text(figure.note, color = if (figure.noteOk) cm.okInk else cm.mute, fontSize = 11.sp, lineHeight = 16.sp)
+            LedgerNote(figure.note, if (figure.noteOk) cm.okInk else cm.mute, Modifier.weight(1f))
         }
+    }
+}
+
+/** The phrase after the separator wraps as a whole, the way CSS text-wrap: pretty avoids a one-character last line. */
+@Composable
+private fun LedgerNote(text: String, color: Color, modifier: Modifier = Modifier) {
+    val pieces = text.split(" · ", limit = 2)
+    if (pieces.size < 2) {
+        Text(text, modifier, color = color, fontSize = 11.sp, lineHeight = 16.sp)
+        return
+    }
+    FlowRow(modifier) {
+        Text("${pieces[0]} · ", color = color, fontSize = 11.sp, lineHeight = 16.sp, softWrap = false)
+        Text(pieces[1], color = color, fontSize = 11.sp, lineHeight = 16.sp, softWrap = false, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

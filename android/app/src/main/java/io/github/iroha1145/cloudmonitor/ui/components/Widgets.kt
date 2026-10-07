@@ -448,6 +448,28 @@ fun NumberTicker(
     }
 }
 
+/** Hatched meter used when a composition does not close, matching the web incomplete cache track. */
+@Composable
+fun IncompleteTrack(modifier: Modifier = Modifier, height: Dp = 10.dp) {
+    val stripe = CmColorsCurrent.borderStrong
+    val fill = CmColorsCurrent.card
+    Canvas(
+        modifier
+            .fillMaxWidth()
+            .height(height)
+            .clip(RoundedCornerShape(5.dp))
+            .background(fill),
+    ) {
+        val thickness = 3.dp.toPx()
+        val gap = 3.dp.toPx()
+        var start = -size.height
+        while (start < size.width) {
+            drawLine(stripe, Offset(start, size.height), Offset(start + size.height * 0.6f, 0f), thickness)
+            start += thickness + gap
+        }
+    }
+}
+
 @Composable
 fun MixBar(
     parts: List<Pair<Color, Double>>,

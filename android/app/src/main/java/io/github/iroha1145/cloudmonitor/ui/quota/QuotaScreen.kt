@@ -295,7 +295,11 @@ private fun SubscriptionCard(subscription: Subscription) {
             if (!allTopupsKnown) Text("部分充值金额缺失，暂不显示累计金额。", color = cm.warnInk, style = MaterialTheme.typography.bodySmall)
         } else {
             Text("开始日期 · ${subscription.startDate?.take(10) ?: "未提供"}", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
-            Text("下次续费 · ${subscription.nextRenewalOverride?.take(10) ?: "未提供"}", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+            val renewal = nextRenewalDate(
+                subscription.kind, subscription.autoRenew, subscription.nextRenewalOverride,
+                subscription.startDate, subscription.interval, subscription.intervalCount,
+            )
+            Text("下次续订 · ${renewal ?: "未提供"}", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
         }
         subscription.endDate?.let { Text("结束日期 · ${it.take(10)}", color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
         val binding = listOfNotNull(subscription.binding?.profileName, subscription.binding?.accountEmail?.let(Format::maskEmail), subscription.binding?.accountKey?.let(Format::truncateKey)).filter { it.isNotBlank() }.joinToString(" · ")

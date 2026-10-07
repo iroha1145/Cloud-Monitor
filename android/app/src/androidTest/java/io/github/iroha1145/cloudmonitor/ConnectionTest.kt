@@ -56,7 +56,8 @@ class ConnectionTest {
             connect()
 
             waitForText("密钥不正确，请重新输入。")
-            compose.onNodeWithText("密钥不正确，请重新输入。").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithTag("gate-error").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("密钥不正确，请重新输入。").assertIsDisplayed()
             compose.onNodeWithTag("usage-summary").assertDoesNotExist()
             assertEquals("The actual HTTP endpoint must reject the wrong key", 1, server.rejectedOverview.get())
             assertFalse(readSession().signedIn)
@@ -121,8 +122,10 @@ class ConnectionTest {
 
     private fun assertFixtureSummary() {
         val inSummary = hasAnyAncestor(hasTestTag("usage-summary"))
-        compose.onNode(hasText("184.6万") and inSummary).assertIsDisplayed()
-        compose.onNode(hasText("\$4.82") and inSummary).assertIsDisplayed()
+        compose.onNode(hasText("184.6") and inSummary).assertIsDisplayed()
+        compose.onNode(hasText("万") and inSummary).assertIsDisplayed()
+        compose.onNode(hasText("$") and inSummary).assertIsDisplayed()
+        compose.onNode(hasText("4.82") and inSummary).assertIsDisplayed()
     }
 
     private fun readSession(): SessionStore = SessionStore(debugContext()).apply { ensureSecrets() }

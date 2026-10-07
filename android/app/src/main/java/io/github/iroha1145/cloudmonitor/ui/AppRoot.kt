@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
@@ -44,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
@@ -497,24 +499,58 @@ private fun IconSwap(dark: Boolean, description: String) {
 @Composable
 private fun WorkspaceNotices(notices: List<String>, open: Boolean) {
     val cm = CmColorsCurrent
+    val reduced = LocalReducedMotion.current
     var expanded by rememberSaveable { mutableStateOf(open) }
-    Column {
-        TextButton(onClick = { expanded = !expanded }, modifier = Modifier.heightIn(min = 48.dp)) {
-            Text(if (open && expanded) "数据刷新未完成" else "${notices.size} 项数据与同步提示", color = cm.ink2, fontSize = 13.sp)
+    LaunchedEffect(open) { if (open) expanded = true }
+    val title = if (open) "数据刷新未完成" else "${notices.size} 项数据与同步提示"
+    val color = if (expanded) cm.ink else cm.ink2
+    Column(Modifier.testTag("workspace-notices")) {
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .clickable(onClickLabel = if (expanded) "收起" else "展开") { expanded = !expanded }
+                .heightIn(min = 44.dp)
+                .padding(end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            DisclosureTriangle(expanded, color, reduced)
+            Text(title, color = color, fontSize = 13.sp, lineHeight = 28.sp)
         }
         AnimatedVisibility(
             expanded,
-            enter = fadeIn(tween(Motion.Fast, easing = EaseSmoothOut)) +
-                expandVertically(tween(Motion.Fast, easing = EaseSmoothOut)),
-            exit = fadeOut(tween(Motion.Fast, easing = EaseSmoothOut)) +
-                shrinkVertically(tween(Motion.Fast, easing = EaseSmoothOut)),
+            enter = fadeIn(tween(if (reduced) 0 else Motion.Fast, easing = EaseSmoothOut)) +
+                expandVertically(tween(if (reduced) 0 else Motion.Fast, easing = EaseSmoothOut)),
+            exit = fadeOut(tween(if (reduced) 0 else Motion.Fast, easing = EaseSmoothOut)) +
+                shrinkVertically(tween(if (reduced) 0 else Motion.Fast, easing = EaseSmoothOut)),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.padding(start = 18.dp, top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 notices.forEach { notice ->
-                    Text(notice, color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("•", color = cm.ink2, fontSize = 13.sp, lineHeight = 23.sp)
+                        Text(notice, Modifier.weight(1f), color = cm.ink2, fontSize = 13.sp, lineHeight = 23.sp)
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun DisclosureTriangle(expanded: Boolean, color: Color, reduced: Boolean) {
+    val turn by animateFloatAsState(
+        if (expanded) 90f else 0f,
+        tween(if (reduced) 0 else Motion.Fast, easing = EaseSmoothOut),
+        label = "notice-triangle",
+    )
+    Canvas(Modifier.size(width = 7.dp, height = 9.dp).graphicsLayer { rotationZ = turn }) {
+        val path = Path().apply {
+            moveTo(0f, 0f)
+            lineTo(size.width, size.height / 2f)
+            lineTo(0f, size.height)
+            close()
+        }
+        drawPath(path, color)
     }
 }
 

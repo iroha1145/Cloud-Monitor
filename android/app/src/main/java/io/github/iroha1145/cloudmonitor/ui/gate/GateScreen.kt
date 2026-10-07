@@ -132,7 +132,7 @@ fun GateScreen(
                 )
                 if (hasError) {
                     Text(state.gateError.orEmpty(), color = cm.crit, fontSize = 13.sp,
-                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                        modifier = Modifier.testTag("gate-error").semantics { liveRegion = LiveRegionMode.Polite })
                 }
                 if (state.hubUrl.trim().startsWith("http://", ignoreCase = true)) {
                     Text("未加密连接仅支持本机和局域网。公网地址请使用 HTTPS。", color = cm.warnInk, style = MaterialTheme.typography.bodySmall)
