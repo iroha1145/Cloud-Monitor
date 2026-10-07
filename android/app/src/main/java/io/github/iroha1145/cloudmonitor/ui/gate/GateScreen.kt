@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalFocusManager
@@ -144,6 +145,7 @@ fun GateScreen(
                         checked = state.rememberToken && state.encryptionAvailable,
                         onCheckedChange = { if (state.encryptionAvailable) onRemember(it) },
                         enabled = state.encryptionAvailable && !state.loading,
+                        modifier = Modifier.testTag("remember-token"),
                     )
                     Text(
                         "记住访问密钥",

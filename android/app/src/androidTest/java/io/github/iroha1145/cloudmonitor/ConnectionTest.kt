@@ -61,6 +61,7 @@ class ConnectionTest {
             assertEquals("The actual HTTP endpoint must reject the wrong key", 1, server.rejectedOverview.get())
             assertFalse(readSession().signedIn)
 
+            compose.onNodeWithTag("remember-token").performScrollTo().assertIsOff().performClick()
             compose.onNode(hasText("访问密钥") and hasSetTextAction())
                 .performScrollTo().performTextReplacement(TEST_ACCESS_TOKEN)
             connect()
@@ -134,7 +135,7 @@ class ConnectionTest {
         store.hubUrl = ""
         // Commit the metadata before launch; keep keystore/keyset material intact.
         check(context.getSharedPreferences("cm_session_meta", Context.MODE_PRIVATE).edit()
-            .putBoolean("signed_in", false).putBoolean("demo", false).putString("hub_url", "").commit())
+            .putBoolean("signed_in", false).putBoolean("demo", false).putBoolean("remember_token", false).putString("hub_url", "").commit())
     }
 
     private fun debugContext(): Context {
