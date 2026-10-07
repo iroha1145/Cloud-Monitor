@@ -132,7 +132,7 @@ private fun DeviceCard(device: Device, overview: Overview, status: DeviceStatus)
                     DeviceStatus.Offline -> cm.crit
                 }, fontSize = 11.sp, lineHeight = 15.sp)
             }
-            Text("最近上报 ${Format.relTime(device.receivedAt).ifBlank { "未提供" }}", color = cm.ink2, fontSize = 11.sp, lineHeight = 15.sp)
+            Text(Format.relativeSync(device.receivedAt ?: device.updatedAt, overview.generatedAt), color = cm.ink2, fontSize = 11.sp, lineHeight = 15.sp)
         }
         Spacer(Modifier.height(13.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -215,7 +215,6 @@ private fun SummaryPanel(state: UiState, page: PageState) {
                     number = components.cacheRate?.let { Format.fmtPct(it).removeSuffix("%") } ?: "未提供",
                     unit = if (components.cacheRate != null) "%" else "",
                     note = if (components.cacheReadKnown) "${Format.fmtCompact(components.cacheRead)} 缓存读取" else "等待来源提供缓存数据",
-                    noteOk = components.cacheReadKnown,
                     duration = Motion.TickerLedger,
                     stagger = Motion.TickerStagger,
                 ),

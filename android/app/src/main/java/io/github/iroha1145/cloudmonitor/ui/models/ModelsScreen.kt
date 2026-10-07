@@ -98,35 +98,24 @@ fun LazyListScope.modelsItems(
                         }
                     }
                     Spacer(Modifier.height(12.dp))
-                    val metrics = listOf(
-                        "词元用量" to Format.fmtCompact(entry.totalTokens),
-                        "估算费用" to (entry.costUsd?.let(Format::fmtUsd) ?: "未提供"),
-                        "缓存读取" to if (data.cacheReadKnown) Format.fmtCompact(data.cacheRead) else "未提供",
-                        "缓存占比" to cacheValue,
-                    )
-                    val columns = if (LocalDensity.current.fontScale > 1.5f) 1 else 2
+                    val readValue = if (data.cacheReadKnown) Format.fmtCompact(data.cacheRead) else "未提供"
+                    val wide = LocalDensity.current.fontScale <= 1.5f
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        metrics.chunked(columns).forEach { row ->
+                        if (wide) {
                             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                row.forEach { (label, value) ->
-                                    ModelMetric(label, value, Modifier.weight(1f),
-                                        color = if (label == "缓存占比" && data.cacheRate != null) cm.okInk else cm.ink)
-                                }
+                                ModelMetric("词元用量", Format.fmtCompact(entry.totalTokens), Modifier.weight(1f))
+                                ModelMetric("估算费用", entry.costUsd?.let(Format::fmtUsd) ?: "未提供", Modifier.weight(1f))
                             }
+                            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                ModelMetric("缓存读取", readValue, Modifier.weight(1f))
+                                CacheRateMetric(data, cacheValue, segments, Modifier.weight(1f))
+                            }
+                        } else {
+                            ModelMetric("词元用量", Format.fmtCompact(entry.totalTokens))
+                            ModelMetric("估算费用", entry.costUsd?.let(Format::fmtUsd) ?: "未提供")
+                            ModelMetric("缓存读取", readValue)
+                            CacheRateMetric(data, cacheValue, segments, Modifier.fillMaxWidth())
                         }
-                    }
-                    if (data.partial) {
-                        Text(
-                            if (data.cacheReadKnown) "已识别部分" else "组成未知",
-                            color = cm.mute, fontSize = 11.sp, lineHeight = 16.sp,
-                            modifier = Modifier.padding(top = 8.dp),
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    if (data.complete) {
-                        MixBar(if (segments.isEmpty()) listOf(SEG_UNCLS to entry.totalTokens) else segments.map { it.color to it.value }, Modifier.fillMaxWidth(), height = 10.dp)
-                    } else {
-                        IncompleteTrack(Modifier.fillMaxWidth())
                     }
                     TextButton(onClick = { selectedModel = entry }, modifier = Modifier.heightIn(min = 48.dp)) { Text("用量组成", fontSize = 12.sp) }
                     Spacer(Modifier.height(8.dp))
@@ -156,5 +145,28 @@ private fun ModelMetric(label: String, value: String, modifier: Modifier = Modif
         Text(label, color = CmColorsCurrent.ink2, fontSize = 11.sp, lineHeight = 15.sp)
         Text(value, color = color, fontSize = if (summary) 21.sp else 14.sp,
             lineHeight = if (summary) 27.sp else 20.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+/** Bar, percentage, then the partial caption, in the same order as the web cache cell. */
+@Composable
+private fun CacheRateMetric(
+    data: io.github.iroha1145.cloudmonitor.data.UsageComponents,
+    value: String,
+    segments: List<io.github.iroha1145.cloudmonitor.data.TokenSeg>,
+    modifier: Modifier = Modifier,
+) {
+    val cm = CmColorsCurrent
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("缓存占比", color = cm.ink2, fontSize = 11.sp, lineHeight = 15.sp)
+        if (data.complete) {
+            MixBar(if (segments.isEmpty()) listOf(SEG_UNCLS to 1.0) else segments.map { it.color to it.value }, Modifier.fillMaxWidth(), height = 10.dp)
+        } else {
+            IncompleteTrack(Modifier.fillMaxWidth())
+        }
+        Text(value, color = if (data.cacheRate != null) cm.okInk else cm.ink, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium)
+        if (data.partial) {
+            Text(if (data.cacheReadKnown) "已识别部分" else "组成未知", color = cm.mute, fontSize = 11.sp, lineHeight = 16.sp)
+        }
     }
 }

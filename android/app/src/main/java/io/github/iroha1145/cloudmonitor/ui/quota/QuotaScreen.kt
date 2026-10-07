@@ -276,30 +276,46 @@ private fun SubscriptionCard(subscription: Subscription) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             ClientLogo(subscription.provider, size = 24.dp)
             Text(Format.fmtProvider(subscription.provider), color = cm.ink2, fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.weight(1f))
+            Text(
+                if (topup) "充值台账" else if (subscription.autoRenew) "自动续订" else "手动续订",
+                color = if (!topup && subscription.autoRenew) cm.okInk else cm.ink2,
+                fontSize = 11.sp, lineHeight = 16.sp,
+            )
         }
         Spacer(Modifier.height(12.dp))
         Text(subscription.planName ?: "未命名订阅", color = cm.ink, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold)
-        Text(if (topup) "充值台账" else if (subscription.autoRenew) "自动续费" else "手动续费", color = if (!topup && subscription.autoRenew) cm.okInk else cm.ink2, fontSize = 11.sp, lineHeight = 16.sp)
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
         val knownTopups = subscription.topUps.mapNotNull { it.amountMinor }
         val allTopupsKnown = knownTopups.size == subscription.topUps.size
         val value = if (topup) {
             if (allTopupsKnown && knownTopups.isNotEmpty()) Format.fmtMoney(knownTopups.sum(), subscription.currency) else "未提供"
         } else subscription.amountMinor?.let { Format.fmtMoney(it, subscription.currency) } ?: "未提供"
-        QuotaMetric(if (topup) "累计充值" else "订阅费用", value)
-        if (!topup) Text(Format.billingInterval(subscription.interval, subscription.intervalCount), color = cm.ink2, style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.height(12.dp))
         if (topup) {
+            QuotaMetric("累计充值", value)
+            Spacer(Modifier.height(12.dp))
             Text("充值记录 ${subscription.topUps.size} 笔", color = cm.ink2, style = MaterialTheme.typography.bodyMedium)
             subscription.topUps.mapNotNull { it.date }.maxOrNull()?.let { Text("最近充值 ${it.take(10)}", color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
             if (!allTopupsKnown) Text("部分充值金额缺失，暂不显示累计金额。", color = cm.warnInk, style = MaterialTheme.typography.bodySmall)
         } else {
-            Text("开始日期 · ${subscription.startDate?.take(10) ?: "未提供"}", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(value, color = cm.ink, fontSize = 21.sp, lineHeight = 27.sp, fontWeight = FontWeight.SemiBold)
+                Text(Format.subscriptionCadence(subscription.interval, subscription.intervalCount), color = cm.ink2, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.padding(bottom = 2.dp))
+            }
+            Spacer(Modifier.height(12.dp))
             val renewal = nextRenewalDate(
                 subscription.kind, subscription.autoRenew, subscription.nextRenewalOverride,
                 subscription.startDate, subscription.interval, subscription.intervalCount,
             )
-            Text("下次续订 · ${renewal ?: "未提供"}", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("开始日期", color = cm.ink2, fontSize = 11.sp, lineHeight = 15.sp)
+                    Text(subscription.startDate?.take(10) ?: "未提供", color = cm.ink, fontSize = 14.sp, lineHeight = 20.sp)
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("下次续订", color = cm.ink2, fontSize = 11.sp, lineHeight = 15.sp)
+                    Text(renewal ?: "未提供", color = cm.ink, fontSize = 14.sp, lineHeight = 20.sp)
+                }
+            }
         }
         subscription.endDate?.let { Text("结束日期 · ${it.take(10)}", color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
         val binding = listOfNotNull(subscription.binding?.profileName, subscription.binding?.accountEmail?.let(Format::maskEmail), subscription.binding?.accountKey?.let(Format::truncateKey)).filter { it.isNotBlank() }.joinToString(" · ")
