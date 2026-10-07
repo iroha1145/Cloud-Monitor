@@ -390,7 +390,12 @@ fun NumberTicker(
 ) {
     val reduced = LocalReducedMotion.current
     val density = LocalDensity.current
+    val digitStyle = style.copy(
+        lineHeight = style.fontSize,
+        platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false),
+    )
     val digitHeight = with(density) { (style.fontSize.value * 1.1f).sp.toPx() }
+    val cell = with(density) { digitHeight.toDp() }
     var entered by remember { mutableStateOf(false) }
     Row(
         modifier.semantics {
@@ -413,12 +418,14 @@ fun NumberTicker(
                 Box(
                     Modifier
                         .clearAndSetSemantics { }
-                        .height(with(density) { digitHeight.toDp() })
+                        .height(cell)
                         .clip(RoundedCornerShape(0.dp)),
                 ) {
                     Column(Modifier.graphicsLayer { translationY = -digit * digitHeight * progress.value }) {
                         (0..9).forEach { n ->
-                            Text(n.toString(), color = color, style = style)
+                            Box(Modifier.height(cell), contentAlignment = Alignment.Center) {
+                                Text(n.toString(), color = color, style = digitStyle)
+                            }
                         }
                     }
                 }

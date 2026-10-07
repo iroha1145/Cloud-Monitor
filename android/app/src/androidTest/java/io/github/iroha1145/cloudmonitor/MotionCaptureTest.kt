@@ -87,7 +87,7 @@ class MotionCaptureTest {
         compose.onNodeWithTag("nav-Overview").performClick()
         compose.onNodeWithTag("screen-Overview").performScrollToNode(hasTestTag("usage-summary"))
         compose.waitForIdle()
-        Thread.sleep(700)
+        Thread.sleep(1_200)
         saveShot(shots, "overview-$theme.png")
 
         compose.onNodeWithTag("nav-History").performClick()
