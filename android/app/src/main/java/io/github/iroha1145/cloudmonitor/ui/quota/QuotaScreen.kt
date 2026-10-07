@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import io.github.iroha1145.cloudmonitor.data.*
 import io.github.iroha1145.cloudmonitor.ui.components.ClientLogo
 import io.github.iroha1145.cloudmonitor.ui.components.EmptyHint
+import io.github.iroha1145.cloudmonitor.ui.components.MeterBar
 import io.github.iroha1145.cloudmonitor.ui.components.Panel
 import io.github.iroha1145.cloudmonitor.ui.components.PanelHead
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
@@ -72,9 +73,9 @@ private fun QuotaContent(state: UiState) {
         else BoxWithConstraints(Modifier.fillMaxWidth()) {
             val columns = if (maxWidth >= 740.dp && fontScale <= 1.35f) 2 else 1
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                limits.chunked(columns).forEach { group ->
+                limits.mapIndexed { index, provider -> index to provider }.chunked(columns).forEach { group ->
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        group.forEach { provider -> Box(Modifier.weight(1f)) { ProviderQuota(provider, overview, zone) } }
+                        group.forEach { (index, provider) -> Box(Modifier.weight(1f)) { ProviderQuota(provider, overview, zone, index) } }
                         if (group.size < columns) Spacer(Modifier.weight(1f))
                     }
                 }
@@ -105,7 +106,7 @@ private fun QuotaContent(state: UiState) {
 }
 
 @Composable
-private fun ProviderQuota(provider: LimitProvider, overview: Overview?, zone: String?) {
+private fun ProviderQuota(provider: LimitProvider, overview: Overview?, zone: String?, cardIndex: Int) {
     val cm = CmColorsCurrent
     val statusText = quotaGroupStatus(provider)
     val balance = providerBalance(provider)
@@ -139,7 +140,7 @@ private fun ProviderQuota(provider: LimitProvider, overview: Overview?, zone: St
                 HorizontalDivider(color = cm.border)
                 Spacer(Modifier.height(13.dp))
             }
-            QuotaWindow(window, provider, overview?.generatedAt, zone)
+            QuotaWindow(window, provider, overview?.generatedAt, zone, cardIndex)
         }
         QuotaExtras(provider, zone)
         Spacer(Modifier.height(16.dp))
@@ -156,7 +157,7 @@ private fun ProviderQuota(provider: LimitProvider, overview: Overview?, zone: St
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun QuotaWindow(window: LimitWindow, provider: LimitProvider, generatedAt: String?, zone: String?) {
+private fun QuotaWindow(window: LimitWindow, provider: LimitProvider, generatedAt: String?, zone: String?, cardIndex: Int) {
     val cm = CmColorsCurrent
     val used = window.used?.takeIf { it.isFinite() && it >= 0 }
     val remaining = window.remaining?.takeIf { it.isFinite() && it >= 0 }
@@ -166,7 +167,7 @@ private fun QuotaWindow(window: LimitWindow, provider: LimitProvider, generatedA
     val percent = (explicitPercent ?: derived)?.coerceIn(0.0, 100.0)
     val metric = window.metric.orEmpty().lowercase()
     val currency = window.currency ?: if (metric == "spend") "USD" else null
-    val color = when { percent == null -> cm.ink2; percent >= 90 -> cm.crit; percent >= 75 -> cm.warnInk; else -> cm.brand }
+    val color = quotaBarColor(cardIndex, percent)
     val label = window.label ?: window.name ?: window.window ?: window.kind ?: "使用额度"
     val headline = quotaHeadline(window, provider)
     val boundary = quotaBoundaryLabel(window.boundaryKind)
@@ -178,10 +179,7 @@ private fun QuotaWindow(window: LimitWindow, provider: LimitProvider, generatedA
         }
         if (window.showMeter && percent != null && metric != "balance") {
             val progress = (percent / 100).toFloat()
-            Box(Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(4.dp)).background(cm.inset)
-                .semantics { progressBarRangeInfo = ProgressBarRangeInfo(progress, 0f..1f) }) {
-                Box(Modifier.fillMaxWidth(progress).fillMaxHeight().clip(RoundedCornerShape(4.dp)).background(color))
-            }
+            MeterBar(progress, color, cm.border, Modifier.semantics { progressBarRangeInfo = ProgressBarRangeInfo(progress, 0f..1f) })
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (explicitPercent != null) Text("剩余 ${percentText(100.0 - explicitPercent.coerceIn(0.0, 100.0))}", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
@@ -229,7 +227,7 @@ private fun QuotaExtras(provider: LimitProvider, zone: String?) {
             AnimatedVisibility(
                 open,
                 enter = fadeIn(tween(Motion.Fast, easing = EaseSmoothOut)) + expandVertically(tween(Motion.Fast, easing = EaseSmoothOut)),
-                exit = fadeOut(tween(Motion.Quick, easing = EaseSmoothOut)) + shrinkVertically(tween(Motion.Quick, easing = EaseSmoothOut)),
+                exit = fadeOut(tween(Motion.Fast, easing = EaseSmoothOut)) + shrinkVertically(tween(Motion.Fast, easing = EaseSmoothOut)),
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     reset?.grants?.forEachIndexed { index, grant ->

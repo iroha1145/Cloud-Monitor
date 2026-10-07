@@ -17,6 +17,22 @@ val SEG_CACHE_READ = Color(0xFF25A878)
 val SEG_CACHE_WRITE = Color(0xFFB393C5)
 val SEG_UNCLS = Color(0xFFB4BECF)
 
+/** Quota meters use the same five colours in both themes. */
+val QUOTA_1 = Color(0xFF27847F)
+val QUOTA_2 = Color(0xFF428AB5)
+val QUOTA_3 = Color(0xFFB78246)
+val QUOTA_WARNING = Color(0xFFDBA54A)
+val QUOTA_DANGER = Color(0xFFCB7065)
+
+/** Cards rotate the first three colours; 75% and 90% replace them. */
+fun quotaBarColor(cardIndex: Int, percent: Double?): Color = when {
+    percent != null && percent >= 90.0 -> QUOTA_DANGER
+    percent != null && percent >= 75.0 -> QUOTA_WARNING
+    cardIndex % 3 == 1 -> QUOTA_2
+    cardIndex % 3 == 2 -> QUOTA_3
+    else -> QUOTA_1
+}
+
 private val PALETTE_SPREAD = intArrayOf(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
 
 /**
@@ -59,8 +75,8 @@ data class TokenSeg(val key: String, val label: String, val color: Color, val va
 
 /** The numeric analysis stays independent of Compose; this is its chart adapter. */
 fun componentSegments(parts: UsageComponents): List<TokenSeg> = listOf(
-    TokenSeg("input", "非缓存输入", SEG_INPUT, parts.input),
     TokenSeg("cacheRead", "缓存读取", SEG_CACHE_READ, parts.cacheRead),
+    TokenSeg("input", "非缓存输入", SEG_INPUT, parts.input),
     TokenSeg("output", "输出", SEG_OUTPUT, parts.output),
     TokenSeg("cacheWrite", "缓存写入", SEG_CACHE_WRITE, parts.cacheWrite),
     TokenSeg("unclassified", if (parts.known) "未分类" else "组成未知", SEG_UNCLS, parts.unclassified),

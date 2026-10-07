@@ -44,6 +44,11 @@ class HubClientTest {
             "证书校验失败，请确认面板使用受信任的 HTTPS 证书",
             HubClient.connectionFailureMessage(java.io.IOException(SSLHandshakeException("nested"))),
         )
-        assertEquals("无法连接服务器", HubClient.connectionFailureMessage(java.io.IOException("refused")))
+        assertEquals("网络连接失败，请检查服务是否可用。", HubClient.connectionFailureMessage(java.io.IOException("refused")))
+        assertEquals("服务响应超时，请稍后重试。", HubClient.connectionFailureMessage(java.net.SocketTimeoutException("slow")))
+        assertEquals("访问密钥不正确，或没有读取权限。", HubClient.httpStatusMessage(401))
+        assertEquals("访问密钥不正确，或没有读取权限。", HubClient.httpStatusMessage(403))
+        assertEquals("服务尚未启用该数据接口。", HubClient.httpStatusMessage(404))
+        assertEquals("暂时无法获取数据（500），请稍后重试。", HubClient.httpStatusMessage(500))
     }
 }

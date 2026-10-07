@@ -94,7 +94,7 @@ class SessionStore(context: Context) {
 
     /** When false, a successful login stays in memory and the encrypted token is removed. */
     var rememberToken: Boolean
-        get() = metaPrefs().getBoolean(KEY_REMEMBER, true)
+        get() = metaPrefs().getBoolean(KEY_REMEMBER, false)
         set(value) = metaPrefs().edit().putBoolean(KEY_REMEMBER, value).apply()
 
     var darkOverride: String?
@@ -104,7 +104,7 @@ class SessionStore(context: Context) {
             else metaPrefs().edit().putString(KEY_THEME, value).apply()
         }
 
-    fun persistSession(demoMode: Boolean, accessToken: String, rememberAccessToken: Boolean = true) {
+    fun persistSession(demoMode: Boolean, accessToken: String, rememberAccessToken: Boolean = false) {
         ensureSecrets()
         demo = demoMode
         if (!demoMode) rememberToken = rememberAccessToken

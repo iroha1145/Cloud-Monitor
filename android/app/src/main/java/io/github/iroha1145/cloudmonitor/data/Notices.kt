@@ -28,6 +28,8 @@ fun workspaceNotices(
     providersFailed: Boolean = false,
     historyFailed: Boolean = false,
     staleData: Boolean = false,
+    historyCostRetained: Boolean = false,
+    historyComponentsRetained: Boolean = false,
 ): List<String> {
     val notices = mutableListOf<String>()
     var specificPartial = false
@@ -83,5 +85,15 @@ fun workspaceNotices(
     if (subscriptionsFailed && overview.features.subscriptions) notices += "订阅信息暂时未能加载。"
     if (providersFailed && overview.features.providerStatus) notices += "提供商状态暂时未能加载。"
     if (historyFailed && overview.features.historyDaily) notices += "每日费用明细暂时未能加载。"
+    if (historyCostRetained) notices += "部分日期费用暂时读不到，先沿用上次的费用。"
+    if (historyComponentsRetained) notices += "部分日期缓存组成暂时读不到，先沿用上次的组成。"
+    overview.devices.forEach { device ->
+        val name = device.hostname?.takeIf { it.isNotBlank() } ?: "未命名设备"
+        when (deviceStatus(device, overview)) {
+            DeviceStatus.Delayed -> notices += "$name 上报有延迟，请检查设备端连接。"
+            DeviceStatus.Offline -> notices += "$name 当前离线，已保留最近一次用量。"
+            DeviceStatus.Online -> Unit
+        }
+    }
     return notices
 }

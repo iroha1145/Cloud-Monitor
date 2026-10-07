@@ -36,13 +36,19 @@ fun LazyListScope.modelsItems(
         var query by page.query
         var sortCost by page.sortCost
         val allModels = remember(per) { modelUsage(per) }
+        var selectedModel by remember { mutableStateOf<UsageEntity?>(null) }
         val visible = remember(allModels, query, sortCost) {
             allModels.filter { it.name.contains(query.trim(), ignoreCase = true) }
                 .sortedByDescending { if (sortCost) it.costUsd ?: -1.0 else it.totalTokens }
         }
         val cm = CmColorsCurrent
         Panel(Modifier.padding(bottom = 16.dp)) {
-            PanelHead("模型用量", "了解每个模型的消耗与缓存情况", trailing = { PeriodSeg(state.modelPeriod, onPeriod) })
+            PanelHead("模型用量", "了解每个模型的消耗与缓存情况", trailing = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ExportModelsButton(per, state.modelPeriod.label)
+                    PeriodSeg(state.modelPeriod, onPeriod)
+                }
+            })
             Spacer(Modifier.height(14.dp))
             if (LocalDensity.current.fontScale > 1.5f) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -93,11 +99,13 @@ fun LazyListScope.modelsItems(
                     }
                     Spacer(Modifier.height(12.dp))
                     MixBar(if (segments.isEmpty()) listOf(SEG_UNCLS to entry.totalTokens) else segments.map { it.color to it.value }, Modifier.fillMaxWidth())
+                    TextButton(onClick = { selectedModel = entry }, modifier = Modifier.heightIn(min = 48.dp)) { Text("用量组成", fontSize = 12.sp) }
                     Spacer(Modifier.height(8.dp))
                     ComponentLegend(segments)
                 }
                 if (index != visible.lastIndex) HorizontalDivider(color = cm.border)
             }
+            ModelDetailDialog(selectedModel) { selectedModel = null }
         }
     }
     val matrixPer = ov.totals.period(state.mxPeriod.key)

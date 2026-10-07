@@ -89,14 +89,14 @@ class HubClient(
             resp.use { r ->
                 val body = r.body?.string().orEmpty()
                 if (!r.isSuccessful) {
-                    throw ApiException(r.code, extractApiError(body) ?: "请求失败 ${r.code}")
+                    throw ApiException(r.code, httpStatusMessage(r.code))
                 }
                 return try {
                     json.decodeFromString<T>(body)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
-                    throw ApiException(r.code, "响应无法解析")
+                    throw ApiException(r.code, "服务返回格式异常，请稍后重试。")
                 }
             }
         } finally {
@@ -108,8 +108,9 @@ class HubClient(
         fun defaultClient(): OkHttpClient =
             OkHttpClient.Builder()
                 .connectTimeout(15, TimeUnit.SECONDS)
-                .readTimeout(25, TimeUnit.SECONDS)
+                .readTimeout(15, TimeUnit.SECONDS)
                 .writeTimeout(15, TimeUnit.SECONDS)
+                .callTimeout(15, TimeUnit.SECONDS)
                 .addNetworkInterceptor { chain ->
                     val url = chain.request().url
                     if (url.scheme.equals("http", ignoreCase = true)) {
@@ -141,15 +142,23 @@ class HubClient(
             return s
         }
 
+        internal fun httpStatusMessage(status: Int): String = when (status) {
+            401, 403 -> "访问密钥不正确，或没有读取权限。"
+            404 -> "服务尚未启用该数据接口。"
+            else -> "暂时无法获取数据（$status），请稍后重试。"
+        }
+
         internal fun connectionFailureMessage(error: Throwable): String {
+            var timeout = false
             var cur: Throwable? = error
             while (cur != null) {
                 if (cur is SSLHandshakeException) {
                     return "证书校验失败，请确认面板使用受信任的 HTTPS 证书"
                 }
+                if (cur is java.net.SocketTimeoutException || cur is java.io.InterruptedIOException) timeout = true
                 cur = cur.cause
             }
-            return "无法连接服务器"
+            return if (timeout) "服务响应超时，请稍后重试。" else "网络连接失败，请检查服务是否可用。"
         }
 
         /** 对齐网页 `data.detail || data.error`；FastAPI 的 detail 数组抽 `msg`。 */

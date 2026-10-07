@@ -1,5 +1,6 @@
 package io.github.iroha1145.cloudmonitor.ui.theme
 
+import io.github.iroha1145.cloudmonitor.data.cellEnterDelayMs
 import android.graphics.RenderEffect as AndroidRenderEffect
 import android.graphics.Shader
 import android.provider.Settings
@@ -42,6 +43,11 @@ val LocalReducedMotion = compositionLocalOf { false }
 val EaseSmoothOut: Easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
 val EaseBounce: Easing = CubicBezierEasing(0.34f, 1.36f, 0.64f, 1f)
 val EaseInOut: Easing = CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
+/** Number ticker curve from hub/dashboard `ease.ts`. */
+val EaseTicker: Easing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
+
+/** False until the signed-in page has changed once, so the first screen stays still. */
+val LocalAfterNavigation = compositionLocalOf { false }
 
 object Motion {
     const val Stagger = 40
@@ -55,6 +61,14 @@ object Motion {
     const val Draw = Fast
     const val Digit = VerySlow
     const val Gate = Quick
+    const val CellStagger = 14
+    const val TickerLedger = 450
+    const val TickerOnline = 400
+    const val TickerStaggerTight = 15
+    const val TickerStagger = 40
+    const val ToastDwell = 4200
+    const val ToastEnter = Medium
+    const val ToastExit = Fast
 }
 
 @Composable
@@ -104,7 +118,7 @@ fun GraphicsLayerScope.applyEnterBlur(progress: Float, maxSigmaPx: Float) {
 @Composable
 fun Modifier.riseIn(index: Int, replayKey: Any = Unit): Modifier {
     val reduced = LocalReducedMotion.current
-    if (reduced) return this
+    if (reduced || !LocalAfterNavigation.current) return this
     val progress = remember(replayKey) { Animatable(0f) }
     val py = with(LocalDensity.current) { 8.dp.toPx() }
     LaunchedEffect(index, replayKey) {
@@ -130,6 +144,47 @@ fun Modifier.pageEnter(key: Any): Modifier {
         progress.animateTo(1f, tween(Motion.Fast, easing = EaseSmoothOut))
     }
     return graphicsLayer { alpha = progress.value }
+}
+
+/** Heat cells scale from 0.4 over 350ms, delayed by (column + row) × 14ms. */
+@Composable
+fun Modifier.cellIn(column: Int, row: Int, replayKey: Any): Modifier {
+    val reduced = LocalReducedMotion.current
+    if (reduced) return this
+    val progress = remember(replayKey, column, row) { Animatable(0f) }
+    LaunchedEffect(replayKey, column, row) {
+        progress.snapTo(0f)
+        delay((cellEnterDelayMs(column, row)).toLong())
+        progress.animateTo(1f, tween(Motion.Medium, easing = EaseBounce))
+    }
+    return graphicsLayer {
+        val p = progress.value
+        alpha = p
+        val scale = 0.4f + 0.6f * p
+        scaleX = scale
+        scaleY = scale
+    }
+}
+
+/** Menu grows from 0.97 and settles to 0.99 on the way out. */
+@Composable
+fun Modifier.menuMotion(open: Boolean): Modifier {
+    val reduced = LocalReducedMotion.current
+    val progress = remember { Animatable(if (open) 1f else 0f) }
+    LaunchedEffect(open, reduced) {
+        if (reduced) {
+            progress.snapTo(if (open) 1f else 0f)
+            return@LaunchedEffect
+        }
+        progress.animateTo(if (open) 1f else 0f, tween(if (open) Motion.Fast else Motion.Quick, easing = EaseSmoothOut))
+    }
+    return graphicsLayer {
+        val p = progress.value
+        alpha = p
+        val scale = if (open) 0.97f + 0.03f * p else 0.99f + 0.01f * p
+        scaleX = scale
+        scaleY = scale
+    }
 }
 
 /** Dialog content scales from 0.96, matching t-modal-in. */
@@ -178,12 +233,19 @@ fun Modifier.errorShake(nonce: Int): Modifier {
 @Composable
 fun rememberGrow(key: Any): Float {
     val reduced = LocalReducedMotion.current
-    val grow = remember(key) { Animatable(if (reduced) 1f else 0f) }
+    val grow = remember { Animatable(if (reduced) 1f else 0f) }
+    var introduced by remember { mutableStateOf(false) }
     LaunchedEffect(key, reduced) {
-        if (reduced) grow.snapTo(1f)
-        else {
+        if (reduced) {
+            grow.snapTo(1f)
+            return@LaunchedEffect
+        }
+        if (!introduced) {
             grow.snapTo(0f)
-            grow.animateTo(1f, tween(Motion.Draw, easing = EaseSmoothOut))
+            grow.animateTo(1f, tween(Motion.VerySlow, easing = EaseSmoothOut))
+            introduced = true
+        } else {
+            grow.animateTo(1f, tween(Motion.Slow, easing = EaseSmoothOut))
         }
     }
     return grow.value

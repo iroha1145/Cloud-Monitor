@@ -22,6 +22,7 @@ import io.github.iroha1145.cloudmonitor.data.Format
 import io.github.iroha1145.cloudmonitor.data.SystemUpdate
 import io.github.iroha1145.cloudmonitor.ui.openHttpUrl
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
+import io.github.iroha1145.cloudmonitor.ui.theme.modalEnter
 
 @Composable
 fun UpdateDialog(
@@ -36,9 +37,9 @@ fun UpdateDialog(
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("检索更新") },
+        title = { Text("检索更新", modifier = Modifier.modalEnter(true)) },
         text = {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).modalEnter(data?.current?.version ?: error ?: loading)) {
                 Text(
                     if (demo) "演示数据，不会改服务器。" else "手机端只检索版本信息，不会在服务器上应用更新。",
                     color = cm.mute,

@@ -252,7 +252,7 @@ data class HourBucket(
 data class HourlyToday(
     val day: String? = null,
     @SerialName("time_zone") val timeZone: String? = null,
-    val buckets: List<HourBucket> = emptyList(),
+    val buckets: List<HourBucket>? = null,
 )
 
 @Serializable
@@ -282,18 +282,22 @@ data class Coverage(
     @SerialName("observed_buckets") val observedBuckets: Int = 0,
     @SerialName("coverage_percent") val coveragePercent: Double? = null,
     @SerialName("attribution_mode") val attributionMode: String? = null,
+    @SerialName("gap_count") val gapCount: Int? = null,
+    @SerialName("reset_count") val resetCount: Int? = null,
     val devices: List<CoverageDevice> = emptyList(),
 )
 
 @Serializable
 data class Activity(
     @SerialName("time_zone") val timeZone: String? = null,
-    val hourly: List<HourBucket> = emptyList(),
+    val hourly: List<HourBucket>? = null,
     @SerialName("hourly_day") val hourlyDay: String? = null,
     @SerialName("hourly_today") val hourlyToday: HourlyToday? = null,
     val daily: List<DailyPoint> = emptyList(),
     val coverage: Coverage? = null,
     @SerialName("daily_mixed_basis") val dailyMixedBasis: Boolean = false,
+    @SerialName("daily_day_basis") val dailyDayBasis: String? = null,
+    @SerialName("daily_archive_cutover_day") val dailyArchiveCutoverDay: String? = null,
 )
 
 @Serializable

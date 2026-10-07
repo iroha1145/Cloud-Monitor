@@ -9,11 +9,17 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -101,6 +107,21 @@ fun AppRoot(vm: AppViewModel) {
         owner.lifecycle.addObserver(observer)
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
+    var pageNavigated by remember { mutableStateOf(false) }
+    var seenPage by remember { mutableStateOf(false) }
+    var seenTab by remember { mutableStateOf(state.tab) }
+    if (!state.signedIn) {
+        if (seenPage || pageNavigated) {
+            seenPage = false
+            pageNavigated = false
+        }
+    } else if (!seenPage) {
+        seenPage = true
+        seenTab = state.tab
+    } else if (state.tab != seenTab) {
+        pageNavigated = true
+        seenTab = state.tab
+    }
     val systemDark = isSystemInDarkTheme()
     val dark = state.dark ?: systemDark
     val reduced = rememberReducedMotion()
@@ -110,7 +131,11 @@ fun AppRoot(vm: AppViewModel) {
         // Release builds keep the login page out of screenshots and recents.
         // Debug builds stay capturable so device tests can record the signed-in UI.
         SecureScreen(enabled = !BuildConfig.DEBUG && !state.signedIn)
-        CompositionLocalProvider(LocalReducedMotion provides reduced, LocalFloatTip provides tip) {
+        CompositionLocalProvider(
+            LocalReducedMotion provides reduced,
+            LocalAfterNavigation provides pageNavigated,
+            LocalFloatTip provides tip,
+        ) {
             if (!state.signedIn) {
                 GateScreen(state, dark, vm::onUrl, vm::onToken, vm::onRememberToken, vm::login, vm::enterDemo) {
                     vm.toggleDark(systemDark)
@@ -127,16 +152,9 @@ fun AppRoot(vm: AppViewModel) {
                     vm.selectTab(AppTab.Overview)
                 }
                 LaunchedEffect(state.tab) { tip.hide() }
-                val snackbars = remember { SnackbarHostState() }
-                LaunchedEffect(state.toast) {
-                    state.toast?.let { snackbars.showSnackbar(it); vm.dismissToast() }
-                }
-                saveable.SaveableStateProvider(state.tab.name) {
-                    val listState = rememberLazyListState()
-                    // Keep page choices outside lazy items, whose saved state may be discarded off screen.
-                    val page = rememberSaveable(saver = PageState.Saver) {
-                        PageState(selection = if (state.tab == AppTab.History) "" else "全部")
-                    }
+                var toastHold by remember { mutableStateOf<String?>(null) }
+                if (state.toast != null) toastHold = state.toast
+                saveable.SaveableStateProvider("workspace") {
                     BoxWithConstraints(Modifier.fillMaxSize()) {
                         // Match the mobile website, including phones held in landscape.
                         val shortLandscape = maxWidth <= 960.dp && maxHeight <= 500.dp
@@ -159,7 +177,7 @@ fun AppRoot(vm: AppViewModel) {
                                                     }
                                                 }
                                             }
-                                            DropdownMenu(expanded = navMenu, onDismissRequest = { navMenu = false }) {
+                                            DropdownMenu(expanded = navMenu, onDismissRequest = { navMenu = false }, modifier = Modifier.menuMotion(navMenu)) {
                                                 Text("Cloud Monitor", Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                                                     fontWeight = FontWeight.SemiBold, color = cm.ink)
                                                 TABS.forEach { spec ->
@@ -182,7 +200,7 @@ fun AppRoot(vm: AppViewModel) {
                                             IconButton(onClick = { menu = true }, modifier = Modifier.size(48.dp).testTag("settings")) {
                                                 Icon(AppIcons.More, "更多选项", Modifier.size(19.dp), tint = cm.ink2)
                                             }
-                                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, modifier = Modifier.menuMotion(menu)) {
                                                 DropdownMenuItem(text = { Text(if (dark) "切换浅色外观" else "切换深色外观") },
                                                     leadingIcon = { Icon(if (dark) AppIcons.LightMode else AppIcons.DarkMode, null) },
                                                     onClick = { menu = false; vm.toggleDark(systemDark) })
@@ -224,7 +242,7 @@ fun AppRoot(vm: AppViewModel) {
                                     }
                                 }
                             },
-                            snackbarHost = { SnackbarHost(snackbars) },
+                            snackbarHost = {},
                         ) { padding ->
                             Row(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
                                 if (rail) Column(Modifier.width(184.dp).fillMaxHeight().background(cm.sidebar)
@@ -245,19 +263,32 @@ fun AppRoot(vm: AppViewModel) {
                                         }
                                     }
                                 }
-                                PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = vm::refresh, modifier = Modifier.weight(1f)) {
+                                PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = { vm.refresh(fromUser = true) }, modifier = Modifier.weight(1f)) {
                                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                                        AnimatedContent(
+                                            targetState = state.tab,
+                                            transitionSpec = {
+                                                fadeIn(tween(if (pageNavigated && !reduced) Motion.Fast else 0, easing = EaseSmoothOut)) togetherWith
+                                                    fadeOut(tween(if (pageNavigated && !reduced) Motion.Quick else 0, easing = EaseSmoothOut))
+                                            },
+                                            label = "page",
+                                        ) { tab ->
+                                        saveable.SaveableStateProvider(tab.name) {
+                                        val listState = rememberLazyListState()
+                                        val page = rememberSaveable(saver = PageState.Saver) {
+                                            PageState(selection = if (tab == AppTab.History) "" else "全部")
+                                        }
                                         val nearEnd by remember {
                                             derivedStateOf {
                                                 val info = listState.layoutInfo
                                                 info.totalItemsCount > 0 && (info.visibleItemsInfo.lastOrNull()?.index ?: 0) >= info.totalItemsCount - 3
                                             }
                                         }
-                                        LaunchedEffect(nearEnd, state.tab) {
-                                            if (state.tab == AppTab.History && nearEnd) vm.loadMoreHistory()
+                                        LaunchedEffect(nearEnd, tab) {
+                                            if (tab == AppTab.History && nearEnd) vm.loadMoreHistory()
                                         }
                                         LazyColumn(state = listState,
-                                            modifier = Modifier.widthIn(max = 1200.dp).fillMaxSize().pageEnter(state.tab).testTag("screen-${state.tab}"),
+                                            modifier = Modifier.widthIn(max = 1200.dp).fillMaxSize().testTag("screen-$tab"),
                                             contentPadding = PaddingValues(horizontal = if (rail) 24.dp else 16.dp),
                                         ) {
                                             item("connection") {
@@ -268,10 +299,12 @@ fun AppRoot(vm: AppViewModel) {
                                                     workspaceNotices(
                                                         overview,
                                                         state.providers,
-                                                        subscriptionsFailed = state.subsStatus == AuxStatus.Error,
-                                                        providersFailed = state.providersStatus == AuxStatus.Error,
-                                                        historyFailed = state.historyStatus == AuxStatus.Error,
+                                                        subscriptionsFailed = state.subscriptionsLoadFailed || state.subsStatus == AuxStatus.Error,
+                                                        providersFailed = state.providersLoadFailed || state.providersStatus == AuxStatus.Error,
+                                                        historyFailed = state.historyLoadFailed || state.historyStatus == AuxStatus.Error,
                                                         staleData = state.staleData,
+                                                        historyCostRetained = state.historyCostRetained,
+                                                        historyComponentsRetained = state.historyComponentsRetained,
                                                     )
                                                 }.orEmpty()
                                                 Column(Modifier.fillMaxWidth().riseIn(0, state.tab).padding(top = 23.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -295,7 +328,7 @@ fun AppRoot(vm: AppViewModel) {
                                                             Text(if (state.demo) "示例数据" else state.lastUpdated?.let { "更新于 ${Format.fmtClock(it)}" } ?: "正在连接服务器",
                                                                 color = cm.mute, style = MaterialTheme.typography.bodySmall)
                                                         }
-                                                        WebActionButton(if (state.refreshing) "刷新中" else "刷新数据", vm::refresh,
+                                                        WebActionButton(if (state.refreshing) "刷新中" else "刷新数据", { vm.refresh(fromUser = true) },
                                                             Modifier.testTag("refresh"), enabled = !state.refreshing, icon = AppIcons.Refresh, loading = state.refreshing)
                                                     }
                                                     if (notices.isNotEmpty()) WorkspaceNotices(notices, state.staleData || state.error != null)
@@ -305,7 +338,7 @@ fun AppRoot(vm: AppViewModel) {
                                             }
                                             if (state.loading && state.overview == null) {
                                                 items(3) { ShimmerPanel(); Spacer(Modifier.height(12.dp)) }
-                                            } else when (state.tab) {
+                                            } else when (tab) {
                                                 AppTab.Overview -> overviewItems(state, vm.modelColors(), vm::setModelPeriod, vm::setClientPeriod, vm::setMxPeriod, vm::setMxCost, page)
                                                 AppTab.Devices -> devicesItems(state, page)
                                                 AppTab.Models -> modelsItems(state, vm.modelColors(), vm::setModelPeriod, vm::setMxPeriod, vm::setMxCost, page)
@@ -322,6 +355,9 @@ fun AppRoot(vm: AppViewModel) {
                                                 )
                                             }
                                         }
+                                        }
+                                        }
+                                        PageToast(toastHold, state.toast != null, reduced, cm.ink, cm.card)
                                     }
                                 }
                             }
@@ -342,6 +378,25 @@ fun AppRoot(vm: AppViewModel) {
                     text = { Text(if (state.demo) "退出后可连接自己的服务器。" else "本机保存的访问密钥将被清除，服务器上的数据会保留。") },
                     confirmButton = { TextButton(onClick = { logout = false; vm.logout() }) { Text("确认退出") } },
                     dismissButton = { TextButton(onClick = { logout = false }) { Text("取消") } })
+            }
+        }
+    }
+}
+
+@Composable
+private fun PageToast(text: String?, visible: Boolean, reduced: Boolean, ink: Color, card: Color) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+        AnimatedVisibility(
+            visible = visible && !text.isNullOrBlank(),
+            enter = fadeIn(tween(if (reduced) 0 else Motion.ToastEnter, easing = EaseSmoothOut)) +
+                slideInVertically(tween(if (reduced) 0 else Motion.ToastEnter, easing = EaseSmoothOut)) { 16 } +
+                scaleIn(tween(if (reduced) 0 else Motion.ToastEnter, easing = EaseSmoothOut), initialScale = 0.97f),
+            exit = fadeOut(tween(if (reduced) 0 else Motion.ToastExit, easing = EaseSmoothOut)) +
+                slideOutVertically(tween(if (reduced) 0 else Motion.ToastExit, easing = EaseSmoothOut)) { 16 } +
+                scaleOut(tween(if (reduced) 0 else Motion.ToastExit, easing = EaseSmoothOut), targetScale = 0.97f),
+        ) {
+            Surface(Modifier.padding(16.dp), shape = RoundedCornerShape(8.dp), color = ink) {
+                Text(text.orEmpty(), Modifier.padding(horizontal = 14.dp, vertical = 10.dp), color = card, fontSize = 13.sp)
             }
         }
     }
@@ -429,8 +484,8 @@ private fun WorkspaceNotices(notices: List<String>, open: Boolean) {
             expanded,
             enter = fadeIn(tween(Motion.Fast, easing = EaseSmoothOut)) +
                 expandVertically(tween(Motion.Fast, easing = EaseSmoothOut)),
-            exit = fadeOut(tween(Motion.Quick, easing = EaseSmoothOut)) +
-                shrinkVertically(tween(Motion.Quick, easing = EaseSmoothOut)),
+            exit = fadeOut(tween(Motion.Fast, easing = EaseSmoothOut)) +
+                shrinkVertically(tween(Motion.Fast, easing = EaseSmoothOut)),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 notices.forEach { notice ->

@@ -91,7 +91,7 @@ class MotionCaptureTest {
         saveShot(shots, "overview-$theme.png")
 
         compose.onNodeWithTag("nav-History").performClick()
-        compose.onNodeWithTag("screen-History").performScrollToNode(hasText("活动日历"))
+        compose.onNodeWithTag("screen-History").performScrollToNode(hasText("活动一览"))
         compose.waitForIdle()
         Thread.sleep(700)
         saveShot(shots, "heatmap-$theme.png")
@@ -125,7 +125,10 @@ class MotionCaptureTest {
         Thread.sleep(2200)
         recording.join(20_000)
         check(!recording.isAlive) { "screen recording did not finish" }
-        val size = shellOutput("wc -c < ${video.absolutePath}").trim().toLongOrNull() ?: 0L
+        val size = shellOutput("stat -c %s ${video.absolutePath}")
+            .lineSequence()
+            .mapNotNull { it.trim().toLongOrNull() }
+            .firstOrNull() ?: 0L
         check(size > 50_000L) { "motion video is missing or too small ($size bytes)" }
         shellOutput("cp ${video.absolutePath} ${File(shots, "motion.mp4").absolutePath}")
     }

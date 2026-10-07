@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
@@ -96,6 +97,7 @@ import io.github.iroha1145.cloudmonitor.EagerSvgDecoderFactory
 import io.github.iroha1145.cloudmonitor.data.logoAssetPath
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
 import io.github.iroha1145.cloudmonitor.ui.theme.EaseBounce
+import io.github.iroha1145.cloudmonitor.ui.theme.EaseTicker
 import io.github.iroha1145.cloudmonitor.ui.theme.EaseInOut
 import io.github.iroha1145.cloudmonitor.ui.theme.EaseSmoothOut
 import io.github.iroha1145.cloudmonitor.ui.theme.LocalReducedMotion
@@ -376,34 +378,128 @@ fun StatusDot(
     }
 }
 
+/** Ledger digits roll in place. The readable text stays the whole formatted value. */
+@Composable
+fun NumberTicker(
+    value: String,
+    color: Color,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+    durationMillis: Int = Motion.TickerLedger,
+    staggerMillis: Int = Motion.TickerStagger,
+) {
+    val reduced = LocalReducedMotion.current
+    val density = LocalDensity.current
+    val digitHeight = with(density) { (style.fontSize.value * 1.1f).sp.toPx() }
+    var entered by remember { mutableStateOf(false) }
+    Row(
+        modifier.semantics {
+            this.text = AnnotatedString(value)
+            contentDescription = value
+        },
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        value.forEachIndexed { index, char ->
+            if (!char.isDigit() || reduced) {
+                Text(char.toString(), color = color, style = style, modifier = Modifier.clearAndSetSemantics { })
+            } else {
+                val digit = char.digitToInt()
+                val progress = remember(value, index) { Animatable(if (reduced) 1f else 0f) }
+                LaunchedEffect(value, digit) {
+                    progress.snapTo(0f)
+                    if (!entered) delay((index * staggerMillis).toLong())
+                    progress.animateTo(1f, tween(durationMillis, easing = EaseTicker))
+                }
+                Box(
+                    Modifier
+                        .clearAndSetSemantics { }
+                        .height(with(density) { digitHeight.toDp() })
+                        .clip(RoundedCornerShape(0.dp)),
+                ) {
+                    Column(Modifier.graphicsLayer { translationY = -digit * digitHeight * progress.value }) {
+                        (0..9).forEach { n ->
+                            Text(n.toString(), color = color, style = style)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    LaunchedEffect(value) {
+        if (reduced) {
+            entered = true
+            return@LaunchedEffect
+        }
+        delay(durationMillis.toLong() + value.count { it.isDigit() } * staggerMillis)
+        entered = true
+    }
+}
+
 @Composable
 fun MixBar(
     parts: List<Pair<Color, Double>>,
     modifier: Modifier = Modifier,
     height: Dp = 8.dp,
-    grow: Boolean = false,
+    grow: Boolean = true,
     growKey: Any = parts.size,
 ) {
+    val reduced = LocalReducedMotion.current
     val sum = parts.sumOf { it.second }.coerceAtLeast(1.0)
-    val grown = rememberGrow(growKey)
-    val frac = if (grow) grown else 1f
+    val reveal = remember(growKey) { Animatable(if (reduced || !grow) 1f else 0f) }
+    LaunchedEffect(growKey, grow, reduced) {
+        if (!grow || reduced) {
+            reveal.snapTo(1f)
+        } else {
+            reveal.snapTo(0f)
+            reveal.animateTo(1f, tween(Motion.VerySlow, easing = EaseSmoothOut))
+        }
+    }
     Row(
         modifier
             .height(height)
             .graphicsLayer {
-                scaleX = frac.coerceIn(0.02f, 1f)
+                scaleX = reveal.value.coerceIn(0.001f, 1f)
                 transformOrigin = TransformOrigin(0f, 0.5f)
             }
             .clip(RoundedCornerShape(999.dp)),
     ) {
         parts.filter { it.second > 0 }.forEach { (c, v) ->
-            Box(
-                Modifier
-                    .weight((v / sum).toFloat().coerceAtLeast(0.0001f))
-                    .height(height)
-                    .background(c),
-            )
+            val target = (v / sum).toFloat().coerceAtLeast(0.0001f)
+            val width by animateFloatAsState(target, tween(Motion.Slow, easing = EaseSmoothOut), label = "mix")
+            Box(Modifier.weight(width).height(height).background(c))
         }
+    }
+}
+
+/** Quota and composition meters: 500ms first fill, then 400ms width changes. */
+@Composable
+fun MeterBar(
+    fraction: Float,
+    color: Color,
+    track: Color,
+    modifier: Modifier = Modifier,
+    barHeight: Dp = 10.dp,
+) {
+    val reduced = LocalReducedMotion.current
+    val width = remember { Animatable(if (reduced) fraction else 0f) }
+    var introduced by remember { mutableStateOf(reduced) }
+    LaunchedEffect(fraction, reduced) {
+        if (reduced) {
+            width.snapTo(fraction)
+            return@LaunchedEffect
+        }
+        val duration = if (introduced) Motion.Slow else Motion.VerySlow
+        introduced = true
+        width.animateTo(fraction.coerceIn(0f, 1f), tween(duration, easing = EaseSmoothOut))
+    }
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(barHeight)
+            .clip(RoundedCornerShape(barHeight / 2))
+            .background(track),
+    ) {
+        Box(Modifier.fillMaxHeight().fillMaxWidth(width.value.coerceIn(0f, 1f)).background(color))
     }
 }
 

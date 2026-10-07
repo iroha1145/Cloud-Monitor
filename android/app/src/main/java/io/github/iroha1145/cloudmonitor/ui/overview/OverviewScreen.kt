@@ -26,6 +26,9 @@ import io.github.iroha1145.cloudmonitor.ui.AppIcons
 import io.github.iroha1145.cloudmonitor.ui.openHttpUrl
 import io.github.iroha1145.cloudmonitor.ui.components.*
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
+import io.github.iroha1145.cloudmonitor.ui.theme.EaseSmoothOut
+import io.github.iroha1145.cloudmonitor.ui.theme.LocalReducedMotion
+import io.github.iroha1145.cloudmonitor.ui.theme.Motion
 import io.github.iroha1145.cloudmonitor.vm.AuxStatus
 import io.github.iroha1145.cloudmonitor.vm.Period
 import io.github.iroha1145.cloudmonitor.vm.UiState
@@ -48,6 +51,7 @@ fun LazyListScope.overviewItems(
         val series = remember(ov, state.history) { analyzeTrend(ov, state.history) }
         val rows = remember(series, days) { trendWindow(series, days) }
         val summary = remember(rows) { summarizeTrend(rows) }
+        val selected = rows.firstOrNull { it.day == page.trendDay.value }
         Panel(Modifier.padding(bottom = 16.dp)) {
             PanelHead("用量趋势", "沿着曲线，查看每一天的花费与缓存", trailing = {
                 WebSegments(listOf("7 天", "30 天"), if (days == 7) 0 else 1,
@@ -56,11 +60,18 @@ fun LazyListScope.overviewItems(
             Spacer(Modifier.height(16.dp))
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val columns = if (LocalDensity.current.fontScale > 1.4f || maxWidth < 280.dp) 2 else 3
+                val dayParts = selected?.components
                 val metrics: List<@Composable (Modifier) -> Unit> = listOf(
-                    { m -> TrendMetric("区间词元", Format.fmtCompact(summary.tokenTotal), "${rows.size} 天已记录", SEG_INPUT, m) },
-                    { m -> TrendMetric(if (summary.hasCost && !summary.allCosts) "已知花费" else "区间花费", summary.costTotal?.let(Format::fmtUsd) ?: "未提供", "美元（USD）", SEG_OUTPUT, m) },
-                    { m -> TrendMetric(summary.cacheLabel, summary.cacheRate?.let(Format::fmtPct) ?: "未提供",
-                        if (summary.cacheSkippedDays > 0) { if (summary.cacheDays > 0) "仅统计 ${summary.cacheDays}/${rows.size} 天" else "暂无缓存明细" } else "缓存读取 ÷ 总词元", SEG_CACHE_READ, m) },
+                    { m -> TrendMetric(if (selected != null) "当天词元" else "区间词元", Format.fmtCompact(selected?.total ?: summary.tokenTotal), if (selected != null) selected.day else "${rows.size} 天已记录", SEG_INPUT, m) },
+                    { m -> TrendMetric(
+                        if (selected != null) "当天花费" else if (summary.hasCost && !summary.allCosts) "已知花费" else "区间花费",
+                        (selected?.costUsd ?: summary.costTotal)?.let(Format::fmtUsd) ?: "未提供",
+                        "美元（USD）", SEG_OUTPUT, m) },
+                    { m -> TrendMetric(
+                        dayParts?.cacheLabel ?: summary.cacheLabel,
+                        (dayParts?.cacheRate ?: summary.cacheRate)?.let(Format::fmtPct) ?: "未提供",
+                        if (selected != null) "缓存读取 ÷ 总词元" else if (summary.cacheSkippedDays > 0) { if (summary.cacheDays > 0) "仅统计 ${summary.cacheDays}/${rows.size} 天" else "暂无缓存明细" } else "缓存读取 ÷ 总词元",
+                        SEG_CACHE_READ, m) },
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     metrics.chunked(columns).forEach { group -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -77,6 +88,7 @@ fun LazyListScope.overviewItems(
     item("overview-models") {
         val per = ov.totals.period(Period.valueOf(page.summaryPeriod.value).key)
         val entries = modelUsage(per).take(5)
+        var selectedModel by remember { mutableStateOf<io.github.iroha1145.cloudmonitor.data.UsageEntity?>(null) }
         Panel(Modifier.padding(bottom = 16.dp)) {
             PanelHead("模型用量", "用量、缓存与费用，在同一处比较")
             entries.forEachIndexed { index, entry ->
@@ -98,9 +110,11 @@ fun LazyListScope.overviewItems(
                     MixBar(modelBreakdown(per, entry.id).map { it.color to it.value }, Modifier.fillMaxWidth(), height = 6.dp)
                     Text("${entry.components.cacheLabel} ${entry.components.cacheRate?.let(Format::fmtPct) ?: "未提供"}", fontSize = 11.sp,
                         color = CmColorsCurrent.mute, modifier = Modifier.padding(top = 8.dp))
+                    TextButton(onClick = { selectedModel = entry }, modifier = Modifier.heightIn(min = 48.dp)) { Text("用量组成", fontSize = 12.sp) }
                 }
             }
             if (entries.isEmpty()) EmptyHint("该周期暂无模型数据")
+            ModelDetailDialog(selectedModel) { selectedModel = null }
         }
     }
     item("clients") {
@@ -176,6 +190,7 @@ private fun SummaryPanel(state: UiState, page: PageState) {
         FlowRow(Modifier.fillMaxWidth().padding(bottom = 12.dp), itemVerticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             PeriodSeg(selected) { periodName = it.name }
+            ExportModelsButton(per, selected.label)
             Text(when (selected) {
                 Period.Today -> runCatching { java.time.LocalDate.parse(todayKey) }.getOrNull()
                     ?.let { "${it.monthValue}月${it.dayOfMonth}日" } ?: todayKey
@@ -189,13 +204,19 @@ private fun SummaryPanel(state: UiState, page: PageState) {
             val spark = remember(trendSeries) { trendSeries.takeLast(14) }
             val stats: List<@Composable (Modifier) -> Unit> = listOf(
                 { m -> StatCell("总用量", Format.fmtCompact(per.totalTokens), "所有模型与客户端", AppIcons.Bolt, SEG_INPUT,
-                    spark.map { it.total }, m) },
+                    spark.map { it.total }, m, durationMillis = Motion.TickerLedger, staggerMillis = Motion.TickerStaggerTight) },
                 { m -> StatCell("使用费用", periodCost(per)?.let(Format::fmtUsd) ?: "未提供", "按上报价格统计", AppIcons.AccountBalanceWallet, SEG_OUTPUT,
-                    spark.takeIf { it.all { row -> row.costUsd != null } }?.map { it.costUsd!! }.orEmpty(), m, costSpark = true) },
+                    spark.takeIf { it.all { row -> row.costUsd != null } }?.map { it.costUsd!! }.orEmpty(), m, costSpark = true,
+                    durationMillis = Motion.TickerLedger, staggerMillis = Motion.TickerStaggerTight) },
                 { m -> StatCell(components.cacheLabel, components.cacheRate?.let(Format::fmtPct) ?: "未提供",
-                    if (components.cacheReadKnown) "${Format.fmtCompact(components.cacheRead)} 缓存读取" else "等待来源提供缓存数据", AppIcons.Database, SEG_CACHE_READ, emptyList(), m) },
-                { m -> StatCell("在线设备", "${ov.devices.count { deviceOnline(it, ov) }} / ${ov.devices.size}",
-                    connBanner(ov, state.demo, state.staleData).first, AppIcons.Computer, SEG_CACHE_WRITE, emptyList(), m) },
+                    if (components.cacheReadKnown) "${Format.fmtCompact(components.cacheRead)} 缓存读取" else "等待来源提供缓存数据", AppIcons.Database, SEG_CACHE_READ, emptyList(), m,
+                    durationMillis = Motion.TickerLedger, staggerMillis = Motion.TickerStagger) },
+                { m ->
+                    val online = ov.devices.count { deviceOnline(it, ov) }
+                    StatCell("在线设备", "$online / ${ov.devices.size}",
+                        if (online > 0) "设备正在同步" else "暂无在线设备", AppIcons.Computer, SEG_CACHE_WRITE, emptyList(), m,
+                        durationMillis = Motion.TickerOnline, staggerMillis = Motion.TickerStagger)
+                },
             )
             val oneColumn = LocalDensity.current.fontScale > 1.6f
             stats.chunked(if (oneColumn) 1 else 2).forEachIndexed { index, group ->
@@ -213,7 +234,8 @@ private fun SummaryPanel(state: UiState, page: PageState) {
 
 @Composable
 private fun StatCell(label: String, value: String, note: String, icon: androidx.compose.ui.graphics.vector.ImageVector,
-    color: Color, spark: List<Double>, modifier: Modifier, costSpark: Boolean = false) {
+    color: Color, spark: List<Double>, modifier: Modifier, costSpark: Boolean = false,
+    durationMillis: Int = Motion.TickerLedger, staggerMillis: Int = Motion.TickerStagger) {
     val cm = CmColorsCurrent
     Column(modifier.padding(horizontal = 13.dp).padding(bottom = 14.dp)) {
         Box(Modifier.width(26.dp).height(2.dp).background(color))
@@ -221,8 +243,8 @@ private fun StatCell(label: String, value: String, note: String, icon: androidx.
             Icon(icon, null, tint = color, modifier = Modifier.size(14.dp))
             Text(label, color = cm.ink2, fontSize = 11.sp)
         }
-        PopValue(value, cm.ink, MaterialTheme.typography.headlineMedium.copy(fontSize = 29.sp, lineHeight = 36.sp, letterSpacing = (-.7).sp, fontWeight = FontWeight.Medium),
-            Modifier.padding(top = 8.dp, bottom = 10.dp))
+        NumberTicker(value, cm.ink, MaterialTheme.typography.headlineMedium.copy(fontSize = 29.sp, lineHeight = 36.sp, letterSpacing = (-.7).sp, fontWeight = FontWeight.Medium),
+            Modifier.padding(top = 8.dp, bottom = 10.dp), durationMillis = durationMillis, staggerMillis = staggerMillis)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(note, color = if (label.contains("缓存")) cm.okInk else cm.mute, fontSize = 10.sp, lineHeight = 16.sp, modifier = Modifier.weight(1f))
             if (spark.size >= 2 && LocalDensity.current.fontScale < 1.5f) Canvas(Modifier.width(52.dp).height(20.dp)) {
@@ -248,8 +270,8 @@ private fun TrendMetric(label: String, value: String, note: String, dot: Color?,
             if (dot != null) Box(Modifier.size(6.dp).clip(RoundedCornerShape(3.dp)).background(dot))
             Text(label, color = CmColorsCurrent.mute, fontSize = 11.sp, lineHeight = 16.sp)
         }
-        Text(value, color = CmColorsCurrent.ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-.5).sp,
-            modifier = Modifier.padding(top = 5.dp, bottom = 4.dp))
+        PopValue(value, CmColorsCurrent.ink, MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-.5).sp),
+            Modifier.padding(top = 5.dp, bottom = 4.dp))
         Text(note, color = CmColorsCurrent.mute, fontSize = 10.sp, lineHeight = 15.sp)
     }
 }
@@ -271,14 +293,25 @@ private fun CompositionPanel(per: PeriodTotals) {
                 Text(if (data.cacheReadKnown) "${Format.fmtCompact(data.cacheRead)} 缓存读取" else "来源未提供缓存明细", fontSize = 10.sp, color = cm.mute)
             }
             if (LocalDensity.current.fontScale < 1.8f) Box(Modifier.size(94.dp), contentAlignment = Alignment.Center) {
+                val reduced = LocalReducedMotion.current
+                val sweepProgress = remember { androidx.compose.animation.core.Animatable(if (reduced) 1f else 0f) }
+                LaunchedEffect(Unit) {
+                    if (reduced) sweepProgress.snapTo(1f)
+                    else {
+                        sweepProgress.snapTo(0f)
+                        sweepProgress.animateTo(1f, androidx.compose.animation.core.tween(Motion.VerySlow, easing = EaseSmoothOut))
+                    }
+                }
                 Canvas(Modifier.fillMaxSize().padding(6.dp)) {
                     val width = 9.dp.toPx()
                     val total = segments.sumOf { it.value }.coerceAtLeast(1.0)
                     var angle = -90f
-                    if (segments.isEmpty()) drawArc(cm.border, angle, 360f, false, style = androidx.compose.ui.graphics.drawscope.Stroke(width))
+                    val budget = 360f * sweepProgress.value
+                    if (segments.isEmpty()) drawArc(cm.border, angle, budget, false, style = androidx.compose.ui.graphics.drawscope.Stroke(width))
                     segments.forEach { part ->
                         val sweep = (part.value / total * 360).toFloat()
-                        drawArc(part.color, angle, (sweep - 1.4f).coerceAtLeast(0f), false, style = androidx.compose.ui.graphics.drawscope.Stroke(width))
+                        val shown = sweep.coerceAtMost((budget - (angle + 90f)).coerceAtLeast(0f))
+                        if (shown > 0f) drawArc(part.color, angle, (shown - 1.4f).coerceAtLeast(0f), false, style = androidx.compose.ui.graphics.drawscope.Stroke(width))
                         angle += sweep
                     }
                 }

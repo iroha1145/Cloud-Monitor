@@ -267,13 +267,7 @@ object Format {
         return if (s.length > 8) s.take(6) + "…" else s
     }
 
-    fun attributionMode(raw: String?): String = when (raw) {
-        "delta" -> "增量归属"
-        "delta-low-coverage" -> "增量归属（低覆盖）"
-        "delta-with-reset" -> "增量归属（含计数重置）"
-        "none" -> "无归属"
-        else -> raw.orEmpty()
-    }
+    fun attributionMode(raw: String?): String = samplingModeLabel(raw)
 
     fun pvErrorText(code: String?): String = when (code.orEmpty()) {
         "timeout" -> "状态页请求超时"
