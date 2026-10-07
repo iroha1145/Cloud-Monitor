@@ -118,7 +118,7 @@ class MotionCaptureTest {
         saveShot(shots, "sessions-$theme.png")
 
         compose.onNodeWithTag("nav-Quota").performClick()
-        compose.onNodeWithTag("screen-Quota").performScrollToNode(hasText("下次续订"))
+        compose.onNodeWithTag("screen-Quota").performScrollToNode(hasText("下次续订", substring = true))
         compose.waitForIdle()
         Thread.sleep(700)
         saveShot(shots, "quota-$theme.png")
