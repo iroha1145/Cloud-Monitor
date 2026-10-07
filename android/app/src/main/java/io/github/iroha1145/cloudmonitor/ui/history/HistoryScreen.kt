@@ -63,6 +63,7 @@ fun LazyListScope.historyItems(
     val overview = state.overview ?: return
     val zone = overview.dashboardPeriod?.timeZone ?: overview.dashboardTimeZone
     val today = overview.dashboardPeriod?.today?.key ?: Format.dayKeyTz(System.currentTimeMillis(), zone)
+    item("history-summary") { HistorySummary(overview) }
     item("activity") { ActivityCard(overview, today, zone, state.actView, onActView, page) }
     item("sessions") { SessionsCard(overview, zone, today, modelColors, page) }
     val rows = (if (state.history.isNotEmpty()) state.history else overview.activity.daily.map {
@@ -71,7 +72,7 @@ fun LazyListScope.historyItems(
     item("archive-head") {
         val cm = CmColorsCurrent
         Panel(Modifier.padding(bottom = 16.dp)) {
-            PanelHead("日归档", "已加载 ${rows.size} 天 · 保留 ${state.historyRetentionDays} 天")
+            PanelHead("每日归档", "已加载 ${rows.size} 天 · 保留 ${state.historyRetentionDays} 天")
             Spacer(Modifier.height(8.dp))
             Text(when {
                 state.historyFallback -> "日归档接口不可用，当前显示概览中的已上报日期。"
@@ -94,6 +95,31 @@ fun LazyListScope.historyItems(
     }
 }
 
+@Composable
+private fun HistorySummary(overview: Overview) {
+    val days = overview.activity.daily
+    val active = days.count { it.total > 0 }
+    val total = days.sumOf { it.total }
+    val rows = listOf(
+        Triple("累计活动天数", "$active 天", "在 ${days.size} 个已上报日期中"),
+        Triple("历史上报用量", Format.fmtCompact(total), "按活动记录汇总"),
+        Triple("已上报会话", "${overview.sessions.size} 次", "仅统计当前快照内的记录"),
+    )
+    Column(Modifier.padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        rows.forEach { (label, value, foot) ->
+            Panel {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(label, color = CmColorsCurrent.ink2, fontSize = 12.sp)
+                        Text(foot, color = CmColorsCurrent.mute, fontSize = 11.sp)
+                    }
+                    Text(value, color = CmColorsCurrent.ink, fontSize = 22.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ActivityCard(overview: Overview, today: String, zone: String, view: Int, onView: (Int) -> Unit, page: PageState) {
@@ -102,7 +128,17 @@ private fun ActivityCard(overview: Overview, today: String, zone: String, view: 
     val monthKey = overview.dashboardPeriod?.month?.key
     Panel(Modifier.padding(bottom = 16.dp)) {
         PanelHead("活动一览", activitySubtitle(view, today, hourly.day, monthKey))
-        WebSegmentedControl(listOf("日", "周", "月"), view, onView)
+        val context = LocalContext.current
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            WebSegmentedControl(listOf("日", "周", "月"), view, onView, Modifier.weight(1f, fill = false))
+            TextButton(onClick = {
+                val initial = page.activityDay.value.takeIf { it.isNotBlank() }?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                    ?: runCatching { LocalDate.parse(today) }.getOrNull() ?: LocalDate.now()
+                android.app.DatePickerDialog(context, { _, year, month, day ->
+                    page.activityDay.value = LocalDate.of(year, month + 1, day).toString()
+                }, initial.year, initial.monthValue - 1, initial.dayOfMonth).show()
+            }, modifier = Modifier.heightIn(min = 48.dp)) { Text("选择日期", fontSize = 13.sp) }
+        }
         Spacer(Modifier.height(12.dp))
         val selectedDay = page.activityDay.value
         val cells = activityCells(view, today, overview)
@@ -362,7 +398,7 @@ private fun SessionsCard(overview: Overview, zone: String, today: String, modelC
         }
     }
     Panel(Modifier.padding(bottom = 16.dp)) {
-        PanelHead("会话记录", "当前快照上报 ${overview.sessions.size} 条 · 按最后活动时间排列")
+        PanelHead("会话记录", "按最后活动时间排列，展开查看来源与模型。")
         Spacer(Modifier.height(8.dp))
         if (overview.sessionsOmitted || overview.sessionsMeta.sessionDetailsIncomplete || overview.sessionsMeta.sessionsOmittedCount > 0) {
             Text("当前快照未包含全部会话明细，统计仅涵盖已上报记录。", color = cm.warnInk, style = MaterialTheme.typography.bodySmall)
@@ -371,7 +407,7 @@ private fun SessionsCard(overview: Overview, zone: String, today: String, modelC
             modifier = Modifier.fillMaxWidth().testTag("session-search"))
         WebSegmentedControl(clients.map { it.ifBlank { "所有客户端" } }, clients.indexOf(resolvedClient).coerceAtLeast(0), { client = clients[it]; limit = 8 })
         WebPill("仅今天", selected = onlyToday, onClick = { onlyToday = !onlyToday; limit = 8 })
-        if (filtered.isEmpty()) EmptyHint(if (overview.sessions.isEmpty()) "尚未上报会话明细" else "没有符合条件的会话")
+        if (filtered.isEmpty()) EmptyHint(if (overview.sessions.isEmpty()) "还没有会话记录。设备上报后会显示在这里，不会根据总用量生成会话。" else "没有符合条件的会话")
         else filtered.take(limit).groupBy { sessionDay(it) }.forEach { (day, sessions) ->
             Spacer(Modifier.height(16.dp))
             Text(if (day == today) "今天 · $day" else day ?: "活动日期未提供", color = cm.brand,

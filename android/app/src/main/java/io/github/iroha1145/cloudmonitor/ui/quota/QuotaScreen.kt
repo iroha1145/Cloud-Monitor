@@ -55,9 +55,15 @@ private fun QuotaContent(state: UiState) {
     val fontScale = LocalDensity.current.fontScale
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Panel {
-            PanelHead("额度与账单", "服务商配额和手动登记的账单分别展示")
+            PanelHead("额度概况", "服务商配额和手动登记的账单分别展示")
             Spacer(Modifier.height(14.dp))
-            val summary = listOf("配额账户" to "${limits.size} 个", "配额周期" to "${limits.sumOf { it.windows.size }} 个", "订阅与充值" to "${subscriptions.size} 项")
+            val providers = limits.map { it.provider }.filter { it.isNotBlank() }.toSet().size
+            val nearLimit = limits.sumOf { provider -> provider.windows.count { (it.usedPercent ?: -1.0) >= 75.0 } }
+            val summary = listOf(
+                "已连接服务" to "$providers 个",
+                "接近额度上限" to "$nearLimit 个",
+                "订阅与充值" to "${subscriptions.size} 项",
+            )
             if (fontScale > 1.5f) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     summary.forEach { (label, value) -> QuotaMetric(label, value) }
@@ -68,8 +74,11 @@ private fun QuotaContent(state: UiState) {
                 }
             }
         }
-        Text("服务商配额", color = cm.ink, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
-        if (limits.isEmpty()) Panel { EmptyHint("尚未上报服务商配额") }
+        Text("服务商配额", color = cm.ink, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium, modifier = Modifier.semantics { heading() })
+        if (limits.isEmpty()) Panel {
+            Text("还没有配额数据", color = cm.ink, style = MaterialTheme.typography.titleMedium)
+            Text("连接支持配额上报的服务后，将显示可用额度和重置时间。", color = cm.ink2, style = MaterialTheme.typography.bodyMedium)
+        }
         else BoxWithConstraints(Modifier.fillMaxWidth()) {
             val columns = if (maxWidth >= 740.dp && fontScale <= 1.35f) 2 else 1
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -82,13 +91,16 @@ private fun QuotaContent(state: UiState) {
             }
         }
         if (showSubscriptions) {
-            Text("订阅与账单", color = cm.ink, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
+            Text("订阅与账单", color = cm.ink, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium, modifier = Modifier.semantics { heading() })
             Text("来自已登记的订阅和充值记录。金额不代表实时余额。", color = cm.ink2, fontSize = 12.sp, lineHeight = 18.sp)
             state.subscriptions?.updatedAt?.let { Text("更新于 ${Format.fmtDateTime(it, zone)}", color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
             when {
                 state.subsStatus == AuxStatus.Error -> Panel { Text("订阅清单读取失败，稍后刷新重试。", color = cm.crit, style = MaterialTheme.typography.bodyMedium) }
                 state.subsStatus == AuxStatus.Loading -> Panel { EmptyHint("正在读取订阅清单…") }
-                subscriptions.isEmpty() -> Panel { EmptyHint("尚未登记订阅或充值") }
+                subscriptions.isEmpty() -> Panel {
+                    Text("尚未记录订阅", color = cm.ink, style = MaterialTheme.typography.titleMedium)
+                    Text("已有的订阅记录会显示在这里；缺失的价格不会按零元计算。", color = cm.ink2, style = MaterialTheme.typography.bodyMedium)
+                }
                 else -> BoxWithConstraints(Modifier.fillMaxWidth()) {
                     val columns = if (maxWidth >= 740.dp && fontScale <= 1.35f) 2 else 1
                     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {

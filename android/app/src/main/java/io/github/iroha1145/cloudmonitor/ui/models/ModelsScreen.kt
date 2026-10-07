@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,16 +35,26 @@ fun LazyListScope.modelsItems(
     val per = ov.totals.period(state.modelPeriod.key)
     item("model-analysis") {
         var query by page.query
-        var sortCost by page.sortCost
+        var sortMode by rememberSaveable { mutableIntStateOf(0) }
+        var provider by rememberSaveable { mutableStateOf("全部") }
         val allModels = remember(per) { modelUsage(per) }
+        val providers = listOf("全部") + allModels.map { it.provider }.filter { it.isNotBlank() }.distinct()
+        if (provider !in providers) provider = "全部"
         var selectedModel by remember { mutableStateOf<UsageEntity?>(null) }
-        val visible = remember(allModels, query, sortCost) {
-            allModels.filter { it.name.contains(query.trim(), ignoreCase = true) }
-                .sortedByDescending { if (sortCost) it.costUsd ?: -1.0 else it.totalTokens }
+        val visible = remember(allModels, query, sortMode, provider) {
+            allModels.filter {
+                it.name.contains(query.trim(), ignoreCase = true) && (provider == "全部" || it.provider == provider)
+            }.sortedByDescending {
+                when (sortMode) {
+                    1 -> it.components.cacheRate ?: -1.0
+                    2 -> it.costUsd ?: -1.0
+                    else -> it.totalTokens
+                }
+            }
         }
         val cm = CmColorsCurrent
         Panel(Modifier.padding(bottom = 16.dp)) {
-            PanelHead("模型用量", "了解每个模型的消耗与缓存情况", trailing = {
+            PanelHead("模型用量", "按总用量排序，展开查看每个模型的组成", trailing = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     ExportModelsButton(per, state.modelPeriod.label)
                     PeriodSeg(state.modelPeriod, onPeriod)
@@ -62,9 +73,10 @@ fun LazyListScope.modelsItems(
                 }
             }
             Spacer(Modifier.height(14.dp))
-            WebSearchField(value = query, onValueChange = { query = it }, label = "搜索模型", placeholder = "搜索模型…",
+            WebSearchField(value = query, onValueChange = { query = it }, label = "搜索模型", placeholder = "搜索模型名称…",
                 modifier = Modifier.fillMaxWidth().testTag("model-search"))
-            WebSegmentedControl(listOf("按用量", "按费用"), if (sortCost) 1 else 0, { sortCost = it == 1 })
+            WebSegmentedControl(providers, providers.indexOf(provider).coerceAtLeast(0), { provider = providers[it] })
+            WebSegmentedControl(listOf("按总用量", "按缓存占比", "按费用"), sortMode, { sortMode = it })
             if (visible.isEmpty()) EmptyHint(if (query.isBlank()) "该周期暂无模型用量" else "没有匹配的模型")
             visible.forEachIndexed { index, entry ->
                 val segments = modelBreakdown(per, entry.id)
@@ -77,7 +89,10 @@ fun LazyListScope.modelsItems(
                 ) + segments.map { it.label to Format.fmtInt(it.value) }).padding(vertical = 17.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Box(Modifier.size(9.dp).clip(CircleShape).background(colors[entry.id] ?: cm.brand))
-                        Text(entry.name, Modifier.weight(1f), color = cm.ink, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold)
+                        Column(Modifier.weight(1f)) {
+                            Text(entry.name, color = cm.ink, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium)
+                            Text(entry.provider, color = cm.mute, fontSize = 11.sp)
+                        }
                     }
                     Spacer(Modifier.height(12.dp))
                     val metrics = listOf(
@@ -113,7 +128,7 @@ fun LazyListScope.modelsItems(
     val (clients, models) = matrixAxes(map)
     item("model-matrix") {
         Panel(Modifier.padding(bottom = 16.dp)) {
-            PanelHead("工具与模型", "查看不同工具的模型使用分布", trailing = { PeriodSeg(state.mxPeriod, onMatrixPeriod) })
+            PanelHead("客户端 × 模型", "每个客户端用了哪些模型", trailing = { PeriodSeg(state.mxPeriod, onMatrixPeriod) })
             WebSegmentedControl(listOf("词元用量", "费用"), if (state.mxCost) 1 else 0, { onMatrixCost(it == 1) })
             if (clients.isEmpty() || models.isEmpty()) EmptyHint("该周期暂无工具与模型明细")
             else MatrixGrid(clients, models, cost = state.mxCost) { client, model -> map[client]?.get(model) ?: 0.0 }
@@ -126,6 +141,6 @@ private fun ModelMetric(label: String, value: String, modifier: Modifier = Modif
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, color = CmColorsCurrent.ink2, fontSize = 11.sp, lineHeight = 15.sp)
         Text(value, color = color, fontSize = if (summary) 21.sp else 14.sp,
-            lineHeight = if (summary) 27.sp else 20.sp, fontWeight = FontWeight.SemiBold)
+            lineHeight = if (summary) 27.sp else 20.sp, fontWeight = FontWeight.Medium)
     }
 }
