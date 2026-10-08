@@ -135,7 +135,7 @@ jobs:
   device-tests:
     if: github.event_name == 'pull_request' || inputs.run_device_tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       ANDROID_SERIAL: emulator-5554
     strategy:
@@ -163,11 +163,20 @@ jobs:
         with:
           packages: platform-tools
       - name: 安装模拟器运行库
-        timeout-minutes: 5
+        timeout-minutes: 8
         run: |
           # The emulator links libpulse even when started with -no-audio.
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libpulse0
+          # apt-get update sometimes stalls on the runner mirror; retry instead of failing the job.
+          CI_APT_OK=0
+          for CI_APT_ATTEMPT in 1 2 3; do
+            if timeout 90 sudo apt-get update && timeout 90 sudo apt-get install --yes --no-install-recommends libpulse0 python3-pil; then
+              CI_APT_OK=1
+              break
+            fi
+            echo "apt 第 ${CI_APT_ATTEMPT} 次未完成，10 秒后重试"
+            sleep 10
+          done
+          test "$CI_APT_OK" = 1
       - name: 启用模拟器硬件加速
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -188,7 +197,7 @@ jobs:
           "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx cloud-monitor-ci
       - name: 启动设备并运行界面测试
         id: device_tests
-        timeout-minutes: 25
+        timeout-minutes: 40
         working-directory: android
         env:
           TEST_API: ${{ matrix.api }}
@@ -254,8 +263,78 @@ jobs:
           timeout 10 adb shell getconf PAGE_SIZE
           timeout 10 adb shell df -h /data
           timeout 10 adb shell head -n 5 /proc/meminfo
-          ./gradlew connectedDebugAndroidTest --no-daemon --stacktrace \
+          # A wedged emulator can sit in connectedDebugAndroidTest with no output until the
+          # 35 minute job timeout. Stop at 12 minutes and reboot once.
+          set +e
+          timeout 12m ./gradlew connectedDebugAndroidTest --no-daemon --stacktrace \
             -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
+          CI_TEST_CODE=$?
+          set -e
+          if [ "$CI_TEST_CODE" = 124 ]; then
+            echo "界面测试 12 分钟没有结束，关闭模拟器后重新启动再试一次"
+            kill "$CI_EMULATOR_PID" 2>/dev/null || true
+            wait "$CI_EMULATOR_PID" 2>/dev/null || true
+            timeout 20 adb emu kill >/dev/null 2>&1 || true
+            sleep 3
+            "$ANDROID_HOME/emulator/emulator" -avd cloud-monitor-ci -port 5554 -memory 4096 -partition-size 6144 -wipe-data -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader "${CI_GRAPHICS_FEATURES[@]}" > "$RUNNER_TEMP/emulator-retry.log" 2>&1 &
+            CI_EMULATOR_PID=$!
+            echo "$CI_EMULATOR_PID" > "$RUNNER_TEMP/emulator.pid"
+            CI_BOOT_DEADLINE=$((SECONDS + 180))
+            CI_BOOT_COMPLETE=false
+            CI_READY_PIDS=""
+            CI_READY_SINCE=$SECONDS
+            until [ "$SECONDS" -ge "$CI_BOOT_DEADLINE" ]; do
+              if ! kill -0 "$CI_EMULATOR_PID" 2>/dev/null; then
+                echo "::error::重试时模拟器进程在设备连接前退出"
+                cat "$RUNNER_TEMP/emulator-retry.log"
+                exit 1
+              fi
+              if [ "$(timeout 5 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then
+                if [ "$TEST_API" != "37.0" ]; then
+                  CI_BOOT_COMPLETE=true
+                  break
+                fi
+                CI_USER_STATE="$(timeout 5 adb shell am get-started-user-state 0 2>/dev/null | tr -d '\r' || true)"
+                CI_CURRENT_PIDS="$(timeout 5 adb shell pidof system_server surfaceflinger 2>/dev/null | tr -d '\r' || true)"
+                if [ "$CI_USER_STATE" = "RUNNING_UNLOCKED" ] && [[ "$CI_CURRENT_PIDS" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]]; then
+                  if [ "$CI_CURRENT_PIDS" != "$CI_READY_PIDS" ]; then
+                    CI_READY_PIDS="$CI_CURRENT_PIDS"
+                    CI_READY_SINCE=$SECONDS
+                  elif [ $((SECONDS - CI_READY_SINCE)) -ge 60 ]; then
+                    CI_BOOT_COMPLETE=true
+                    break
+                  fi
+                else
+                  CI_READY_PIDS=""
+                  CI_READY_SINCE=$SECONDS
+                fi
+              else
+                CI_READY_PIDS=""
+                CI_READY_SINCE=$SECONDS
+              fi
+              sleep 2
+            done
+            if [ "$CI_BOOT_COMPLETE" != true ]; then
+              echo "::error::重试时模拟器未在 180 秒内达到可测试状态"
+              cat "$RUNNER_TEMP/emulator-retry.log"
+              exit 1
+            fi
+            timeout 10 adb shell settings put global window_animation_scale 0
+            timeout 10 adb shell settings put global transition_animation_scale 0
+            timeout 10 adb shell settings put global animator_duration_scale 0
+            set +e
+            timeout 12m ./gradlew connectedDebugAndroidTest --no-daemon --stacktrace \
+              -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
+            CI_TEST_CODE=$?
+            set -e
+            if [ "$CI_TEST_CODE" = 124 ]; then
+              echo "::error::界面测试两次都在 12 分钟内没有结束"
+              exit 124
+            fi
+          fi
+          if [ "$CI_TEST_CODE" != 0 ]; then
+            exit "$CI_TEST_CODE"
+          fi
           # AGP can exit successfully after an APK installation failure with no tests run.
           python3 - <<'PY'
           from pathlib import Path
@@ -276,9 +355,65 @@ jobs:
               for tag in ("failure", "error", "skipped"):
                   if next(root.iter(tag), None) is not None:
                       raise SystemExit(f"::error::{report.name}: 存在 {tag} 用例")
-          if len(test_cases) < 6:
-              raise SystemExit(f"::error::设备测试实际执行 {len(test_cases)} 项，少于要求的 6 项")
+          if len(test_cases) < 7:
+              raise SystemExit(f"::error::设备测试实际执行 {len(test_cases)} 项，少于要求的 7 项")
           print(f"设备测试报告验证通过：{len(test_cases)} 项，失败、错误及跳过均为 0")
+          PY
+          mkdir -p "$RUNNER_TEMP/motion-capture"
+          timeout 30 adb pull /sdcard/Android/data/io.github.iroha1145.cloudmonitor.debug/files/screenshots "$RUNNER_TEMP/motion-capture/"
+          timeout 20 adb pull /data/local/tmp/cm-motion.mp4 "$RUNNER_TEMP/motion-capture/motion.mp4"
+          find "$RUNNER_TEMP/motion-capture" -type f -printf '%s %p\n'
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          from PIL import Image
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "motion-capture"
+          found = {}
+          for path in root.rglob("*"):
+              if path.is_file():
+                  found.setdefault(path.name, path)
+          required = [
+              "overview-light.png", "overview-dark.png",
+              "heatmap-light.png", "heatmap-dark.png",
+              "sessions-light.png", "sessions-dark.png",
+              "quota-light.png", "quota-dark.png",
+          ]
+          missing = [name for name in required if name not in found]
+          if missing:
+              raise SystemExit("::error::缺少页面截图: " + ", ".join(missing))
+
+          def frame_ok(path: Path) -> None:
+              image = Image.open(path).convert("RGB")
+              width, height = image.size
+              if width < 1000 or height < 1600:
+                  raise SystemExit(f"::error::{path.name} 尺寸异常 {width}x{height}")
+              sample = image.resize((48, 96))
+              pixels = list(sample.getdata())
+              unique = len(set(pixels))
+              top = max(pixels.count(color) for color in set(pixels)) / len(pixels)
+              # Edges of a real page are the canvas. A black screen or an ANR
+              # dialog leaves a near-black frame around the picture.
+              edge = []
+              for box in (
+                  (0, 0, width, height // 12),
+                  (0, height - height // 12, width, height),
+              ):
+                  edge.extend(image.crop(box).resize((24, 8)).getdata())
+              black = sum(1 for r, g, b in edge if r + g + b < 24) / len(edge)
+              if unique < 8 or top > 0.97 or black > 0.9:
+                  raise SystemExit(
+                      f"::error::{path.name} 不像真实页面 unique={unique} top={top:.2f} black_edge={black:.2f}"
+                  )
+              print(f"{path.name} {width}x{height} unique={unique} top={top:.2f}")
+
+          for name in required:
+              frame_ok(found[name])
+          videos = [path for path in root.rglob("motion.mp4") if path.is_file()]
+          video = max(videos, key=lambda path: path.stat().st_size, default=None)
+          if video is None or video.stat().st_size < 50_000:
+              raise SystemExit("::error::动效录像缺失或过小")
+          print(f"motion.mp4 {video.stat().st_size} bytes")
           PY
       - name: 收集设备日志
         if: always()
@@ -291,6 +426,7 @@ jobs:
               exit 1
             fi
           fi
+          timeout 20 adb pull /data/local/tmp/cm-motion.mp4 "$RUNNER_TEMP/screenshots/motion.mp4" || true
       - name: 关闭测试设备
         if: always()
         timeout-minutes: 1
@@ -310,4 +446,5 @@ jobs:
             ${{ runner.temp }}/emulator.log
             ${{ runner.temp }}/logcat.txt
             ${{ runner.temp }}/screenshots/
+            ${{ runner.temp }}/motion-capture/
           if-no-files-found: ignore

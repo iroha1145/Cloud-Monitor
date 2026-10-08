@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,15 +35,30 @@ fun LazyListScope.modelsItems(
     val per = ov.totals.period(state.modelPeriod.key)
     item("model-analysis") {
         var query by page.query
-        var sortCost by page.sortCost
+        var sortMode by rememberSaveable { mutableIntStateOf(0) }
+        var provider by rememberSaveable { mutableStateOf("全部") }
         val allModels = remember(per) { modelUsage(per) }
-        val visible = remember(allModels, query, sortCost) {
-            allModels.filter { it.name.contains(query.trim(), ignoreCase = true) }
-                .sortedByDescending { if (sortCost) it.costUsd ?: -1.0 else it.totalTokens }
+        val providers = listOf("全部") + allModels.map { it.provider }.filter { it.isNotBlank() }.distinct()
+        if (provider !in providers) provider = "全部"
+        var selectedModel by remember { mutableStateOf<UsageEntity?>(null) }
+        val visible = remember(allModels, query, sortMode, provider) {
+            allModels.filter {
+                it.name.contains(query.trim(), ignoreCase = true) && (provider == "全部" || it.provider == provider)
+            }.sortedByDescending {
+                when (sortMode) {
+                    1 -> it.components.cacheRate ?: -1.0
+                    2 -> it.costUsd ?: -1.0
+                    else -> it.totalTokens
+                }
+            }
         }
         val cm = CmColorsCurrent
         Panel(Modifier.padding(bottom = 16.dp)) {
-            PanelHead("模型用量", "了解每个模型的消耗与缓存情况", trailing = { PeriodSeg(state.modelPeriod, onPeriod) })
+            Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                PeriodSeg(state.modelPeriod, onPeriod)
+                ExportModelsButton(per, state.modelPeriod.label)
+            }
+            PanelHead("模型用量", "按总用量排序，展开查看每个模型的组成")
             Spacer(Modifier.height(14.dp))
             if (LocalDensity.current.fontScale > 1.5f) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -56,48 +72,58 @@ fun LazyListScope.modelsItems(
                 }
             }
             Spacer(Modifier.height(14.dp))
-            WebSearchField(value = query, onValueChange = { query = it }, label = "搜索模型", placeholder = "搜索模型…",
+            WebSearchField(value = query, onValueChange = { query = it }, label = "搜索模型", placeholder = "搜索模型名称…",
                 modifier = Modifier.fillMaxWidth().testTag("model-search"))
-            WebSegmentedControl(listOf("按用量", "按费用"), if (sortCost) 1 else 0, { sortCost = it == 1 })
+            WebSegmentedControl(providers, providers.indexOf(provider).coerceAtLeast(0), { provider = providers[it] })
+            WebSegmentedControl(listOf("按总用量", "按缓存占比", "按费用"), sortMode, { sortMode = it })
             if (visible.isEmpty()) EmptyHint(if (query.isBlank()) "该周期暂无模型用量" else "没有匹配的模型")
             visible.forEachIndexed { index, entry ->
                 val segments = modelBreakdown(per, entry.id)
                 val data = entry.components
-                Column(Modifier.fillMaxWidth().tipClick(entry.name, listOf(
-                    "词元用量" to Format.fmtInt(entry.totalTokens),
-                    "费用" to (entry.costUsd?.let(Format::fmtUsd) ?: "未提供"),
-                    data.cacheLabel to (data.cacheRate?.let(Format::fmtPct) ?: "未提供"),
-                    "构成明细" to if (!data.known) "未提供" else if (data.partial || !data.complete) "部分明细" else "完整",
-                ) + segments.map { it.label to Format.fmtInt(it.value) }).padding(vertical = 17.dp)) {
+                val cacheValue = data.cacheRate?.let(Format::fmtPct) ?: "未提供"
+                val tipRows = buildList {
+                    add("词元用量" to Format.fmtInt(entry.totalTokens))
+                    add("费用" to (entry.costUsd?.let(Format::fmtUsd) ?: "未提供"))
+                    add(data.cacheLabel to cacheValue)
+                    add("构成明细" to if (!data.known) "未提供" else if (data.partial || !data.complete) "部分明细" else "完整")
+                    if (data.known && !data.complete) add("说明" to "组成与总量不一致，暂不计算比例。")
+                    addAll(segments.map { it.label to Format.fmtInt(it.value) })
+                }
+                Column(Modifier.fillMaxWidth().tipClick(entry.name, tipRows).padding(vertical = 17.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Box(Modifier.size(9.dp).clip(CircleShape).background(colors[entry.id] ?: cm.brand))
-                        Text(entry.name, Modifier.weight(1f), color = cm.ink, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    val metrics = listOf(
-                        "词元用量" to Format.fmtCompact(entry.totalTokens),
-                        "估算费用" to (entry.costUsd?.let(Format::fmtUsd) ?: "未提供"),
-                        "缓存读取" to if (data.cacheReadKnown) Format.fmtCompact(data.cacheRead) else "未提供",
-                        data.cacheLabel to (data.cacheRate?.let(Format::fmtPct) ?: "未提供"),
-                    )
-                    val columns = if (LocalDensity.current.fontScale > 1.5f) 1 else 2
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        metrics.chunked(columns).forEach { row ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                row.forEach { (label, value) ->
-                                    ModelMetric(label, value, Modifier.weight(1f),
-                                        color = if (label == data.cacheLabel && data.cacheRate != null) cm.okInk else cm.ink)
-                                }
-                            }
+                        Column(Modifier.weight(1f)) {
+                            Text(entry.name, color = cm.ink, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium)
+                            Text(entry.provider, color = cm.mute, fontSize = 11.sp)
                         }
                     }
                     Spacer(Modifier.height(12.dp))
-                    MixBar(if (segments.isEmpty()) listOf(SEG_UNCLS to entry.totalTokens) else segments.map { it.color to it.value }, Modifier.fillMaxWidth())
+                    val readValue = if (data.cacheReadKnown) Format.fmtCompact(data.cacheRead) else "未提供"
+                    val wide = LocalDensity.current.fontScale <= 1.5f
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (wide) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                ModelMetric("词元用量", Format.fmtCompact(entry.totalTokens), Modifier.weight(1f))
+                                ModelMetric("估算费用", entry.costUsd?.let(Format::fmtUsd) ?: "未提供", Modifier.weight(1f))
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                ModelMetric("缓存读取", readValue, Modifier.weight(1f))
+                                CacheRateMetric(data, cacheValue, segments, Modifier.weight(1f))
+                            }
+                        } else {
+                            ModelMetric("词元用量", Format.fmtCompact(entry.totalTokens))
+                            ModelMetric("估算费用", entry.costUsd?.let(Format::fmtUsd) ?: "未提供")
+                            ModelMetric("缓存读取", readValue)
+                            CacheRateMetric(data, cacheValue, segments, Modifier.fillMaxWidth())
+                        }
+                    }
+                    TextButton(onClick = { selectedModel = entry }, modifier = Modifier.heightIn(min = 48.dp)) { Text("用量组成", fontSize = 12.sp) }
                     Spacer(Modifier.height(8.dp))
                     ComponentLegend(segments)
                 }
                 if (index != visible.lastIndex) HorizontalDivider(color = cm.border)
             }
+            ModelDetailDialog(selectedModel) { selectedModel = null }
         }
     }
     val matrixPer = ov.totals.period(state.mxPeriod.key)
@@ -105,7 +131,7 @@ fun LazyListScope.modelsItems(
     val (clients, models) = matrixAxes(map)
     item("model-matrix") {
         Panel(Modifier.padding(bottom = 16.dp)) {
-            PanelHead("工具与模型", "查看不同工具的模型使用分布", trailing = { PeriodSeg(state.mxPeriod, onMatrixPeriod) })
+            PanelHead("客户端 × 模型", "每个客户端用了哪些模型", trailing = { PeriodSeg(state.mxPeriod, onMatrixPeriod) })
             WebSegmentedControl(listOf("词元用量", "费用"), if (state.mxCost) 1 else 0, { onMatrixCost(it == 1) })
             if (clients.isEmpty() || models.isEmpty()) EmptyHint("该周期暂无工具与模型明细")
             else MatrixGrid(clients, models, cost = state.mxCost) { client, model -> map[client]?.get(model) ?: 0.0 }
@@ -118,6 +144,29 @@ private fun ModelMetric(label: String, value: String, modifier: Modifier = Modif
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, color = CmColorsCurrent.ink2, fontSize = 11.sp, lineHeight = 15.sp)
         Text(value, color = color, fontSize = if (summary) 21.sp else 14.sp,
-            lineHeight = if (summary) 27.sp else 20.sp, fontWeight = FontWeight.SemiBold)
+            lineHeight = if (summary) 27.sp else 20.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+/** Bar, percentage, then the partial caption, in the same order as the web cache cell. */
+@Composable
+private fun CacheRateMetric(
+    data: io.github.iroha1145.cloudmonitor.data.UsageComponents,
+    value: String,
+    segments: List<io.github.iroha1145.cloudmonitor.data.TokenSeg>,
+    modifier: Modifier = Modifier,
+) {
+    val cm = CmColorsCurrent
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("缓存占比", color = cm.ink2, fontSize = 11.sp, lineHeight = 15.sp)
+        if (data.complete) {
+            MixBar(if (segments.isEmpty()) listOf(SEG_UNCLS to 1.0) else segments.map { it.color to it.value }, Modifier.fillMaxWidth(), height = 10.dp)
+        } else {
+            IncompleteTrack(Modifier.fillMaxWidth())
+        }
+        Text(value, color = if (data.cacheRate != null) cm.okInk else cm.ink, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium)
+        if (data.partial) {
+            Text(if (data.cacheReadKnown) "已识别部分" else "组成未知", color = cm.mute, fontSize = 11.sp, lineHeight = 16.sp)
+        }
     }
 }

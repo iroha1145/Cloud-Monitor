@@ -1,0 +1,17 @@
+{
+  "updated_at": "2026-08-25T03:18:15Z",
+  "subscriptions": [
+    {
+      "id": "sub-claude",
+      "provider": "anthropic",
+      "kind": "subscription",
+      "planName": "Claude Pro",
+      "amountMinor": 2000,
+      "currency": "USD",
+      "interval": "month",
+      "intervalCount": 1,
+      "startDate": "2026-01-15",
+      "autoRenew": true
+    }
+  ]
+}

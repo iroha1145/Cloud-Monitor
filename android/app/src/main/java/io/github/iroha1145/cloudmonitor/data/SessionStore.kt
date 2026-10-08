@@ -92,6 +92,11 @@ class SessionStore(context: Context) {
         get() = metaPrefs().getBoolean(KEY_IN, false)
         set(value) = metaPrefs().edit().putBoolean(KEY_IN, value).apply()
 
+    /** When false, a successful login stays in memory and the encrypted token is removed. */
+    var rememberToken: Boolean
+        get() = metaPrefs().getBoolean(KEY_REMEMBER, false)
+        set(value) = metaPrefs().edit().putBoolean(KEY_REMEMBER, value).apply()
+
     var darkOverride: String?
         get() = metaPrefs().getString(KEY_THEME, null)
         set(value) {
@@ -99,17 +104,19 @@ class SessionStore(context: Context) {
             else metaPrefs().edit().putString(KEY_THEME, value).apply()
         }
 
-    fun persistSession(demoMode: Boolean, accessToken: String) {
+    fun persistSession(demoMode: Boolean, accessToken: String, rememberAccessToken: Boolean = false) {
         ensureSecrets()
         demo = demoMode
+        if (!demoMode) rememberToken = rememberAccessToken
         if (demoMode) {
             signedIn = true
             writeSecrets { remove(KEY_TOKEN) }
-        } else if (encryptionAvailable) {
+        } else if (rememberAccessToken && encryptionAvailable) {
             signedIn = true
             token = accessToken
         } else {
             signedIn = false
+            writeSecrets { remove(KEY_TOKEN) }
         }
     }
 
@@ -176,5 +183,6 @@ class SessionStore(context: Context) {
         const val KEY_TOKEN = "token"
         const val KEY_IN = "signed_in"
         const val KEY_THEME = "theme"
+        const val KEY_REMEMBER = "remember_token"
     }
 }

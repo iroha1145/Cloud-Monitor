@@ -44,7 +44,7 @@ object Format {
             } else {
                 String.format(Locale.US, "%.2f", y)
             }
-            val n = rawN.replace(Regex("""(\.\d*?)0+$"""), "$1").replace(Regex("""\.$"""), "")
+            val n = if (tight) rawN.replace(Regex("""(\.\d*?)0+$"""), "$1").replace(Regex("""\.$"""), "") else rawN
             return Compact(n, "亿")
         }
         if (v >= 1e4) {
@@ -54,17 +54,18 @@ object Format {
             } else {
                 String.format(Locale.US, "%.1f", w)
             }
-            val n = rawN.replace(Regex("""\.0$"""), "")
-            // 9995 万 round 成 10000 万时应滚到 1 亿（对齐网页 compactParts 同款进位）
+            val n = if (tight) rawN.replace(Regex("""\.0$"""), "") else rawN
+            // 9995 万 round 成 10000 万时应滚到 1 亿（对齐网页 compact 同款进位）
             if ((n.toDoubleOrNull() ?: 0.0) >= 10000) return compactParts(1e8, tight)
             return Compact(n, "万")
         }
         return Compact(fmtInt(v), "")
     }
 
+    /** Web `compact`: one decimal for 万, two for 亿, with a space before the unit. */
     fun fmtCompact(v: Double, tight: Boolean = false): String {
         val p = compactParts(v, tight)
-        return p.n + p.u
+        return if (p.u.isEmpty()) p.n else "${p.n} ${p.u}"
     }
 
     fun fmtUsd(v: Double): String {
@@ -73,13 +74,10 @@ object Format {
         return sign + "$" + checkNotNull(usdLocal.get()).format(abs(v))
     }
 
+    /** Web `pct`: always one decimal, including 0.0%. */
     fun fmtPct(ratio: Double): String {
         if (!ratio.isFinite()) return "—"
-        val pct = ratio * 100
-        if (pct > 0 && pct < 0.1) return "<0.1%"
-        val n = (kotlin.math.round(pct * 10) / 10.0)
-        val s = String.format(Locale.US, "%.1f", n).replace(Regex("""\.0$"""), "")
-        return "$s%"
+        return String.format(Locale.US, "%.1f%%", ratio * 100)
     }
 
     fun fmtCountOrUnknown(value: Double?): String =
@@ -93,6 +91,37 @@ object Format {
 
     fun pct1(v: Double, total: Double): String =
         if (total > 0) String.format(Locale.US, "%.1f%%", v / total * 100) else "0.0%"
+
+    /**
+     * Web `relativeTime`: age against the snapshot, not the wall clock.
+     * A reading within a minute of `generatedAt` is 刚刚同步.
+     */
+    fun relativeSync(value: String?, reference: String?): String {
+        if (value.isNullOrBlank()) return "尚无同步时间"
+        val seen = parseMillis(value) ?: return "同步时间未知"
+        val ref = parseMillis(reference) ?: return "同步时间未知"
+        val seconds = (ref - seen) / 1000.0
+        if (!seconds.isFinite()) return "同步时间未知"
+        if (seconds < -60) return "时间晚于当前快照"
+        if (seconds < 60) return "刚刚同步"
+        if (seconds < 3600) return "${kotlin.math.floor(seconds / 60).toInt()} 分钟前同步"
+        if (seconds < 86_400) return "${kotlin.math.floor(seconds / 3600).toInt()} 小时前同步"
+        return "${kotlin.math.floor(seconds / 86_400).toInt()} 天前同步"
+    }
+
+    /** Web price suffix: ` / 月`, ` / 2 月`. */
+    fun subscriptionCadence(interval: String?, count: Int): String {
+        val raw = interval.orEmpty().trim().lowercase(Locale.US)
+        val unit = when (raw) {
+            "day", "daily" -> "天"
+            "week", "weekly" -> "周"
+            "month", "monthly" -> "月"
+            "year", "yearly", "annual" -> "年"
+            else -> raw.ifBlank { "周期" }
+        }
+        val n = count.coerceAtLeast(1)
+        return if (n > 1) " / $n $unit" else " / $unit"
+    }
 
     fun relTime(iso: String?, now: Long = System.currentTimeMillis()): String {
         val t = parseMillis(iso) ?: return iso.orEmpty()
@@ -267,13 +296,7 @@ object Format {
         return if (s.length > 8) s.take(6) + "…" else s
     }
 
-    fun attributionMode(raw: String?): String = when (raw) {
-        "delta" -> "增量归属"
-        "delta-low-coverage" -> "增量归属（低覆盖）"
-        "delta-with-reset" -> "增量归属（含计数重置）"
-        "none" -> "无归属"
-        else -> raw.orEmpty()
-    }
+    fun attributionMode(raw: String?): String = samplingModeLabel(raw)
 
     fun pvErrorText(code: String?): String = when (code.orEmpty()) {
         "timeout" -> "状态页请求超时"

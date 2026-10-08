@@ -48,7 +48,7 @@ class WorkbenchTest {
     }
 
     @Test fun fiveDestinationsAndModelSearch() {
-        shot("overview-light")
+        shot("demo-overview-light")
         listOf("Devices", "Models", "Quota", "History", "Overview").forEach { tab ->
             compose.onNodeWithTag("nav-$tab").performClick()
             compose.onNodeWithTag("screen-$tab").assertIsDisplayed()
@@ -154,7 +154,7 @@ class WorkbenchTest {
         val switch = compose.onAllNodesWithText("切换深色外观").fetchSemanticsNodes()
         if (switch.isNotEmpty()) compose.onNodeWithText("切换深色外观").performClick()
         else shell("input keyevent 4")
-        shot("overview-dark")
+        shot("demo-overview-dark")
         compose.onNodeWithTag("nav-Models").performClick()
         compose.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         compose.waitUntil(15_000) { compose.activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE }

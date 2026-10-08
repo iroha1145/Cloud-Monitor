@@ -71,6 +71,12 @@ object AppIcons {
             "M6.7,17.3l-1.42,1.42",
         )
     }
+    val Search: ImageVector by lazy {
+        icon("Search", "M10.5,18a7.5,7.5 0 1 0 0,-15 7.5,7.5 0 1 0 0,15", "M16.2,16.2L21,21")
+    }
+    val Download: ImageVector by lazy {
+        icon("Download", "M12,4v11", "M7.5,11.5L12,16l4.5,-4.5", "M5,20h14")
+    }
     val Refresh: ImageVector by lazy {
         icon(
             "Refresh",

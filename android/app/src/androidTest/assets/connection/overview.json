@@ -642,7 +642,54 @@
       "endsAt": "2026-08-31T15:00:00.000Z"
     }
   },
-  "limits": [],
+  "limits": [
+    {
+      "provider": "anthropic",
+      "planLabel": "Claude Pro",
+      "accountLabel": "主账户",
+      "accountName": "dev",
+      "windows": [
+        {
+          "kind": "session",
+          "metric": "percentage",
+          "label": "5 小时窗口",
+          "usedPercent": 42,
+          "used": 42,
+          "limit": 100,
+          "showMeter": true,
+          "resetsAt": "2026-08-25T08:00:00Z"
+        },
+        {
+          "kind": "weekly",
+          "metric": "percentage",
+          "label": "7 天窗口",
+          "usedPercent": 82,
+          "used": 82,
+          "limit": 100,
+          "showMeter": true,
+          "resetsAt": "2026-09-01T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "provider": "openai",
+      "planLabel": "API 按量",
+      "accountLabel": "团队账户",
+      "balanceUsd": 48.2,
+      "windows": [
+        {
+          "kind": "monthly",
+          "metric": "percentage",
+          "label": "月度额度",
+          "usedPercent": 93,
+          "used": 93,
+          "limit": 100,
+          "showMeter": true,
+          "resetsAt": "2026-09-01T00:00:00Z"
+        }
+      ]
+    }
+  ],
   "sessions": [],
   "sessions_omitted": false,
   "sessions_meta": {

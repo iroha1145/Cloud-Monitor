@@ -47,7 +47,7 @@ class ConnectionTest {
         val overview = instrumentation.context.assets.open("connection/overview.json").bufferedReader().use { it.readText() }
         val history = instrumentation.context.assets.open("connection/history_daily.json").bufferedReader().use { it.readText() }
         FixtureServer(overview, history).use { server ->
-            waitForText("连接你的用量面板")
+            waitForText("查看你的用量")
             compose.onNodeWithTag("usage-summary").assertDoesNotExist()
             compose.onNode(hasText("面板地址") and hasSetTextAction())
                 .performScrollTo().performTextReplacement(server.baseUrl)
@@ -56,11 +56,13 @@ class ConnectionTest {
             connect()
 
             waitForText("密钥不正确，请重新输入。")
-            compose.onNodeWithText("密钥不正确，请重新输入。").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithTag("gate-error").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("密钥不正确，请重新输入。").assertIsDisplayed()
             compose.onNodeWithTag("usage-summary").assertDoesNotExist()
             assertEquals("The actual HTTP endpoint must reject the wrong key", 1, server.rejectedOverview.get())
             assertFalse(readSession().signedIn)
 
+            compose.onNodeWithTag("remember-token").performScrollTo().assertIsOff().performClick()
             compose.onNode(hasText("访问密钥") and hasSetTextAction())
                 .performScrollTo().performTextReplacement(TEST_ACCESS_TOKEN)
             connect()
@@ -80,7 +82,7 @@ class ConnectionTest {
             compose.activityRule.scenario.recreate()
             waitForSummary()
             assertNotSame("The activity must actually be recreated", previousActivity, compose.activity)
-            compose.onNodeWithText("连接你的用量面板").assertDoesNotExist()
+            compose.onNodeWithText("查看你的用量").assertDoesNotExist()
 
             // A visible cached card alone is insufficient: require a new authorized
             // request after recreation, then verify the fixture is still displayed.
@@ -98,7 +100,7 @@ class ConnectionTest {
             compose.onNodeWithText("退出演示").assertDoesNotExist()
             compose.onNodeWithText("断开连接").performClick()
             compose.onNodeWithText("确认退出").performClick()
-            waitForText("连接你的用量面板")
+            waitForText("查看你的用量")
             val disconnected = readSession()
             compose.waitUntil(5_000) { !disconnected.signedIn && disconnected.token.isEmpty() }
             server.assertHealthy()
@@ -106,7 +108,7 @@ class ConnectionTest {
     }
 
     private fun connect() {
-        compose.onNodeWithText("连接面板").performScrollTo().performClick()
+        compose.onNodeWithText("进入工作台").performScrollTo().performClick()
     }
 
     private fun waitForText(text: String) {
@@ -120,8 +122,10 @@ class ConnectionTest {
 
     private fun assertFixtureSummary() {
         val inSummary = hasAnyAncestor(hasTestTag("usage-summary"))
-        compose.onNode(hasText("184.6万") and inSummary).assertIsDisplayed()
-        compose.onNode(hasText("\$4.82") and inSummary).assertIsDisplayed()
+        compose.onNode(hasText("184.6") and inSummary).assertIsDisplayed()
+        compose.onNode(hasText("万") and inSummary).assertIsDisplayed()
+        compose.onNode(hasText("$") and inSummary).assertIsDisplayed()
+        compose.onNode(hasText("4.82") and inSummary).assertIsDisplayed()
     }
 
     private fun readSession(): SessionStore = SessionStore(debugContext()).apply { ensureSecrets() }
@@ -134,7 +138,7 @@ class ConnectionTest {
         store.hubUrl = ""
         // Commit the metadata before launch; keep keystore/keyset material intact.
         check(context.getSharedPreferences("cm_session_meta", Context.MODE_PRIVATE).edit()
-            .putBoolean("signed_in", false).putBoolean("demo", false).putString("hub_url", "").commit())
+            .putBoolean("signed_in", false).putBoolean("demo", false).putBoolean("remember_token", false).putString("hub_url", "").commit())
     }
 
     private fun debugContext(): Context {

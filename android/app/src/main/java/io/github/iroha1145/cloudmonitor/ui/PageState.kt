@@ -17,11 +17,13 @@ class PageState(selection: String = "全部") {
     val trendMetric = mutableStateOf("tokens")
     val trendDay = mutableStateOf("")
     val summaryPeriod = mutableStateOf("Today")
+    val activityDay = mutableStateOf("")
 
     companion object {
         val Saver = listSaver<PageState, Any>(
             save = { listOf(it.query.value, it.selection.value, it.sortCost.value, it.todayOnly.value,
-                it.limit.intValue, it.trendDays.intValue, it.summaryPeriod.value, it.trendMetric.value, it.trendDay.value) },
+                it.limit.intValue, it.trendDays.intValue, it.summaryPeriod.value, it.trendMetric.value, it.trendDay.value,
+                it.activityDay.value) },
             restore = { values -> PageState(values[1] as String).apply {
                 query.value = values[0] as String
                 sortCost.value = values[2] as Boolean
@@ -31,6 +33,7 @@ class PageState(selection: String = "全部") {
                 summaryPeriod.value = values[6] as String
                 trendMetric.value = values.getOrNull(7) as? String ?: "tokens"
                 trendDay.value = values.getOrNull(8) as? String ?: ""
+                activityDay.value = values.getOrNull(9) as? String ?: ""
             } },
         )
     }

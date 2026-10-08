@@ -42,7 +42,6 @@ private fun DevicesContent(overview: Overview, page: PageState) {
     var filter by page.selection
     val statusMap = overview.devices.associate { it.deviceId to deviceStatus(it, overview) }
     val online = statusMap.values.count { it == DeviceStatus.Online }
-    val clients = overview.devices.flatMap { it.trackedClients }.toSet().size
     val filters = listOf("全部", "在线", "同步延迟", "离线")
     val activeFilter = filter.takeIf { it in filters } ?: "全部"
     SideEffect { if (filter !in filters) filter = "全部" }
@@ -60,8 +59,14 @@ private fun DevicesContent(overview: Overview, page: PageState) {
         Panel {
             Text("设备概况", style = MaterialTheme.typography.titleMedium, color = cm.ink, modifier = Modifier.semantics { heading() })
             Spacer(Modifier.height(14.dp))
-            DeviceMetrics(listOf("在线设备" to "$online / ${overview.devices.size}", "已跟踪客户端" to "$clients 种",
-                "今日词元" to Format.fmtCompact(overview.devices.sumOf { it.today.totalTokens })), summary = true)
+            val todayTokens = overview.devices.sumOf { it.today.totalTokens }
+            val away = overview.devices.size - online
+            DeviceMetrics(listOf(
+                "已连接设备" to "${overview.devices.size} 台",
+                "当前在线" to "$online 台",
+                "今日设备用量" to Format.fmtCompact(todayTokens),
+            ), summary = true)
+            Text("按已上报设备统计 · $away 台离线或同步延迟 · 用量来自全部已上报设备", color = cm.mute, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
         }
         if (overview.devices.isEmpty()) {
             Panel {
@@ -71,7 +76,7 @@ private fun DevicesContent(overview: Overview, page: PageState) {
             }
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                WebSearchField(query, { query = it }, label = "搜索设备", placeholder = "名称、系统或客户端",
+                WebSearchField(query, { query = it }, label = "搜索设备", placeholder = "搜索设备、系统或客户端…",
                     modifier = Modifier.fillMaxWidth().testTag("device-search"))
                 WebSegmentedControl(filters, filters.indexOf(activeFilter).coerceAtLeast(0), { filter = filters[it] })
                 Text("${visible.size} 台设备", color = cm.ink2, fontSize = 11.sp, lineHeight = 16.sp)
@@ -99,7 +104,7 @@ private fun DevicesContent(overview: Overview, page: PageState) {
                     }
                 }
             }
-            Text("状态按最近上报与上传间隔判断。离线设备的历史用量仍会保留。", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+            Text("在线状态与同步时间以当前快照为准。离线设备已上报的用量会继续保留。", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -127,7 +132,7 @@ private fun DeviceCard(device: Device, overview: Overview, status: DeviceStatus)
                     DeviceStatus.Offline -> cm.crit
                 }, fontSize = 11.sp, lineHeight = 15.sp)
             }
-            Text("最近上报 ${Format.relTime(device.receivedAt).ifBlank { "未提供" }}", color = cm.ink2, fontSize = 11.sp, lineHeight = 15.sp)
+            Text(Format.relativeSync(device.receivedAt ?: device.updatedAt, overview.generatedAt), color = cm.ink2, fontSize = 11.sp, lineHeight = 15.sp)
         }
         Spacer(Modifier.height(13.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

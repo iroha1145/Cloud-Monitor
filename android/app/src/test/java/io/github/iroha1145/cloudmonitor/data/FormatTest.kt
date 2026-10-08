@@ -13,20 +13,30 @@ class FormatTest {
         assertEquals("-$1,234.56", Format.fmtUsd(-1234.56))
     }
 
-    @Test fun percentStripsTrailingPointZero() {
-        assertEquals("50%", Format.fmtPct(0.5))
+    @Test fun percentKeepsOneDecimalLikeTheWeb() {
+        assertEquals("0.0%", Format.fmtPct(0.0))
+        assertEquals("50.0%", Format.fmtPct(0.5))
         assertEquals("12.3%", Format.fmtPct(0.123))
-        assertEquals("<0.1%", Format.fmtPct(0.0004))
+        assertEquals("0.0%", Format.fmtPct(0.0004))
         assertEquals("—", Format.fmtPct(Double.NaN))
     }
 
-    @Test fun compactCarriesWanIntoYiAndKeepsPlainThousands() {
+    @Test fun compactKeepsWebDecimalsAndASpaceBeforeTheUnit() {
         assertEquals("1,234", Format.fmtCompact(1234.0))
-        assertEquals(Format.Compact("1.2", "万"), Format.compactParts(12_000.0))
+        assertEquals("1.2 万", Format.fmtCompact(12_000.0))
+        assertEquals("12.0 万", Format.fmtCompact(120_000.0))
+        assertEquals("70.0 万", Format.fmtCompact(700_000.0))
+        assertEquals("98.6 万", Format.fmtCompact(986_000.0))
+        assertEquals("1.20 亿", Format.fmtCompact(120_000_000.0))
+        assertEquals("1.00 亿", Format.fmtCompact(1e8))
         assertEquals(Format.Compact("1", "亿"), Format.compactParts(99_995_000.0, tight = true))
-        assertEquals(Format.Compact("1.2", "亿"), Format.compactParts(120_000_000.0))
-        val yi = Format.compactParts(1e8)
-        assertEquals("亿", yi.u)
-        assertEquals("1", yi.n)
+    }
+
+    @Test fun syncAgeUsesTheSnapshotAndAMonthlyPriceUsesTheWebSuffix() {
+        assertEquals("刚刚同步", Format.relativeSync("2026-08-25T03:18:15.168Z", "2026-08-25T03:18:15.180Z"))
+        assertEquals("2 天前同步", Format.relativeSync("2026-08-23T03:18:15Z", "2026-08-25T03:18:15Z"))
+        assertEquals("尚无同步时间", Format.relativeSync(null, "2026-08-25T03:18:15Z"))
+        assertEquals(" / 月", Format.subscriptionCadence("month", 1))
+        assertEquals(" / 2 月", Format.subscriptionCadence("monthly", 2))
     }
 }
