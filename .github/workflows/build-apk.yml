@@ -163,11 +163,20 @@ jobs:
         with:
           packages: platform-tools
       - name: 安装模拟器运行库
-        timeout-minutes: 5
+        timeout-minutes: 8
         run: |
           # The emulator links libpulse even when started with -no-audio.
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libpulse0 python3-pil
+          # apt-get update sometimes stalls on the runner mirror; retry instead of failing the job.
+          CI_APT_OK=0
+          for CI_APT_ATTEMPT in 1 2 3; do
+            if timeout 90 sudo apt-get update && timeout 90 sudo apt-get install --yes --no-install-recommends libpulse0 python3-pil; then
+              CI_APT_OK=1
+              break
+            fi
+            echo "apt 第 ${CI_APT_ATTEMPT} 次未完成，10 秒后重试"
+            sleep 10
+          done
+          test "$CI_APT_OK" = 1
       - name: 启用模拟器硬件加速
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -188,7 +197,7 @@ jobs:
           "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx cloud-monitor-ci
       - name: 启动设备并运行界面测试
         id: device_tests
-        timeout-minutes: 35
+        timeout-minutes: 40
         working-directory: android
         env:
           TEST_API: ${{ matrix.api }}
@@ -254,8 +263,78 @@ jobs:
           timeout 10 adb shell getconf PAGE_SIZE
           timeout 10 adb shell df -h /data
           timeout 10 adb shell head -n 5 /proc/meminfo
-          ./gradlew connectedDebugAndroidTest --no-daemon --stacktrace \
+          # A wedged emulator can sit in connectedDebugAndroidTest with no output until the
+          # 35 minute job timeout. Stop at 12 minutes and reboot once.
+          set +e
+          timeout 12m ./gradlew connectedDebugAndroidTest --no-daemon --stacktrace \
             -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
+          CI_TEST_CODE=$?
+          set -e
+          if [ "$CI_TEST_CODE" = 124 ]; then
+            echo "界面测试 12 分钟没有结束，关闭模拟器后重新启动再试一次"
+            kill "$CI_EMULATOR_PID" 2>/dev/null || true
+            wait "$CI_EMULATOR_PID" 2>/dev/null || true
+            timeout 20 adb emu kill >/dev/null 2>&1 || true
+            sleep 3
+            "$ANDROID_HOME/emulator/emulator" -avd cloud-monitor-ci -port 5554 -memory 4096 -partition-size 6144 -wipe-data -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader "${CI_GRAPHICS_FEATURES[@]}" > "$RUNNER_TEMP/emulator-retry.log" 2>&1 &
+            CI_EMULATOR_PID=$!
+            echo "$CI_EMULATOR_PID" > "$RUNNER_TEMP/emulator.pid"
+            CI_BOOT_DEADLINE=$((SECONDS + 180))
+            CI_BOOT_COMPLETE=false
+            CI_READY_PIDS=""
+            CI_READY_SINCE=$SECONDS
+            until [ "$SECONDS" -ge "$CI_BOOT_DEADLINE" ]; do
+              if ! kill -0 "$CI_EMULATOR_PID" 2>/dev/null; then
+                echo "::error::重试时模拟器进程在设备连接前退出"
+                cat "$RUNNER_TEMP/emulator-retry.log"
+                exit 1
+              fi
+              if [ "$(timeout 5 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then
+                if [ "$TEST_API" != "37.0" ]; then
+                  CI_BOOT_COMPLETE=true
+                  break
+                fi
+                CI_USER_STATE="$(timeout 5 adb shell am get-started-user-state 0 2>/dev/null | tr -d '\r' || true)"
+                CI_CURRENT_PIDS="$(timeout 5 adb shell pidof system_server surfaceflinger 2>/dev/null | tr -d '\r' || true)"
+                if [ "$CI_USER_STATE" = "RUNNING_UNLOCKED" ] && [[ "$CI_CURRENT_PIDS" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]]; then
+                  if [ "$CI_CURRENT_PIDS" != "$CI_READY_PIDS" ]; then
+                    CI_READY_PIDS="$CI_CURRENT_PIDS"
+                    CI_READY_SINCE=$SECONDS
+                  elif [ $((SECONDS - CI_READY_SINCE)) -ge 60 ]; then
+                    CI_BOOT_COMPLETE=true
+                    break
+                  fi
+                else
+                  CI_READY_PIDS=""
+                  CI_READY_SINCE=$SECONDS
+                fi
+              else
+                CI_READY_PIDS=""
+                CI_READY_SINCE=$SECONDS
+              fi
+              sleep 2
+            done
+            if [ "$CI_BOOT_COMPLETE" != true ]; then
+              echo "::error::重试时模拟器未在 180 秒内达到可测试状态"
+              cat "$RUNNER_TEMP/emulator-retry.log"
+              exit 1
+            fi
+            timeout 10 adb shell settings put global window_animation_scale 0
+            timeout 10 adb shell settings put global transition_animation_scale 0
+            timeout 10 adb shell settings put global animator_duration_scale 0
+            set +e
+            timeout 12m ./gradlew connectedDebugAndroidTest --no-daemon --stacktrace \
+              -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
+            CI_TEST_CODE=$?
+            set -e
+            if [ "$CI_TEST_CODE" = 124 ]; then
+              echo "::error::界面测试两次都在 12 分钟内没有结束"
+              exit 124
+            fi
+          fi
+          if [ "$CI_TEST_CODE" != 0 ]; then
+            exit "$CI_TEST_CODE"
+          fi
           # AGP can exit successfully after an APK installation failure with no tests run.
           python3 - <<'PY'
           from pathlib import Path
