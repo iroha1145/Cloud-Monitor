@@ -266,7 +266,7 @@ jobs:
           # A wedged emulator can sit in connectedDebugAndroidTest with no output until the
           # 35 minute job timeout. Stop at 12 minutes and reboot once.
           set +e
-          timeout 12m ./gradlew connectedDebugAndroidTest --no-daemon --stacktrace \
+          timeout 12m ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace \
             -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
           CI_TEST_CODE=$?
           set -e
@@ -323,7 +323,7 @@ jobs:
             timeout 10 adb shell settings put global transition_animation_scale 0
             timeout 10 adb shell settings put global animator_duration_scale 0
             set +e
-            timeout 12m ./gradlew connectedDebugAndroidTest --no-daemon --stacktrace \
+            timeout 12m ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace \
               -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
             CI_TEST_CODE=$?
             set -e

@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.contentDescription
@@ -63,7 +64,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.iroha1145.cloudmonitor.BuildConfig
 import io.github.iroha1145.cloudmonitor.data.Format
-import io.github.iroha1145.cloudmonitor.data.workspaceNotices
+import io.github.iroha1145.cloudmonitor.data.UsageEntity
 import io.github.iroha1145.cloudmonitor.ui.components.*
 import io.github.iroha1145.cloudmonitor.ui.devices.devicesItems
 import io.github.iroha1145.cloudmonitor.ui.gate.GateScreen
@@ -83,7 +84,6 @@ import io.github.iroha1145.cloudmonitor.ui.theme.pageEnter
 import io.github.iroha1145.cloudmonitor.ui.theme.riseIn
 import io.github.iroha1145.cloudmonitor.vm.AppTab
 import io.github.iroha1145.cloudmonitor.vm.AppViewModel
-import io.github.iroha1145.cloudmonitor.vm.AuxStatus
 
 private data class TabSpec(val tab: AppTab, val label: String, val title: String, val description: String, val icon: ImageVector)
 private val TABS = listOf(
@@ -97,7 +97,7 @@ private val TABS = listOf(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppRoot(vm: AppViewModel) {
-    val state by vm.state.collectAsStateWithLifecycle()
+    val shell by vm.shell.collectAsStateWithLifecycle()
     val owner = LocalLifecycleOwner.current
     DisposableEffect(owner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -112,57 +112,60 @@ fun AppRoot(vm: AppViewModel) {
     }
     var pageNavigated by remember { mutableStateOf(false) }
     var seenPage by remember { mutableStateOf(false) }
-    var seenTab by remember { mutableStateOf(state.tab) }
-    if (!state.signedIn) {
+    var seenTab by remember { mutableStateOf(shell.tab) }
+    if (!shell.signedIn) {
         if (seenPage || pageNavigated) {
             seenPage = false
             pageNavigated = false
         }
     } else if (!seenPage) {
         seenPage = true
-        seenTab = state.tab
-    } else if (state.tab != seenTab) {
+        seenTab = shell.tab
+    } else if (shell.tab != seenTab) {
         pageNavigated = true
-        seenTab = state.tab
+        seenTab = shell.tab
     }
     val systemDark = isSystemInDarkTheme()
-    val dark = state.dark ?: systemDark
+    val dark = shell.dark ?: systemDark
     val reduced = rememberReducedMotion()
     val tip = remember { FloatTipController() }
     CloudMonitorTheme(darkTheme = dark) {
         ApplyEdgeToEdge(dark)
         // Release builds keep the login page out of screenshots and recents.
         // Debug builds stay capturable so device tests can record the signed-in UI.
-        SecureScreen(enabled = !BuildConfig.DEBUG && !state.signedIn)
+        SecureScreen(enabled = !BuildConfig.DEBUG && !shell.signedIn)
         CompositionLocalProvider(
             LocalReducedMotion provides reduced,
             LocalAfterNavigation provides pageNavigated,
             LocalFloatTip provides tip,
         ) {
-            if (!state.signedIn) {
-                GateScreen(state, dark, vm::onUrl, vm::onToken, vm::onRememberToken, vm::login, vm::enterDemo) {
+            if (!shell.signedIn) {
+                val gate by vm.gate.collectAsStateWithLifecycle()
+                GateScreen(gate.asUiState(), dark, vm::onUrl, vm::onToken, vm::onRememberToken, vm::login, vm::enterDemo) {
                     vm.toggleDark(systemDark)
                 }
             } else {
                 val cm = CmColorsCurrent
-                val current = TABS.first { it.tab == state.tab }
+                val current = TABS.first { it.tab == shell.tab }
                 var menu by remember { mutableStateOf(false) }
                 var searchOpen by remember { mutableStateOf(false) }
                 var navMenu by remember { mutableStateOf(false) }
                 var logout by rememberSaveable { mutableStateOf(false) }
                 val saveable = rememberSaveableStateHolder()
                 // At the home destination the system owns Back, including its predictive animation.
-                BackHandler(enabled = state.tab != AppTab.Overview && !tip.visible && !state.showUpdate && !logout && !menu && !navMenu) {
+                BackHandler(enabled = shell.tab != AppTab.Overview && !tip.visible && !shell.showUpdate && !logout && !menu && !navMenu) {
                     vm.selectTab(AppTab.Overview)
                 }
-                LaunchedEffect(state.tab) { tip.hide() }
+                LaunchedEffect(shell.tab) { tip.hide() }
                 var toastHold by remember { mutableStateOf<String?>(null) }
-                if (state.toast != null) toastHold = state.toast
+                if (shell.toast != null) toastHold = shell.toast
                 saveable.SaveableStateProvider("workspace") {
                     BoxWithConstraints(Modifier.fillMaxSize()) {
                         // Match the mobile website, including phones held in landscape.
                         val shortLandscape = maxWidth <= 960.dp && maxHeight <= 500.dp
                         val rail = maxWidth > 760.dp && !shortLandscape
+                        val contentWidth = if (rail) maxWidth - 184.dp else maxWidth
+                        val cardColumns = if (contentWidth >= 788.dp && LocalDensity.current.fontScale <= 1.35f) 2 else 1
                         Scaffold(
                             modifier = Modifier.fillMaxSize(),
                             containerColor = cm.canvas,
@@ -194,7 +197,7 @@ fun AppRoot(vm: AppViewModel) {
                                             verticalAlignment = Alignment.CenterVertically) {
                                             Text(current.title, color = cm.ink, fontSize = 13.sp, fontWeight = FontWeight.Medium,
                                                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                                            if (state.demo) Text("演示", color = cm.mute, fontSize = 9.sp,
+                                            if (shell.demo) Text("演示", color = cm.mute, fontSize = 9.sp,
                                                 modifier = Modifier.background(cm.inset, RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 3.dp))
                                         }
                                         IconButton(
@@ -217,7 +220,7 @@ fun AppRoot(vm: AppViewModel) {
                                                 DropdownMenuItem(text = { Text("检查服务器更新") }, leadingIcon = { Icon(AppIcons.SystemUpdate, null) },
                                                     onClick = { menu = false; vm.openUpdate() })
                                                 HorizontalDivider()
-                                                DropdownMenuItem(text = { Text(if (state.demo) "退出演示" else "断开连接") },
+                                                DropdownMenuItem(text = { Text(if (shell.demo) "退出演示" else "断开连接") },
                                                     leadingIcon = { Icon(AppIcons.Logout, null) }, onClick = { menu = false; logout = true })
                                                 Text("应用 ${BuildConfig.VERSION_NAME}", Modifier.padding(16.dp), color = cm.mute,
                                                     style = MaterialTheme.typography.labelSmall)
@@ -237,14 +240,14 @@ fun AppRoot(vm: AppViewModel) {
                                         .padding(horizontal = 5.dp, vertical = if (shortLandscape) 3.dp else 5.dp)
                                         .onGloballyPositioned { navOrigin = it.positionInRoot() }) {
                                         SlidingThumb(
-                                            TABS.indexOfFirst { it.tab == state.tab },
+                                            TABS.indexOfFirst { it.tab == shell.tab },
                                             navBounds,
                                             cm.canvas,
                                             RoundedCornerShape(8.dp),
                                         )
                                         Row(Modifier.fillMaxWidth().selectableGroup()) {
                                             TABS.forEachIndexed { index, spec ->
-                                                WebNavItem(spec, state.tab == spec.tab, { vm.selectTab(spec.tab) },
+                                                WebNavItem(spec, shell.tab == spec.tab, { vm.selectTab(spec.tab) },
                                                     Modifier.weight(1f).reportNavBounds(index, navOrigin, navBounds),
                                                     horizontal = shortLandscape, paintSelection = false)
                                             }
@@ -263,20 +266,20 @@ fun AppRoot(vm: AppViewModel) {
                                     val railBounds = remember { mutableStateMapOf<Int, Rect>() }
                                     var railOrigin by remember { mutableStateOf(Offset.Zero) }
                                     Box(Modifier.fillMaxWidth().onGloballyPositioned { railOrigin = it.positionInRoot() }) {
-                                        SlidingThumb(TABS.indexOfFirst { it.tab == state.tab }, railBounds, cm.navActive, RoundedCornerShape(8.dp))
+                                        SlidingThumb(TABS.indexOfFirst { it.tab == shell.tab }, railBounds, cm.navActive, RoundedCornerShape(8.dp))
                                         Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                             TABS.forEachIndexed { index, spec ->
-                                                WebNavItem(spec, state.tab == spec.tab, { vm.selectTab(spec.tab) },
+                                                WebNavItem(spec, shell.tab == spec.tab, { vm.selectTab(spec.tab) },
                                                     Modifier.fillMaxWidth().reportNavBounds(index, railOrigin, railBounds),
                                                     horizontal = true, fullTitle = true, paintSelection = false)
                                             }
                                         }
                                     }
                                 }
-                                PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = { vm.refresh(fromUser = true) }, modifier = Modifier.weight(1f)) {
+                                PullToRefreshBox(isRefreshing = shell.refreshing, onRefresh = { vm.refresh(fromUser = true) }, modifier = Modifier.weight(1f)) {
                                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                                         AnimatedContent(
-                                            targetState = state.tab,
+                                            targetState = shell.tab,
                                             transitionSpec = {
                                                 fadeIn(tween(if (pageNavigated && !reduced) Motion.Fast else 0, easing = EaseSmoothOut)) togetherWith
                                                     fadeOut(tween(if (pageNavigated && !reduced) Motion.Quick else 0, easing = EaseSmoothOut))
@@ -284,90 +287,10 @@ fun AppRoot(vm: AppViewModel) {
                                             label = "page",
                                         ) { tab ->
                                         saveable.SaveableStateProvider(tab.name) {
-                                        val listState = rememberLazyListState()
-                                        val page = rememberSaveable(saver = PageState.Saver) {
-                                            PageState(selection = if (tab == AppTab.History) "" else "全部")
-                                        }
-                                        val nearEnd by remember {
-                                            derivedStateOf {
-                                                val info = listState.layoutInfo
-                                                info.totalItemsCount > 0 && (info.visibleItemsInfo.lastOrNull()?.index ?: 0) >= info.totalItemsCount - 3
-                                            }
-                                        }
-                                        LaunchedEffect(nearEnd, tab) {
-                                            if (tab == AppTab.History && nearEnd) vm.loadMoreHistory()
-                                        }
-                                        LazyColumn(state = listState,
-                                            modifier = Modifier.widthIn(max = 1200.dp).fillMaxSize().testTag("screen-$tab"),
-                                            contentPadding = PaddingValues(horizontal = if (rail) 24.dp else 16.dp),
-                                        ) {
-                                            item("connection") {
-                                                val zone = state.overview?.dashboardTimeZone?.takeIf { it.isNotBlank() }
-                                                val today = state.overview?.dashboardPeriod?.today?.key?.takeIf { it.isNotBlank() }
-                                                val kicker = listOfNotNull(today, zone).joinToString(" · ").ifBlank { "工作空间" }
-                                                val notices = state.overview?.let { overview ->
-                                                    workspaceNotices(
-                                                        overview,
-                                                        state.providers,
-                                                        subscriptionsFailed = state.subscriptionsLoadFailed || state.subsStatus == AuxStatus.Error,
-                                                        providersFailed = state.providersLoadFailed || state.providersStatus == AuxStatus.Error,
-                                                        historyFailed = state.historyLoadFailed || state.historyStatus == AuxStatus.Error,
-                                                        staleData = state.staleData,
-                                                        historyCostRetained = state.historyCostRetained,
-                                                        historyComponentsRetained = state.historyComponentsRetained,
-                                                    )
-                                                }.orEmpty()
-                                                Column(Modifier.fillMaxWidth().riseIn(0, state.tab).padding(top = 23.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                        Text(kicker, color = cm.mute, style = MaterialTheme.typography.labelSmall)
-                                                        Text(current.title, color = cm.ink, style = MaterialTheme.typography.headlineLarge,
-                                                            modifier = Modifier.semantics { heading() })
-                                                        Text(if (state.demo) "当前展示示例数据" else "当前展示真实数据",
-                                                            color = cm.ink2, fontSize = 13.sp, lineHeight = 20.sp)
-                                                    }
-                                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically,
-                                                            horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                                            StatusDot(
-                                                                ok = state.error == null,
-                                                                unknown = state.lastUpdated == null && !state.demo,
-                                                                pulse = state.error == null && state.overview != null,
-                                                                freshKey = state.overview?.generatedAt,
-                                                            )
-                                                            Text(if (state.demo) "示例数据" else state.lastUpdated?.let { "更新于 ${Format.fmtClock(it)}" } ?: "正在连接服务器",
-                                                                color = cm.mute, style = MaterialTheme.typography.bodySmall)
-                                                        }
-                                                        WebActionButton(if (state.refreshing) "刷新中" else "刷新数据", { vm.refresh(fromUser = true) },
-                                                            Modifier.testTag("refresh"), enabled = !state.refreshing, icon = AppIcons.Refresh, iconEnd = true, loading = state.refreshing)
-                                                    }
-                                                    if (notices.isNotEmpty()) WorkspaceNotices(notices, state.staleData || state.error != null)
-                                                    state.sessionWarning?.let { Text(it, color = cm.warnInk, style = MaterialTheme.typography.bodySmall) }
-                                                    state.error?.let { Text(it, color = cm.crit, style = MaterialTheme.typography.bodySmall) }
-                                                }
-                                            }
-                                            if (state.loading && state.overview == null) {
-                                                items(3) { ShimmerPanel(); Spacer(Modifier.height(12.dp)) }
-                                            } else when (tab) {
-                                                AppTab.Overview -> overviewItems(state, vm.modelColors(), vm::setModelPeriod, vm::setClientPeriod, vm::setMxPeriod, vm::setMxCost, page)
-                                                AppTab.Devices -> devicesItems(state, page)
-                                                AppTab.Models -> modelsItems(state, vm.modelColors(), vm::setModelPeriod, vm::setMxPeriod, vm::setMxCost, page)
-                                                AppTab.Quota -> quotaItems(state)
-                                                AppTab.History -> historyItems(state, vm.modelColors(), vm.clientColors(), vm::setActView, vm::loadMoreHistory, page)
-                                            }
-                                            item("end") {
-                                                val zone = state.overview?.dashboardTimeZone?.takeIf { it.isNotBlank() }
-                                                Text(
-                                                    if (state.demo) "Cloud Monitor · 示例数据，不代表实际账单"
-                                                    else "Cloud Monitor · 每 5 分钟自动刷新${zone?.let { " · $it" } ?: ""}",
-                                                    color = cm.mute, style = MaterialTheme.typography.bodySmall,
-                                                    modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),
-                                                )
-                                            }
+                                            WorkspaceList(vm, tab, TABS.first { it.tab == tab }.title, rail, cardColumns)
                                         }
                                         }
-                                        }
-                                        PageToast(toastHold, state.toast != null, reduced, cm.ink, cm.card)
+                                        PageToast(toastHold, shell.toast != null, reduced, cm.ink, cm.card)
                                     }
                                 }
                             }
@@ -375,11 +298,11 @@ fun AppRoot(vm: AppViewModel) {
                     }
                 }
                 FloatTipHost(tip)
-                if (state.showUpdate) UpdateDialog(
-                    state.demo,
-                    state.updateLoading,
-                    state.updateError,
-                    state.update,
+                if (shell.showUpdate) UpdateDialog(
+                    shell.demo,
+                    shell.updateLoading,
+                    shell.updateError,
+                    shell.update,
                     vm::closeUpdate,
                     onRefresh = { vm.openUpdate(refresh = true) },
                 )
@@ -398,12 +321,101 @@ fun AppRoot(vm: AppViewModel) {
                     confirmButton = { TextButton(onClick = { searchOpen = false }) { Text("关闭") } },
                 )
                 if (logout) AlertDialog(onDismissRequest = { logout = false },
-                    title = { Text(if (state.demo) "退出演示？" else "断开服务器连接？", modifier = Modifier.modalEnter(logout)) },
-                    text = { Text(if (state.demo) "退出后可连接自己的服务器。" else "本机保存的访问密钥将被清除，服务器上的数据会保留。") },
+                    title = { Text(if (shell.demo) "退出演示？" else "断开服务器连接？", modifier = Modifier.modalEnter(logout)) },
+                    text = { Text(if (shell.demo) "退出后可连接自己的服务器。" else "本机保存的访问密钥将被清除，服务器上的数据会保留。") },
                     confirmButton = { TextButton(onClick = { logout = false; vm.logout() }) { Text("确认退出") } },
                     dismissButton = { TextButton(onClick = { logout = false }) { Text("取消") } })
             }
         }
+    }
+}
+
+@Composable
+private fun WorkspaceList(
+    vm: AppViewModel,
+    tab: AppTab,
+    title: String,
+    rail: Boolean,
+    cardColumns: Int,
+) {
+    val header by vm.header.collectAsStateWithLifecycle()
+    val overview by vm.overviewPage.collectAsStateWithLifecycle()
+    val models by vm.modelsPage.collectAsStateWithLifecycle()
+    val quota by vm.quotaPage.collectAsStateWithLifecycle()
+    val history by vm.historyPage.collectAsStateWithLifecycle()
+    val modelColors by vm.modelColors.collectAsStateWithLifecycle()
+    val clientColors by vm.clientColors.collectAsStateWithLifecycle()
+    val cm = CmColorsCurrent
+    var selectedModel by remember { mutableStateOf<UsageEntity?>(null) }
+    val listState = rememberLazyListState()
+    val page = rememberSaveable(saver = PageState.Saver) {
+        PageState(selection = if (tab == AppTab.History) "" else "全部")
+    }
+    val nearEnd by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            info.totalItemsCount > 0 && (info.visibleItemsInfo.lastOrNull()?.index ?: 0) >= info.totalItemsCount - 3
+        }
+    }
+    LaunchedEffect(nearEnd, tab) {
+        if (tab == AppTab.History && nearEnd) vm.loadMoreHistory()
+    }
+    Box {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.widthIn(max = 1200.dp).fillMaxSize().testTag("screen-$tab"),
+            contentPadding = PaddingValues(horizontal = if (rail) 24.dp else 16.dp),
+        ) {
+            item("connection") {
+                val kicker = listOfNotNull(header.today, header.zone).joinToString(" · ").ifBlank { "工作空间" }
+                Column(Modifier.fillMaxWidth().riseIn(0, tab).padding(top = 23.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(kicker, color = cm.mute, style = MaterialTheme.typography.labelSmall)
+                        Text(title, color = cm.ink, style = MaterialTheme.typography.headlineLarge,
+                            modifier = Modifier.semantics { heading() })
+                        Text(if (header.demo) "当前展示示例数据" else "当前展示真实数据",
+                            color = cm.ink2, fontSize = 13.sp, lineHeight = 20.sp)
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            StatusDot(
+                                ok = header.error == null,
+                                unknown = header.lastUpdated == null && !header.demo,
+                                pulse = header.error == null && header.overviewReady,
+                                freshKey = header.generatedAt,
+                            )
+                            Text(if (header.demo) "示例数据" else header.lastUpdated?.let { "更新于 ${Format.fmtClock(it)}" } ?: "正在连接服务器",
+                                color = cm.mute, style = MaterialTheme.typography.bodySmall)
+                        }
+                        WebActionButton(if (header.refreshing) "刷新中" else "刷新数据", { vm.refresh(fromUser = true) },
+                            Modifier.testTag("refresh"), enabled = !header.refreshing, icon = AppIcons.Refresh, iconEnd = true, loading = header.refreshing)
+                    }
+                    if (header.notices.isNotEmpty()) WorkspaceNotices(header.notices, header.noticesOpen)
+                    header.sessionWarning?.let { Text(it, color = cm.warnInk, style = MaterialTheme.typography.bodySmall) }
+                    header.error?.let { Text(it, color = cm.crit, style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+            if (header.loading && !header.overviewReady) {
+                items(3) { ShimmerPanel(); Spacer(Modifier.height(12.dp)) }
+            } else when (tab) {
+                AppTab.Overview -> overviewItems(overview, modelColors, vm::setModelPeriod, vm::setClientPeriod, vm::setMxPeriod, vm::setMxCost, page)
+                AppTab.Devices -> devicesItems(overview.overview, page, cardColumns)
+                AppTab.Models -> modelsItems(models, modelColors, vm::setModelPeriod, vm::setMxPeriod, vm::setMxCost, { selectedModel = it }, page)
+                AppTab.Quota -> quotaItems(quota, cardColumns)
+                AppTab.History -> historyItems(history, modelColors, clientColors, vm::setActView, vm::loadMoreHistory, page)
+            }
+            item("end") {
+                Text(
+                    if (header.demo) "Cloud Monitor · 示例数据，不代表实际账单"
+                    else "Cloud Monitor · 每 5 分钟自动刷新${header.zone?.let { " · $it" } ?: ""}",
+                    color = cm.mute, style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),
+                )
+            }
+        }
+        if (tab == AppTab.Models) ModelDetailDialog(selectedModel) { selectedModel = null }
     }
 }
 

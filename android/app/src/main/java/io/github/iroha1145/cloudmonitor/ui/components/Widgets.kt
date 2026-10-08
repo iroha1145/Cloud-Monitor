@@ -49,6 +49,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -380,6 +381,11 @@ fun StatusDot(
     }
 }
 
+/** Counts compositions of [NumberTicker]. Production call sites leave this null. */
+class RecomposeProbe {
+    var count: Int = 0
+}
+
 /** Ledger digits roll in place. The readable text stays the whole formatted value. */
 @Composable
 fun NumberTicker(
@@ -389,7 +395,9 @@ fun NumberTicker(
     modifier: Modifier = Modifier,
     durationMillis: Int = Motion.TickerLedger,
     staggerMillis: Int = Motion.TickerStagger,
+    recomposeProbe: RecomposeProbe? = null,
 ) {
+    recomposeProbe?.let { probe -> SideEffect { probe.count += 1 } }
     val reduced = LocalReducedMotion.current
     val density = LocalDensity.current
     val digitStyle = style.copy(
@@ -411,13 +419,16 @@ fun NumberTicker(
                 Text(char.toString(), color = color, style = style, modifier = Modifier.clearAndSetSemantics { })
             } else {
                 val digit = char.digitToInt()
-                val progress = remember(value, index) { Animatable(if (reduced) 1f else 0f) }
+                val progress = remember(value, index) { Animatable(0f) }
+                var showFinal by remember(value, index) { mutableStateOf(false) }
                 LaunchedEffect(value, digit) {
+                    showFinal = false
                     progress.snapTo(0f)
                     if (!entered) delay((index * staggerMillis).toLong())
                     progress.animateTo(1f, tween(durationMillis, easing = EaseTicker))
+                    showFinal = true
                 }
-                if (progress.value >= 0.98f) {
+                if (showFinal) {
                     Text(char.toString(), color = color, style = style, modifier = Modifier.clearAndSetSemantics { })
                 } else {
                     Box(

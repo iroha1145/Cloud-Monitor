@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "CloudMonitor"
 include(":app")
+include(":baselineprofile")
