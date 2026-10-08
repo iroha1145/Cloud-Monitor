@@ -9,6 +9,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,18 +35,53 @@ import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
 import io.github.iroha1145.cloudmonitor.ui.theme.EaseSmoothOut
 import io.github.iroha1145.cloudmonitor.ui.theme.Motion
 import io.github.iroha1145.cloudmonitor.vm.AuxStatus
-import io.github.iroha1145.cloudmonitor.vm.UiState
+import io.github.iroha1145.cloudmonitor.vm.QuotaPage
 import java.text.NumberFormat
 import java.util.Currency
 import java.util.Locale
 
-fun LazyListScope.quotaItems(state: UiState) {
-    item("quota") { QuotaContent(state) }
+fun LazyListScope.quotaItems(state: QuotaPage, columns: Int) {
+    val overview = state.overview
+    val showSubscriptions = state.subsStatus != AuxStatus.Unsupported && overview?.features?.subscriptions != false
+    val subscriptions = if (showSubscriptions) state.subscriptions?.subscriptions.orEmpty() else emptyList()
+    val deferCards = showSubscriptions &&
+        state.subsStatus != AuxStatus.Error &&
+        state.subsStatus != AuxStatus.Loading &&
+        subscriptions.isNotEmpty()
+    item("quota-main") {
+        QuotaContent(state, showCards = !deferCards)
+        if (deferCards) Spacer(Modifier.height(16.dp))
+    }
+    if (!deferCards) return
+    val keys = subscriptionKeys(subscriptions)
+    if (columns <= 1) {
+        items(subscriptions.size, key = { keys[it] }) { index ->
+            Box(Modifier.padding(bottom = if (index == subscriptions.lastIndex) 0.dp else 16.dp)) {
+                SubscriptionCard(subscriptions[index])
+            }
+        }
+    } else {
+        val rows = subscriptions.indices.chunked(columns)
+        items(rows.size, key = { rows[it].joinToString("|") { index -> keys[index] } }) { rowIndex ->
+            val row = rows[rowIndex]
+            Row(
+                Modifier.padding(bottom = if (rowIndex == rows.lastIndex) 0.dp else 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                row.forEach { index ->
+                    key(keys[index]) {
+                        Box(Modifier.weight(1f)) { SubscriptionCard(subscriptions[index]) }
+                    }
+                }
+                if (row.size < columns) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun QuotaContent(state: UiState) {
+private fun QuotaContent(state: QuotaPage, showCards: Boolean) {
     val cm = CmColorsCurrent
     val overview = state.overview
     val limits = overview?.limits.orEmpty()
@@ -101,7 +137,7 @@ private fun QuotaContent(state: UiState) {
                     Text("尚未记录订阅", color = cm.ink, style = MaterialTheme.typography.titleMedium)
                     Text("已有的订阅记录会显示在这里；缺失的价格不会按零元计算。", color = cm.ink2, style = MaterialTheme.typography.bodyMedium)
                 }
-                else -> BoxWithConstraints(Modifier.fillMaxWidth()) {
+                else -> if (showCards) BoxWithConstraints(Modifier.fillMaxWidth()) {
                     val columns = if (maxWidth >= 740.dp && fontScale <= 1.35f) 2 else 1
                     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         subscriptions.chunked(columns).forEach { group ->
@@ -345,6 +381,24 @@ private fun QuotaMetric(label: String, value: String, modifier: Modifier = Modif
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, color = cm.ink2, fontSize = 11.sp, lineHeight = 15.sp)
         Text(value, color = cm.ink, fontSize = 21.sp, lineHeight = 27.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+private fun subscriptionKeys(subscriptions: List<Subscription>): List<String> {
+    val seen = HashMap<String, Int>()
+    return subscriptions.map { subscription ->
+        val raw = subscription.id?.takeIf { it.isNotBlank() } ?: listOf(
+            subscription.provider,
+            subscription.kind.orEmpty(),
+            subscription.planName.orEmpty(),
+            subscription.startDate.orEmpty(),
+            subscription.amountMinor?.toString().orEmpty(),
+            subscription.currency.orEmpty(),
+        ).joinToString("\u0000")
+        val base = "sub:$raw"
+        val count = (seen[base] ?: 0) + 1
+        seen[base] = count
+        if (count == 1) base else "$base#$count"
     }
 }
 

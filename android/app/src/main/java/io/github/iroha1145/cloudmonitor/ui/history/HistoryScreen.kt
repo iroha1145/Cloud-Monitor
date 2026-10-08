@@ -44,7 +44,7 @@ import io.github.iroha1145.cloudmonitor.ui.theme.Motion
 import androidx.compose.ui.geometry.Offset
 import io.github.iroha1145.cloudmonitor.ui.theme.cellIn
 import io.github.iroha1145.cloudmonitor.vm.AuxStatus
-import io.github.iroha1145.cloudmonitor.vm.UiState
+import io.github.iroha1145.cloudmonitor.vm.HistoryPage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -53,7 +53,7 @@ import java.time.YearMonth
 import java.util.Locale
 
 fun LazyListScope.historyItems(
-    state: UiState,
+    state: HistoryPage,
     modelColors: Map<String, Color>,
     clientColors: Map<String, Color>,
     onActView: (Int) -> Unit,

@@ -77,6 +77,7 @@ class ConnectionTest {
             assertFalse("Fixture responses must never select the demo path", saved.demo)
             assertEquals(server.baseUrl, saved.hubUrl)
             assertEquals(TEST_ACCESS_TOKEN, saved.token)
+            assertTrue("A checked remember box must leave ciphertext on disk", saved.hasPersistedToken())
 
             val previousActivity = compose.activity
             compose.activityRule.scenario.recreate()
@@ -102,7 +103,9 @@ class ConnectionTest {
             compose.onNodeWithText("确认退出").performClick()
             waitForText("查看你的用量")
             val disconnected = readSession()
-            compose.waitUntil(5_000) { !disconnected.signedIn && disconnected.token.isEmpty() }
+            compose.waitUntil(5_000) {
+                !disconnected.signedIn && disconnected.token.isEmpty() && !disconnected.hasPersistedToken()
+            }
             server.assertHealthy()
         }
     }

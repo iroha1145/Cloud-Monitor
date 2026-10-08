@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,24 +28,20 @@ import io.github.iroha1145.cloudmonitor.ui.components.StatusDot
 import io.github.iroha1145.cloudmonitor.ui.components.WebSearchField
 import io.github.iroha1145.cloudmonitor.ui.components.WebSegmentedControl
 import io.github.iroha1145.cloudmonitor.ui.theme.CmColorsCurrent
-import io.github.iroha1145.cloudmonitor.vm.UiState
-
-fun LazyListScope.devicesItems(state: UiState, page: PageState) {
-    val overview = state.overview ?: return
-    item("devices") { DevicesContent(overview, page) }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun DevicesContent(overview: Overview, page: PageState) {
-    val cm = CmColorsCurrent
-    var query by page.query
-    var filter by page.selection
-    val statusMap = overview.devices.associate { it.deviceId to deviceStatus(it, overview) }
-    val online = statusMap.values.count { it == DeviceStatus.Online }
+fun LazyListScope.devicesItems(overview: Overview?, page: PageState, columns: Int) {
+    if (overview == null) return
+    item("device-summary") {
+        Box(Modifier.padding(bottom = 16.dp)) { DeviceSummary(overview) }
+    }
+    if (overview.devices.isEmpty()) {
+        item("device-empty") { DeviceEmpty() }
+        return
+    }
+    val query = page.query.value
+    val filter = page.selection.value
     val filters = listOf("全部", "在线", "同步延迟", "离线")
     val activeFilter = filter.takeIf { it in filters } ?: "全部"
-    SideEffect { if (filter !in filters) filter = "全部" }
+    val statusMap = overview.devices.associate { it.deviceId to deviceStatus(it, overview) }
     val visible = overview.devices.filter { device ->
         val matches = listOf(device.hostname, device.deviceId, device.platform, device.osName)
             .plus(device.trackedClients).filterNotNull().any { it.contains(query.trim(), ignoreCase = true) }
@@ -55,57 +52,95 @@ private fun DevicesContent(overview: Overview, page: PageState) {
             else -> true
         }
     }
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Panel {
-            Text("设备概况", style = MaterialTheme.typography.titleMedium, color = cm.ink, modifier = Modifier.semantics { heading() })
-            Spacer(Modifier.height(14.dp))
-            val todayTokens = overview.devices.sumOf { it.today.totalTokens }
-            val away = overview.devices.size - online
-            DeviceMetrics(listOf(
-                "已连接设备" to "${overview.devices.size} 台",
-                "当前在线" to "$online 台",
-                "今日设备用量" to Format.fmtCompact(todayTokens),
-            ), summary = true)
-            Text("按已上报设备统计 · $away 台离线或同步延迟 · 用量来自全部已上报设备", color = cm.mute, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+    item("device-filters") {
+        Box(Modifier.padding(bottom = 16.dp)) { DeviceFilters(page, filters, activeFilter, visible.size) }
+    }
+    if (visible.isEmpty()) {
+        item("device-none") {
+            Box(Modifier.padding(bottom = 16.dp)) {
+                Panel {
+                    Text("没有符合条件的设备", color = CmColorsCurrent.ink, style = MaterialTheme.typography.titleMedium)
+                    TextButton(onClick = { page.query.value = ""; page.selection.value = "全部" }, modifier = Modifier.heightIn(min = 48.dp)) { Text("清除筛选") }
+                }
+            }
         }
-        if (overview.devices.isEmpty()) {
-            Panel {
-                Text("还没有设备上报", style = MaterialTheme.typography.titleLarge, color = cm.ink)
-                Spacer(Modifier.height(8.dp))
-                Text("在用量监控（Token Monitor）的设置中开启多设备同步，填入面板地址和服务端同步密钥。完成首次上传后，设备会显示在这里。", color = cm.ink2, style = MaterialTheme.typography.bodyMedium)
+    } else {
+        val keys = deviceKeys(visible)
+        if (columns <= 1) {
+            items(visible.size, key = { keys[it] }) { index ->
+                Box(Modifier.padding(bottom = 16.dp)) { DeviceCard(visible[index], overview, statusMap.getValue(visible[index].deviceId)) }
             }
         } else {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                WebSearchField(query, { query = it }, label = "搜索设备", placeholder = "搜索设备、系统或客户端…",
-                    modifier = Modifier.fillMaxWidth().testTag("device-search"))
-                WebSegmentedControl(filters, filters.indexOf(activeFilter).coerceAtLeast(0), { filter = filters[it] })
-                Text("${visible.size} 台设备", color = cm.ink2, fontSize = 11.sp, lineHeight = 16.sp)
-            }
-            if (visible.isEmpty()) {
-                Panel {
-                    Text("没有符合条件的设备", color = cm.ink, style = MaterialTheme.typography.titleMedium)
-                    TextButton(onClick = { query = ""; filter = "全部" }, modifier = Modifier.heightIn(min = 48.dp)) { Text("清除筛选") }
-                }
-            } else {
-                val fontScale = LocalDensity.current.fontScale
-                BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    val columns = if (maxWidth >= 740.dp && fontScale <= 1.35f) 2 else 1
-                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        visible.chunked(columns).forEach { group ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                group.forEach { device ->
-                                    key(device.deviceId) {
-                                        Box(Modifier.weight(1f)) { DeviceCard(device, overview, statusMap.getValue(device.deviceId)) }
-                                    }
-                                }
-                                if (group.size < columns) Spacer(Modifier.weight(1f))
-                            }
+            val rows = visible.indices.chunked(columns)
+            items(rows.size, key = { rows[it].joinToString("|") { index -> keys[index] } }) { rowIndex ->
+                val row = rows[rowIndex]
+                Row(Modifier.padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    row.forEach { index ->
+                        val device = visible[index]
+                        key(keys[index]) {
+                            Box(Modifier.weight(1f)) { DeviceCard(device, overview, statusMap.getValue(device.deviceId)) }
                         }
                     }
+                    if (row.size < columns) Spacer(Modifier.weight(1f))
                 }
             }
-            Text("在线状态与同步时间以当前快照为准。离线设备已上报的用量会继续保留。", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
         }
+    }
+    item("device-note") {
+        Text("在线状态与同步时间以当前快照为准。离线设备已上报的用量会继续保留。", color = CmColorsCurrent.ink2, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun DeviceSummary(overview: Overview) {
+    val cm = CmColorsCurrent
+    val online = overview.devices.count { deviceStatus(it, overview) == DeviceStatus.Online }
+    Panel {
+        Text("设备概况", style = MaterialTheme.typography.titleMedium, color = cm.ink, modifier = Modifier.semantics { heading() })
+        Spacer(Modifier.height(14.dp))
+        val todayTokens = overview.devices.sumOf { it.today.totalTokens }
+        val away = overview.devices.size - online
+        DeviceMetrics(listOf(
+            "已连接设备" to "${overview.devices.size} 台",
+            "当前在线" to "$online 台",
+            "今日设备用量" to Format.fmtCompact(todayTokens),
+        ), summary = true)
+        Text("按已上报设备统计 · $away 台离线或同步延迟 · 用量来自全部已上报设备", color = cm.mute, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+    }
+}
+
+@Composable
+private fun DeviceEmpty() {
+    val cm = CmColorsCurrent
+    Panel {
+        Text("还没有设备上报", style = MaterialTheme.typography.titleLarge, color = cm.ink)
+        Spacer(Modifier.height(8.dp))
+        Text("在用量监控（Token Monitor）的设置中开启多设备同步，填入面板地址和服务端同步密钥。完成首次上传后，设备会显示在这里。", color = cm.ink2, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun DeviceFilters(page: PageState, filters: List<String>, activeFilter: String, count: Int) {
+    val cm = CmColorsCurrent
+    SideEffect { if (page.selection.value !in filters) page.selection.value = "全部" }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        WebSearchField(page.query.value, { page.query.value = it }, label = "搜索设备", placeholder = "搜索设备、系统或客户端…",
+            modifier = Modifier.fillMaxWidth().testTag("device-search"))
+        WebSegmentedControl(filters, filters.indexOf(activeFilter).coerceAtLeast(0), { page.selection.value = filters[it] })
+        Text("$count 台设备", color = cm.ink2, fontSize = 11.sp, lineHeight = 16.sp)
+    }
+}
+
+private fun deviceKeys(devices: List<Device>): List<String> {
+    val seen = HashMap<String, Int>()
+    return devices.map { device ->
+        val raw = device.deviceId.ifBlank {
+            listOf(device.hostname.orEmpty(), device.platform.orEmpty(), device.receivedAt.orEmpty()).joinToString("\u0000")
+        }
+        val base = "device:$raw"
+        val count = (seen[base] ?: 0) + 1
+        seen[base] = count
+        if (count == 1) base else "$base#$count"
     }
 }
 

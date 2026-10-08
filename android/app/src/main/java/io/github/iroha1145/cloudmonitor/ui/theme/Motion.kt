@@ -37,6 +37,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
+private val blurEffects = HashMap<Int, androidx.compose.ui.graphics.RenderEffect>(32)
+
 val LocalReducedMotion = compositionLocalOf { false }
 
 /** transitions.dev tokens from hub/dashboard/src/tokens.css. */
@@ -106,12 +108,19 @@ fun GraphicsLayerScope.applyEnterBlur(progress: Float, maxSigmaPx: Float) {
     }
     val p = progress.coerceIn(0f, 1f)
     val sigma = maxSigmaPx * (1f - p)
-    renderEffect = if (p < 0.999f && sigma > 0.15f) {
-        AndroidRenderEffect.createBlurEffect(sigma, sigma, Shader.TileMode.CLAMP)
-            .asComposeRenderEffect()
-    } else {
-        null
-    }
+    renderEffect = if (p < 0.999f && sigma > 0.15f) cachedBlur(sigma) else null
+}
+
+/** Quantize sigma so a frame-by-frame blur reuses a handful of effects. */
+private fun cachedBlur(sigma: Float): androidx.compose.ui.graphics.RenderEffect {
+    val bucket = (sigma * 10f).roundToInt().coerceAtLeast(2)
+    blurEffects[bucket]?.let { return it }
+    if (blurEffects.size > 64) blurEffects.clear()
+    val quantized = bucket / 10f
+    val effect = AndroidRenderEffect.createBlurEffect(quantized, quantized, Shader.TileMode.CLAMP)
+        .asComposeRenderEffect()
+    blurEffects[bucket] = effect
+    return effect
 }
 
 /** Page sections rise 8px over --duration-fast. The web recipe does not blur them. */

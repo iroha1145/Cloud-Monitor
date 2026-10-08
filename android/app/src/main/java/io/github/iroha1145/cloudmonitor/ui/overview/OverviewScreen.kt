@@ -33,12 +33,12 @@ import io.github.iroha1145.cloudmonitor.ui.theme.LocalReducedMotion
 import io.github.iroha1145.cloudmonitor.ui.theme.Motion
 import io.github.iroha1145.cloudmonitor.vm.AuxStatus
 import io.github.iroha1145.cloudmonitor.vm.Period
-import io.github.iroha1145.cloudmonitor.vm.UiState
+import io.github.iroha1145.cloudmonitor.vm.OverviewPage
 import io.github.iroha1145.cloudmonitor.ui.PageState
 
 @Suppress("UNUSED_PARAMETER")
 fun LazyListScope.overviewItems(
-    state: UiState,
+    state: OverviewPage,
     modelColors: Map<String, Color>,
     onModelPeriod: (Period) -> Unit,
     onClientPeriod: (Period) -> Unit,
@@ -174,7 +174,7 @@ fun LazyListScope.overviewItems(
 }
 
 @Composable
-private fun SummaryPanel(state: UiState, page: PageState) {
+private fun SummaryPanel(state: OverviewPage, page: PageState) {
     val ov = state.overview ?: return
     var periodName by page.summaryPeriod
     val selected = Period.valueOf(periodName)

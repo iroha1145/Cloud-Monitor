@@ -11,6 +11,7 @@ import io.github.iroha1145.cloudmonitor.data.HubClient
 import io.github.iroha1145.cloudmonitor.data.Overview
 import io.github.iroha1145.cloudmonitor.data.ProviderCard
 import io.github.iroha1145.cloudmonitor.data.SessionStore
+import androidx.compose.ui.graphics.Color
 import io.github.iroha1145.cloudmonitor.data.ColorRegistry
 import io.github.iroha1145.cloudmonitor.data.SubscriptionsPayload
 import io.github.iroha1145.cloudmonitor.data.SystemUpdate
@@ -23,8 +24,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -124,6 +129,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state
+
+    val shell: StateFlow<ShellState> = _state.map { it.toShell() }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, _state.value.toShell())
+    val gate: StateFlow<GateState> = _state.map { it.toGate() }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, _state.value.toGate())
+    val header: StateFlow<HeaderState> = _state.map { it.toHeader() }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, _state.value.toHeader())
+    val overviewPage: StateFlow<OverviewPage> = _state.map { it.toOverviewPage() }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, _state.value.toOverviewPage())
+    val modelsPage: StateFlow<ModelsPage> = _state.map { it.toModelsPage() }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, _state.value.toModelsPage())
+    val quotaPage: StateFlow<QuotaPage> = _state.map { it.toQuotaPage() }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, _state.value.toQuotaPage())
+    val historyPage: StateFlow<HistoryPage> = _state.map { it.toHistoryPage() }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, _state.value.toHistoryPage())
+    val modelColors: StateFlow<Map<String, Color>> = _state.map { current ->
+        recomputeModelColors(current)
+        modelPalette.snapshot()
+    }.distinctUntilChanged().stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+    val clientColors: StateFlow<Map<String, Color>> = _state.map { current ->
+        recomputeClientColors(current)
+        clientPalette.snapshot()
+    }.distinctUntilChanged().stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
     init {
         viewModelScope.launch {
@@ -711,23 +739,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** 模型配色：先按累计用量排名铺排，再补齐其余来源出现过的名字；同名恒同色。 */
-    fun modelColors(): Map<String, androidx.compose.ui.graphics.Color> {
-        val ov = _state.value.overview ?: return modelPalette.snapshot()
+    private fun recomputeModelColors(current: UiState) {
+        val ov = current.overview ?: return
         modelPalette.seed(rankedNames(ov.totals.allTime.models.ifEmpty { ov.totals.today.models }))
         modelPalette.seed(ov.totals.today.models.keys)
         modelPalette.seed(ov.totals.month.models.keys)
         ov.trendModels.forEach { modelPalette.seed(it.models.keys) }
-        _state.value.history.forEach { modelPalette.seed(it.perModel.keys) }
-        return modelPalette.snapshot()
+        current.history.forEach { modelPalette.seed(it.perModel.keys) }
     }
 
-    fun clientColors(): Map<String, androidx.compose.ui.graphics.Color> {
-        val ov = _state.value.overview ?: return clientPalette.snapshot()
+    private fun recomputeClientColors(current: UiState) {
+        val ov = current.overview ?: return
         clientPalette.seed(rankedNames(ov.totals.allTime.clients.ifEmpty { ov.totals.today.clients }))
         clientPalette.seed(ov.totals.today.clients.keys)
         clientPalette.seed(ov.totals.month.clients.keys)
-        _state.value.history.forEach { clientPalette.seed(it.perClient.keys) }
-        return clientPalette.snapshot()
+        current.history.forEach { clientPalette.seed(it.perClient.keys) }
     }
 
     fun trend() = _state.value.overview?.let { trendRows(it) }.orEmpty()
