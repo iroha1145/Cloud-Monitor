@@ -9,7 +9,6 @@ import {
   Clock3,
   CreditCard,
   Database,
-  Info,
   Laptop,
   Monitor,
   Search,
@@ -537,14 +536,6 @@ export function DevicesView({ data }: SecondaryProps) {
           </EmptyState>
         </div>
       )}
-      <div className="sv-note">
-        <Info aria-hidden="true" />
-        <span>
-          在线状态与同步时间以{" "}
-          {dateLabel(data.generatedAt, data.timeZone, true)}{" "}
-          的数据快照为准。离线设备已上报的用量会继续保留。
-        </span>
-      </div>
     </div>
   );
 }
@@ -1166,16 +1157,10 @@ export function QuotaView({ data }: SecondaryProps) {
           <EmptyState
             icon={<CreditCard />}
             title="尚未记录订阅"
-            text="已有的订阅记录会显示在这里；缺失的价格不会按零元计算。"
+            text="添加的订阅与充值计划将在此展示。"
           />
         )}
       </section>
-      <div className="sv-note">
-        <Info aria-hidden="true" />
-        <span>
-          不同服务独立计算额度，不能互相抵扣。订阅记录与实际用量费用分别展示；未上报的余额或重置时间会保留为未知。
-        </span>
-      </div>
     </div>
   );
 }

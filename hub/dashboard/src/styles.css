@@ -1903,17 +1903,14 @@ input[type="search"]::-webkit-search-decoration {
   margin-inline: 0;
 }
 .model-dialog .composition-note {
-  display: none;
+  margin: 16px 0 0;
+  padding: 0;
+  border: 0;
+  line-height: 1.8;
 }
 .model-dialog .composition-legend {
   margin: 0;
   padding-bottom: 4px;
-}
-.detail-note {
-  margin: 0;
-  color: var(--ink-3);
-  font-size: var(--fs-label);
-  line-height: 1.8;
 }
 .design-dialog {
   padding: 28px !important;

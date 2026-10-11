@@ -127,15 +127,15 @@ function DayDetails({
           </div>
         ))}
       </dl>
-      {!parts && <p>当天缓存与用量细项未提供。</p>}
+      {!parts && <p>当日用量细项未提供</p>}
       {parts && !parts.known && (
-        <p>当天用量尚未分类，缓存与输入输出细项未提供。</p>
+        <p>当日用量未分类</p>
       )}
       {parts?.known && !parts.complete && (
-        <p>细项与总量不一致，缓存占比暂不显示。</p>
+        <p>细项与总量不一致，暂不计算比例</p>
       )}
       {parts?.known && parts.complete && parts.partial && (
-        <p>仅显示已识别的用量，未分类部分未计作缓存。</p>
+        <p>部分用量未分类，仅统计已知缓存</p>
       )}
     </div>
   );

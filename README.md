@@ -2,7 +2,7 @@
 
 把本机 [token-monitor](https://github.com/Javis603/token-monitor) 的用量接到自己的服务器。widget 在设置里把 hub 指过来，浏览器打开面板就能看今日、本月、累计。
 
-**假数据演示（不用装）：** https://iroha1145.github.io/Cloud-Monitor/
+**在线演示（免安装）：** https://iroha1145.github.io/Cloud-Monitor/
 
 官方 hub 按固定提交 `9ad1ca2`（v0.64.0）原样放进 tm-core 容器，协议行为跟官方一致。前面是 Python 网关：鉴权、校验、1MiB 实测限流，并把快照写入 SQLite。官方 `devices.json` 只留每台设备最新状态，没有历史点；长期趋势和日归档是我们自己补的。
 
@@ -190,7 +190,7 @@ agent 变量见 `agent/.env.example`。
 旧部署若共享锁缺失或不可读，可保留下一次升级提交入口，但取消
 会返回 503 并提示重跑安装脚本；新版宿主脚本也会修复旧锁权限。
 
-用 `install.sh` 安装或再跑一遍即可创建该目录并启动监视器（有 systemd 就用服务，否则 nohup）。只 `docker compose up`、没跑过安装脚本的话，检索仍然可用，点更新会返回 503。演示页（含 GitHub Pages）只走假数据界面，不会改服务器。
+用 `install.sh` 安装或再跑一遍即可创建该目录并启动监视器（有 systemd 就用服务，否则 nohup）。只 `docker compose up`、没跑过安装脚本的话，检索仍然可用，点更新会返回 503。演示页（含 GitHub Pages）为静态演示模式，不会修改服务器。
 
 ## 界面开发
 

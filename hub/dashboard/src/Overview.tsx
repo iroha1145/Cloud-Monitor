@@ -74,12 +74,13 @@ function usageNote(item: Pick<PeriodUsage, "components">) {
 
 function compositionNote(per: Pick<PeriodUsage, "totalTokens" | "components">) {
   const parts = per.components;
-  if (per.totalTokens === 0) return "这个周期还没有上报用量。";
-  return !parts.complete && parts.known
-    ? "组成与总量不一致，暂不计算缓存占比。"
+  if (per.totalTokens === 0) return "暂无上报用量";
+  if (!parts.known) return "用量尚未分类，缓存明细未提供";
+  return !parts.complete
+    ? "数据不一致，暂未计算占比"
     : parts.partial
-      ? "保留已知缓存，未识别用量单独列出。"
-      : "所有已上报用量均已完成分类。";
+      ? "部分用量未分类，仅统计已知缓存"
+      : "输入、输出与缓存用量分布";
 }
 
 function CompositionLegend({ parts }: { parts: PeriodUsage["components"] }) {
@@ -213,13 +214,12 @@ export function Stats({
           <span className="ledger-label">
             {per.components.partial ? "已识别缓存占比" : "缓存占比"}
             <MetricTooltip
-              title="缓存占比说明"
+              title="缓存占比"
               rows={[
-                { label: "计算方式", value: "缓存读取量 ÷ 总用量" },
-                { label: "未知组成", value: "单独保留，不推算缓存" },
+                { label: "计算公式", value: "缓存读取量 ÷ 总用量" },
               ]}
             >
-              <button className="help-icon" aria-label="缓存占比说明">
+              <button className="help-icon" aria-label="查看缓存占比说明">
                 <CircleHelp size={14} />
               </button>
             </MetricTooltip>
@@ -320,10 +320,12 @@ export function CompositionCard({
         </div>
       </div>
       <CompositionLegend parts={parts} />
-      <p className="composition-note">
-        <CircleHelp size={13} />
-        {compositionNote(per)}
-      </p>
+      {(!parts.complete || parts.partial || per.totalTokens === 0) && (
+        <p className="composition-note">
+          <CircleHelp size={13} />
+          {compositionNote(per)}
+        </p>
+      )}
     </section>
   );
 }
@@ -568,7 +570,7 @@ export function ModelTable({
           </div>
         ))}
       <div className="table-foot">
-        <span>缓存读取单独展示，不受其他来源影响</span>
+        <span>点击模型名称查看用量明细</span>
         <span>
           {Math.min(full ? models.length : 5, models.length)} /{" "}
           {per.models.length} 个模型
@@ -649,7 +651,6 @@ function Clients({ per }: { per: PeriodUsage }) {
           </div>
         ))}
       </div>
-      <p className="client-note">同一模型跨客户端汇总，未知组成单独显示。</p>
     </section>
   );
 }
@@ -856,8 +857,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
         </div>
       )}
       <div className="table-foot">
-        <span>颜色越浓，当前组合的{metric === "tokens" ? "用量" : "费用"}越高。— 表示未上报该组合。</span>
-        <span>按来源原始对应关系统计</span>
+        <span>颜色越深代表当前组合{metric === "tokens" ? "用量" : "费用"}越高；— 表示未提供该组合数据</span>
       </div>
     </section>
   );
