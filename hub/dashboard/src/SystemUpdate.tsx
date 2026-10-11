@@ -415,7 +415,7 @@ export function SystemUpdate({
               )}
               {status.applyEnabled && (
                 <p className="system-update-hint">
-                  升级请求由宿主机更新监视器处理；目录可写不代表监视器正在运行。
+                  升级请求提交后，等待服务器上的更新服务处理。
                 </p>
               )}
               <JobStatus job={status.job} timeZone={timeZone} />

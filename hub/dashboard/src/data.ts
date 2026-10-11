@@ -1397,7 +1397,7 @@ export function normalizeOverview(
     record(root.sessions_meta).session_details_incomplete === true ||
     root.sessions_omitted === true
   )
-    notices.push("当前快照未包含全部会话详情，不能用会话列表反推全部用量。");
+    notices.push("会话记录不完整，仅展示已捕获的会话明细。");
   for (const item of list(root.limits).map(record)) {
     if (item.stale === true)
       notices.push(
@@ -2014,7 +2014,6 @@ export function createDemoData(now = new Date(), refreshes = 0): DashboardData {
     })),
     notices: [
       "当前为本地设计预览，所有用量、订阅价格和服务状态均为虚构示例。",
-      "Cursor 示例用量仅提供总量，已知模型缓存仍保留，未分类用量单独列出。",
     ],
   };
 }

@@ -266,7 +266,7 @@ export function ArchivePanel({
       <div className="archive-context">
         {fallback ? (
           <p>
-            费用与模型明细只显示概览已经提供的内容；没有归档完整性、覆盖率或客户端构成的数据会标为未提供。
+            当前显示概览中的每日用量；缺少的明细标为未提供。
           </p>
         ) : metadata ? (
           <>
@@ -281,22 +281,20 @@ export function ArchivePanel({
             </p>
             {metadata.mixedTimeZones && (
               <p className="archive-warning">
-                包含多个设备时区；同一日期对应各设备各自的本地日，并非同一个绝对时间区间。
+                包含多个设备时区；同一日期对应各设备本地日。
               </p>
             )}
             {metadata.partial && (
               <p className="archive-warning">
-                部分归档未能完整读取
+                部分归档数据未能完整读取
                 {metadata.partialErrorCount
                   ? `（${metadata.partialErrorCount} 处）`
                   : ""}
-                ，请留意每日完整性标记。
+                ，请参考每日完整性标记。
               </p>
             )}
           </>
-        ) : (
-          <p>归档会保留服务报告的日期、费用和完整性。</p>
-        )}
+        ) : null}
       </div>
       {error && (
         <div className="archive-feedback" role="alert">

@@ -355,11 +355,6 @@ export default function AppDialogs({
                   components: shownModel.components,
                 }}
               />
-              <p className="detail-note">
-                {shownModel.components.partial
-                  ? "部分组成尚未识别，已保留可确认的缓存计数。"
-                  : "该模型用量组成完整。缓存占比按缓存读取量除以总用量计算。"}
-              </p>
             </>
           )}
         </DialogContent>

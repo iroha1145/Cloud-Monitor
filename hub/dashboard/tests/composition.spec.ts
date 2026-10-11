@@ -1,4 +1,8 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const overviewFixture = require("./fixtures/overview.json");
 
 async function expectStaticComposition(
   page: Page,
@@ -29,6 +33,52 @@ async function expectStaticComposition(
     await expect(page.getByRole("tooltip")).toHaveCount(0);
   }
   expect(await legend.allTextContents()).toEqual(before);
+}
+
+for (const scenario of [
+  { name: "complete", read: 50, unclassified: 0, note: null, rate: "50.0%" },
+  { name: "partial", read: 50, unclassified: 10, note: "部分用量未分类", rate: "50.0%" },
+  { name: "unknown", read: null, unclassified: 100, note: "用量尚未分类", rate: "未提供" },
+  { name: "inconsistent", read: 110, unclassified: 0, note: "数据不一致", rate: "未提供" },
+]) {
+  test(`composition guidance reflects ${scenario.name} model data`, async ({ page }, testInfo) => {
+    const model = "composition-check";
+    const known = scenario.read !== null;
+    const period = {
+      totalTokens: 100,
+      models: { [model]: 100 },
+      modelCacheReads: known ? { [model]: scenario.read } : {},
+      modelCacheWrites: known ? { [model]: 10 } : {},
+      modelOutputs: known ? { [model]: 20 } : {},
+      modelUnclassifiedTokens: { [model]: scenario.unclassified },
+    };
+    const overview = {
+      ...overviewFixture,
+      totals: { today: period, month: period, allTime: period },
+    };
+    await page.route("**/api/**", route => route.fulfill({
+      json: route.request().url().endsWith("/overview") ? overview : {},
+    }));
+    await page.goto("/");
+    await page.getByRole("button", { name: "连接我的数据" }).click();
+    await page.getByLabel("访问密钥", { exact: true }).fill("composition-fixture-only");
+    await page.getByRole("button", { name: "连接并查看真实用量" }).click();
+    await expect(page.getByText("当前展示真实数据")).toBeAttached();
+    await page.locator(".app-toast").getByRole("button", { name: "关闭提示" }).click();
+    await expect(page.locator(".app-toast")).toBeHidden();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole("button", { name: `查看 ${model} 详情`, exact: true }).click();
+    const card = page.locator(".model-dialog .composition-panel");
+    await expect(card.locator(".composition-center strong")).toHaveText(scenario.rate);
+    if (scenario.note) {
+      await expect(card.locator(".composition-note")).toContainText(scenario.note);
+      await expect(card.locator(".composition-note")).toBeVisible();
+    } else {
+      await expect(card.locator(".composition-note")).toHaveCount(0);
+    }
+    await expect(card.locator(".composition-legend > div")).toHaveCount(5);
+    await card.screenshot({ path: testInfo.outputPath(`composition-${scenario.name}.png`), animations: "disabled" });
+  });
 }
 
 for (const touch of [false, true]) {

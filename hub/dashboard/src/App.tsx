@@ -679,7 +679,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                 Cloud Monitor
                 <span className="footer-separator" aria-hidden="true">·</span>
                 {data.mode === "demo"
-                  ? "示例数据，不代表实际账单"
+                  ? "演示数据"
                   : `每 5 分钟自动刷新 · ${data.timeZone}`}
               </span>
               {!hosted && <button onClick={openDesign}>

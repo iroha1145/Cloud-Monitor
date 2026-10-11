@@ -20,7 +20,7 @@ test("a server with no reports explains how to connect a device instead of showi
   await expect(onboarding).toBeVisible();
   await expect(onboarding).toContainText(new URL(page.url()).origin);
   await expect(onboarding).toContainText("TOKEN_MONITOR_SECRET");
-  await expect(page.getByRole("region", { name: "用量组成" })).toContainText("这个周期还没有上报用量。");
+  await expect(page.getByRole("region", { name: "用量组成" })).toContainText("暂无上报用量");
   await expect(page.getByText("这个周期还没有模型用量")).toBeVisible();
   await expect(page.getByText("没有找到匹配的模型")).toHaveCount(0);
   await expect(page.getByText("还没有客户端上报")).toBeVisible();
