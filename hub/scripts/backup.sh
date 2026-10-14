@@ -1,22 +1,41 @@
 #!/usr/bin/env bash
 # 一致性备份：tm-core 的 devices.json + SQLite 的 cloud-monitor.sqlite3。
 # 两卷独立：先备 devices.json（官方原子写），再备 SQLite（.backup 一致性快照）。
-# 用法: ./backup.sh /path/to/backup-dir   （compose 服务运行中即可执行）
+# 用法: ./backup.sh [--instance 名称] /path/to/backup-dir   （compose 服务运行中即可执行）
+#       --instance 备份 hub/instances/<名称> 托管实例，缺省为主实例
 set -eu
 
-BACKUP_DIR=${1:?"用法: backup.sh <备份目录>"}
-TS=$(date +%Y%m%d-%H%M%S)
-OUT="$BACKUP_DIR/cloud-monitor-backup-$TS"
-mkdir -p "$OUT"
+INSTANCE=""
+if [ "${1:-}" = "--instance" ]; then
+  INSTANCE=${2:?"用法: backup.sh [--instance 名称] <备份目录>"}
+  shift 2
+fi
+BACKUP_DIR=${1:?"用法: backup.sh [--instance 名称] <备份目录>"}
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 HUB_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 # shellcheck source=lib.sh
 . "$SCRIPT_DIR/lib.sh"
 
+if [ -n "$INSTANCE" ]; then
+  cm_require_instance "$HUB_DIR" "$INSTANCE"
+fi
+
+compose() {
+  if [ -n "$INSTANCE" ]; then
+    cm_instance_compose "$HUB_DIR" "$INSTANCE" "$@"
+  else
+    cm_compose "$HUB_DIR" "$@"
+  fi
+}
+
+TS=$(date +%Y%m%d-%H%M%S)
+OUT="$BACKUP_DIR/cloud-monitor-backup-${INSTANCE:+$INSTANCE-}$TS"
+mkdir -p "$OUT"
+
 container_running() {
   service="$1"
-  cid=$(cm_compose "$HUB_DIR" ps -q "$service" 2>/dev/null || true)
+  cid=$(compose ps -q "$service" 2>/dev/null || true)
   [ -n "$cid" ] || return 1
   docker inspect -f '{{.State.Running}}' "$cid" 2>/dev/null | grep -qx true
 }
@@ -26,8 +45,8 @@ if ! container_running tm-core; then
   echo "tm-core 未运行，无法备份 devices.json" >&2
   exit 1
 fi
-if cm_compose "$HUB_DIR" exec -T tm-core sh -c 'test -f /data/devices.json'; then
-  cm_compose "$HUB_DIR" exec -T tm-core cat /data/devices.json > "$OUT/devices.json"
+if compose exec -T tm-core sh -c 'test -f /data/devices.json'; then
+  compose exec -T tm-core cat /data/devices.json > "$OUT/devices.json"
 else
   echo "{}" > "$OUT/devices.json"
   echo "devices.json 尚不存在，已写入空对象并继续备份数据库"
@@ -38,7 +57,7 @@ if ! container_running cloud-hub; then
   echo "cloud-hub 未运行，无法备份 SQLite" >&2
   exit 1
 fi
-cm_compose "$HUB_DIR" exec -T cloud-hub python3 - <<'PY' > "$OUT/cloud-monitor.sqlite3"
+compose exec -T cloud-hub python3 - <<'PY' > "$OUT/cloud-monitor.sqlite3"
 import os
 import sqlite3
 import sys

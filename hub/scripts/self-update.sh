@@ -184,12 +184,7 @@ if [[ -f "$INSTALL_DIR/VERSION" ]]; then
 fi
 SHA="$(git_in rev-parse --short HEAD)"
 
-if [[ -f "$ENVF" ]]; then
-  grep -v -E '^(CM_VERSION|CM_GIT_SHA)=' "$ENVF" >"$ENVF.tmp" || true
-  printf 'CM_VERSION=%s\nCM_GIT_SHA=%s\n' "$VER" "$SHA" >>"$ENVF.tmp"
-  mv "$ENVF.tmp" "$ENVF"
-  chmod 600 "$ENVF"
-fi
+cm_write_build_identity "$ENVF" "$VER" "$SHA"
 
 write_status "$ID" running "$REF" "正在重建容器（$VER $SHA）"
 (
@@ -198,5 +193,25 @@ write_status "$ID" running "$REF" "正在重建容器（$VER $SHA）"
   compose up -d --build
 ) || fail "容器重建失败（代码已更新，服务未重启）"
 
-write_status "$ID" ok "$REF" "已更新到 $REF（$VER $SHA）。请刷新面板。"
+# 托管实例共用本仓库代码，主实例重建成功后逐个跟进。单个实例失败不影响
+# 主实例的结果，失败名单写进最终状态，面板上能看到。
+# compose 不得读到循环的 stdin，否则会吞掉后面的实例名。
+FAILED_INSTANCES=""
+while IFS= read -r name; do
+  write_status "$ID" running "$REF" "正在重建托管实例 $name（$VER $SHA）"
+  if ! (
+    cm_write_build_identity "$HUB/instances/$name/.env" "$VER" "$SHA"
+    export CM_VERSION="$VER" CM_GIT_SHA="$SHA"
+    cm_instance_compose "$HUB" "$name" up -d --build </dev/null
+  ); then
+    echo "托管实例 $name 重建失败" >&2
+    FAILED_INSTANCES="${FAILED_INSTANCES:+$FAILED_INSTANCES、}$name"
+  fi
+done < <(cm_list_instances "$HUB")
+
+if [[ -n "$FAILED_INSTANCES" ]]; then
+  write_status "$ID" ok "$REF" "已更新到 $REF（$VER $SHA）。托管实例重建失败：$FAILED_INSTANCES，请在宿主机查看 compose 日志。"
+else
+  write_status "$ID" ok "$REF" "已更新到 $REF（$VER $SHA）。请刷新面板。"
+fi
 FINAL_STATE=ok

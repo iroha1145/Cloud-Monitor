@@ -15,6 +15,8 @@ hub/update-control/*.log
 hub/update-control/*.pid
 hub/update-control/*.lock
 !hub/update-control/.gitkeep
+# 托管实例（hub/scripts/instance.sh 生成，含各自密钥）
+hub/instances/
 
 # 前端依赖与测试产物
 node_modules
