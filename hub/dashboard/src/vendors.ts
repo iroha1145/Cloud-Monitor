@@ -66,6 +66,7 @@ const CLIENT_TITLES: Record<string, string> = {
   kiro: "Kiro",
   copilot: "GitHub Copilot",
   zed: "Zed",
+  kilo: "Kilo Code",
   kilocode: "Kilo Code",
   commandcode: "Command Code",
   codebuddy: "CodeBuddy",

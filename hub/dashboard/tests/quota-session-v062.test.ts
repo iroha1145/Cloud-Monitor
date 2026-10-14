@@ -3,7 +3,7 @@ import test from "node:test";
 import { normalizeOverview } from "../src/data.ts";
 import { formatMoney } from "../src/money.ts";
 import { quotaAmount, quotaBalance, quotaBoundaryLabel, quotaHeadline } from "../src/quota-presentation.ts";
-import { sessionActivity, sessionContext } from "../src/session-presentation.ts";
+import { sessionActivity, sessionContext, sessionPromptCache, sessionUsageSource } from "../src/session-presentation.ts";
 
 const now = "2026-09-26T12:00:00Z";
 
@@ -104,8 +104,8 @@ test("v0.70 liveActivity and waitingForInput states are normalized and presented
       timedDurationMs: 4000,
       promptCache: { observedAt: "2026-09-26T11:58:00Z", ttlSeconds: 300 },
       unpricedTokens: 50,
-      usageSource: "codex-app-server",
-      usageCoverage: "partial",
+      usageSource: "codex-dots-local",
+      usageCoverage: "observed-only",
     }],
   });
   assert.deepEqual(
@@ -125,8 +125,8 @@ test("v0.70 liveActivity and waitingForInput states are normalized and presented
   assert.equal(s.timedDurationMs, 4000);
   assert.deepEqual(s.promptCache, { observedAt: "2026-09-26T11:58:00Z", ttlSeconds: 300 });
   assert.equal(s.unpricedTokens, 50);
-  assert.equal(s.usageSource, "codex-app-server");
-  assert.equal(s.usageCoverage, "partial");
+  assert.equal(s.usageSource, "codex-dots-local");
+  assert.equal(s.usageCoverage, "observed-only");
 
   assert.equal(sessionActivity(s, now), "等待输入");
   assert.equal(
@@ -151,6 +151,40 @@ test("v0.70 liveActivity and waitingForInput states are normalized and presented
   assert.equal(formatMoney(-0.004, "EUR"), "€0.00");
   assert.equal(quotaAmount(-0.001, { metric: "credits", currency: "CREDITS" }), "0");
   assert.equal(quotaAmount(-0.004, { metric: "spend", currency: "USD" }), "$0.00");
+});
+
+test("quota numbers keep Intl rounding and only drop negative zero", () => {
+  const credits = { metric: "credits", currency: "CREDITS" } as const;
+  assert.equal(quotaAmount(1.005, credits), "1.01");
+  assert.equal(quotaAmount(0.285, credits), "0.29");
+  assert.equal(quotaAmount(-2.675, credits), "-2.68");
+  assert.equal(quotaAmount(-0.006, credits), "-0.01");
+  assert.equal(quotaAmount(-0.004, credits), "0");
+  const [quota] = normalizeOverview({ totals: {}, limits: [
+    { provider: "claude", windows: [{ kind: "weekly", usedPercent: 12.345 }] },
+  ] }).quotas;
+  assert.equal(quotaHeadline(quota).value, "12.35%");
+});
+
+test("prompt cache shows minutes left only for a live claude or codex reading", () => {
+  const base = normalizeOverview({
+    generated_at: now,
+    totals: {},
+    sessions: [{
+      sessionId: "s-cache", client: "codex", tokens: 1, lastUsedAt: "2026-09-26T11:58:00Z",
+      promptCache: { observedAt: "2026-09-26T11:58:00Z", ttlSeconds: 300 },
+      usageSource: "codex-dots-local", usageCoverage: "observed-only",
+    }],
+  }).sessions[0];
+  assert.deepEqual(sessionPromptCache(base, now), { minutes: 3 });
+  assert.deepEqual(sessionPromptCache({ ...base, client: "claude" }, "2026-09-26T12:02:30Z"), { minutes: 1 });
+  assert.equal(sessionPromptCache(base, "2026-09-26T12:03:00Z"), null);
+  assert.equal(sessionPromptCache({ ...base, client: "cursor" }, now), null);
+  assert.equal(sessionPromptCache({ ...base, archived: true }, now), null);
+  assert.equal(sessionPromptCache({ ...base, promptCache: { observedAt: "2026-09-26T12:01:00Z", ttlSeconds: 300 } }, now), null);
+
+  assert.equal(sessionUsageSource(base), "本机观测，只计入观测到的请求，可能少计");
+  assert.equal(sessionUsageSource({ ...base, usageSource: "other", usageCoverage: "partial" }), null);
 });
 
 

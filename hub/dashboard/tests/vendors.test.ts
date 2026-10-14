@@ -40,5 +40,6 @@ test("service-reported client ids keep their product names", () => {
   assert.equal(clientName("fx"), "FX");
   assert.equal(clientName("mcode"), "MiniMax Code");
   assert.equal(clientName("droid"), "Factory Droid");
+  assert.equal(clientName("kilo"), "Kilo Code");
 });
 

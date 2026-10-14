@@ -33,6 +33,23 @@ export function sessionActivity(session: Session, generatedAt: string): string {
   return "状态未提供";
 }
 
+// Mirrors upstream sessionPromptCacheForRow: only a live reading is shown.
+export function sessionPromptCache(session: Session, generatedAt: string): { minutes: number } | null {
+  const cache = session.promptCache;
+  if (!cache || session.archived === true || !LIVE_ACTIVITY_CLIENTS.has(session.client)) return null;
+  const now = Date.parse(generatedAt);
+  const observed = Date.parse(cache.observedAt);
+  if (!Number.isFinite(now) || !Number.isFinite(observed) || observed > now) return null;
+  const expiresAt = observed + cache.ttlSeconds * 1000;
+  if (expiresAt <= now) return null;
+  return { minutes: Math.ceil((expiresAt - now) / 60_000) };
+}
+
+export function sessionUsageSource(session: Session): string | null {
+  if (session.usageCoverage === "observed-only") return "本机观测，只计入观测到的请求，可能少计";
+  return null;
+}
+
 export function sessionContext(session: Session): { used: number; remaining: number } | null {
   const used = session.contextTokens;
   const window = session.contextWindow;

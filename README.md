@@ -97,7 +97,7 @@ widget 按自己的同步间隔推送，本机不用再装别的。然后打开 
 ## 协议支持
 
 内置服务端固定为 Token Monitor **v0.70.0**（`ac4eeb2c4aea239dd94b67f074c73f69aafc46f8`），源码保持上游原样。
-支持 CatPaw（`catpaw`）、FX（`fx`）、MiniMax Code（`mcode`）、Factory Droid（`factory` / `droid`）客户端，以及会话实时状态（`waitingForInput`、`liveActivity`、Prompt 缓存 TTL、未计价词元、流式输出速率、用量来源与父子会话关联）。网页与安卓端同步支持 CatPaw、FX、MiniMax Code、Factory Droid、StepFun 与 Muse Code 图标。
+支持 CatPaw（`catpaw`）、FX（`fx`）、MiniMax Code（`mcode`）、Factory Droid（`factory` / `droid`）客户端，以及会话实时状态（`waitingForInput`、`liveActivity`、提示词缓存剩余时间、未定价词元、流式输出速率、用量来源与父子会话关联）。网页与安卓端同步支持 CatPaw、FX、MiniMax Code、Factory Droid、StepFun 与 Muse Code 图标。
 Cursor 的 Auto/default 模型按官方规则归并到 cursor-auto，同时保留其它工具的同名模型；MiMo、Kilo 的旧工具名继续归并。旧客户端仍可上报，v0.62–v0.64 的每日额度、Claude 重置券、StepFun 配额、第三方用量摘要和会话上下文字段保持兼容。
 
 | 官方端点 | 状态 | 谁处理 |

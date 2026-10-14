@@ -596,6 +596,8 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+    /* A model name that wraps to more lines must not push its tile below its row. */
+    justify-content: flex-end;
     gap: 6px;
     min-width: 0;
     padding: 0;

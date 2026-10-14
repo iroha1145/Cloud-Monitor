@@ -105,6 +105,7 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
                    "unpricedTokens": 100, "timedOutputTokens": 500, "timedDurationMs": 10000,
                    "usageSource": "codex-dots-local", "usageCoverage": "observed-only",
                    "parentSessionId": "…", "parentClient": "claude",
+                   "nativeSessionId": "…", "t3ThreadId": "…",
                    "sessionKind": "background-review",
                    "deviceStale": false, "archived": false, … } ],
   "sessions_omitted": false,      // deprecated 布尔；权威见 sessions_meta
@@ -114,7 +115,7 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
     "sessions_omitted_count": 0,
     "session_details_incomplete": false
   },
-  "projects": […],
+  "projects": [ { …, "unpricedTokens": 400 } ], // 官方有值时才带 unpricedTokens
   "diagnostics": […]
 }
 ```
@@ -122,10 +123,11 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
 Overview **不得**把 370 天日归档塞进每 5 分钟刷新的 payload。长期历史走
 `/api/v1/tm/history/daily` 分页。
 
-会话新增字段（含 `waitingForInput`、`liveActivity`、`promptCache`、`unpricedTokens`、`timedOutputTokens`、`timedDurationMs`、`parentSessionId`、`parentClient`、`usageSource`、`usageCoverage`）按官方记录有值时传递，不以 false 或 0 填充缺失字段；`deviceStale`
+会话新增字段（含 `waitingForInput`、`liveActivity`、`promptCache`、`unpricedTokens`、`timedOutputTokens`、`timedDurationMs`、`parentSessionId`、`parentClient`、`nativeSessionId`、`t3ThreadId`、`usageSource`、`usageCoverage`）按官方记录有值时传递，不以 false 或 0 填充缺失字段；`deviceStale`
 来自所属设备的官方陈旧判定。已归档会话不显示运行；设备未过期时，`claude` / `codex` 若存在距统计时间不超过 30 秒的 `liveActivity`（`running` / `waiting` / `idle`），优先按实时活动状态显示运行中、等待输入或闲置；否则在活动时间距本次统计 0–10 分钟时，`turnEnded: true` 显示已完成，`codex` 的 `waitingForInput: true` 显示等待输入，`turnEnded: false` 显示运行中。
 过期设备/旧活动显示闲置，缺少时间或布尔证据显示状态未提供。上下文是上次上报的
-占用量，缺少有效窗口不计算百分比。开启 `TOKEN_MONITOR_SYNC_SESSION_TITLES` 时可传递会话标题（`title`），但始终不包含消息正文。
+占用量，缺少有效窗口不计算百分比。不会在本接口新增会话标题或消息正文；开启
+`TOKEN_MONITOR_SYNC_SESSION_TITLES` 只影响官方核心是否接收标题，总览仍不传 `title`。
 
 `limits` 继续复制官方完整额度记录，包括每日窗口、`limitId`、`additional`、
 `boundaryKind`、`resetCredits.grants`、`adapterId`、`usageSummary` 和
@@ -150,6 +152,11 @@ Overview **不得**把 370 天日归档塞进每 5 分钟刷新的 payload。长
 缓存读取量 / 模型总量的口径；仍有未知组成时标注“已识别缓存占比”，
 不将其当作完整命中率。缓存缺失和全量未分类不能显示为 0% 缓存；
 组件合计超过总量时保留不一致提示，并停止显示无法成立的缓存率。
+
+v0.70 起官方周期还带 `unpricedTokens`、`clientUnpricedTokens`、`modelUnpricedTokens`、
+`clientModelUnpricedTokens`（没有价格、未计入 `costUsd` 的词元）和 `modelThroughput`
+（按模型的 `timedTokens`、`timedOutputTokens`、`timedDurationMs`），随 `totals` 原样透传。
+会话详情把未定价词元单独列出，不当作免费用量。
 
 `trend` 与 `history/daily.items` 也携带当天的 `outputTokens`、
 `cacheReadTokens`、`cacheWriteTokens`、`unclassifiedTokens`。每台设备

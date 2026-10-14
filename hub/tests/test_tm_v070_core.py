@@ -1,14 +1,17 @@
 """Official v0.70.0 wire contracts, sync routes, and session/throughput fields."""
 from __future__ import annotations
 
+import copy
 import subprocess
 import sys
 
 import httpx
+import pytest
 
 from conftest import HUB_ROOT, READ_KEY, requires_node
 
 from hub.tm_snapshots import now_z
+from hub.tm_validate import PayloadValidationError, validate_ingest_payload
 
 READ = {"Authorization": f"Bearer {READ_KEY}"}
 
@@ -216,3 +219,51 @@ def test_v070_session_field_validation_and_sync_body_limits(cloud, node_hub):
         )
         assert resp.status_code == 413, (path, resp.status_code, resp.text)
 
+
+def _v070_payload(stamp: str) -> dict:
+    return {
+        "deviceId": "dev-v070",
+        "updatedAt": stamp,
+        "today": {
+            "totalTokens": 10,
+            "sessions": {
+                "codex:s": {
+                    "client": "codex", "sessionId": "s", "totalTokens": 10, "lastUsedAt": stamp,
+                    "liveActivity": {"state": "running", "observedAt": stamp},
+                    "promptCache": {"observedAt": stamp, "ttlSeconds": 300},
+                }
+            },
+        },
+    }
+
+
+def _session(p: dict) -> dict:
+    return p["today"]["sessions"]["codex:s"]
+
+
+V070_BAD_FIELDS = {
+    "title_generation_zero": lambda p: p.__setitem__("sessionTitleSyncGeneration", 0),
+    "title_generation_bool": lambda p: p.__setitem__("sessionTitleSyncGeneration", True),
+    "title_generation_text": lambda p: p.__setitem__("sessionTitleSyncGeneration", "1"),
+    "nested_unpriced_negative": lambda p: p["today"].__setitem__("clientModelUnpricedTokens", {"a": {"m": -5}}),
+    "nested_unpriced_bool": lambda p: p["today"].__setitem__("clientModelUnpricedTokens", {"a": {"m": True}}),
+    "nested_cost_negative": lambda p: p["today"].__setitem__("clientModelCosts", {"a": {"m": -1.5}}),
+    "cache_ttl_text": lambda p: _session(p)["promptCache"].__setitem__("ttlSeconds", "300"),
+    "cache_ttl_fraction": lambda p: _session(p)["promptCache"].__setitem__("ttlSeconds", 300.5),
+    "live_observed_number": lambda p: _session(p)["liveActivity"].__setitem__("observedAt", 12345),
+    "live_observed_future": lambda p: _session(p)["liveActivity"].__setitem__("observedAt", "2099-01-01T00:00:00Z"),
+    "throughput_list": lambda p: p["today"].__setitem__("modelThroughput", []),
+    "session_activity_text": lambda p: p["today"].__setitem__("sessionActivity", "x"),
+}
+
+
+def test_v070_valid_payload_is_accepted():
+    validate_ingest_payload(_v070_payload(now_z()))
+
+
+@pytest.mark.parametrize("mutate", V070_BAD_FIELDS.values(), ids=V070_BAD_FIELDS.keys())
+def test_v070_malformed_fields_are_rejected(mutate):
+    payload = copy.deepcopy(_v070_payload(now_z()))
+    mutate(payload)
+    with pytest.raises(PayloadValidationError):
+        validate_ingest_payload(payload)

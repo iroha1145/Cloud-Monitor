@@ -40,7 +40,7 @@ import { DAY_MS, dayKeyZoned, formatZoned } from "./lib/datetime";
 import { downloadCsv, rowsToCsv } from "./lib/csv";
 import { formatMoney as money, usd } from "./money";
 import { quotaAmount, quotaBalance, quotaBoundaryLabel, quotaHeadline, quotaPercent } from "./quota-presentation";
-import { sessionActivity, sessionContext } from "./session-presentation";
+import { sessionActivity, sessionContext, sessionPromptCache, sessionUsageSource } from "./session-presentation";
 // Last import: mobile overrides must win ties within this async chunk.
 import "./secondary-mobile.css";
 
@@ -1393,6 +1393,8 @@ export function HistoryView({ data }: SecondaryProps) {
                   {displayed.map((session) => {
                     const activity = sessionActivity(session, activityReference);
                     const context = sessionContext(session);
+                    const promptCache = sessionPromptCache(session, activityReference);
+                    const usageSource = sessionUsageSource(session);
                     return <Fragment key={session.id}>
                       <tr>
                         <td data-label="会话">
@@ -1532,23 +1534,18 @@ export function HistoryView({ data }: SecondaryProps) {
                                     </dd>
                                   </div>
                                 )}
-                              {session.promptCache && (
+                              {promptCache && (
                                 <div>
                                   <dt>提示词缓存</dt>
-                                  <dd>
-                                    TTL{" "}
-                                    {session.promptCache.ttlSeconds >= 3600
-                                      ? `${session.promptCache.ttlSeconds / 3600} 小时`
-                                      : `${Math.round(session.promptCache.ttlSeconds / 60)} 分钟`}
-                                  </dd>
+                                  <dd>约剩 {promptCache.minutes} 分钟</dd>
                                 </div>
                               )}
                               {session.unpricedTokens != null &&
                                 session.unpricedTokens > 0 && (
                                   <div>
-                                    <dt>未计费词元</dt>
+                                    <dt>未定价词元</dt>
                                     <dd>
-                                      {fullNumber(session.unpricedTokens)} 词元
+                                      {fullNumber(session.unpricedTokens)} 词元，未计入估算费用
                                     </dd>
                                   </div>
                                 )}
@@ -1568,15 +1565,10 @@ export function HistoryView({ data }: SecondaryProps) {
                                   </dd>
                                 </div>
                               )}
-                              {(session.usageSource ||
-                                session.usageCoverage) && (
+                              {usageSource && (
                                 <div>
                                   <dt>用量来源</dt>
-                                  <dd>
-                                    {[session.usageSource, session.usageCoverage]
-                                      .filter(Boolean)
-                                      .join(" · ")}
-                                  </dd>
+                                  <dd>{usageSource}</dd>
                                 </div>
                               )}
                               <div>
