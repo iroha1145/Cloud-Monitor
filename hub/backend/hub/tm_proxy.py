@@ -17,10 +17,11 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 import threading
 import time
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import quote
 
 import httpx
@@ -40,7 +41,7 @@ from .tm_outbox import (
     replay_pending,
     replayable_count,
 )
-from .tm_forwarding import DeviceDeletingError, RETRY_BASE_SECONDS, forwarding_queue
+from .tm_forwarding import DeviceDeletingError, ForwardingQueue, RETRY_BASE_SECONDS, forwarding_queue
 from .tm_snapshots import (
     delete_device_snapshots,
     ensure_schema,
@@ -68,19 +69,30 @@ class UpstreamUnavailable(Exception):
 class TmCore:
     """官方 Node hub 的 HTTP 客户端（复用注入的 httpx.Client 连接池）。"""
 
-    def __init__(self, base_url: str, secret: str, client: Optional[httpx.Client] = None):
+    def __init__(
+        self,
+        base_url: str,
+        secret: str,
+        client: Optional[httpx.Client] = None,
+        *,
+        tenant_id: str = "",
+    ):
         self.base_url = base_url.rstrip("/")
         self.secret = secret
+        self.tenant_id = tenant_id
         self._client = client
 
     def bind_client(self, client: httpx.Client) -> None:
         self._client = client
 
     def headers(self) -> dict[str, str]:
-        return {
+        headers = {
             "X-Token-Monitor-Secret": self.secret,
             "Authorization": f"Bearer {self.secret}",
         }
+        if self.tenant_id:
+            headers["X-CM-Tenant-Id"] = self.tenant_id
+        return headers
 
     def request(
         self,
@@ -117,6 +129,19 @@ class TmCore:
             return None
 
 
+@dataclass
+class TmTenantScope:
+    """单租户的完整物理隔离作用域（独立 SQLite + tm-core 实例 + 缓存）。"""
+
+    tenant_id: str
+    role: str
+    db: Database
+    core: TmCore
+    forwarding: ForwardingQueue
+    overview_cache: Any = None
+    provider_status: Any = None
+
+
 def _proxy_response(resp: httpx.Response, *, minimal_ingest: bool = False) -> JSONResponse:
     headers = {}
     if "Retry-After" in resp.headers:
@@ -147,42 +172,58 @@ def _unavailable_response(exc: Exception) -> JSONResponse:
 
 
 def build_tm_router(settings: Settings, db: Database) -> APIRouter:
-    """路由在调用期从 app.state 取 core（lifespan 绑定共享客户端）。"""
+    """路由在调用期从 app.state 取 core 或匹配租户的 TmTenantScope。"""
     router = APIRouter()
-    forwarding = forwarding_queue(db, max_pending=settings.tm_outbox_max_pending)
+    default_forwarding = forwarding_queue(db, max_pending=settings.tm_outbox_max_pending)
 
-    def core_of(request: Request) -> TmCore:
-        return request.app.state.tm_core
+    def _default_scope(request: Request) -> TmTenantScope:
+        return TmTenantScope(
+            tenant_id="default",
+            role="admin",
+            db=db,
+            core=request.app.state.tm_core,
+            forwarding=default_forwarding,
+            overview_cache=getattr(request.app.state, "overview_cache", None),
+            provider_status=getattr(request.app.state, "provider_status", None),
+        )
 
-    def _invalidate_overview(request: Request) -> None:
-        cache = getattr(request.app.state, "overview_cache", None)
-        if cache is not None:
-            cache.invalidate()
+    def _invalidate_overview(scope: TmTenantScope) -> None:
+        if scope.overview_cache is not None:
+            scope.overview_cache.invalidate()
 
-    def _wake_replay(request: Request) -> None:
+    def _wake_replay(request: Request, scope: TmTenantScope) -> None:
         # H-8：空 outbox 不唤醒整轮维护（避免每次成功 ingest 都 WAL checkpoint）。
-        if replayable_count(db) <= 0 and not forwarding.has_pending():
+        if replayable_count(scope.db) <= 0 and not scope.forwarding.has_pending():
             return
         background = getattr(request.app.state, "tm_background", None)
         if background is not None:
             background.wake()
 
-    def tm_auth(request: Request) -> None:
-        if not settings.tm_ingest_secret:
+    def tm_auth(request: Request) -> TmTenantScope:
+        if not settings.tm_ingest_secret and not settings.tenants:
             raise CodedHTTPException(
                 404,
                 "token_monitor_secret_unconfigured",
                 "未启用 token-monitor 接入（缺少 TOKEN_MONITOR_SECRET）",
             )
         provided = request_tm_secret(request)
-        if not provided or not constant_eq(provided, settings.tm_ingest_secret):
+        if not provided:
             raise HTTPException(status_code=401, detail="unauthorized")
+        if settings.tm_ingest_secret and constant_eq(provided, settings.tm_ingest_secret):
+            return _default_scope(request)
+        tenants_map: dict[str, TmTenantScope] = getattr(request.app.state, "tm_tenants", None) or {}
+        for tenant_id, tenant_cfg in settings.tenants.items():
+            if constant_eq(provided, tenant_cfg.tm_secret):
+                scope = tenants_map.get(tenant_id)
+                if scope is not None:
+                    return scope
+        raise HTTPException(status_code=401, detail="unauthorized")
 
     # ------------------------------------------------------------ health
 
     @router.get("/api/health")
     def tm_health(request: Request) -> JSONResponse:
-        if not settings.tm_ingest_secret:
+        if not settings.tm_ingest_secret and not settings.tenants:
             return JSONResponse(
                 status_code=404,
                 content={
@@ -191,7 +232,13 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
                     "detail": "TOKEN_MONITOR_SECRET 未配置，token-monitor 接入已停用",
                 },
             )
-        upstream = core_of(request).health()
+        probe_core: Optional[TmCore] = request.app.state.tm_core
+        if probe_core is None:
+            tenants_map: dict[str, TmTenantScope] = getattr(request.app.state, "tm_tenants", None) or {}
+            first_scope = next(iter(tenants_map.values()), None)
+            if first_scope is not None:
+                probe_core = first_scope.core
+        upstream = probe_core.health() if probe_core is not None else None
         if upstream is None:
             return JSONResponse(
                 status_code=503,
@@ -219,9 +266,11 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
 
     # ------------------------------------------------------------ ingest（outbox 闭环）
 
-    def _tm_ingest_sync(request: Request, payload: dict) -> JSONResponse:
+    def _tm_ingest_sync(
+        request: Request, scope: TmTenantScope, payload: dict
+    ) -> JSONResponse:
         try:
-            request_id = forwarding.enqueue(payload)
+            request_id = scope.forwarding.enqueue(payload)
         except PayloadValidationError as exc:
             return JSONResponse(
                 status_code=400, content={"error": "bad_request", "message": str(exc)}
@@ -238,14 +287,14 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
                 headers={"Retry-After": str(RETRY_BASE_SECONDS)},
             )
         device_id = str(payload.get("deviceId") or payload.get("id") or "")
-        attempt = forwarding.process_device(core_of(request), device_id)
-        _wake_replay(request)
+        attempt = scope.forwarding.process_device(scope.core, device_id)
+        _wake_replay(request, scope)
         # The core always returns the full record for durable acknowledgement.
         # Trim only the external response after the forwarding queue saved it.
         minimal = request.headers.get("x-token-monitor-response", "").strip().lower() == "minimal"
         if attempt.request_id == request_id and attempt.response is not None:
             return _proxy_response(attempt.response, minimal_ingest=minimal)
-        completed = forwarding.result_for_request(core_of(request), request_id)
+        completed = scope.forwarding.result_for_request(scope.core, request_id)
         if completed is not None:
             attempt = completed
             if completed.response is not None:
@@ -261,7 +310,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
 
     @router.post("/api/ingest")
     async def tm_ingest(request: Request) -> JSONResponse:
-        tm_auth(request)
+        scope = tm_auth(request)
         try:
             payload = await request.json()
         except (ValueError, UnicodeDecodeError, RecursionError):
@@ -269,36 +318,36 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
             return JSONResponse(
                 status_code=400, content={"error": "bad_request", "message": "invalid json"}
             )
-        return await run_in_threadpool(_tm_ingest_sync, request, payload)
+        return await run_in_threadpool(_tm_ingest_sync, request, scope, payload)
 
     # ------------------------------------------------------------ 只读透传（统一 503）
 
-    def _proxied(request: Request, method: str, path: str) -> JSONResponse:
+    def _proxied(core: TmCore, method: str, path: str) -> JSONResponse:
         try:
-            return _proxy_response(core_of(request).request(method, path))
+            return _proxy_response(core.request(method, path))
         except UpstreamUnavailable as exc:
             return _unavailable_response(exc)
 
     @router.get("/api/stats")
     def tm_stats(request: Request) -> JSONResponse:
-        tm_auth(request)
-        return _proxied(request, "GET", "/api/stats")
+        scope = tm_auth(request)
+        return _proxied(scope.core, "GET", "/api/stats")
 
     @router.get("/api/devices")
     def tm_devices(request: Request) -> JSONResponse:
-        tm_auth(request)
-        return _proxied(request, "GET", "/api/devices")
+        scope = tm_auth(request)
+        return _proxied(scope.core, "GET", "/api/devices")
 
     @router.get("/api/history")
     def tm_history(request: Request) -> JSONResponse:
-        tm_auth(request)
-        return _proxied(request, "GET", "/api/history")
+        scope = tm_auth(request)
+        return _proxied(scope.core, "GET", "/api/history")
 
     @router.delete("/api/devices/{device_id:path}")
     def tm_delete_device(device_id: str, request: Request) -> JSONResponse:
-        tm_auth(request)
+        scope = tm_auth(request)
         try:
-            with forwarding.device_operation(device_id, "delete") as acquired:
+            with scope.forwarding.device_operation(device_id, "delete") as acquired:
                 if not acquired:
                     return JSONResponse(
                         status_code=503,
@@ -306,32 +355,32 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
                         headers={"Retry-After": str(RETRY_BASE_SECONDS)},
                     )
                 try:
-                    resp = core_of(request).request(
+                    resp = scope.core.request(
                         "DELETE", f"/api/devices/{quote(device_id, safe='')}"
                     )
                 except UpstreamUnavailable as exc:
                     return _unavailable_response(exc)
                 if resp.status_code == 200:
-                    with db.transaction():
-                        deleted = delete_device_snapshots(db, device_id)
-                        purged = purge_device_outbox(db, device_id)
-                        mark_legacy_deleted(db, device_id)
+                    with scope.db.transaction():
+                        deleted = delete_device_snapshots(scope.db, device_id)
+                        purged = purge_device_outbox(scope.db, device_id)
+                        mark_legacy_deleted(scope.db, device_id)
                     log.info("设备 %s 已删除（清理 %d 条快照，%d 条 outbox）", device_id, deleted, purged)
-                    _invalidate_overview(request)
+                    _invalidate_overview(scope)
                 return _proxy_response(resp)
         finally:
-            _wake_replay(request)
+            _wake_replay(request, scope)
 
     # ------------------------------------------------------------ subscriptions
 
     @router.get("/api/subscriptions")
     def tm_get_subscriptions(request: Request) -> JSONResponse:
-        tm_auth(request)
-        return _proxied(request, "GET", "/api/subscriptions")
+        scope = tm_auth(request)
+        return _proxied(scope.core, "GET", "/api/subscriptions")
 
     @router.put("/api/subscriptions")
     async def tm_put_subscriptions(request: Request) -> JSONResponse:
-        tm_auth(request)
+        scope = tm_auth(request)
         try:
             payload = await request.json()
         except (ValueError, UnicodeDecodeError, RecursionError):
@@ -341,7 +390,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
 
         def _put() -> JSONResponse:
             try:
-                resp = core_of(request).request(
+                resp = scope.core.request(
                     "PUT", "/api/subscriptions", json_body=payload
                 )
             except UpstreamUnavailable as exc:
@@ -354,17 +403,17 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
 
     @router.get("/api/sync/content")
     def tm_get_sync_content(request: Request) -> JSONResponse:
-        tm_auth(request)
-        return _proxied(request, "GET", "/api/sync/content")
+        scope = tm_auth(request)
+        return _proxied(scope.core, "GET", "/api/sync/content")
 
     @router.get("/api/sync/settings/{kind:path}")
     def tm_get_sync_settings(kind: str, request: Request) -> JSONResponse:
-        tm_auth(request)
-        return _proxied(request, "GET", f"/api/sync/settings/{quote(kind, safe='')}")
+        scope = tm_auth(request)
+        return _proxied(scope.core, "GET", f"/api/sync/settings/{quote(kind, safe='')}")
 
     @router.put("/api/sync/settings/{kind:path}")
     async def tm_put_sync_settings(kind: str, request: Request) -> JSONResponse:
-        tm_auth(request)
+        scope = tm_auth(request)
         if kind not in ("modelAliases", "customPricing"):
             return JSONResponse(status_code=404, content={"error": "not_found"})
         try:
@@ -376,7 +425,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
 
         def _put() -> JSONResponse:
             try:
-                resp = core_of(request).request(
+                resp = scope.core.request(
                     "PUT", f"/api/sync/settings/{quote(kind, safe='')}", json_body=payload
                 )
             except UpstreamUnavailable as exc:
@@ -387,7 +436,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
 
     @router.put("/api/sync/titles/{device_id:path}")
     async def tm_put_sync_titles(device_id: str, request: Request) -> JSONResponse:
-        tm_auth(request)
+        scope = tm_auth(request)
         try:
             payload = await request.json()
         except (ValueError, UnicodeDecodeError, RecursionError):
@@ -397,13 +446,13 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
 
         def _put() -> JSONResponse:
             try:
-                resp = core_of(request).request(
+                resp = scope.core.request(
                     "PUT", f"/api/sync/titles/{quote(device_id, safe='')}", json_body=payload
                 )
             except UpstreamUnavailable as exc:
                 return _unavailable_response(exc)
             if resp.status_code == 200:
-                _invalidate_overview(request)
+                _invalidate_overview(scope)
             return _proxy_response(resp)
 
         return await run_in_threadpool(_put)
@@ -412,11 +461,11 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
 
     @router.get("/api/stats/stream")
     async def tm_stats_stream(request: Request):
-        tm_auth(request)
+        scope = tm_auth(request)
         async_client: httpx.AsyncClient = getattr(
             request.app.state, "http_sse", request.app.state.http_async
         )
-        core = core_of(request)
+        core = scope.core
         headers = core.headers()
         if request.headers.get("x-token-monitor-stream", "").strip() == "2":
             headers["X-Token-Monitor-Stream"] = "2"
@@ -462,10 +511,18 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
 class TmBackground:
     """后台维护：outbox 重放 + tm-core 延迟初始化/旧数据回填重试。"""
 
-    def __init__(self, settings: Settings, db: Database, core: TmCore):
+    def __init__(
+        self,
+        settings: Settings,
+        db: Database,
+        core: Optional[TmCore],
+        *,
+        tenant_scopes: Optional[list[TmTenantScope]] = None,
+    ):
         self.settings = settings
         self.db = db
         self.core = core
+        self.tenant_scopes = list(tenant_scopes or [])
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -473,14 +530,23 @@ class TmBackground:
             db, max_pending=getattr(settings, "tm_outbox_max_pending", MAX_PENDING_DEFAULT)
         ) if db is not None else None
 
+    def _active_units(self) -> list[tuple[Database, Optional[TmCore], Optional[ForwardingQueue]]]:
+        units: list[tuple[Database, Optional[TmCore], Optional[ForwardingQueue]]] = []
+        if self.db is not None and (self.core is not None or not self.tenant_scopes):
+            units.append((self.db, self.core, self.forwarding))
+        for scope in self.tenant_scopes:
+            units.append((scope.db, scope.core, scope.forwarding))
+        return units
+
     def wake(self) -> None:
         self._wake.set()
 
     def start(self) -> None:
-        try:
-            reject_exhausted_pending(self.db)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("启动时清理耗尽 attempts 的 pending 失败: %s", exc)
+        for unit_db, _core, _forwarding in self._active_units():
+            try:
+                reject_exhausted_pending(unit_db)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("启动时清理耗尽 attempts 的 pending 失败: %s", exc)
         self._thread = threading.Thread(target=self._loop, name="tm-maintenance", daemon=True)
         self._thread.start()
 
@@ -504,31 +570,33 @@ class TmBackground:
         backoff = 0.0  # 上一圈出错后的最短等待；成功一圈即清零
         while not self._stop.is_set():
             delay = max(0.1, next_maintenance - time.monotonic())
-            if self.forwarding is not None:
-                try:
-                    delay = self.forwarding.next_delay(delay)
-                except Exception as exc:  # noqa: BLE001 — 线程退出会让重放与转发静默停摆
-                    log.warning("转发排期读取失败，按维护间隔等待: %s", exc)
+            for _unit_db, _unit_core, unit_forwarding in self._active_units():
+                if unit_forwarding is not None:
+                    try:
+                        delay = unit_forwarding.next_delay(delay)
+                    except Exception as exc:  # noqa: BLE001 — 线程退出会让重放与转发静默停摆
+                        log.warning("转发排期读取失败，按维护间隔等待: %s", exc)
             # 写失败时到期行的排期改不回去，next_delay 会一直报 0.1 秒，所以出错后要退避
             self._wake.wait(max(delay, backoff))
             self._wake.clear()
             if self._stop.is_set():
                 break
             failed = False
-            if self.forwarding is not None:
+            maintenance_due = time.monotonic() >= next_maintenance
+            for unit_db, unit_core, unit_forwarding in self._active_units():
+                if unit_forwarding is not None:
+                    try:
+                        unit_forwarding.process_due(unit_core, should_stop=self._stop.is_set)
+                    except Exception as exc:  # noqa: BLE001 — 后台任务不得崩溃进程
+                        failed = True
+                        log.warning("转发处理异常: %s", exc)
+                # 与转发分开：转发出错不能拖掉到期的重放与清理
                 try:
-                    self.forwarding.process_due(self.core, should_stop=self._stop.is_set)
+                    if maintenance_due or replayable_count(unit_db) > 0:
+                        replay_pending(unit_db, should_stop=self._stop.is_set)
                 except Exception as exc:  # noqa: BLE001 — 后台任务不得崩溃进程
                     failed = True
-                    log.warning("转发处理异常: %s", exc)
-            # 与转发分开：转发出错不能拖掉到期的重放与清理
-            maintenance_due = time.monotonic() >= next_maintenance
-            try:
-                if maintenance_due or replayable_count(self.db) > 0:
-                    replay_pending(self.db, should_stop=self._stop.is_set)
-            except Exception as exc:  # noqa: BLE001 — 后台任务不得崩溃进程
-                failed = True
-                log.warning("outbox 后台重放异常: %s", exc)
+                    log.warning("outbox 后台重放异常: %s", exc)
             if maintenance_due:
                 # 必须在 try 之外：维护失败也要排下一次，否则等待时长塌到 0.1 秒空转
                 next_maintenance = time.monotonic() + interval
@@ -543,7 +611,7 @@ class TmBackground:
         """tm-core 延迟就绪时自动重试初始化与 v2 旧数据回填（幂等标记）。"""
         if self._stop.is_set():
             return False
-        if not self.settings.tm_ingest_secret:
+        if not self.settings.tm_ingest_secret or self.core is None or self.forwarding is None:
             return True
         if self.core.health() is None:
             return False

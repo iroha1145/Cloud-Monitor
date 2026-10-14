@@ -20,6 +20,8 @@ services:
       TM_CORE_URL: http://tm-core:17321
       # 可选：每设备独立写密钥 {"device-id": "key"}（OpenWebUI 记录链路）
       DEVICE_KEYS_JSON: ${DEVICE_KEYS_JSON:-}
+      # 可选：多用户物理隔离 {"alice": {"tm_secret": "...", "access_token": "...", "role": "user"}}
+      TENANTS_JSON: ${TENANTS_JSON:-}
       MAX_RECORDS_PER_PUSH: ${MAX_RECORDS_PER_PUSH:-500}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       DOCS_ENABLED: ${DOCS_ENABLED:-false}
@@ -59,6 +61,7 @@ services:
     build: ./tm-core
     environment:
       TOKEN_MONITOR_SECRET: ${TOKEN_MONITOR_SECRET:-}
+      TENANTS_JSON: ${TENANTS_JSON:-}
       TOKEN_MONITOR_SYNC_SESSION_TITLES: ${TOKEN_MONITOR_SYNC_SESSION_TITLES:-false}
       TOKEN_MONITOR_PORT: "17321"
       TOKEN_MONITOR_HOST: 0.0.0.0

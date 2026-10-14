@@ -33,10 +33,12 @@ from .services import (
     list_users,
     usage_report,
 )
-from .tm_outbox import set_overview_invalidator, snapshot_health
-from .tm_overview import build_tm_overview_router
+from .tm_forwarding import forwarding_queue
+from .tm_outbox import ensure_schema as ensure_outbox_schema, set_overview_invalidator, snapshot_health
+from .tm_overview import OverviewCache, build_tm_overview_router
 from .tm_provider_status import ProviderStatusService
-from .tm_proxy import TmBackground, bootstrap_tm_layer, build_tm_router
+from .tm_proxy import TmBackground, TmCore, TmTenantScope, bootstrap_tm_layer, build_tm_router
+from .tm_snapshots import ensure_schema
 from .tm_update import UpdateService, build_update_router
 
 
@@ -82,6 +84,39 @@ class SafeStaticFiles(StarletteStaticFiles):
         return await super().get_response(path, scope)
 
 
+def _init_tenant_scopes(settings: Settings) -> dict[str, TmTenantScope]:
+    scopes: dict[str, TmTenantScope] = {}
+    base_dir = settings.database_path.parent / "tenants"
+    for tenant_id, tenant_cfg in settings.tenants.items():
+        tenant_db = Database(base_dir / tenant_id / "hub.sqlite3")
+        ensure_schema(tenant_db)
+        ensure_outbox_schema(tenant_db)
+        tenant_core = TmCore(
+            settings.tm_core_url, tenant_cfg.tm_secret, tenant_id=tenant_id
+        )
+        tenant_forwarding = forwarding_queue(
+            tenant_db, max_pending=settings.tm_outbox_max_pending
+        )
+        tenant_cache = OverviewCache(
+            ttl_seconds=float(settings.overview_cache_seconds)
+        )
+        set_overview_invalidator(tenant_cache.invalidate, db=tenant_db)
+        tenant_provider = ProviderStatusService(
+            cache_seconds=settings.provider_status_cache_seconds,
+            timeout_seconds=settings.provider_status_timeout_seconds,
+        )
+        scopes[tenant_id] = TmTenantScope(
+            tenant_id=tenant_id,
+            role=tenant_cfg.role,
+            db=tenant_db,
+            core=tenant_core,
+            forwarding=tenant_forwarding,
+            overview_cache=tenant_cache,
+            provider_status=tenant_provider,
+        )
+    return scopes
+
+
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
     settings = settings or load_settings()
     docs_urls = (
@@ -105,10 +140,19 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         )
         if _app.state.tm_core is not None:
             _app.state.tm_core.bind_client(_app.state.http_sync)
-            if settings.tm_background_enabled:
-                background = TmBackground(settings, _app.state.db, _app.state.tm_core)
-                background.start()
-                _app.state.tm_background = background
+        for scope in _app.state.tm_tenants.values():
+            scope.core.bind_client(_app.state.http_sync)
+        if settings.tm_background_enabled and (
+            _app.state.tm_core is not None or _app.state.tm_tenants
+        ):
+            background = TmBackground(
+                settings,
+                _app.state.db,
+                _app.state.tm_core,
+                tenant_scopes=list(_app.state.tm_tenants.values()),
+            )
+            background.start()
+            _app.state.tm_background = background
         try:
             yield
         finally:
@@ -118,6 +162,8 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             await _app.state.http_sse.aclose()
             await _app.state.http_provider.aclose()
             _app.state.http_sync.close()
+            for scope in _app.state.tm_tenants.values():
+                scope.db.close()
             _app.state.db.close()
 
     app = FastAPI(
@@ -131,6 +177,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     # HTTP 客户端；非 lifespan 用法（部分测试）回退到按需客户端。
     tm_core = bootstrap_tm_layer(settings, app.state.db)
     app.state.tm_core = tm_core
+    app.state.tm_tenants = _init_tenant_scopes(settings)
     app.state.tm_background = None
     app.state.provider_status = ProviderStatusService(
         cache_seconds=settings.provider_status_cache_seconds,
@@ -294,8 +341,10 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             ):
                 components.setdefault(name, {"ok": False, "error": error})
 
-        if settings.tm_ingest_secret:
+        if settings.tm_ingest_secret or settings.tenants:
             core = app.state.tm_core
+            if core is None and app.state.tm_tenants:
+                core = next(iter(app.state.tm_tenants.values())).core
             upstream = core.health() if core is not None else None
             components["tm_core"] = {
                 "ok": upstream is not None,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -11,10 +12,20 @@ PROTOCOL_VERSION = 2
 
 WEAK_API_KEYS = {"changeme", "please-change-me", "password", "secret", "123456"}
 MIN_API_KEY_LENGTH = 32
+TENANT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+TENANT_ROLES = ("user", "admin")
 
 
 class ConfigError(Exception):
     """环境配置非法，应用必须拒绝启动。"""
+
+
+@dataclass(frozen=True)
+class TenantConfig:
+    tenant_id: str
+    tm_secret: str
+    access_token: str
+    role: str = "user"
 
 
 def _project_root() -> Path:
@@ -67,6 +78,43 @@ def parse_device_keys(raw: str | None) -> dict[str, str]:
     return keys
 
 
+def parse_tenants(raw: str | None) -> dict[str, TenantConfig]:
+    """解析 TENANTS_JSON：{"alice": {"tm_secret": "...", "access_token": "...", "role": "user"}}"""
+    if not raw or not raw.strip():
+        return {}
+    try:
+        data = json.loads(raw)
+    except ValueError as exc:
+        raise ConfigError(f"TENANTS_JSON 不是合法 JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ConfigError("TENANTS_JSON 必须是 {tenant_id: {...}} 对象")
+    tenants: dict[str, TenantConfig] = {}
+    for raw_id, entry in data.items():
+        tenant_id = str(raw_id).strip()
+        if not TENANT_ID_RE.match(tenant_id) or tenant_id == "default":
+            raise ConfigError(
+                f"TENANTS_JSON 租户 ID {tenant_id!r} 非法（仅允许 1-64 位字母数字/_/-，且不能为 default）"
+            )
+        if not isinstance(entry, dict):
+            raise ConfigError(f"TENANTS_JSON[{tenant_id}] 必须是对象")
+        tm_secret = str(entry.get("tm_secret") or "").strip()
+        access_token = str(entry.get("access_token") or "").strip()
+        role = str(entry.get("role") or "user").strip().lower()
+        if role not in TENANT_ROLES:
+            raise ConfigError(
+                f"TENANTS_JSON[{tenant_id}].role 非法（仅允许 'user' 或 'admin'）"
+            )
+        validate_secret(f"TENANTS_JSON[{tenant_id}].tm_secret", tm_secret)
+        validate_secret(f"TENANTS_JSON[{tenant_id}].access_token", access_token)
+        tenants[tenant_id] = TenantConfig(
+            tenant_id=tenant_id,
+            tm_secret=tm_secret,
+            access_token=access_token,
+            role=role,
+        )
+    return tenants
+
+
 @dataclass(frozen=True)
 class Settings:
     api_key: str
@@ -75,6 +123,7 @@ class Settings:
     frontend_dir: Path
     max_records_per_push: int
     device_keys: dict[str, str] = field(default_factory=dict)
+    tenants: dict[str, TenantConfig] = field(default_factory=dict)
     cors_origins: tuple[str, ...] = ()
     docs_enabled: bool = False
     protocol_version: int = PROTOCOL_VERSION
@@ -169,6 +218,8 @@ def load_settings() -> Settings:
     for device_id, key in device_keys.items():
         validate_secret(f"DEVICE_KEYS_JSON[{device_id}]", key)
 
+    tenants = parse_tenants(os.environ.get("TENANTS_JSON"))
+
     tm_secret = (os.environ.get("TOKEN_MONITOR_SECRET") or "").strip()
     if tm_secret:
         validate_secret("TOKEN_MONITOR_SECRET", tm_secret)
@@ -182,6 +233,9 @@ def load_settings() -> Settings:
     ]
     if access_token != api_key or not allow_shared:
         distinct.append(("ACCESS_TOKEN", access_token))
+    for tid, tenant in tenants.items():
+        distinct.append((f"TENANTS_JSON[{tid}].tm_secret", tenant.tm_secret))
+        distinct.append((f"TENANTS_JSON[{tid}].access_token", tenant.access_token))
     for i, (name_a, value_a) in enumerate(distinct):
         for name_b, value_b in distinct[i + 1 :]:
             if value_a and value_b and value_a == value_b:
@@ -196,6 +250,7 @@ def load_settings() -> Settings:
         frontend_dir=frontend_dir,
         max_records_per_push=_int_env("MAX_RECORDS_PER_PUSH", 500, minimum=1, maximum=500),
         device_keys=device_keys,
+        tenants=tenants,
         cors_origins=cors_origins,
         docs_enabled=_env_bool(os.environ.get("DOCS_ENABLED")),
         protocol_version=PROTOCOL_VERSION,
