@@ -47,10 +47,11 @@ private val PERIOD_NAMES = mapOf(
 fun quotaNumber(value: Double): String {
     if (!value.isFinite()) return "未提供"
     val rounded = kotlin.math.round(value * 100.0) / 100.0
-    val text = if (abs(rounded - rounded.toLong()) < 0.001) {
-        Format.fmtInt(rounded)
+    val clean = if (abs(rounded) < 0.0005) 0.0 else rounded
+    val text = if (abs(clean - clean.toLong()) < 0.001) {
+        Format.fmtInt(clean)
     } else {
-        String.format(Locale.US, "%,.2f", rounded).replace(Regex("""0+$"""), "").replace(Regex("""\.$"""), "")
+        String.format(Locale.US, "%,.2f", clean).replace(Regex("""0+$"""), "").replace(Regex("""\.$"""), "")
     }
     return text
 }
@@ -58,16 +59,17 @@ fun quotaNumber(value: Double): String {
 fun quotaMoney(value: Double, currency: String): String {
     val code = currency.uppercase(Locale.US)
     if (code == "USD") return Format.fmtUsd(value)
+    if (!value.isFinite()) return "未提供"
+    val clean = if (abs(value) < 0.005) 0.0 else value
     if (code == "CNY" || code == "CNH") {
-        if (!value.isFinite()) return "未提供"
-        val sign = if (value < 0) "-" else ""
-        return sign + "¥" + String.format(Locale.US, "%,.2f", abs(value))
+        val sign = if (clean < 0) "-" else ""
+        return sign + "¥" + String.format(Locale.US, "%,.2f", abs(clean))
     }
     return runCatching {
         java.text.NumberFormat.getCurrencyInstance(Locale.SIMPLIFIED_CHINESE).apply {
             this.currency = java.util.Currency.getInstance(code)
-        }.format(value)
-    }.getOrElse { "$code ${quotaNumber(value)}" }
+        }.format(clean)
+    }.getOrElse { "$code ${quotaNumber(clean)}" }
 }
 
 fun quotaPercent(window: LimitWindow): Double? {

@@ -45,7 +45,12 @@ export default function SearchList({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && results[0]) {
+              if (
+                event.key === "Enter" &&
+                !event.nativeEvent.isComposing &&
+                event.keyCode !== 229 &&
+                results[0]
+              ) {
                 event.preventDefault();
                 setQuery("");
                 onSelect?.(results[0]);

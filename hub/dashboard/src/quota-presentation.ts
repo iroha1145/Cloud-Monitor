@@ -1,8 +1,11 @@
 import type { Quota } from "./data";
 import { formatMoney as money } from "./money";
 
-const number = (value: number) =>
-  new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
+const number = (value: number) => {
+  const rounded = Math.round(value * 100) / 100;
+  const clean = Math.abs(rounded) < 0.0005 ? 0 : rounded;
+  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(clean);
+};
 
 export function quotaAmount(value: number, quota: Pick<Quota, "metric" | "currency" | "provider" | "kind" | "limitId">): string {
   const currency = quota.currency?.toUpperCase();

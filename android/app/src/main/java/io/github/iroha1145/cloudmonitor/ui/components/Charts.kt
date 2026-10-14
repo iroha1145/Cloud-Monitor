@@ -214,7 +214,7 @@ fun MatrixGrid(rows: List<String>, cols: List<String>, modifier: Modifier = Modi
                         val value = valueAt(row, column)
                         val level = matrixHeatLevel(value, max).coerceIn(cm.hm.indices)
                         val formatted = if (cost) Format.fmtUsd(value) else Format.fmtCompact(value)
-                        Box(Modifier.size(96.dp).aspectRatio(1f).clip(RoundedCornerShape(10.dp)).background(cm.hm[level])
+                        Box(Modifier.size(96.dp).clip(RoundedCornerShape(10.dp)).background(cm.hm[level])
                             .clickable(role = Role.Button) { tip.show("$row · $column", listOf((if (cost) "费用" else "词元用量") to if (cost) Format.fmtUsd(value) else Format.fmtInt(value))) }
                             .semantics { contentDescription = "$row，$column，$formatted" }.padding(10.dp), contentAlignment = Alignment.Center) {
                             Text(formatted, color = cm.hmInk[level], style = MaterialTheme.typography.bodySmall,

@@ -131,7 +131,7 @@ fun LazyListScope.overviewItems(
                     "费用" to (entry.costUsd?.let(Format::fmtUsd) ?: "未提供"), entry.components.cacheLabel to (entry.components.cacheRate?.let(Format::fmtPct) ?: "未提供")))
                     .padding(vertical = 12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ClientLogo(entry.name, 22.dp)
+                        ClientLogo(entry.id, 22.dp)
                         Text(entry.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                         Text(Format.fmtCompact(entry.totalTokens), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     }
@@ -155,17 +155,19 @@ fun LazyListScope.overviewItems(
         Panel(Modifier.padding(bottom = 16.dp)) {
             PanelHead("最近会话", "最近使用的 ${sessions.size} 条")
             sessions.forEach { session ->
+                val activity = sessionActivity(session, ov.generatedAt)
                 Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).tipClick(session.client ?: "会话", listOf(
                     "会话" to (session.sessionId ?: "未提供"), "项目" to (session.project ?: "未提供"),
-                    "设备" to (session.device ?: "未提供"), "模型" to session.models.keys.joinToString("、"),
+                    "状态" to activity, "设备" to (session.device ?: "未提供"), "模型" to session.models.keys.joinToString("、"),
                     "词元用量" to Format.fmtInt(session.tokens), "费用" to (session.costUsd?.let(Format::fmtUsd) ?: "未提供"))).padding(vertical = 12.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         ClientLogo(session.client, 20.dp)
                         Text(session.client ?: "未知客户端", Modifier.weight(1f), fontWeight = FontWeight.Medium)
                         Text(Format.fmtCompact(session.tokens), style = MaterialTheme.typography.bodyMedium)
                     }
-                    Text(listOfNotNull(session.project, session.device, Format.relTime(session.lastUsedAt)).joinToString(" · "),
-                        color = CmColorsCurrent.mute, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+                    Text(listOfNotNull(session.project, session.device, activity, Format.relTime(session.lastUsedAt)).joinToString(" · "),
+                        color = if (activity == "等待输入") CmColorsCurrent.warnInk else CmColorsCurrent.mute,
+                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
                 }
             }
             if (sessionsDetailsIncomplete(ov)) Text("部分会话明细未完整返回。", color = CmColorsCurrent.warnInk, style = MaterialTheme.typography.bodySmall)

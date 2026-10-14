@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { normalizeOverview } from "../src/data.ts";
+import { formatMoney } from "../src/money.ts";
 import { quotaAmount, quotaBalance, quotaBoundaryLabel, quotaHeadline } from "../src/quota-presentation.ts";
 import { sessionActivity, sessionContext } from "../src/session-presentation.ts";
 
@@ -103,6 +104,8 @@ test("v0.70 liveActivity and waitingForInput states are normalized and presented
       timedDurationMs: 4000,
       promptCache: { observedAt: "2026-09-26T11:58:00Z", ttlSeconds: 300 },
       unpricedTokens: 50,
+      usageSource: "codex-app-server",
+      usageCoverage: "partial",
     }],
   });
   assert.deepEqual(
@@ -122,8 +125,14 @@ test("v0.70 liveActivity and waitingForInput states are normalized and presented
   assert.equal(s.timedDurationMs, 4000);
   assert.deepEqual(s.promptCache, { observedAt: "2026-09-26T11:58:00Z", ttlSeconds: 300 });
   assert.equal(s.unpricedTokens, 50);
+  assert.equal(s.usageSource, "codex-app-server");
+  assert.equal(s.usageCoverage, "partial");
 
   assert.equal(sessionActivity(s, now), "等待输入");
+  assert.equal(
+    sessionActivity({ ...s, liveActivity: null, turnEnded: undefined, waitingForInput: true }, now),
+    "等待输入",
+  );
   assert.equal(
     sessionActivity({ ...s, liveActivity: { state: "running", observedAt: "2026-09-26T11:59:50Z" } }, now),
     "运行中",
@@ -137,5 +146,11 @@ test("v0.70 liveActivity and waitingForInput states are normalized and presented
     sessionActivity({ ...s, liveActivity: { state: "idle", observedAt: "2026-09-26T11:59:00Z" } }, now),
     "等待输入",
   );
+
+  assert.equal(formatMoney(-0.0, "USD"), "$0.00");
+  assert.equal(formatMoney(-0.004, "EUR"), "€0.00");
+  assert.equal(quotaAmount(-0.001, { metric: "credits", currency: "CREDITS" }), "0");
+  assert.equal(quotaAmount(-0.004, { metric: "spend", currency: "USD" }), "$0.00");
 });
+
 

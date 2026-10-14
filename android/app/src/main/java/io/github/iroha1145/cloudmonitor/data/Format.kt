@@ -70,8 +70,9 @@ object Format {
 
     fun fmtUsd(v: Double): String {
         if (!v.isFinite()) return "未提供"
-        val sign = if (v < 0) "-" else ""
-        return sign + "$" + checkNotNull(usdLocal.get()).format(abs(v))
+        val clean = if (abs(v) < 0.005) 0.0 else v
+        val sign = if (clean < 0) "-" else ""
+        return sign + "$" + checkNotNull(usdLocal.get()).format(abs(clean))
     }
 
     /** Web `pct`: always one decimal, including 0.0%. */
@@ -427,6 +428,10 @@ val CLIENT_NAMES = mapOf(
     "amp" to "Amp",
     "devin" to "Devin",
     "muse" to "Muse Code",
+    "mimo" to "Xiaomi MiMo",
+    "stepfun" to "阶跃星辰",
+    "typesafe" to "TypeSafe",
+    "alibaba" to "阿里云百炼",
     "catpaw" to "CatPaw",
     "fx" to "FX",
     "mcode" to "MiniMax Code",

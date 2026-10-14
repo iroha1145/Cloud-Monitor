@@ -13,14 +13,15 @@ export function formatMoney(
 ): string {
   if (value === null || value === undefined || !Number.isFinite(value))
     return "未提供";
+  const clean = Math.abs(value) < 0.005 ? 0 : value;
   const code = (currency || "USD").trim().toUpperCase();
   if (code === "USD" || code === "CNY" || code === "CNH") {
     const symbol = code === "USD" ? "$" : "¥";
-    const formatted = Math.abs(value).toLocaleString("en-US", {
+    const formatted = Math.abs(clean).toLocaleString("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
-    return value < 0 && formatted !== "0.00"
+    return clean < 0 && formatted !== "0.00"
       ? `-${symbol}${formatted}`
       : `${symbol}${formatted}`;
   }
@@ -30,9 +31,9 @@ export function formatMoney(
       currency: code,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(value);
+    }).format(clean);
   } catch {
-    return `${code} ${numberFallback.format(value)}`;
+    return `${code} ${numberFallback.format(clean)}`;
   }
 }
 

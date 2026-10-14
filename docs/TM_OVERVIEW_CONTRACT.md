@@ -11,7 +11,7 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
 不重造官方聚合。官方 `/api/ingest` `/api/stats` `/api/history` SSE 订阅
 行为不得因本扩展改变。
 
-当前内核固定为 Token Monitor v0.70.0（`ac4eeb2c4aea239dd94b67f074c73f69aafc46f8`）。支持 CatPaw（`catpaw`）、Factory Droid（`fx`）、MCode（`mcode`）、Muse Code（`muse`）与 StepFun 配额窗口；`limits` 原样传递官方完整配额记录，Token Plan 未提供实际点数余额时，网页只展示上报的用量比例。
+当前内核固定为 Token Monitor v0.70.0（`ac4eeb2c4aea239dd94b67f074c73f69aafc46f8`）。支持 CatPaw（`catpaw`）、FX（`fx`）、MiniMax Code（`mcode`）、Factory Droid（`factory` / `droid`）、Muse Code（`muse`）与 StepFun 配额窗口；`limits` 原样传递官方完整配额记录，Token Plan 未提供实际点数余额时，网页只展示上报的用量比例。
 
 鉴权：面板与 Cloud 扩展一律 `Authorization: Bearer ACCESS_TOKEN`。
 `TOKEN_MONITOR_SECRET` 不能读这些端点。Token Monitor 未启用 → 404。
@@ -100,9 +100,10 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
                    "client": "…", "sessionId": "…", "tokens": 1,
                    "contextTokens": 1234, "contextWindow": 128000,
                    "turnEnded": false, "waitingForInput": true,
-                   "liveActivity": { "kind": "command", "summary": "npm test" },
-                   "promptCache": { "ttlMs": 300000, "expiresAt": "…" },
+                   "liveActivity": { "state": "running", "observedAt": "2026-08-23T04:59:50.000Z" },
+                   "promptCache": { "observedAt": "2026-08-23T04:59:50.000Z", "ttlSeconds": 300 },
                    "unpricedTokens": 100, "timedOutputTokens": 500, "timedDurationMs": 10000,
+                   "usageSource": "codex-dots-local", "usageCoverage": "observed-only",
                    "parentSessionId": "…", "parentClient": "claude",
                    "sessionKind": "background-review",
                    "deviceStale": false, "archived": false, … } ],
@@ -121,11 +122,10 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
 Overview **不得**把 370 天日归档塞进每 5 分钟刷新的 payload。长期历史走
 `/api/v1/tm/history/daily` 分页。
 
-会话新增字段（含 `waitingForInput`、`liveActivity`、`promptCache`、`unpricedTokens`、`timedOutputTokens`、`timedDurationMs`、`parentSessionId`、`parentClient`）按官方记录有值时传递，不以 false 或 0 填充缺失字段；`deviceStale`
-来自所属设备的官方陈旧判定。已归档会话不显示运行；设备未过期且活动时间距本次
-统计 0–10 分钟时，`waitingForInput: true` 显示等待输入，否则 `turnEnded` 明确为布尔值时显示运行中或已完成。
+会话新增字段（含 `waitingForInput`、`liveActivity`、`promptCache`、`unpricedTokens`、`timedOutputTokens`、`timedDurationMs`、`parentSessionId`、`parentClient`、`usageSource`、`usageCoverage`）按官方记录有值时传递，不以 false 或 0 填充缺失字段；`deviceStale`
+来自所属设备的官方陈旧判定。已归档会话不显示运行；设备未过期时，`claude` / `codex` 若存在距统计时间不超过 30 秒的 `liveActivity`（`running` / `waiting` / `idle`），优先按实时活动状态显示运行中、等待输入或闲置；否则在活动时间距本次统计 0–10 分钟时，`turnEnded: true` 显示已完成，`codex` 的 `waitingForInput: true` 显示等待输入，`turnEnded: false` 显示运行中。
 过期设备/旧活动显示闲置，缺少时间或布尔证据显示状态未提供。上下文是上次上报的
-占用量，缺少有效窗口不计算百分比。不会在本接口新增会话标题或消息正文。
+占用量，缺少有效窗口不计算百分比。开启 `TOKEN_MONITOR_SYNC_SESSION_TITLES` 时可传递会话标题（`title`），但始终不包含消息正文。
 
 `limits` 继续复制官方完整额度记录，包括每日窗口、`limitId`、`additional`、
 `boundaryKind`、`resetCredits.grants`、`adapterId`、`usageSummary` 和

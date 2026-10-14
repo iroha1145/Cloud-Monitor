@@ -242,6 +242,8 @@ export interface Session {
   timedDurationMs?: number | null;
   parentSessionId?: string | null;
   parentClient?: string | null;
+  usageSource?: string | null;
+  usageCoverage?: string | null;
   archived?: boolean | null;
   sessionKind?: string | null;
   deviceStale?: boolean | null;
@@ -1357,6 +1359,8 @@ export function normalizeOverview(
       timedDurationMs: sourceCounter(item.timedDurationMs),
       parentSessionId: optionalText(item.parentSessionId),
       parentClient: optionalText(item.parentClient),
+      usageSource: optionalText(item.usageSource),
+      usageCoverage: optionalText(item.usageCoverage),
       archived: optionalBoolean(item.archived),
       sessionKind: optionalText(item.sessionKind),
       deviceStale: optionalBoolean(item.deviceStale),

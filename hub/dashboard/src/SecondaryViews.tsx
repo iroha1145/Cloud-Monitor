@@ -23,7 +23,7 @@ import {
   type Session,
   type Subscription,
 } from "./data";
-import { providerName } from "./vendors";
+import { clientName, providerName } from "./vendors";
 import "./secondary.css";
 import { BrandIcon } from "./BrandIcon";
 import { MetricTooltip } from "./MetricTooltip";
@@ -1411,7 +1411,15 @@ export function HistoryView({ data }: SecondaryProps) {
                               {session.name || "未命名会话"}
                               <ChevronRight aria-hidden="true" />
                             </strong>
-                            <small>{session.project || "项目未提供"} · <span className="sv-session-activity">{activity}</span>{session.archived === true ? " · 已归档" : ""}</small>
+                            <small>
+                              {session.project || "项目未提供"} ·{" "}
+                              <span
+                                className={`sv-session-activity${activity === "等待输入" ? " sv-session-activity-waiting" : ""}`}
+                              >
+                                {activity}
+                              </span>
+                              {session.archived === true ? " · 已归档" : ""}
+                            </small>
                           </button>
                         </td>
                         <td data-label="客户端">
@@ -1486,13 +1494,88 @@ export function HistoryView({ data }: SecondaryProps) {
                                 <dd>{session.device || "未提供"}</dd>
                               </div>
                               {session.sessionKind && <div><dt>会话类型</dt><dd>{session.sessionKind}</dd></div>}
-                              <div><dt>活动状态</dt><dd>{activity}</dd></div>
+                              <div>
+                                <dt>活动状态</dt>
+                                <dd>
+                                  <span
+                                    className={
+                                      activity === "等待输入"
+                                        ? "sv-session-activity-waiting"
+                                        : undefined
+                                    }
+                                  >
+                                    {activity}
+                                  </span>
+                                </dd>
+                              </div>
                               {context && (
                                 <div className="sv-session-context">
                                   <dt>上次上报的上下文</dt>
                                   <dd>
                                     <span>{fullNumber(session.contextTokens!)} / {fullNumber(session.contextWindow!)} 词元 · 已用 {context.used}% · 剩余 {context.remaining}%</span>
                                     <progress max={100} value={context.used} aria-label="上次上报的上下文已用比例" />
+                                  </dd>
+                                </div>
+                              )}
+                              {session.timedOutputTokens != null &&
+                                session.timedDurationMs != null &&
+                                session.timedOutputTokens > 0 &&
+                                session.timedDurationMs > 0 && (
+                                  <div>
+                                    <dt>输出速率</dt>
+                                    <dd>
+                                      {(
+                                        session.timedOutputTokens /
+                                        (session.timedDurationMs / 1000)
+                                      ).toFixed(1)}{" "}
+                                      词元/秒
+                                    </dd>
+                                  </div>
+                                )}
+                              {session.promptCache && (
+                                <div>
+                                  <dt>提示词缓存</dt>
+                                  <dd>
+                                    TTL{" "}
+                                    {session.promptCache.ttlSeconds >= 3600
+                                      ? `${session.promptCache.ttlSeconds / 3600} 小时`
+                                      : `${Math.round(session.promptCache.ttlSeconds / 60)} 分钟`}
+                                  </dd>
+                                </div>
+                              )}
+                              {session.unpricedTokens != null &&
+                                session.unpricedTokens > 0 && (
+                                  <div>
+                                    <dt>未计费词元</dt>
+                                    <dd>
+                                      {fullNumber(session.unpricedTokens)} 词元
+                                    </dd>
+                                  </div>
+                                )}
+                              {(session.parentSessionId ||
+                                session.parentClient) && (
+                                <div>
+                                  <dt>父级会话</dt>
+                                  <dd>
+                                    {[
+                                      session.parentClient
+                                        ? clientName(session.parentClient)
+                                        : null,
+                                      session.parentSessionId,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" · ")}
+                                  </dd>
+                                </div>
+                              )}
+                              {(session.usageSource ||
+                                session.usageCoverage) && (
+                                <div>
+                                  <dt>用量来源</dt>
+                                  <dd>
+                                    {[session.usageSource, session.usageCoverage]
+                                      .filter(Boolean)
+                                      .join(" · ")}
                                   </dd>
                                 </div>
                               )}

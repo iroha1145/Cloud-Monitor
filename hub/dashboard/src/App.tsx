@@ -522,7 +522,6 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                 <NotificationBell
                   className="topbar-bell"
                   count={statusCount}
-                  variant="dot"
                   size={34}
                   color="orange"
                   onClick={(event) => { rememberDialogOpener(event.currentTarget); setNotifications(true); }}
@@ -746,7 +745,6 @@ export default function App({ initialData, initialToken = "", hosted = false, is
       )}
       {dialogError && (
         <DialogErrorNotice
-          title="对话框已更新，请刷新。"
           onDismiss={() => setDialogError(false)}
         />
       )}

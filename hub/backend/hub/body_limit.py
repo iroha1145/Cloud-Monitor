@@ -21,10 +21,12 @@ MAX_TM_BODY_BYTES = 1024 * 1024  # 与官方 readJsonBody 的 MAX_JSON_BODY_BYTE
 DEFAULT_LIMITED_PATHS: Mapping[str, int] = {
     "/api/ingest": MAX_TM_BODY_BYTES,
     "/api/subscriptions": MAX_TM_BODY_BYTES,
+    "/api/sync/content": MAX_TM_BODY_BYTES,
     "/api/sync/settings/modelAliases": MAX_TM_BODY_BYTES,
     "/api/sync/settings/customPricing": MAX_TM_BODY_BYTES,
 }
 DEFAULT_LIMITED_PREFIXES: tuple[tuple[str, int], ...] = (
+    ("/api/sync/settings/", MAX_TM_BODY_BYTES),
     ("/api/sync/titles/", MAX_TM_BODY_BYTES),
 )
 

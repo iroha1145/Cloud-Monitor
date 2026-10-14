@@ -104,8 +104,12 @@ def version_gt(left: str, right: str) -> bool:
     return a + (0,) * (n - len(a)) > b + (0,) * (n - len(b))
 
 
+HEX_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
+
+
 def _norm_sha(raw: str) -> str:
-    return (raw or "").strip().lower()[:40]
+    s = (raw or "").strip().lower()[:40]
+    return s if HEX_SHA_RE.fullmatch(s) else ""
 
 
 def _release_item(row: dict[str, Any]) -> dict[str, Any]:
@@ -300,7 +304,7 @@ class UpdateService:
     def current(self) -> dict[str, str]:
         return {
             "version": self.settings.cm_version or "dev",
-            "git_sha": self.settings.cm_git_sha or "",
+            "git_sha": _norm_sha(self.settings.cm_git_sha),
         }
 
     def check(self, *, force: bool = False) -> dict[str, Any]:

@@ -116,6 +116,8 @@ def test_v070_new_clients_session_fields_and_sync_routes(cloud, node_hub):
                         "observedAt": stamp,
                         "ttlSeconds": 300,
                     },
+                    "usageSource": "codex-dots-local",
+                    "usageCoverage": "observed-only",
                 },
                 "codex:s-sub": {
                     "client": "codex",
@@ -154,5 +156,63 @@ def test_v070_new_clients_session_fields_and_sync_routes(cloud, node_hub):
     by_sid = {s["sessionId"]: s for s in overview["sessions"]}
     assert by_sid["s-main"]["waitingForInput"] is True
     assert by_sid["s-main"]["liveActivity"]["state"] == "waiting"
+    assert by_sid["s-main"]["usageSource"] == "codex-dots-local"
+    assert by_sid["s-main"]["usageCoverage"] == "observed-only"
     assert by_sid["s-sub"]["parentSessionId"] == "s-main"
     assert overview["projects"][0]["unpricedTokens"] == 400
+
+
+@requires_node
+def test_v070_session_field_validation_and_sync_body_limits(cloud, node_hub):
+    headers = node_hub.headers()
+    stamp = now_z()
+    bad_sessions = [
+        {"promptCache": {"observedAt": stamp, "ttlSeconds": True}},
+        {"promptCache": {"observedAt": stamp, "ttlSeconds": -1}},
+        {"liveActivity": {"state": "running", "observedAt": 12345}},
+        {"liveActivity": {"state": "running", "observedAt": "2099-01-01T00:00:00Z"}},
+    ]
+    for extra in bad_sessions:
+        resp = cloud.post(
+            "/api/ingest",
+            headers=headers,
+            json={
+                "deviceId": "dev-bad-v070",
+                "updatedAt": stamp,
+                "today": {
+                    "totalTokens": 10,
+                    "sessions": {
+                        "codex:s1": {
+                            "client": "codex",
+                            "sessionId": "s1",
+                            "tokens": 10,
+                            **extra,
+                        }
+                    },
+                },
+            },
+        )
+        assert resp.status_code == 400, (extra, resp.text)
+
+    not_found = cloud.put(
+        "/api/sync/settings/zzz",
+        headers=headers,
+        json={"baseRevision": 0, "value": {}},
+    )
+    assert not_found.status_code == 404
+    assert not_found.json() == {"error": "not_found"}
+
+    oversized = b'{"x":"' + (b"a" * (1024 * 1024 + 64)) + b'"}'
+    for path in (
+        "/api/sync/content",
+        "/api/sync/settings/modelAliases",
+        "/api/sync/settings/zzz",
+        "/api/sync/titles/dev-1",
+    ):
+        resp = cloud.put(
+            path,
+            headers={**headers, "Content-Type": "application/json"},
+            content=oversized,
+        )
+        assert resp.status_code == 413, (path, resp.status_code, resp.text)
+

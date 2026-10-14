@@ -79,11 +79,13 @@ def test_check_padded_equal_versions_not_ahead(tmp_path):
 
 
 def test_check_tagged_release_without_git_sha_does_not_force_main_ahead(tmp_path):
-    tagged = make_settings(tmp_path, cm_version="0.2.0", cm_git_sha="")
-    out_tagged = UpdateService(tagged, fetch=_fetch_ok).check(force=True)
-    assert out_tagged["release_ahead"] is False
-    assert out_tagged["main_ahead"] is False
-    assert out_tagged["update_available"] is False
+    for placeholder in ("", "unknown", "UNKNOWN"):
+        tagged = make_settings(tmp_path, cm_version="0.2.0", cm_git_sha=placeholder)
+        out_tagged = UpdateService(tagged, fetch=_fetch_ok).check(force=True)
+        assert out_tagged["release_ahead"] is False
+        assert out_tagged["main_ahead"] is False
+        assert out_tagged["update_available"] is False
+        assert out_tagged["current"]["git_sha"] == ""
 
     dev = make_settings(tmp_path, cm_version="dev", cm_git_sha="")
     out_dev = UpdateService(dev, fetch=_fetch_ok).check(force=True)

@@ -24,6 +24,12 @@ class LogosTest {
         assertEquals("kimi", modelVendorId("k2d6-agent"))
         assertEquals("", modelVendorId("ollama-runner"))
         assertEquals("ollama", clientLogoId("ollama"))
+        assertEquals("hermes-agent", clientLogoId("hermes"))
+        assertEquals("stepfun", clientLogoId("stepfun"))
+        assertEquals("alibaba", clientLogoId("alibaba"))
+        CLIENT_NAMES.keys.forEach { id ->
+            org.junit.Assert.assertTrue("Missing logo for client id $id", clientLogoId(id).isNotEmpty())
+        }
     }
 }
 

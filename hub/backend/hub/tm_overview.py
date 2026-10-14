@@ -796,30 +796,8 @@ def build_overview(
         if isinstance(d.get("periodWindows"), dict) and d.get("periodWindows")
     }
     dashboard_period = _dashboard_period(dashboard_time_zone, now=now)
-    try:
-        trend_days, trend_rows = trend_last_rows(db, TREND_DAYS)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("trend_last_rows 查询失败: %s", exc)
-        trend_days, trend_rows = [], []
-        if not any(e.get("code") == "activity_unavailable" for e in partial_errors):
-            partial_errors.append({"code": "trend_unavailable", "source": "sqlite"})
-
-    try:
-        health_fields = snapshot_health(db)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("snapshot_health 查询失败: %s", exc)
-        health_fields = {
-            "pending_outbox": 0,
-            "unconfirmed_outbox": 0,
-            "expired_unconfirmed_outbox": 0,
-            "forwarding_outbox": 0,
-            "forwarding_bytes": 0,
-            "last_forward_error": None,
-            "last_forward_terminal_reason": None,
-            "last_snapshot_success_at": None,
-            "last_snapshot_error": "sqlite_unavailable",
-            "snapshot_degraded": True,
-        }
+    trend_days, trend_rows = trend_last_rows(db, TREND_DAYS)
+    health_fields = snapshot_health(db)
 
     overview = {
         "overview_schema_version": 2,

@@ -365,6 +365,8 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
     @router.put("/api/sync/settings/{kind:path}")
     async def tm_put_sync_settings(kind: str, request: Request) -> JSONResponse:
         tm_auth(request)
+        if kind not in ("modelAliases", "customPricing"):
+            return JSONResponse(status_code=404, content={"error": "not_found"})
         try:
             payload = await request.json()
         except (ValueError, UnicodeDecodeError, RecursionError):

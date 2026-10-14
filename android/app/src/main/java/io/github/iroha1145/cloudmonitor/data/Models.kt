@@ -447,6 +447,8 @@ data class SessionRow(
     val timedDurationMs: Double? = null,
     val parentSessionId: String? = null,
     val parentClient: String? = null,
+    val usageSource: String? = null,
+    val usageCoverage: String? = null,
     val archived: Boolean? = null,
     val sessionKind: String? = null,
     val deviceStale: Boolean? = null,

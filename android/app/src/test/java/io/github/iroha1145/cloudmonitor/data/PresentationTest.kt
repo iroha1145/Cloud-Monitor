@@ -44,6 +44,7 @@ class PresentationTest {
         )
         assertEquals("运行中", sessionActivity(running, generated))
         assertEquals("等待输入", sessionActivity(running.copy(waitingForInput = true), generated))
+        assertEquals("等待输入", sessionActivity(running.copy(turnEnded = null, waitingForInput = true), generated))
         assertEquals(
             "等待输入",
             sessionActivity(
@@ -83,6 +84,8 @@ class PresentationTest {
         assertEquals(QuotaHeadline("12.5（单位未提供）", "已用"), quotaHeadline(spend, LimitProvider(provider = "openai")))
         val percent = LimitWindow(metric = "percentage", usedPercent = 90.0)
         assertEquals(QuotaHeadline("90%", "已用"), quotaHeadline(percent, LimitProvider()))
+        assertEquals("0", quotaNumber(-0.001))
+        assertEquals("¥0.00", quotaMoney(-0.004, "CNY"))
         assertEquals("到期", quotaBoundaryLabel("expiry"))
         assertEquals("重置", quotaBoundaryLabel(null))
     }

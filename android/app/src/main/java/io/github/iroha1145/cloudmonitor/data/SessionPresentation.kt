@@ -26,10 +26,11 @@ fun sessionActivity(session: SessionRow, generatedAt: String?): String {
     val last = Format.parseMillis(session.lastUsedAt) ?: return "状态未提供"
     if (last > now) return "状态未提供"
     if (session.deviceStale == true || now - last > RUNNING_WINDOW_MS) return "闲置"
-    if (session.deviceStale != false || session.turnEnded == null) return "状态未提供"
-    if (session.turnEnded) return "已完成"
+    if (session.deviceStale != false) return "状态未提供"
+    if (session.turnEnded == true) return "已完成"
     if (client == "codex" && session.waitingForInput == true) return "等待输入"
-    return "运行中"
+    if (session.turnEnded == false) return "运行中"
+    return "状态未提供"
 }
 
 fun sessionTitle(session: SessionRow): String =

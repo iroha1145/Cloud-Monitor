@@ -29,7 +29,7 @@
 - 工具 × 模型矩阵、最近会话
 - 设备、配额与订阅
 - 活动热力图（日、周、月，格子保持正方形）
-- 提供商状态：只出今日有上报的提供商，数据来自各官方状态页（Anthropic、OpenAI、Cursor、DeepSeek、Kimi）。GLM 没有官方 Statuspage，不出卡
+- 提供商状态：只出今日有上报的提供商，数据来自各官方状态页（Anthropic、OpenAI、Cursor、DeepSeek、Kimi、SpaceXAI / Grok）。GLM 没有官方 Statuspage，不出卡
 - 日归档：最多 370 天
 - 夜间模式
 - 检索更新：从 GitHub Releases / origin/main 对比当前版本；实机面板可后台升级
@@ -97,7 +97,7 @@ widget 按自己的同步间隔推送，本机不用再装别的。然后打开 
 ## 协议支持
 
 内置服务端固定为 Token Monitor **v0.70.0**（`ac4eeb2c4aea239dd94b67f074c73f69aafc46f8`），源码保持上游原样。
-支持 CatPaw、Factory Droid（fx）与 MCode 客户端，以及会话实时状态（`waitingForInput`、`liveActivity`、Prompt 缓存 TTL、未计价词元、流式输出速率与父子会话关联）。网页与安卓端同步支持 CatPaw、Factory Droid、StepFun 与 Muse Code 图标。
+支持 CatPaw（`catpaw`）、FX（`fx`）、MiniMax Code（`mcode`）、Factory Droid（`factory` / `droid`）客户端，以及会话实时状态（`waitingForInput`、`liveActivity`、Prompt 缓存 TTL、未计价词元、流式输出速率、用量来源与父子会话关联）。网页与安卓端同步支持 CatPaw、FX、MiniMax Code、Factory Droid、StepFun 与 Muse Code 图标。
 Cursor 的 Auto/default 模型按官方规则归并到 cursor-auto，同时保留其它工具的同名模型；MiMo、Kilo 的旧工具名继续归并。旧客户端仍可上报，v0.62–v0.64 的每日额度、Claude 重置券、StepFun 配额、第三方用量摘要和会话上下文字段保持兼容。
 
 | 官方端点 | 状态 | 谁处理 |
@@ -110,6 +110,9 @@ Cursor 的 Auto/default 模型按官方规则归并到 cursor-auto，同时保�
 | `DELETE /api/devices/:id` | `{ok,deviceId}` | 透传，并清 SQLite 快照 |
 | `GET /api/history` | 支持 | 透传 |
 | `GET/PUT /api/subscriptions` | 含 stale_write 409、非法币种 400 | 透传 |
+| `GET /api/sync/content` | 模型别名、自定义定价与可选会话标题读取 | 透传 |
+| `PUT /api/sync/settings/:kind` | `modelAliases` / `customPricing` 同步（1MiB 限流） | 透传 |
+| `PUT /api/sync/titles/:deviceId` | 每设备会话标题同步（1MiB 限流；需开启 `TOKEN_MONITOR_SYNC_SESSION_TITLES`） | 透传 |
 | `GET /api/v1/tm/overview` | Cloud 扩展 | `ACCESS_TOKEN`；官方 stats + SQLite 时间序列 |
 | `GET /api/v1/tm/subscriptions` | Cloud 扩展 | `ACCESS_TOKEN` |
 | `GET /api/v1/tm/provider-status` | Cloud 扩展 | `ACCESS_TOKEN`；allowlist 并发拉状态页 |
@@ -164,6 +167,7 @@ docker compose up -d --build
 | `API_KEY` | 记录写入密钥（弱值拒绝启动） | — |
 | `ACCESS_TOKEN` | 只读密钥（面板 / 查询），须与 API_KEY 不同 | — |
 | `TOKEN_MONITOR_SECRET` | token-monitor 接入密钥（空 = 停用） | 空 |
+| `TOKEN_MONITOR_SYNC_SESSION_TITLES` | `true` 时允许同步会话标题（透传给 tm-core） | `false` |
 | `CM_DEMO` | `true` 时 `/` 直接进演示面板 | `false` |
 | `DEVICE_KEYS_JSON` | 每设备写密钥（记录链路） | 空 |
 | `CORS_ORIGINS` / `DOCS_ENABLED` | 默认都关 | 关 |

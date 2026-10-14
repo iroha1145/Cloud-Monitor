@@ -740,3 +740,30 @@ def test_refuses_non_allowlisted_url():
 
     with pytest.raises(ValueError):
         _safe_url("https://evil.example/api/v2/summary.json")
+
+
+def test_cold_cache_all_providers_fail_returns_unknown_without_stale():
+    async def run():
+        mapping = {
+            STATUS_PAGES["anthropic"].summary_url: (503, {"error": "down"}),
+            STATUS_PAGES["anthropic"].status_url: (503, {"error": "down"}),
+            STATUS_PAGES["openai"].summary_url: (503, {"error": "down"}),
+            STATUS_PAGES["openai"].status_url: (503, {"error": "down"}),
+        }
+        client, _ = await _client(mapping)
+        svc = ProviderStatusService(cache_seconds=300, timeout_seconds=2.5)
+        try:
+            return await svc.snapshot(
+                client=client,
+                observed={"anthropic": ["claude"], "openai": ["codex"]},
+            )
+        finally:
+            await client.aclose()
+
+    snap = asyncio.run(run())
+    assert snap["partial"] is True
+    assert len(snap["errors"]) == 2
+    assert {p["provider"] for p in snap["providers"]} == {"anthropic", "openai"}
+    assert all(p["status"] == "unknown" for p in snap["providers"])
+    assert all(p["stale"] is False for p in snap["providers"])
+

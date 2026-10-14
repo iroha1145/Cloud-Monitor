@@ -670,7 +670,7 @@ def test_sync_push_body_limit_boundary_ok(sync_app):
 
 
 def test_body_limit_all_write_paths_configured(sync_app):
-    from hub.body_limit import TmBodyLimitMiddleware
+    from hub.body_limit import DEFAULT_LIMITED_PREFIXES, TmBodyLimitMiddleware
 
     found = None
     for m in sync_app.user_middleware:
@@ -680,12 +680,14 @@ def test_body_limit_all_write_paths_configured(sync_app):
     assert set(found) == {
         "/api/ingest",
         "/api/subscriptions",
+        "/api/sync/content",
         "/api/sync/settings/modelAliases",
         "/api/sync/settings/customPricing",
         "/api/v1/sync/push",
         "/api/v1/system/update",
     }
     assert found["/api/v1/system/update"] == 4096
+    assert set(dict(DEFAULT_LIMITED_PREFIXES)) == {"/api/sync/settings/", "/api/sync/titles/"}
 
 
 # ================================================================ P1-2 查询计划/乱序/规模

@@ -188,7 +188,6 @@ export type NotificationBellProps = Omit<
   | "onDragEnd"
 > & {
   count?: number;
-  variant?: "dot";
   size?: number;
   color?: keyof typeof COLORS;
 };
