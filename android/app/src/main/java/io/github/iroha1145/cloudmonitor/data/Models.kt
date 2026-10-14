@@ -410,6 +410,18 @@ data class LimitProvider(
 )
 
 @Serializable
+data class SessionLiveActivity(
+    val state: String? = null,
+    val observedAt: String? = null,
+)
+
+@Serializable
+data class SessionPromptCache(
+    val observedAt: String? = null,
+    val ttlSeconds: Int? = null,
+)
+
+@Serializable
 data class SessionRow(
     val key: String = "",
     val deviceId: String? = null,
@@ -427,6 +439,14 @@ data class SessionRow(
     val contextTokens: Double? = null,
     val contextWindow: Double? = null,
     val turnEnded: Boolean? = null,
+    val waitingForInput: Boolean? = null,
+    val liveActivity: SessionLiveActivity? = null,
+    val promptCache: SessionPromptCache? = null,
+    val unpricedTokens: Double? = null,
+    val timedOutputTokens: Double? = null,
+    val timedDurationMs: Double? = null,
+    val parentSessionId: String? = null,
+    val parentClient: String? = null,
     val archived: Boolean? = null,
     val sessionKind: String? = null,
     val deviceStale: Boolean? = null,

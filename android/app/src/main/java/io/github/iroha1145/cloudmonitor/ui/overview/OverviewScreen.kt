@@ -190,6 +190,7 @@ private fun SummaryPanel(state: OverviewPage, page: PageState) {
         val shape = RoundedCornerShape(16.dp)
         Column(Modifier.fillMaxWidth().clip(shape).background(cm.card).border(1.dp, cm.border, shape)) {
             val online = ov.devices.count { deviceOnline(it, ov) }
+            val costText = periodCost(per)?.let(Format::fmtUsd)
             val figures = listOf(
                 LedgerFigure(
                     label = "总用量",
@@ -203,8 +204,12 @@ private fun SummaryPanel(state: OverviewPage, page: PageState) {
                 ),
                 LedgerFigure(
                     label = "使用费用",
-                    prefix = if (periodCost(per) != null) "$" else "",
-                    number = periodCost(per)?.let { Format.fmtUsd(it).removePrefix("$") } ?: "未提供",
+                    prefix = when {
+                        costText == null -> ""
+                        costText.startsWith("-$") -> "-$"
+                        else -> "$"
+                    },
+                    number = costText?.removePrefix("-$")?.removePrefix("$") ?: "未提供",
                     note = "按上报价格统计",
                     duration = Motion.TickerLedger,
                     stagger = Motion.TickerStaggerTight,
@@ -311,7 +316,8 @@ private fun LedgerComposition(parts: io.github.iroha1145.cloudmonitor.data.Usage
     val sum = order.sumOf { it.second }.coerceAtLeast(0.0)
     val note = when {
         total == 0.0 -> "这个周期还没有上报用量。"
-        parts.known && !parts.complete -> "组成与总量不一致，暂不计算缓存占比。"
+        !parts.known -> "用量尚未分类，缓存明细未提供。"
+        !parts.complete -> "组成与总量不一致，暂不计算缓存占比。"
         parts.partial -> "保留已知缓存，未识别用量单独列出。"
         else -> "所有已上报用量均已完成分类。"
     }

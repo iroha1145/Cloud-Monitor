@@ -21,15 +21,30 @@ private val CLIENT_LOGO_ALIAS = mapOf(
     "moonshot" to "kimi",
     "bytedance" to "doubao",
     "volc" to "volcengine",
+    "muse" to "meta",
+    "musecode" to "meta",
+    "muse-code" to "meta",
+    "mcode" to "minimax",
+    "minimaxcode" to "minimax",
+    "minimax-code" to "minimax",
+    "factory" to "droid",
+    "factorydroid" to "droid",
+    "ohmypi" to "omp",
+    "alibabacloud" to "alibaba",
+    "clinepass" to "cline",
+    "kilo" to "kilocode",
+    "cherrystudioapp" to "cherrystudio",
 )
 
 private val CLIENT_LOGO_IDS = setOf(
-    "antigravity", "cherrystudio", "claude", "cline", "codebuddy", "codex",
-    "cohere", "commandcode", "copilot", "cursor", "deepseek", "doubao", "dsh",
-    "gemini", "grok", "hermes-agent", "hunyuan", "kilocode", "kimi", "kiro",
-    "meta", "minimax", "mistral", "moonshot", "newapi", "ollama", "openclaw",
-    "opencode", "openrouter", "pi", "proma", "qoder", "qodercn", "qwen",
-    "reasonix", "trae", "volcengine", "workbuddy", "xai", "xiaomi", "zai", "zed",
+    "alibaba", "amp", "antigravity", "catpaw", "cherrystudio", "claude", "cline",
+    "codebuddy", "codex", "cohere", "commandcode", "copilot", "cursor", "deepseek",
+    "devin", "doubao", "droid", "dsh", "fx", "gemini", "grok", "hermes-agent",
+    "hunyuan", "kilocode", "kimi", "kiro", "lmstudio", "meta", "minimax", "mistral",
+    "moonshot", "newapi", "ollama", "omp", "openclaw", "opencode", "openrouter",
+    "pi", "proma", "qoder", "qodercn", "qwen", "reasonix", "stepfun", "sub2api",
+    "trae", "typesafe", "unsloth", "volcengine", "workbuddy", "xai", "xiaomi",
+    "zai", "zed",
 )
 
 fun modelVendorId(name: String?): String {
@@ -42,9 +57,9 @@ fun modelVendorId(name: String?): String {
     if ("deepseek" in s) return "deepseek"
     if ("qwen" in s || "qwq" in s) return "qwen"
     if ("glm" in s || "zhipu" in s || Regex("""\bzai\b""").containsMatchIn(s)) return "zai"
-    if ("kimi" in s || "moonshot" in s || Regex("""(?:^|[^a-z0-9])k3(?:[-._]|$)""").containsMatchIn(s)) return "kimi"
+    if ("kimi" in s || "moonshot" in s || Regex("""(?:^|[^a-z0-9])(k2d6-agent|k3-agent|k[23])(?:[-._]|$)""").containsMatchIn(s)) return "kimi"
     if ("mistral" in s || "mixtral" in s || "codestral" in s) return "mistral"
-    if (Regex("""(?:^|[^a-z0-9])muse[\s-]*spark""").containsMatchIn(s) || "llama" in s || "meta" in s) return "meta"
+    if (Regex("""(?:^|[^a-z0-9])muse[\s-]*spark""").containsMatchIn(s) || Regex("""(?:^|[^a-z])llama""").containsMatchIn(s) || "meta" in s) return "meta"
     if ("minimax" in s) return "minimax"
     if ("doubao" in s) return "doubao"
     if ("hunyuan" in s) return "hunyuan"

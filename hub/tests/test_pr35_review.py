@@ -9,7 +9,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from conftest import make_settings
+from conftest import make_settings, record_from_payload
 from hub.auth import CodedHTTPException, require_access_token
 from hub.db import Database
 from hub.main import create_app
@@ -17,7 +17,6 @@ from hub.tm_outbox import (
     ensure_schema,
     mark_done,
     record_pending,
-    record_from_payload,
     save_normalized,
     reject_exhausted_pending,
     replay_pending,

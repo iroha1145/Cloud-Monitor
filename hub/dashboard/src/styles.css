@@ -140,7 +140,6 @@ input[type="search"]::-webkit-search-decoration {
 .ledger-note,
 .panel-head p,
 .heading-mode,
-.client-note,
 .composition-note,
 .sv-muted,
 .sv-summary-foot,
@@ -1045,14 +1044,6 @@ input[type="search"]::-webkit-search-decoration {
   justify-content: space-between;
   color: var(--ink-3);
   font-size: var(--fs-label);
-}
-.client-note {
-  margin: 4px 24px 0;
-  padding: 14px 0 18px;
-  border-top: 1px solid var(--line);
-  color: var(--ink-3);
-  font-size: var(--fs-label);
-  line-height: 1.6;
 }
 
 /* Composition card (model details) */
@@ -2098,7 +2089,8 @@ input[type="search"]::-webkit-search-decoration {
   display: grid;
   place-items: center;
   width: 96px;
-  height: 52px;
+  height: 96px;
+  aspect-ratio: 1;
   padding: 4px;
   border-radius: var(--r-md);
   background: var(--hover);
@@ -2203,9 +2195,6 @@ input[type="search"]::-webkit-search-decoration {
   .model-filters {
     padding-left: 20px;
     padding-right: 20px;
-  }
-  .client-note {
-    margin-inline: 20px;
   }
   .model-table th:first-child,
   .model-table td:first-child {

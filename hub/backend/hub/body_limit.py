@@ -21,7 +21,12 @@ MAX_TM_BODY_BYTES = 1024 * 1024  # 与官方 readJsonBody 的 MAX_JSON_BODY_BYTE
 DEFAULT_LIMITED_PATHS: Mapping[str, int] = {
     "/api/ingest": MAX_TM_BODY_BYTES,
     "/api/subscriptions": MAX_TM_BODY_BYTES,
+    "/api/sync/settings/modelAliases": MAX_TM_BODY_BYTES,
+    "/api/sync/settings/customPricing": MAX_TM_BODY_BYTES,
 }
+DEFAULT_LIMITED_PREFIXES: tuple[tuple[str, int], ...] = (
+    ("/api/sync/titles/", MAX_TM_BODY_BYTES),
+)
 
 
 class TmBodyLimitMiddleware:
@@ -29,11 +34,22 @@ class TmBodyLimitMiddleware:
         self.app = app
         self.limits = dict(limits) if limits else dict(DEFAULT_LIMITED_PATHS)
 
+    def _limit_for(self, path: str | None) -> int | None:
+        if not path:
+            return None
+        direct = self.limits.get(path)
+        if direct is not None:
+            return direct
+        for prefix, limit in DEFAULT_LIMITED_PREFIXES:
+            if path.startswith(prefix):
+                return limit
+        return None
+
     async def __call__(self, scope, receive, send):
         if scope.get("type") != "http":
             await self.app(scope, receive, send)
             return
-        limit = self.limits.get(scope.get("path"))
+        limit = self._limit_for(scope.get("path"))
         if limit is None:
             await self.app(scope, receive, send)
             return

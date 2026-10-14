@@ -488,7 +488,7 @@ object DemoCatalog {
                 name = "v0.2.0",
                 publishedAt = iso,
                 htmlUrl = "https://github.com/iroha1145/Cloud-Monitor/releases/tag/v0.2.0",
-                notes = "演示数据：假的新版本说明。手机端只检索，不会改服务器。",
+                notes = "演示数据：新版本说明示例。",
             ),
             main = UpdateMain("abcdef1234567890", "abcdef1", "docs: README 增加 LINUX DO 友情链接"),
             releaseAhead = true,

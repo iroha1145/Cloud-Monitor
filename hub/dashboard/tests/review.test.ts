@@ -60,45 +60,7 @@ test("invalid calendar dates never reach chart timestamp calculations", () => {
 });
 
 
-import {
-  indexForSelectedDay,
-  monotoneTrendSlopes,
-  smoothTrendPoints,
-  TREND_SAMPLES_PER_SEGMENT,
-} from "../src/trend-math";
-
-test("trend spec (trend-math.ts, not the drawn Liveline stroke): smoothed cost curves preserve every reported credit and endpoint", () => {
-  const points = [-5, -10, 8, -2].map((value, time) => ({ time, value }));
-  const smoothed = smoothTrendPoints(points);
-  points.forEach((point, index) =>
-    assert.deepEqual(smoothed[index * TREND_SAMPLES_PER_SEGMENT], point),
-  );
-});
-
-test("trend spec (trend-math.ts, not the drawn Liveline stroke): smoothing does not invent extrema between adjacent daily records", () => {
-  for (const values of [[100, 1, 1, 100], [-2, -20, 8, 0], [0, 30, 0, 10], [1, 9]]) {
-    const points = values.map((value, time) => ({ time, value }));
-    const smoothed = smoothTrendPoints(points);
-    for (let i = 0; i < points.length - 1; i++) {
-      for (const sample of smoothed.slice(
-        i * TREND_SAMPLES_PER_SEGMENT,
-        (i + 1) * TREND_SAMPLES_PER_SEGMENT,
-      )) {
-        assert.ok(sample.value >= Math.min(values[i], values[i + 1]));
-        assert.ok(sample.value <= Math.max(values[i], values[i + 1]));
-      }
-    }
-  }
-});
-
-test("trend spec (trend-math.ts, not the drawn Liveline stroke): the latest daily point is flattened like Liveline's same-Y tip", () => {
-  const rising = [2, 10, 40].map((value, time) => ({ time, value }));
-  const pair = [1, 9].map((value, time) => ({ time, value }));
-  assert.equal(monotoneTrendSlopes(rising).at(-1), 0);
-  assert.equal(monotoneTrendSlopes(pair).at(-1), 0);
-  assert.ok(monotoneTrendSlopes(rising)[0] > 0);
-  assert.ok(monotoneTrendSlopes(pair)[0] > 0);
-});
+import { axisLabel, indexForSelectedDay } from "../src/trend-math";
 
 test("trend selection follows the calendar day when the window slides", () => {
   const days = (...values: string[]) => values.map((day) => ({ day }));
@@ -110,21 +72,12 @@ test("trend selection follows the calendar day when the window slides", () => {
   assert.equal(indexForSelectedDay([], null), 0);
 });
 
-test("trend spec (trend-math.ts, not the drawn Liveline stroke): large jumps flatten at the vertex instead of folding a corner", () => {
-  const points = [2, 100, 1, 80].map((value, time) => ({ time, value }));
-  const smoothed = smoothTrendPoints(points);
-  const peak = 1 * TREND_SAMPLES_PER_SEGMENT;
-  const before = smoothed[peak - 1];
-  const at = smoothed[peak];
-  const after = smoothed[peak + 1];
-  assert.equal(at.value, 100);
-  const incoming = Math.abs(at.value - before.value);
-  const outgoing = Math.abs(after.value - at.value);
-  const midRise = Math.abs(
-    smoothed[Math.floor(TREND_SAMPLES_PER_SEGMENT / 2)].value - points[0].value,
-  );
-  assert.ok(incoming < midRise / 3);
-  assert.ok(outgoing < midRise / 3);
+test("trend axis labels handle negative costs and roll 10000万 up to 1亿", () => {
+  assert.equal(axisLabel(-0.45, "cost"), "-$0.45");
+  assert.equal(axisLabel(-4.5, "cost"), "-$4.5");
+  assert.equal(axisLabel(-120, "cost"), "-$120");
+  assert.equal(axisLabel(99_950_000, "tokens"), "1亿");
+  assert.equal(axisLabel(80_000_000, "tokens"), "8000万");
 });
 
 test("successful HTML bodies become a friendly format error", async () => {

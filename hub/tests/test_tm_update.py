@@ -78,6 +78,19 @@ def test_check_padded_equal_versions_not_ahead(tmp_path):
     assert out["release_ahead"] is False
 
 
+def test_check_tagged_release_without_git_sha_does_not_force_main_ahead(tmp_path):
+    tagged = make_settings(tmp_path, cm_version="0.2.0", cm_git_sha="")
+    out_tagged = UpdateService(tagged, fetch=_fetch_ok).check(force=True)
+    assert out_tagged["release_ahead"] is False
+    assert out_tagged["main_ahead"] is False
+    assert out_tagged["update_available"] is False
+
+    dev = make_settings(tmp_path, cm_version="dev", cm_git_sha="")
+    out_dev = UpdateService(dev, fetch=_fetch_ok).check(force=True)
+    assert out_dev["main_ahead"] is True
+    assert out_dev["update_available"] is True
+
+
 def test_http_requires_access_token(tmp_path):
     app = create_app(make_settings(tmp_path))
     with TestClient(app) as client:

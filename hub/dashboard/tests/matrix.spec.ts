@@ -16,14 +16,17 @@ async function expectMatrixCellsColored(page: Page) {
           .find((name) => name.startsWith("level-"))
           ?.slice("level-".length),
       );
+      const rect = node.getBoundingClientRect();
       return {
         text,
         level,
         background: getComputedStyle(node).backgroundColor,
+        squareDiff: Math.abs(rect.width - rect.height),
       };
     }),
   );
   expect(cells.length).toBeGreaterThan(0);
+  expect(cells.every((cell) => cell.squareDiff < 0.5)).toBe(true);
   // An unreported pair shows a dash and tells screen readers "未提供".
   const empty = cells.filter((cell) => cell.text === "—未提供");
   const used = cells.filter((cell) => cell.text !== "—未提供");

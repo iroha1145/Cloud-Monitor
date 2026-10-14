@@ -44,6 +44,13 @@ export default function SearchList({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && results[0]) {
+                event.preventDefault();
+                setQuery("");
+                onSelect?.(results[0]);
+              }
+            }}
             placeholder={labels.placeholder}
             aria-label={labels.ariaLabel}
             className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-3"
@@ -84,7 +91,7 @@ export default function SearchList({
                   key={item}
                   data-menu-row
                   type="button"
-                  onClick={() => { setQuery(item); onSelect?.(item); }}
+                  onClick={() => { setQuery(""); onSelect?.(item); }}
                   className="relative z-10 flex h-8 w-full items-center rounded-[6px] px-2 text-left text-[13px] text-ink"
                   // Rows cascade by 20ms (capped) instead of appearing all at once.
                   style={{ animation: `fade-in 200ms ease-out ${Math.min(index, 8) * 20}ms both` }}

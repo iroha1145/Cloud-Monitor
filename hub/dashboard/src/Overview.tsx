@@ -190,22 +190,29 @@ export function Stats({
             {per.costUsd === null ? (
               "未提供"
             ) : (
-              <>
-                <span className="ledger-unit is-prefix">$</span>
-                <NumberTicker
-                digitClassName="ledger-digit"
-                  value={Math.round(per.costUsd * 100)}
-                  format={(n) =>
-                    (n / 100).toLocaleString("en-US", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })
-                  }
-                  duration={0.45}
-                  stagger={0.015}
-                  startOnView={false}
-                />
-              </>
+              (() => {
+                const cents = Math.round(per.costUsd * 100);
+                return (
+                  <>
+                    <span className="ledger-unit is-prefix">
+                      {cents < 0 ? "-$" : "$"}
+                    </span>
+                    <NumberTicker
+                      digitClassName="ledger-digit"
+                      value={Math.abs(cents)}
+                      format={(n) =>
+                        (n / 100).toLocaleString("en-US", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })
+                      }
+                      duration={0.45}
+                      stagger={0.015}
+                      startOnView={false}
+                    />
+                  </>
+                );
+              })()
             )}
           </strong>
           <span className="ledger-note">按上报价格统计</span>

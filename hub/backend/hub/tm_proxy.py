@@ -334,7 +334,7 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
         tm_auth(request)
         try:
             payload = await request.json()
-        except Exception:
+        except (ValueError, UnicodeDecodeError, RecursionError):
             return JSONResponse(
                 status_code=400, content={"error": "bad_request", "message": "invalid json"}
             )
@@ -346,6 +346,62 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
                 )
             except UpstreamUnavailable as exc:
                 return _unavailable_response(exc)
+            return _proxy_response(resp)
+
+        return await run_in_threadpool(_put)
+
+    # ------------------------------------------------------------ sync (v0.70.0)
+
+    @router.get("/api/sync/content")
+    def tm_get_sync_content(request: Request) -> JSONResponse:
+        tm_auth(request)
+        return _proxied(request, "GET", "/api/sync/content")
+
+    @router.get("/api/sync/settings/{kind:path}")
+    def tm_get_sync_settings(kind: str, request: Request) -> JSONResponse:
+        tm_auth(request)
+        return _proxied(request, "GET", f"/api/sync/settings/{quote(kind, safe='')}")
+
+    @router.put("/api/sync/settings/{kind:path}")
+    async def tm_put_sync_settings(kind: str, request: Request) -> JSONResponse:
+        tm_auth(request)
+        try:
+            payload = await request.json()
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            return JSONResponse(
+                status_code=400, content={"error": "bad_request", "message": "invalid json"}
+            )
+
+        def _put() -> JSONResponse:
+            try:
+                resp = core_of(request).request(
+                    "PUT", f"/api/sync/settings/{quote(kind, safe='')}", json_body=payload
+                )
+            except UpstreamUnavailable as exc:
+                return _unavailable_response(exc)
+            return _proxy_response(resp)
+
+        return await run_in_threadpool(_put)
+
+    @router.put("/api/sync/titles/{device_id:path}")
+    async def tm_put_sync_titles(device_id: str, request: Request) -> JSONResponse:
+        tm_auth(request)
+        try:
+            payload = await request.json()
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            return JSONResponse(
+                status_code=400, content={"error": "bad_request", "message": "invalid json"}
+            )
+
+        def _put() -> JSONResponse:
+            try:
+                resp = core_of(request).request(
+                    "PUT", f"/api/sync/titles/{quote(device_id, safe='')}", json_body=payload
+                )
+            except UpstreamUnavailable as exc:
+                return _unavailable_response(exc)
+            if resp.status_code == 200:
+                _invalidate_overview(request)
             return _proxy_response(resp)
 
         return await run_in_threadpool(_put)

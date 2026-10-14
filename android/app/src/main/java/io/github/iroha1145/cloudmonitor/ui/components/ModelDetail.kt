@@ -131,8 +131,12 @@ fun ModelDetailDialog(model: UsageEntity?, onDismiss: () -> Unit) {
                     }
                 }
                 Text(
-                    if (model.components.partial) "部分组成尚未识别，已保留可确认的缓存计数。"
-                    else "该模型用量组成完整。缓存占比按缓存读取量除以总用量计算。",
+                    when {
+                        !model.components.known -> "该模型尚未上报分类组成明细。"
+                        !model.components.complete -> "组成与总量不一致，暂不计算缓存占比。"
+                        model.components.partial -> "部分组成尚未识别，已保留可确认的缓存计数。"
+                        else -> "该模型用量组成完整。缓存占比按缓存读取量除以总用量计算。"
+                    },
                     color = cm.ink2, fontSize = 12.sp,
                 )
                 TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("关闭") }

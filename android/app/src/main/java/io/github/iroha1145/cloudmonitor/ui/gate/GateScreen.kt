@@ -196,7 +196,7 @@ fun GateScreen(
                 Text("体验演示", style = MaterialTheme.typography.labelLarge)
             }
             Spacer(Modifier.height(10.dp))
-            Text("演示数据仅供体验，在本机生成。", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+            Text("演示数据（本机生成）", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(24.dp))
         }
     }

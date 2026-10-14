@@ -61,7 +61,7 @@ fun workspaceNotices(
     if (today.partial) notices += "已保留可识别的缓存与输出，其余用量列为未分类。"
     if (today.known && !today.complete) notices += "今日组件合计与总量不一致，缓存占比暂不显示。"
     if (overview.sessionsOmitted || overview.sessionsMeta.sessionDetailsIncomplete) {
-        notices += "当前快照未包含全部会话详情，不能用会话列表反推全部用量。"
+        notices += "会话记录不完整，仅展示已捕获的会话明细。"
     }
     overview.limits.forEach { provider ->
         val name = Format.fmtProvider(provider.provider)

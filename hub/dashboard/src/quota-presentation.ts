@@ -1,23 +1,8 @@
 import type { Quota } from "./data";
+import { formatMoney as money } from "./money";
 
 const number = (value: number) =>
   new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
-
-function money(value: number, currency: string): string {
-  const code = currency.toUpperCase();
-  if (code === "USD" || code === "CNY")
-    return `${value < 0 ? "−" : ""}${code === "USD" ? "$" : "¥"}${Math.abs(value).toFixed(2)}`;
-  try {
-    return new Intl.NumberFormat("zh-CN", {
-      style: "currency",
-      currency: code,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(value);
-  } catch {
-    return `${code} ${number(value)}`;
-  }
-}
 
 export function quotaAmount(value: number, quota: Pick<Quota, "metric" | "currency" | "provider" | "kind" | "limitId">): string {
   const currency = quota.currency?.toUpperCase();

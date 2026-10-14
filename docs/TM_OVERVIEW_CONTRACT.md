@@ -11,7 +11,7 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
 不重造官方聚合。官方 `/api/ingest` `/api/stats` `/api/history` SSE 订阅
 行为不得因本扩展改变。
 
-当前内核固定为 Token Monitor v0.64.0。StepFun 的 5 小时、每周和 Token Plan 窗口通过 `limits` 原样传递；Token Plan 未提供实际点数余额时，网页只展示上报的用量比例。Muse Code 使用 `muse` 客户端标识，客户端用量与会话仍沿用现有结构。
+当前内核固定为 Token Monitor v0.70.0（`ac4eeb2c4aea239dd94b67f074c73f69aafc46f8`）。支持 CatPaw（`catpaw`）、Factory Droid（`fx`）、MCode（`mcode`）、Muse Code（`muse`）与 StepFun 配额窗口；`limits` 原样传递官方完整配额记录，Token Plan 未提供实际点数余额时，网页只展示上报的用量比例。
 
 鉴权：面板与 Cloud 扩展一律 `Authorization: Bearer ACCESS_TOKEN`。
 `TOKEN_MONITOR_SECRET` 不能读这些端点。Token Monitor 未启用 → 404。
@@ -99,7 +99,12 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
   "sessions": [ { "key": "devId:client:sessionId", "deviceId": "…",
                    "client": "…", "sessionId": "…", "tokens": 1,
                    "contextTokens": 1234, "contextWindow": 128000,
-                   "turnEnded": false, "sessionKind": "background-review",
+                   "turnEnded": false, "waitingForInput": true,
+                   "liveActivity": { "kind": "command", "summary": "npm test" },
+                   "promptCache": { "ttlMs": 300000, "expiresAt": "…" },
+                   "unpricedTokens": 100, "timedOutputTokens": 500, "timedDurationMs": 10000,
+                   "parentSessionId": "…", "parentClient": "claude",
+                   "sessionKind": "background-review",
                    "deviceStale": false, "archived": false, … } ],
   "sessions_omitted": false,      // deprecated 布尔；权威见 sessions_meta
   "sessions_meta": {
@@ -116,9 +121,9 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
 Overview **不得**把 370 天日归档塞进每 5 分钟刷新的 payload。长期历史走
 `/api/v1/tm/history/daily` 分页。
 
-会话新增字段按官方记录有值时传递，不以 false 或 0 填充缺失字段；`deviceStale`
-来自所属设备的官方陈旧判定。已归档会话不显示运行；设备未过期、活动时间距本次
-统计 0–10 分钟、且 `turnEnded` 明确为布尔值时，页面才显示运行中或已完成。
+会话新增字段（含 `waitingForInput`、`liveActivity`、`promptCache`、`unpricedTokens`、`timedOutputTokens`、`timedDurationMs`、`parentSessionId`、`parentClient`）按官方记录有值时传递，不以 false 或 0 填充缺失字段；`deviceStale`
+来自所属设备的官方陈旧判定。已归档会话不显示运行；设备未过期且活动时间距本次
+统计 0–10 分钟时，`waitingForInput: true` 显示等待输入，否则 `turnEnded` 明确为布尔值时显示运行中或已完成。
 过期设备/旧活动显示闲置，缺少时间或布尔证据显示状态未提供。上下文是上次上报的
 占用量，缺少有效窗口不计算百分比。不会在本接口新增会话标题或消息正文。
 

@@ -744,7 +744,12 @@ export default function App({ initialData, initialToken = "", hosted = false, is
         </Suspense>
         </AppErrorBoundary>
       )}
-      {dialogError && <DialogErrorNotice onDismiss={() => setDialogError(false)} />}
+      {dialogError && (
+        <DialogErrorNotice
+          title="对话框已更新，请刷新。"
+          onDismiss={() => setDialogError(false)}
+        />
+      )}
       <AnimatePresence>
         {toast && (
           <motion.div

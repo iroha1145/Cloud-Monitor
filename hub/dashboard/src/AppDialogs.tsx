@@ -115,10 +115,15 @@ export default function AppDialogs({
   inFlight: { current: AbortController | null };
   returnFocusRef: React.RefObject<HTMLElement | null>;
 }) {
-  // Keep the closing model on screen while its dialog animates out.
+  // Keep the closing model on screen while its dialog animates out, and resolve
+  // live figures from the active period when period or data changes.
   const lastModel = useRef(selected);
-  if (selected) lastModel.current = selected;
-  const shownModel = selected ?? lastModel.current;
+  const liveModel = selected
+    ? (per.models.find((m) => m.id === selected.id || m.name === selected.name) ??
+        selected)
+    : null;
+  if (liveModel) lastModel.current = liveModel;
+  const shownModel = liveModel ?? lastModel.current;
   const accessKeyField = useErrorShake<HTMLInputElement>(keyRejected);
   return (
     <>

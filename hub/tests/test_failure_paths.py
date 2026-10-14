@@ -14,7 +14,7 @@ from types import SimpleNamespace
 import httpx
 from fastapi import Request
 
-from conftest import make_settings, seed_bucket, widget_style_payload
+from conftest import make_settings, record_from_payload, seed_bucket, widget_style_payload
 from hub.db import Database
 from hub import tm_outbox as outbox, tm_proxy, tm_snapshots as snapshots, tm_update
 from hub.tm_forwarding import ForwardingQueue
@@ -33,7 +33,7 @@ def test_replay_quarantines_a_corrupt_stored_payload_but_completes_the_rest(tmp_
     outbox.record_pending(db, request_id="bad", device_id="dev", payload={"deviceId": "dev"})
     outbox.record_pending(db, request_id="good", device_id="dev", payload=widget_style_payload("dev", tz="UTC"))
     outbox.save_normalized(db, "bad", {"periods": {"today": {"totalTokens": 1}}})
-    outbox.save_normalized(db, "good", outbox.record_from_payload(widget_style_payload("dev", tz="UTC")))
+    outbox.save_normalized(db, "good", record_from_payload(widget_style_payload("dev", tz="UTC")))
     # 磁盘半写/进程崩溃后的样子：审计 JSON 完好，原始载荷已损坏
     db.execute("UPDATE tm_ingest_outbox SET payload_json='{corrupt' WHERE request_id='bad'")
     result = outbox.replay_pending(db)

@@ -38,7 +38,7 @@ import {
 import { compact } from "./lib/format";
 import { DAY_MS, dayKeyZoned, formatZoned } from "./lib/datetime";
 import { downloadCsv, rowsToCsv } from "./lib/csv";
-import { usd } from "./money";
+import { formatMoney as money, usd } from "./money";
 import { quotaAmount, quotaBalance, quotaBoundaryLabel, quotaHeadline, quotaPercent } from "./quota-presentation";
 import { sessionActivity, sessionContext } from "./session-presentation";
 // Last import: mobile overrides must win ties within this async chunk.
@@ -865,20 +865,6 @@ function subscriptionInterval(subscription: Subscription) {
   return subscription.intervalCount > 1
     ? `${subscription.intervalCount} ${label}`
     : label;
-}
-
-function money(amount: number | null, currency: string): string {
-  if (amount === null) return "未提供";
-  if (!currency || currency === "USD") return usd(amount);
-  try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      maximumFractionDigits: 2,
-    }).format(amount);
-  } catch {
-    return `${currency} ${fullNumber(amount)}`;
-  }
 }
 
 function fullDate(value?: string | null): string {

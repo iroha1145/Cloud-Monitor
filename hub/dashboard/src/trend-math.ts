@@ -1,107 +1,3 @@
-export type TrendSample = { time: number; value: number };
-
-/**
- * Algorithm spec / test oracle for the usage-trend stroke.
- *
- * Production Web rendering does not call this file. InsightTrend passes daily
- * records to Liveline, whose `drawSpline` uses the same Fritsch–Carlson slopes
- * and then appends a same-Y live tip that forces the latest day flat. Android
- * `monotoneTrendSlopes` follows that rule so both ends meet the dashed
- * reference horizontally.
- *
- * `smoothTrendPoints` only exists so review tests can assert no invented peaks,
- * preserved credits, and flattened vertices without opening a browser.
- */
-export const TREND_SAMPLES_PER_SEGMENT = 16;
-
-function clampToSegment(value: number, left: number, right: number): number {
-  const lo = Math.min(left, right);
-  const hi = Math.max(left, right);
-  return Math.max(lo, Math.min(hi, value));
-}
-
-/**
- * Fritsch–Carlson slopes. Local extrema get a flat tangent so the stroke
- * rounds instead of folding, and the curve never overshoots a segment.
- * The latest daily point is flattened to match Liveline's same-Y tip.
- */
-export function monotoneTrendSlopes(points: TrendSample[]): number[] {
-  const n = points.length;
-  if (n === 0) return [];
-  if (n === 1) return [0];
-  const delta = new Array<number>(n - 1);
-  for (let i = 0; i < n - 1; i += 1) {
-    const dt = points[i + 1].time - points[i].time;
-    delta[i] = dt === 0 ? 0 : (points[i + 1].value - points[i].value) / dt;
-  }
-  const m = new Array<number>(n);
-  m[0] = delta[0] ?? 0;
-  m[n - 1] = delta[n - 2] ?? 0;
-  for (let i = 1; i < n - 1; i += 1) {
-    m[i] = delta[i - 1] * delta[i] <= 0 ? 0 : (delta[i - 1] + delta[i]) / 2;
-  }
-  for (let i = 0; i < n - 1; i += 1) {
-    if (delta[i] === 0) {
-      m[i] = 0;
-      m[i + 1] = 0;
-      continue;
-    }
-    const alpha = m[i] / delta[i];
-    const beta = m[i + 1] / delta[i];
-    const steep = alpha * alpha + beta * beta;
-    if (steep > 9) {
-      const scale = 3 / Math.sqrt(steep);
-      m[i] = scale * alpha * delta[i];
-      m[i + 1] = scale * beta * delta[i];
-    }
-  }
-  m[n - 1] = 0;
-  return m;
-}
-
-function hermite(
-  left: number,
-  right: number,
-  leftSlope: number,
-  rightSlope: number,
-  dt: number,
-  t: number,
-): number {
-  const t2 = t * t;
-  const t3 = t2 * t;
-  return (
-    (2 * t3 - 3 * t2 + 1) * left +
-    (t3 - 2 * t2 + t) * (leftSlope * dt) +
-    (-2 * t3 + 3 * t2) * right +
-    (t3 - t2) * (rightSlope * dt)
-  );
-}
-
-/** Sample the spec curve; never invent a peak or erase a reported negative fee. */
-export function smoothTrendPoints(points: TrendSample[]): TrendSample[] {
-  if (points.length < 2) return points;
-  const slopes = monotoneTrendSlopes(points);
-  const result: TrendSample[] = [];
-  for (let i = 0; i < points.length - 1; i += 1) {
-    const from = points[i];
-    const to = points[i + 1];
-    const dt = to.time - from.time;
-    for (let sample = 0; sample < TREND_SAMPLES_PER_SEGMENT; sample += 1) {
-      const t = sample / TREND_SAMPLES_PER_SEGMENT;
-      result.push({
-        time: from.time + dt * t,
-        value: clampToSegment(
-          hermite(from.value, to.value, slopes[i], slopes[i + 1], dt, t),
-          from.value,
-          to.value,
-        ),
-      });
-    }
-  }
-  result.push(points[points.length - 1]);
-  return result;
-}
-
 /** Keep the selected calendar day when the 30-day window slides (W-N8). */
 export function indexForSelectedDay(
   series: readonly { day: string }[],
@@ -112,4 +8,19 @@ export function indexForSelectedDay(
     if (found >= 0) return found;
   }
   return Math.max(0, series.length - 1);
+}
+
+const oneDecimal = (value: number) => String(Math.round(value * 10) / 10);
+
+/** Short scale labels that fit the 56px axis column: 8000万, 1.2亿, $90, -$0.25. */
+export function axisLabel(value: number, metric: "tokens" | "cost"): string {
+  const sign = value < 0 ? "-" : "";
+  const abs = Math.abs(value);
+  if (metric === "cost") {
+    if (abs >= 100) return `${sign}$${Math.round(abs)}`;
+    return abs >= 1 ? `${sign}$${oneDecimal(abs)}` : `${sign}$${abs.toFixed(2)}`;
+  }
+  if (abs >= 99_950_000) return `${sign}${oneDecimal(abs / 1e8)}亿`;
+  if (abs >= 1e4) return `${sign}${oneDecimal(abs / 1e4)}万`;
+  return String(Math.round(value));
 }

@@ -1,32 +1,35 @@
 {
   "upstream": "https://github.com/Javis603/token-monitor",
-  "release": "v0.64.0",
-  "commit": "9ad1ca2f6ec27e497eb38fffe7d9533aec0d3c38",
+  "release": "v0.70.0",
+  "commit": "ac4eeb2c4aea239dd94b67f074c73f69aafc46f8",
   "entries": [
     "src/hub/server.js",
     "src/shared/syncPayload.js"
   ],
   "files": {
-    "src/hub/server.js": "be27a45c636a26f13eb5de22c0774393037dd7bc33ea3a2f7cc8e03fd24f3448",
-    "src/shared/clientHealth.js": "8126514aa68bb21fe97ddc9024931c1b2f4364bafba2eaa11a1afd8648a2ff02",
+    "src/hub/server.js": "260e11e3364f657a41e6f7158c04eb096fdfa48621701a9430121966e3e86f34",
+    "src/shared/clientHealth.js": "c300251a1202a1883ecd0e7308b6e9cd422412b6bb3accce94aedffe81308015",
     "src/shared/config.js": "263ddf008c2c1929012edb0d57047239bc756d37a01495a3d0c353c111b59a78",
     "src/shared/currency.js": "f2b6b8ec8d2404052b48d783a7309e72da1b268f9827ab22da366bdcb12782e6",
-    "src/shared/history.js": "2114ce79f8c152d470bb98cacf492acfec974fcec96fd2ccb1fd0604192c310b",
+    "src/shared/history.js": "f258db81910c328fae55626bed7c1f14f2f3ede175448c48df7467ad5ae4bf0b",
     "src/shared/http.js": "01290f01be9fedbce592a35e4f1131735f351a4cbdb9588081b1068b79270cc4",
     "src/shared/hubBuildIdentity.js": "fc6dd985ac81b716214435e8ebe9d44bd19152b3a8a0a85349c5e1235bfb046e",
-    "src/shared/hubBuildRegistry.json": "26644d6199fbecbf28117bcdc776c298076b8310f5bafb863b066be64fa6191f",
+    "src/shared/hubBuildRegistry.json": "14b7d925aee7bbb817899bf6d2ac21ff829b24c40c7a1c0e64216dd29db24762",
     "src/shared/hubProtocol.js": "ff3cbe7ff2a760eeb268527b9ff508a4a231f48feed7b83769af3e23148c1266",
     "src/shared/limits/core.js": "c9ac7c08615979dafae426bde1903ca53f5f4025182518aa06a0bd6b11469621",
-    "src/shared/limits/providers.js": "30b3dea1e1d3e105f282dc911f6197a3d566c413e37798a8d9b7c7b661e31020",
+    "src/shared/limits/providers.js": "244c9e7de7530a127664f690293c7804d0a8d9e2ba8a03cfcf0c92bb430105a8",
     "src/shared/projectKey.js": "34effa3b18696cca45aea4e5c3ce10f6708e930c56ba5c33e3a04239f42b628e",
     "src/shared/providers/devin/paths.js": "0ad0b2b9606604d3e621257e989bc7c0522f9a758eab641dd9fe921eeeec1813",
     "src/shared/providers/dsh/paths.js": "7490cece793df867d5543767a872930c5166efdbfb9869dbb96693b928155b96",
     "src/shared/providers/reasonix/paths.js": "fb79118c1ca474578174d276881c8ebc8faa1e7e1b38762e3ec5f03ac01b1989",
     "src/shared/providers/reasonix/sessionGuard.js": "816e392e000cb1910350ea68d87795906eb75084277efc1747adb3589f1cd51a",
+    "src/shared/sessionActivityProviders.js": "41a5ddf96d6115f04157d46865fa2aa0bafa601759c053418a867ffa2bf6759d",
+    "src/shared/sessionLive.js": "bb6f960d0f0feb3035cb20a4f23d152b60602e93426f65b2709c4045fe36562e",
     "src/shared/subscriptionDisplay.js": "32f6556a8bba7d49d6eab60a71038cff16c8c3396992ec46415a61fde0924beb",
-    "src/shared/syncPayload.js": "243b02f627c5116e9521680e30dd6e31dc09203735b8bfa07d5ce28728e07575",
+    "src/shared/syncContent.js": "c59a92ccac14d248070bcb9ac09a9d1a6f755b3b123ff31673a364dfe0e03e57",
+    "src/shared/syncPayload.js": "616625ec13e10fd99c96aa8c0e4d82ad5a3afbb7f5d3b6d63d73dd54d165d29d",
     "src/shared/syncUploadInterval.js": "e28f36830fa7f61469cd353e9307089f5d84bc5b9e2e390d49c285c3fa86552b",
-    "src/shared/usage.js": "4dd13be31c97ac76748c10ff2341abf82cce3c973e124d13b25ca5708fbc9e4c"
+    "src/shared/usage.js": "3f0223bf175fe3f5adbff2f0c1bcd58355bd1bdfa764cf5392bc77cf2fb60430"
   },
   "licenseSha256": "250136de456c31d659e54c1804c43a27dadad175336b67226e9509d6310f923c"
 }

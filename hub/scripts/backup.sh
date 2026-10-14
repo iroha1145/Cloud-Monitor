@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # 一致性备份：tm-core 的 devices.json + SQLite 的 cloud-monitor.sqlite3。
 # 两卷独立：先备 devices.json（官方原子写），再备 SQLite（.backup 一致性快照）。
 # 用法: ./backup.sh /path/to/backup-dir   （compose 服务运行中即可执行）
@@ -11,12 +11,12 @@ mkdir -p "$OUT"
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 HUB_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
-# 用项目目录加载 compose.yml + override.yml，避免 -f 单文件漏掉端口覆盖
-COMPOSE="docker compose --project-directory $HUB_DIR"
+# shellcheck source=lib.sh
+. "$SCRIPT_DIR/lib.sh"
 
 container_running() {
   service="$1"
-  cid=$($COMPOSE ps -q "$service" 2>/dev/null || true)
+  cid=$(cm_compose "$HUB_DIR" ps -q "$service" 2>/dev/null || true)
   [ -n "$cid" ] || return 1
   docker inspect -f '{{.State.Running}}' "$cid" 2>/dev/null | grep -qx true
 }
@@ -26,8 +26,8 @@ if ! container_running tm-core; then
   echo "tm-core 未运行，无法备份 devices.json" >&2
   exit 1
 fi
-if $COMPOSE exec -T tm-core sh -c 'test -f /data/devices.json'; then
-  $COMPOSE exec -T tm-core cat /data/devices.json > "$OUT/devices.json"
+if cm_compose "$HUB_DIR" exec -T tm-core sh -c 'test -f /data/devices.json'; then
+  cm_compose "$HUB_DIR" exec -T tm-core cat /data/devices.json > "$OUT/devices.json"
 else
   echo "{}" > "$OUT/devices.json"
   echo "devices.json 尚不存在，已写入空对象并继续备份数据库"
@@ -38,7 +38,7 @@ if ! container_running cloud-hub; then
   echo "cloud-hub 未运行，无法备份 SQLite" >&2
   exit 1
 fi
-$COMPOSE exec -T cloud-hub python3 - <<'PY' > "$OUT/cloud-monitor.sqlite3"
+cm_compose "$HUB_DIR" exec -T cloud-hub python3 - <<'PY' > "$OUT/cloud-monitor.sqlite3"
 import os
 import sqlite3
 import sys

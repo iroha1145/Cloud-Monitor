@@ -65,6 +65,10 @@ from .tm_proxy import TmCore, UpstreamUnavailable
 from .tm_snapshots import (
     BUCKET_MS,
     HARD_RETENTION_DAYS,
+    _parse_iso as _parse_bucket_dt,
+    _safe_float as _float,
+    _safe_int as _int,
+    _zone,
     query_daily_archive,
     summarize_trend,
     trend_last_rows,
@@ -83,31 +87,11 @@ LATE_START_GRACE_MINUTES = 10  # 本地日开始后 10 分钟内的首桶不算�
 OVERVIEW_REFRESH_TIMEOUT_SECONDS = 20.0
 
 
-def _int(value: Any) -> int:
-    try:
-        return max(0, int(value or 0))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _float(value: Any) -> float:
-    try:
-        return max(0.0, float(value or 0.0))
-    except (TypeError, ValueError):
-        return 0.0
-
-
 def _device_display(device: dict) -> str:
     return str(device.get("hostname") or "") or str(device.get("deviceId") or "")[:8]
 
 
 # ---------------------------------------------------------------- 快照时间序列
-
-
-def trend_models_by_day(db: Database, days: int = TREND_DAYS) -> list[dict]:
-    """每设备每本地日最后一个桶，按天合并 today_total 与 models_json。"""
-    _, last_rows = trend_last_rows(db, days)
-    return summarize_trend_models(last_rows)
 
 
 def summarize_trend_models(last_rows: list[dict]) -> list[dict]:
@@ -242,16 +226,6 @@ def _now_for_dashboard(dashboard_tz: str, now: Any = None):
     return now.astimezone(tz), tz
 
 
-def _parse_bucket_dt(stamp: Any):
-
-    if not stamp:
-        return None
-    try:
-        return datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-
 def _first_bucket_late(stamp: str, local_day: str, tz_name: str) -> bool:
     """首桶是否明显晚于设备本地日开始。
 
@@ -262,14 +236,7 @@ def _first_bucket_late(stamp: str, local_day: str, tz_name: str) -> bool:
     moment = _parse_bucket_dt(stamp)
     if moment is None or not valid_day_key(local_day):
         return True
-    tz = None
-    if tz_name:
-        try:
-            tz = ZoneInfo(tz_name)
-        except Exception:
-            tz = None
-    if tz is None:
-        tz = timezone.utc
+    tz = _zone(tz_name) or timezone.utc
     local = moment.astimezone(tz)
     day_start = datetime.fromisoformat(local_day).replace(tzinfo=tz)
     return local > day_start + timedelta(minutes=LATE_START_GRACE_MINUTES)
@@ -637,7 +604,12 @@ def _collect_sessions(stats: dict) -> tuple[dict, list[dict]]:
             }
             # Keep absent observations absent: an older client has no evidence
             # that a turn is still running or that its context is empty.
-            for field in ("contextTokens", "contextWindow", "turnEnded", "sessionKind", "archived"):
+            for field in (
+                "contextTokens", "contextWindow", "turnEnded", "sessionKind", "archived",
+                "waitingForInput", "liveActivity", "promptCache", "unpricedTokens",
+                "timedOutputTokens", "timedDurationMs", "parentSessionId", "parentClient",
+                "nativeSessionId", "t3ThreadId", "usageSource", "usageCoverage",
+            ):
                 if field in value:
                     item[field] = value[field]
             if isinstance(device.get("stale"), bool):
@@ -676,7 +648,7 @@ def _collect_projects(stats: dict) -> list[dict]:
         if not isinstance(value, dict):
             continue
         clients = value.get("clients")
-        out[str(key)] = {
+        project_item = {
             "label": str(value.get("label") or key),
             "tokens": _int(value.get("tokens") or value.get("totalTokens")),
             "costUsd": _float(value.get("costUsd") or value.get("cost")),
@@ -686,6 +658,9 @@ def _collect_projects(stats: dict) -> list[dict]:
             },
             "devices": [],
         }
+        if "unpricedTokens" in value:
+            project_item["unpricedTokens"] = _int(value.get("unpricedTokens"))
+        out[str(key)] = project_item
     for device in stats.get("devices") or []:
         dev_projects = ((device.get("periods") or {}).get("allTime") or {}).get("projects")
         if not isinstance(dev_projects, dict):
@@ -807,6 +782,9 @@ def build_overview(
             "time_zone": dashboard_time_zone,
             "hourly": [],
             "hourly_day": None,
+            "daily_day_basis": "dashboard-time-zone",
+            "daily_mixed_basis": False,
+            "daily_archive_cutover_day": None,
             "hourly_today": {"day": None, "time_zone": dashboard_time_zone, "buckets": []},
             "daily": [],
             "coverage": None,
@@ -818,12 +796,35 @@ def build_overview(
         if isinstance(d.get("periodWindows"), dict) and d.get("periodWindows")
     }
     dashboard_period = _dashboard_period(dashboard_time_zone, now=now)
-    trend_days, trend_rows = trend_last_rows(db, TREND_DAYS)
+    try:
+        trend_days, trend_rows = trend_last_rows(db, TREND_DAYS)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("trend_last_rows 查询失败: %s", exc)
+        trend_days, trend_rows = [], []
+        if not any(e.get("code") == "activity_unavailable" for e in partial_errors):
+            partial_errors.append({"code": "trend_unavailable", "source": "sqlite"})
+
+    try:
+        health_fields = snapshot_health(db)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("snapshot_health 查询失败: %s", exc)
+        health_fields = {
+            "pending_outbox": 0,
+            "unconfirmed_outbox": 0,
+            "expired_unconfirmed_outbox": 0,
+            "forwarding_outbox": 0,
+            "forwarding_bytes": 0,
+            "last_forward_error": None,
+            "last_forward_terminal_reason": None,
+            "last_snapshot_success_at": None,
+            "last_snapshot_error": "sqlite_unavailable",
+            "snapshot_degraded": True,
+        }
 
     overview = {
         "overview_schema_version": 2,
         "generated_at": stats.get("updatedAt") or stats.get("generatedAt"),
-        **snapshot_health(db),
+        **health_fields,
         "staleAfterMs": stats.get("staleAfterMs"),
         "dashboard_time_zone": dashboard_time_zone,
         "features": {
@@ -864,7 +865,7 @@ def build_overview(
 def _dashboard_period(dashboard_tz: str, now: Any = None) -> dict:
     """仪表盘时区的当前 today/month 窗口（供前端展示口径）。"""
 
-    now, tz = _now_for_dashboard(dashboard_tz, now)
+    now, _ = _now_for_dashboard(dashboard_tz, now)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     next_day = today_start + timedelta(days=1)
     month_start = today_start.replace(day=1)
@@ -1128,7 +1129,7 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         """面板只读订阅清单：服务端持 TM 密钥向 tm-core 取数，ACCESS_TOKEN 鉴权。"""
         require_access_token(request, settings)
         _require_core()
-        data, error = _fetch_sync(_core(request), "/api/subscriptions")
+        data, _ = _fetch_sync(_core(request), "/api/subscriptions")
         if data is None:
             raise HTTPException(status_code=502, detail="tm-core 订阅数据不可用")
         subscriptions = data.get("subscriptions")

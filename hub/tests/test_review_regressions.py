@@ -11,14 +11,14 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from conftest import TM_SECRET, widget_style_payload
+from conftest import TM_SECRET, record_from_payload, widget_style_payload
 from hub.body_limit import TmBodyLimitMiddleware
 from hub.config import ConfigError, Settings, load_settings
 from hub.db import Database, record_fingerprint
 from hub.main import create_app
 from hub.models import SyncPushRequest
 from hub.services import apply_sync_push
-from hub.tm_outbox import ensure_schema, record_pending, replay_pending, record_from_payload, save_normalized
+from hub.tm_outbox import ensure_schema, record_pending, replay_pending, save_normalized
 from hub.tm_overview import OverviewCache
 from hub.tm_proxy import TmBackground
 from hub.tm_snapshots import ensure_schema as ensure_snapshots

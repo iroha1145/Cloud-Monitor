@@ -1030,6 +1030,7 @@ class SyncAgent:
                 self.state.data["last_success_at"] = utc_now_iso()
                 self.state.data["last_error"] = None
                 self.state.data["last_error_type"] = None
+                self.state.data["last_error_at"] = None
                 self.state.data["last_permanent_error"] = None
                 self.state.data["last_push_at"] = utc_now_iso()
                 self.state.save()

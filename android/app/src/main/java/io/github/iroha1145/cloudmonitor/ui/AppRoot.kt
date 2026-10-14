@@ -408,7 +408,7 @@ private fun WorkspaceList(
             }
             item("end") {
                 Text(
-                    if (header.demo) "Cloud Monitor · 示例数据，不代表实际账单"
+                    if (header.demo) "Cloud Monitor · 演示数据"
                     else "Cloud Monitor · 每 5 分钟自动刷新${header.zone?.let { " · $it" } ?: ""}",
                     color = cm.mute, style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),

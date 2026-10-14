@@ -16,7 +16,16 @@ const staleAfterMs = Number(
   process.env.TOKEN_MONITOR_STALE_AFTER_MS || 0
 ) || undefined;
 
-const hub = createHub({ port, host, secret, dataFile, ...(staleAfterMs ? { staleAfterMs } : {}) });
+const syncSessionTitles = process.env.TOKEN_MONITOR_SYNC_SESSION_TITLES;
+
+const hub = createHub({
+  port,
+  host,
+  secret,
+  dataFile,
+  ...(staleAfterMs ? { staleAfterMs } : {}),
+  ...(syncSessionTitles !== undefined ? { syncSessionTitles } : {}),
+});
 
 hub.start().then(() => {
   console.log(`tm-core (vendored token-monitor hub) listening on http://${hub.bindHost}:${port}`);

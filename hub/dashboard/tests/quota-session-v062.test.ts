@@ -83,3 +83,59 @@ test("session status needs explicit end flag and a fresh device; context is an u
   assert.deepEqual(sessionContext(template), { used: 95, remaining: 5 });
   assert.equal(sessionContext({ ...template, contextWindow: null }), null);
 });
+
+test("v0.70 liveActivity and waitingForInput states are normalized and presented", () => {
+  const data = normalizeOverview({
+    generated_at: now,
+    totals: { today: { totalTokens: 300, clients: { catpaw: 100, fx: 100, mcode: 100 } } },
+    sessions: [{
+      sessionId: "s-v070",
+      client: "codex",
+      tokens: 500,
+      lastUsedAt: "2026-09-26T11:58:00Z",
+      turnEnded: false,
+      waitingForInput: true,
+      deviceStale: false,
+      liveActivity: { state: "waiting", observedAt: "2026-09-26T11:59:50Z" },
+      parentSessionId: "p-1",
+      parentClient: "claude",
+      timedOutputTokens: 120,
+      timedDurationMs: 4000,
+      promptCache: { observedAt: "2026-09-26T11:58:00Z", ttlSeconds: 300 },
+      unpricedTokens: 50,
+    }],
+  });
+  assert.deepEqual(
+    data.periods.today.clients.map((c) => [c.id, c.name]),
+    [
+      ["catpaw", "CatPaw"],
+      ["fx", "FX"],
+      ["mcode", "MiniMax Code"],
+    ],
+  );
+  const s = data.sessions[0];
+  assert.equal(s.waitingForInput, true);
+  assert.deepEqual(s.liveActivity, { state: "waiting", observedAt: "2026-09-26T11:59:50Z" });
+  assert.equal(s.parentSessionId, "p-1");
+  assert.equal(s.parentClient, "claude");
+  assert.equal(s.timedOutputTokens, 120);
+  assert.equal(s.timedDurationMs, 4000);
+  assert.deepEqual(s.promptCache, { observedAt: "2026-09-26T11:58:00Z", ttlSeconds: 300 });
+  assert.equal(s.unpricedTokens, 50);
+
+  assert.equal(sessionActivity(s, now), "等待输入");
+  assert.equal(
+    sessionActivity({ ...s, liveActivity: { state: "running", observedAt: "2026-09-26T11:59:50Z" } }, now),
+    "运行中",
+  );
+  assert.equal(
+    sessionActivity({ ...s, liveActivity: { state: "idle", observedAt: "2026-09-26T11:59:50Z" } }, now),
+    "闲置",
+  );
+  // Expired liveActivity (>30s) falls back to transcript waitingForInput / turnEnded
+  assert.equal(
+    sessionActivity({ ...s, liveActivity: { state: "idle", observedAt: "2026-09-26T11:59:00Z" } }, now),
+    "等待输入",
+  );
+});
+

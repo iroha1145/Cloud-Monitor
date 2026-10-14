@@ -45,11 +45,27 @@ const CLIENT_NAMES: Record<string, string> = {
   cline: "Cline",
   typesafe: "TypeSafe",
   alibaba: "Alibaba Cloud",
+  catpaw: "CatPaw",
+  fx: "FX",
+  mcode: "MiniMax Code",
+};
+
+const CLIENT_TITLES: Record<string, string> = {
+  codex: "Codex",
+  claude: "Claude Code",
+  cursor: "Cursor",
+  copilot: "GitHub Copilot",
+  mimo: "Xiaomi MiMo",
+  ...CLIENT_NAMES,
 };
 
 const VENDOR_NAMES: Record<string, string> = Object.fromEntries(
   VENDORS.map((vendor) => [vendor.id, vendor.name]),
 );
+
+export function clientName(id: string): string {
+  return CLIENT_TITLES[id] ?? id;
+}
 
 export function providerFor(name: string): string {
   return vendorFor(name)?.id ?? "other";

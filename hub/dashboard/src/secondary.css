@@ -521,34 +521,6 @@
 .sv-quota-window-foot > span:last-child {
   text-align: right;
 }
-.sv-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  background: var(--hover);
-  border-radius: var(--r-md);
-  padding: 13px 16px;
-  font-size: 11px;
-  color: var(--ink-3);
-  line-height: 1.7;
-}
-.sv-note svg {
-  width: 14px;
-  height: 14px;
-  margin-top: 2px;
-  flex-shrink: 0;
-  color: var(--ink-3);
-}
-.sv-subscription {
-  display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr) auto;
-  align-items: center;
-  padding: 20px 24px;
-  gap: 24px;
-}
-.sv-subscription + .sv-subscription {
-  border-top: 1px solid var(--line);
-}
 .sv-subscription strong {
   font-size: 14px;
   font-weight: 500;
@@ -729,13 +701,6 @@
   }
 }
 @media (max-width: 1050px) {
-  .sv-subscription {
-    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) auto;
-    gap: 15px;
-  }
-  .sv-subscription-date {
-    display: none;
-  }
   .sv-quota-window-foot {
     flex-direction: column;
     gap: 1px;
@@ -1005,37 +970,6 @@
   font-size: 14px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-}
-@media (max-width: 1050px) {
-  .sv-subscription {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 17px;
-  }
-  .sv-subscription > .sv-provider-heading {
-    grid-column: 1;
-    grid-row: 1;
-  }
-  .sv-subscription > .sv-status {
-    grid-column: 2;
-    grid-row: 1;
-    justify-self: end;
-  }
-  .sv-subscription-price {
-    grid-column: 1;
-    grid-row: 2;
-    display: block;
-    padding: 0;
-    border: 0;
-  }
-  .sv-subscription-price .sv-metric-label {
-    margin-bottom: 5px;
-  }
-  .sv-subscription-date {
-    display: block;
-    grid-column: 2;
-    grid-row: 2;
-    text-align: right;
-  }
 }
 
 /* Brand marks stay monochrome; chart and status colors provide the accents. */

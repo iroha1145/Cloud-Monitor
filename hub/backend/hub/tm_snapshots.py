@@ -22,7 +22,7 @@ import math
 import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .db import Database
 from .models import MAX_INT
@@ -160,6 +160,15 @@ def _parse_iso(value: Any) -> Optional[datetime]:
         return None
 
 
+def _zone(name: Any) -> Optional[ZoneInfo]:
+    if not isinstance(name, str) or not name:
+        return None
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError, KeyError, OSError):
+        return None
+
+
 def resolve_local_day(
     *, period_windows: Any, updated_at: Any, received_at: Any
 ) -> tuple[str, str]:
@@ -168,12 +177,7 @@ def resolve_local_day(
 
     key = valid_day_key((windows.get("today") or {}).get("key"))
     tz_name = windows.get("timeZone")
-    tz = None
-    if isinstance(tz_name, str) and tz_name:
-        try:
-            tz = ZoneInfo(tz_name)
-        except Exception:
-            tz = None
+    tz = _zone(tz_name)
     if key:
         return key, (tz_name if isinstance(tz_name, str) else "")
 
@@ -247,26 +251,42 @@ def _components_recorded(period: Any) -> int:
                and sum(value for value in values if value is not None) <= total)
 
 
+def _safe_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return 0
+        value = int(value)
+    try:
+        value = int(value or 0)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return min(max(value, 0), MAX_INT)
+
+
+def _safe_float(value: Any) -> float:
+    if isinstance(value, bool):
+        return 0.0
+    try:
+        num = float(value or 0.0)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    if not math.isfinite(num):
+        return 0.0
+    return max(num, 0.0)
+
+
 def _period_field(period: Any, key: str) -> int:
     if not isinstance(period, dict):
         return 0
-    value = period.get(key)
-    try:
-        value = int(value or 0)
-    except (TypeError, ValueError):
-        return 0
-    return min(max(value, 0), MAX_INT)
+    return _safe_int(period.get(key))
 
 
 def _period_cost(period: Any) -> float:
     if not isinstance(period, dict):
         return 0.0
-    value = period.get("costUsd")
-    try:
-        value = float(value or 0)
-    except (TypeError, ValueError):
-        return 0.0
-    return max(value, 0.0)
+    return _safe_float(period.get("costUsd"))
 
 
 def _row_cost(row: dict) -> float:
@@ -429,10 +449,11 @@ def _meta_set(db: Database, key: str, value: str) -> None:
 
 
 _prune_lock = threading.Lock()
-_prune_running = False
 
 
 def _prune_if_due(db: Database) -> None:
+    if getattr(db, "_closed", False):
+        return
     last = _parse_iso(_meta_get(db, "last_prune_at"))
     now_dt = datetime.now(timezone.utc)
     if last is not None and (now_dt - last).total_seconds() < PRUNE_INTERVAL_SECONDS:
@@ -442,27 +463,32 @@ def _prune_if_due(db: Database) -> None:
 
 def schedule_prune(db: Database) -> None:
     """D-11 / H-17：到期才起一个清理线程，避免每次快照都新建线程。"""
-    global _prune_running
+    if getattr(db, "_closed", False):
+        return
     last = _parse_iso(_meta_get(db, "last_prune_at"))
     now_dt = datetime.now(timezone.utc)
     if last is not None and (now_dt - last).total_seconds() < PRUNE_INTERVAL_SECONDS:
         return
     with _prune_lock:
-        if _prune_running:
+        existing = getattr(db, "_prune_thread", None)
+        if existing is not None and existing.is_alive():
             return
-        _prune_running = True
 
-    def _run() -> None:
-        global _prune_running
-        try:
-            _prune_if_due(db)
-        except Exception:  # noqa: BLE001
-            log.exception("后台快照清理失败")
-        finally:
-            with _prune_lock:
-                _prune_running = False
+        def _run() -> None:
+            try:
+                if not getattr(db, "_closed", False):
+                    _prune_if_due(db)
+            except Exception:  # noqa: BLE001
+                if not getattr(db, "_closed", False):
+                    log.exception("后台快照清理失败")
+            finally:
+                with _prune_lock:
+                    if getattr(db, "_prune_thread", None) is thread:
+                        db._prune_thread = None
 
-    threading.Thread(target=_run, name="tm-snapshot-prune", daemon=True).start()
+        thread = threading.Thread(target=_run, name="tm-snapshot-prune", daemon=True)
+        db._prune_thread = thread
+        thread.start()
 
 
 def prune_snapshots(db: Database, *, now: Optional[datetime] = None) -> dict:
@@ -784,14 +810,6 @@ def trend_last_rows(db: Database, days: int = 30) -> tuple[list[str], list[dict]
     )
     selected_days = [row["day"] for row in day_rows]
     return selected_days, _last_rows_for_days(db, selected_days)
-
-
-def trend_by_day(db: Database, days: int = 30) -> list[dict]:
-    """每设备每天取同一个最后桶的总量、费用和组成，按 local_day 汇总。
-
-    与日归档共享最后行的排序和组件判定，不从稀疏 allTime 锚点差分或借用当前周期组成。
-    """
-    return summarize_trend(*trend_last_rows(db, days))
 
 
 def summarize_trend(selected_days: list[str], last_rows: list[dict]) -> list[dict]:
