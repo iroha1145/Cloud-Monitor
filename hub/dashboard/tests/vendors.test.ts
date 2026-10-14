@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { providerFor, providerName, vendorFor } from "../src/vendors.ts";
+import { clientName, providerFor, providerName, vendorFor } from "../src/vendors.ts";
 
 test("models the logo table recognises get the same vendor as their label", () => {
   for (const [model, label, logo] of [
@@ -33,4 +33,13 @@ test("service-reported client ids keep their product names", () => {
   assert.equal(providerName("droid"), "Factory Droid");
   assert.equal(providerName("stepfun"), "StepFun");
   assert.equal(providerName("mimo"), "Xiaomi MiMo");
+  assert.equal(clientName("gemini"), "Gemini CLI");
+  assert.equal(clientName("kimi"), "Kimi Code");
+  assert.equal(clientName("stepfun"), "阶跃星辰");
+  assert.equal(clientName("alibaba"), "阿里云百炼");
+  assert.equal(clientName("fx"), "FX");
+  assert.equal(clientName("mcode"), "MiniMax Code");
+  assert.equal(clientName("droid"), "Factory Droid");
+  assert.equal(clientName("kilo"), "Kilo Code");
 });
+

@@ -93,8 +93,9 @@ def test_v062_old_store_alias_is_replaced_not_double_counted(tmp_path, old_clien
 def test_v062_old_plain_upload_and_runtime_identity_remain_compatible(node_hub):
     expected = load_fixture("expected.json")
     health = httpx.get(node_hub.url + "/api/health").json()
-    # The shared core evolves, while the Node adapter remains the same.
-    assert_fields(health["hubBuild"], {key: value for key, value in expected["build"].items() if key.startswith("runtime")})
+    assert health["hubBuild"]["runtime"] == "node-hub"
+    assert health["hubBuild"]["coreRevision"] > expected["build"]["coreRevision"]
+    assert health["hubBuild"]["runtimeRevision"] >= expected["build"]["runtimeRevision"]
     # Legacy clients do not send new capability or protocol-negotiation headers.
     payload = {"deviceId": "old-agent", "today": {"totalTokens": 9, "clients": {"codex": 9}},
                "allTime": {"totalTokens": 90, "clients": {"codex": 90}}}

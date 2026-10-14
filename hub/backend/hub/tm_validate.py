@@ -46,7 +46,6 @@ COUNT_LIMITS = {
     "projects": 2048,
     "history_rows": 740,
     "limits_providers": 64,
-    "subscriptions": 512,
 }
 
 PROTOTYPE_KEYS = {"__proto__", "constructor", "prototype"}
@@ -67,9 +66,13 @@ LEGACY_ALIAS_FIELDS = {
 # 周期内必须做数值校验的映射字段（key→数值）
 PERIOD_NUMERIC_MAPS = (
     "clients", "clientCosts", "clientCacheReads", "clientCacheWrites",
-    "clientOutputs", "clientUnclassifiedTokens",
+    "clientOutputs", "clientUnclassifiedTokens", "clientUnpricedTokens",
     "models", "modelCosts", "modelCacheReads", "modelCacheWrites",
-    "modelOutputs", "modelUnclassifiedTokens",
+    "modelOutputs", "modelUnclassifiedTokens", "modelUnpricedTokens",
+)
+
+PERIOD_NESTED_NUMERIC_MAPS = (
+    "clientModels", "clientModelCosts", "clientModelUnpricedTokens",
 )
 
 
@@ -168,7 +171,7 @@ def _check_tz(name: Any, path: str) -> None:
 
 def _is_token_key(key: str) -> bool:
     return key.endswith(TOKEN_INT_SUFFIXES) or key in (
-        "timedDurationMs", "amountMinor",
+        "timedDurationMs", "amountMinor", "ttlSeconds",
     )
 
 
@@ -198,7 +201,7 @@ def _walk(value: Any, path: Any, depth: int) -> None:
                     _reject(f"{_path_text(child)}: token 数必须是数字")
             elif key in ("costUsd", "balanceUsd", "usedPercent"):
                 _check_cost(item, child)
-            elif key in ("updatedAt", "receivedAt", "startedAt", "lastUsedAt"):
+            elif key in ("updatedAt", "receivedAt", "startedAt", "lastUsedAt", "observedAt"):
                 if item is not None and not isinstance(item, str):
                     _reject(f"{_path_text(child)}: 时间戳必须是字符串")
                 else:
@@ -246,8 +249,7 @@ def validate_ingest_payload(payload: Any) -> dict:
     if len(device_id) > LIMITS["deviceId"]:
         _reject(f"deviceId 过长（>{LIMITS['deviceId']}）")
     try:
-        json_ok = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        del json_ok
+        json.dumps(payload, ensure_ascii=False).encode("utf-8")
     except (TypeError, UnicodeEncodeError, ValueError):
         _reject("载荷包含无法 UTF-8 编码的孤立代理项")
     for field in ("hostname", "platform", "osName", "osVersion", "agentVersion", "agentRuntime"):
@@ -256,6 +258,11 @@ def validate_ingest_payload(payload: Any) -> dict:
             _reject(f"{field}: 必须是字符串")
         if isinstance(value, str) and len(value) > LIMITS[field]:
             _reject(f"{field}: 过长（>{LIMITS[field]}）")
+
+    title_gen = payload.get("sessionTitleSyncGeneration")
+    if title_gen is not None:
+        if _check_int(title_gen, "sessionTitleSyncGeneration") < 1:
+            _reject("sessionTitleSyncGeneration: 必须是正整数")
 
     tracked = payload.get("trackedClients")
     if tracked is not None:
@@ -315,6 +322,35 @@ def validate_ingest_payload(payload: Any) -> dict:
                         _check_cost(entry_value, target)
                     else:
                         _check_int(entry_value, target)
+        for nested_name in PERIOD_NESTED_NUMERIC_MAPS:
+            nested = period.get(nested_name)
+            if nested is None:
+                continue
+            if not isinstance(nested, dict):
+                _reject(f"{name}.{nested_name}: 必须是对象")
+            is_cost_map = nested_name.endswith(("Cost", "Costs"))
+            for client_key, model_map in nested.items():
+                if not isinstance(client_key, str) or len(client_key) > LIMITS["generic_key"]:
+                    _reject(f"{name}.{nested_name}: 非法键")
+                if not isinstance(model_map, dict):
+                    _reject(f"{name}.{nested_name}[{client_key}]: 必须是对象")
+                for model_key, entry_value in model_map.items():
+                    if not isinstance(model_key, str) or len(model_key) > LIMITS["generic_key"]:
+                        _reject(f"{name}.{nested_name}[{client_key}]: 非法键")
+                    target = f"{name}.{nested_name}[{client_key}][{model_key}]"
+                    if isinstance(entry_value, bool):
+                        _reject(f"{target}: 布尔值不是数值")
+                    if entry_value is not None and not isinstance(entry_value, (int, float)):
+                        _reject(f"{target}: 数值必须是数字")
+                    if isinstance(entry_value, (int, float)):
+                        if is_cost_map:
+                            _check_cost(entry_value, target)
+                        else:
+                            _check_int(entry_value, target)
+        for dict_field in ("modelThroughput", "sessionActivity"):
+            sub = period.get(dict_field)
+            if sub is not None and not isinstance(sub, dict):
+                _reject(f"{name}.{dict_field}: 必须是对象")
         if _count_dict(period.get("clients")) > COUNT_LIMITS["clients"]:
             _reject(f"{name}.clients 超过 {COUNT_LIMITS['clients']} 项")
         if _count_dict(period.get("models")) > COUNT_LIMITS["models"]:

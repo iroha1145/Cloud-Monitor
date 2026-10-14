@@ -7,9 +7,14 @@ import sqlite3
 import httpx
 import pytest
 
-from conftest import TM_SECRET, widget_style_payload
+from conftest import TM_SECRET, record_from_payload, widget_style_payload
 from hub.db import Database
 from hub import tm_outbox as outbox, tm_snapshots as snapshots
+
+
+def _outbox_seq(db: Database, request_id: str) -> int | None:
+    row = db.fetchone("SELECT ingest_sequence FROM tm_ingest_outbox WHERE request_id = ?", (request_id,))
+    return int(row["ingest_sequence"]) if row and row.get("ingest_sequence") is not None else None
 
 
 def usage(device='dev', total=100):
@@ -34,25 +39,25 @@ def test_sequence_survives_outbox_pruning_and_snapshot_deletion(database):
     for request_id in ('a', 'b'):
         outbox.record_pending(db, request_id=request_id, device_id='dev', payload=usage())
         outbox.mark_done(db, request_id)
-    previous = outbox.outbox_ingest_sequence(db, 'b')
+    previous = _outbox_seq(db, 'b')
     old = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat()
     db.execute('UPDATE tm_ingest_outbox SET received_at=?, terminal_at=?', (old, old))
     assert outbox.prune_done(db) == 2
     outbox.ensure_schema(db)  # reopening/reinitializing must not reset the counter
     outbox.record_pending(db, request_id='c', device_id='dev', payload=usage(total=200))
-    assert outbox.outbox_ingest_sequence(db, 'c') > previous
+    assert _outbox_seq(db, 'c') > previous
 
 
 def test_counter_upgrade_starts_above_retained_snapshot_sequences(database):
     db = database
     p = usage()
-    snapshots.write_snapshot(db, device_id='dev', record=outbox.record_from_payload(p),
+    snapshots.write_snapshot(db, device_id='dev', record=record_from_payload(p),
                              incoming=p, limits_only=False, ingest_sequence=900)
     outbox.ensure_schema(db)
     outbox.record_pending(db, request_id='new', device_id='dev', payload=usage(total=200))
-    sequence = outbox.outbox_ingest_sequence(db, 'new')
+    sequence = _outbox_seq(db, 'new')
     assert sequence > 900
-    outbox.save_normalized(db, 'new', outbox.record_from_payload(usage(total=200)))
+    outbox.save_normalized(db, 'new', record_from_payload(usage(total=200)))
     assert outbox.replay_pending(db)['completed'] == 1
     assert db.fetchone('SELECT today_total FROM tm_snapshot_buckets')['today_total'] == 200
 
@@ -72,7 +77,7 @@ def test_unconfirmed_rows_do_not_starve_confirmed_replay(database):
         outbox.record_pending(db, request_id=f'unknown-{index}', device_id=f'd{index}', payload=usage(f'd{index}'))
     p = usage('accepted', 321)
     outbox.record_pending(db, request_id='accepted', device_id='accepted', payload=p)
-    outbox.save_normalized(db, 'accepted', outbox.record_from_payload(p))
+    outbox.save_normalized(db, 'accepted', record_from_payload(p))
     assert outbox.replay_pending(db)['completed'] == 1
     assert db.fetchone("SELECT today_total FROM tm_snapshot_buckets WHERE device_id='accepted'")['today_total'] == 321
 
@@ -85,7 +90,7 @@ def test_confirmed_partial_update_finishes_without_usage_snapshot(database, part
     db = database
     p = {k: v for k, v in usage().items() if k != 'today'} | partial
     outbox.record_pending(db, request_id='partial', device_id='dev', payload=p)
-    outbox.save_normalized(db, 'partial', outbox.record_from_payload(p))
+    outbox.save_normalized(db, 'partial', record_from_payload(p))
     assert outbox.replay_pending(db)['completed'] == 1
     assert outbox.pending_count(db) == 0
     assert db.fetchone('SELECT COUNT(*) AS n FROM tm_snapshot_buckets')['n'] == 0
@@ -127,7 +132,7 @@ def test_saved_ack_omits_session_volume_and_keeps_snapshot_fields(database):
     p['month'] = {'totalTokens': 900, 'costUsd': 9, 'sessions': {'large': 'x' * 10000}}
     p['allTime'] = {'totalTokens': 9000, 'costUsd': 90, 'projects': {'large': 'x' * 10000}}
     outbox.record_pending(db, request_id='compact', device_id='dev', payload=p)
-    outbox.save_normalized(db, 'compact', outbox.record_from_payload(p))
+    outbox.save_normalized(db, 'compact', record_from_payload(p))
     raw = db.fetchone('SELECT normalized_json FROM tm_ingest_outbox')['normalized_json']
     assert len(raw) < 2000
     record = json.loads(raw)
@@ -198,6 +203,6 @@ def test_expired_unknown_rows_release_capacity_and_retain_audit(database):
     assert state['snapshot_degraded'] is False
     assert outbox.prune_done(db) == 0
     outbox.record_pending(db, request_id='accepted', device_id='dev', payload=usage(), max_pending=1)
-    outbox.save_normalized(db, 'accepted', outbox.record_from_payload(usage()))
+    outbox.save_normalized(db, 'accepted', record_from_payload(usage()))
     with pytest.raises(outbox.OutboxFullError):
         outbox.record_pending(db, request_id='over-capacity', device_id='dev', payload=usage(), max_pending=1)

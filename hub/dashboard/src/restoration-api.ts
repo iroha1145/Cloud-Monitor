@@ -169,9 +169,12 @@ async function requestJson(
 ): Promise<unknown> {
   const controller = new AbortController();
   let timedOut = false;
-  const abort = () => controller.abort();
+  const abort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) {
+    controller.abort(signal.reason);
+    throw controller.signal.reason;
+  }
   signal?.addEventListener("abort", abort, { once: true });
-  if (signal?.aborted) controller.abort();
   const timeout = setTimeout(() => {
     timedOut = true;
     controller.abort();

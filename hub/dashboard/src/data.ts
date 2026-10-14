@@ -4,7 +4,7 @@
  * /api/v1/tm/overview contract without changing aggregation or fetching secrets.
  */
 import { DAY_MS, dayKeyZoned, isValidTimeZone } from "./lib/datetime";
-import { providerFor, providerName } from "./vendors";
+import { clientName, providerFor, providerName } from "./vendors";
 
 export type PeriodKey = "today" | "month" | "allTime";
 export const PERIOD_LABELS: Record<PeriodKey, string> = {
@@ -228,6 +228,22 @@ export interface Session {
   contextTokens?: number | null;
   contextWindow?: number | null;
   turnEnded?: boolean | null;
+  waitingForInput?: boolean | null;
+  liveActivity?: {
+    state: "running" | "waiting" | "idle" | "unknown";
+    observedAt: string;
+  } | null;
+  promptCache?: {
+    observedAt: string;
+    ttlSeconds: number;
+  } | null;
+  unpricedTokens?: number | null;
+  timedOutputTokens?: number | null;
+  timedDurationMs?: number | null;
+  parentSessionId?: string | null;
+  parentClient?: string | null;
+  usageSource?: string | null;
+  usageCoverage?: string | null;
   archived?: boolean | null;
   sessionKind?: string | null;
   deviceStale?: boolean | null;
@@ -722,23 +738,7 @@ export function normalizePeriod(source: unknown): PeriodUsage {
       .filter(([, value]) => validCounter(value) && value > 0)
       .map(([id, value]) => ({
         id,
-        name:
-          kind === "client"
-            ? (
-                {
-                  codex: "Codex",
-                  claude: "Claude Code",
-                  cursor: "Cursor",
-                  amp: "Amp",
-                  droid: "Factory Droid",
-                  omp: "Oh My Pi",
-                  mimo: "Xiaomi MiMo",
-                  muse: "Muse Code",
-                  devin: "Devin",
-                  copilot: "GitHub Copilot",
-                } as Record<string, string>
-              )[id] || id
-            : id,
+        name: kind === "client" ? clientName(id) : id,
         provider: providerFor(id),
         totalTokens: count(value),
         costUsd: optionalNumber(record(period[kind + "Costs"])[id]),
@@ -1310,6 +1310,26 @@ export function normalizeOverview(
     const stableId =
       text(item.key) ||
       `${deviceId}:${client}:${text(item.sessionId, String(index))}`;
+    const rawLive = record(item.liveActivity);
+    const liveState = text(rawLive.state);
+    const liveObservedAt = sourceTimestamp(rawLive.observedAt);
+    const liveActivity: Session["liveActivity"] =
+      ["running", "waiting", "idle", "unknown"].includes(liveState) &&
+      liveObservedAt !== null
+        ? {
+            state: liveState as NonNullable<Session["liveActivity"]>["state"],
+            observedAt: liveObservedAt,
+          }
+        : null;
+    const rawCache = record(item.promptCache);
+    const cacheObservedAt = sourceTimestamp(rawCache.observedAt);
+    const cacheTtl = sourceCounter(rawCache.ttlSeconds);
+    const promptCache: Session["promptCache"] =
+      cacheObservedAt !== null &&
+      cacheTtl !== null &&
+      [300, 1800, 3600].includes(cacheTtl)
+        ? { observedAt: cacheObservedAt, ttlSeconds: cacheTtl }
+        : null;
     return {
       id: stableId,
       name:
@@ -1331,6 +1351,16 @@ export function normalizeOverview(
       contextTokens: optionalNumber(item.contextTokens),
       contextWindow: optionalNumber(item.contextWindow),
       turnEnded: optionalBoolean(item.turnEnded),
+      waitingForInput: optionalBoolean(item.waitingForInput),
+      liveActivity,
+      promptCache,
+      unpricedTokens: sourceCounter(item.unpricedTokens),
+      timedOutputTokens: sourceCounter(item.timedOutputTokens),
+      timedDurationMs: sourceCounter(item.timedDurationMs),
+      parentSessionId: optionalText(item.parentSessionId),
+      parentClient: optionalText(item.parentClient),
+      usageSource: optionalText(item.usageSource),
+      usageCoverage: optionalText(item.usageCoverage),
       archived: optionalBoolean(item.archived),
       sessionKind: optionalText(item.sessionKind),
       deviceStale: optionalBoolean(item.deviceStale),

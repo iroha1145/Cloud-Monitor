@@ -670,15 +670,24 @@ def test_sync_push_body_limit_boundary_ok(sync_app):
 
 
 def test_body_limit_all_write_paths_configured(sync_app):
-    from hub.body_limit import TmBodyLimitMiddleware
+    from hub.body_limit import DEFAULT_LIMITED_PREFIXES, TmBodyLimitMiddleware
 
     found = None
     for m in sync_app.user_middleware:
         if m.cls is TmBodyLimitMiddleware:
             found = m.kwargs.get("limits") or m.options.get("limits")
     assert found is not None
-    assert set(found) == {"/api/ingest", "/api/subscriptions", "/api/v1/sync/push", "/api/v1/system/update"}
+    assert set(found) == {
+        "/api/ingest",
+        "/api/subscriptions",
+        "/api/sync/content",
+        "/api/sync/settings/modelAliases",
+        "/api/sync/settings/customPricing",
+        "/api/v1/sync/push",
+        "/api/v1/system/update",
+    }
     assert found["/api/v1/system/update"] == 4096
+    assert set(dict(DEFAULT_LIMITED_PREFIXES)) == {"/api/sync/settings/", "/api/sync/titles/"}
 
 
 # ================================================================ P1-2 查询计划/乱序/规模
@@ -707,14 +716,14 @@ def test_trend_query_uses_index_not_full_scan(tmp_path):
 
 def test_out_of_order_late_write_keeps_true_latest(tmp_path):
     from hub.db import Database
-    from hub.tm_snapshots import ensure_schema, trend_by_day
+    from hub.tm_snapshots import ensure_schema, summarize_trend, trend_last_rows
 
     db = Database(tmp_path / "ooo.db")
     ensure_schema(db)
     day = dt.datetime.now(dt.timezone.utc).date().isoformat()
     seed_bucket(db, "d", day, f"{day}T23:55:00.000Z", 900, received=f"{day}T23:55:30.000Z")
     seed_bucket(db, "d", day, f"{day}T23:50:00.000Z", 800, received=f"{day}T23:56:00.000Z")
-    trend = {r["day"]: r["total"] for r in trend_by_day(db)}
+    trend = {r["day"]: r["total"] for r in summarize_trend(*trend_last_rows(db))}
     assert trend[day] == 900
     db.close()
 
@@ -722,8 +731,8 @@ def test_out_of_order_late_write_keeps_true_latest(tmp_path):
 def test_scale_generator_100_devices_370_days(tmp_path):
     """等价规模生成器：100 设备 × 370 天（每日锚点 + 当日 5 分钟级）。"""
     from hub.db import Database
-    from hub.tm_overview import trend_models_by_day
-    from hub.tm_snapshots import ensure_schema, trend_by_day
+    from hub.tm_overview import summarize_trend_models
+    from hub.tm_snapshots import ensure_schema, summarize_trend, trend_last_rows
 
     db = Database(tmp_path / "scale.db")
     ensure_schema(db)
@@ -750,11 +759,12 @@ def test_scale_generator_100_devices_370_days(tmp_path):
     assert total_rows >= 100 * (370 + 288) - 200  # 允许生成器内桶重叠
 
     started = time.monotonic()
-    trend = trend_by_day(db)
+    selected_days, last_rows = trend_last_rows(db)
+    trend = summarize_trend(selected_days, last_rows)
     elapsed_trend = time.monotonic() - started
     assert len(trend) == 30
     started = time.monotonic()
-    models = trend_models_by_day(db)
+    models = summarize_trend_models(last_rows)
     elapsed_models = time.monotonic() - started
     assert len(models) == 30
     assert elapsed_trend < 10 and elapsed_models < 10, (elapsed_trend, elapsed_models)

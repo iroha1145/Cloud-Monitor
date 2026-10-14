@@ -298,7 +298,16 @@ def start_bridge_thread(agent: SyncAgent) -> Optional[threading.Thread]:
                     config.token_monitor_secret,
                     session=bridge_session,
                 )
-                agent.state.data["bridge_last_error"] = None
+                if (
+                    agent.state.data.get("bridge_last_error") is not None
+                    or agent.state.data.get("bridge_last_error_at") is not None
+                ):
+                    agent.state.data["bridge_last_error"] = None
+                    agent.state.data["bridge_last_error_at"] = None
+                    try:
+                        agent.state.save()
+                    except OSError as exc:
+                        log.warning("清理桥接错误状态落盘失败: %s", exc)
                 log.info("已推送 token-monitor 摘要: %s", json.dumps(summary))
                 backoff = interval
             except PermanentBridgeError as exc:

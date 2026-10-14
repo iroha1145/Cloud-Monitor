@@ -59,6 +59,7 @@ services:
     build: ./tm-core
     environment:
       TOKEN_MONITOR_SECRET: ${TOKEN_MONITOR_SECRET:-}
+      TOKEN_MONITOR_SYNC_SESSION_TITLES: ${TOKEN_MONITOR_SYNC_SESSION_TITLES:-false}
       TOKEN_MONITOR_PORT: "17321"
       TOKEN_MONITOR_HOST: 0.0.0.0
       TOKEN_MONITOR_DATA_FILE: /data/devices.json

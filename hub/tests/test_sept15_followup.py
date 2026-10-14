@@ -9,13 +9,12 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi import HTTPException
 
-from conftest import make_settings
+from conftest import make_settings, record_from_payload
 from hub.db import Database
 from hub.tm_outbox import (
     can_supersede,
     ensure_schema,
     mark_done,
-    record_from_payload,
     record_pending,
     replay_pending,
     replayable_count,

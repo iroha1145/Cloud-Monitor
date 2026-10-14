@@ -7,7 +7,7 @@ class FormatTest {
     @Test fun usdUsesTwoDecimalsAndKeepsSignOutsideTheDollar() {
         assertEquals("$0.00", Format.fmtUsd(0.0))
         assertEquals("$0.00", Format.fmtUsd(0.0034))
-        assertEquals("-$0.00", Format.fmtUsd(-0.0034))
+        assertEquals("$0.00", Format.fmtUsd(-0.0034))
         assertEquals("$4.82", Format.fmtUsd(4.82))
         assertEquals("$1,234.56", Format.fmtUsd(1234.56))
         assertEquals("-$1,234.56", Format.fmtUsd(-1234.56))
@@ -38,5 +38,11 @@ class FormatTest {
         assertEquals("尚无同步时间", Format.relativeSync(null, "2026-08-25T03:18:15Z"))
         assertEquals(" / 月", Format.subscriptionCadence("month", 1))
         assertEquals(" / 2 月", Format.subscriptionCadence("monthly", 2))
+        assertEquals("Gemini CLI", clientDisplayName("gemini"))
+        assertEquals("Kimi Code", clientDisplayName("kimi"))
+        assertEquals("FX", clientDisplayName("fx"))
+        assertEquals("MiniMax Code", clientDisplayName("mcode"))
+        assertEquals("阶跃星辰", clientDisplayName("stepfun"))
+        assertEquals("阿里云百炼", clientDisplayName("alibaba"))
     }
 }

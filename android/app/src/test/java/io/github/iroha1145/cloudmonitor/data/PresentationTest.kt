@@ -37,11 +37,28 @@ class PresentationTest {
     @Test fun sessionActivityFollowsTheWebWindow() {
         val generated = "2026-10-07T12:00:00Z"
         val running = SessionRow(
+            client = "codex",
             lastUsedAt = "2026-10-07T11:55:00Z",
             deviceStale = false,
             turnEnded = false,
         )
         assertEquals("运行中", sessionActivity(running, generated))
+        assertEquals("等待输入", sessionActivity(running.copy(waitingForInput = true), generated))
+        assertEquals("等待输入", sessionActivity(running.copy(turnEnded = null, waitingForInput = true), generated))
+        assertEquals(
+            "等待输入",
+            sessionActivity(
+                running.copy(liveActivity = SessionLiveActivity(state = "waiting", observedAt = "2026-10-07T11:59:45Z")),
+                generated,
+            ),
+        )
+        assertEquals(
+            "闲置",
+            sessionActivity(
+                running.copy(liveActivity = SessionLiveActivity(state = "idle", observedAt = "2026-10-07T11:59:45Z")),
+                generated,
+            ),
+        )
         assertEquals("已完成", sessionActivity(running.copy(turnEnded = true), generated))
         assertEquals("闲置", sessionActivity(running.copy(archived = true), generated))
         assertEquals("闲置", sessionActivity(running.copy(lastUsedAt = "2026-10-07T11:40:00Z"), generated))
@@ -67,6 +84,8 @@ class PresentationTest {
         assertEquals(QuotaHeadline("12.5（单位未提供）", "已用"), quotaHeadline(spend, LimitProvider(provider = "openai")))
         val percent = LimitWindow(metric = "percentage", usedPercent = 90.0)
         assertEquals(QuotaHeadline("90%", "已用"), quotaHeadline(percent, LimitProvider()))
+        assertEquals("0", quotaNumber(-0.001))
+        assertEquals("¥0.00", quotaMoney(-0.004, "CNY"))
         assertEquals("到期", quotaBoundaryLabel("expiry"))
         assertEquals("重置", quotaBoundaryLabel(null))
     }

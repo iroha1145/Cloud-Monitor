@@ -7,7 +7,6 @@
  * always source records, never curve samples.
  * The stroke is Liveline's Fritsch–Carlson cubic through those daily points;
  * its same-Y live tip flattens the latest day against the dashed reference.
- * Slope rules live in trend-math.ts as the spec Android also follows.
  */
 import { Suspense } from "react";
 import {
@@ -26,7 +25,7 @@ import { summarizeTrend, type DashboardData, type TrendPoint } from "./data";
 import { usd } from "./money";
 import { compact, count, pct } from "./lib/format";
 import { AppErrorBoundary, lazyWithReload } from "./chunkLoad";
-import { indexForSelectedDay } from "./trend-math";
+import { axisLabel, indexForSelectedDay } from "./trend-math";
 import { PART_COLOR, TREND_COLOR } from "./palette";
 import { DAY_MS } from "./lib/datetime";
 import { useSlidingIndicator } from "./lib/hooks/use-sliding-indicator";
@@ -42,17 +41,6 @@ const DAY = DAY_MS / 1000;
 // Room right of the plot for Liveline's value labels: the scale reads on the
 // right, as in Arc UI's line chart. Pointer, cursor and dates use plot width.
 const AXIS = 56;
-/** Short scale labels that fit AXIS: 8000万, 1.2亿, $90, $4.5, $0.25. */
-const oneDecimal = (value: number) => String(Math.round(value * 10) / 10);
-function axisLabel(value: number, metric: "tokens" | "cost") {
-  if (metric === "cost") {
-    if (value >= 100) return `$${Math.round(value)}`;
-    return value >= 1 ? `$${oneDecimal(value)}` : `$${value.toFixed(2)}`;
-  }
-  if (value >= 1e8) return `${oneDecimal(value / 1e8)}亿`;
-  if (value >= 1e4) return `${oneDecimal(value / 1e4)}万`;
-  return String(Math.round(value));
-}
 const shortDay = (day: string) =>
   `${Number(day.slice(5, 7))}/${Number(day.slice(8))}`;
 const utcDay = (day: string) => Date.parse(`${day}T00:00:00Z`) / 1000;

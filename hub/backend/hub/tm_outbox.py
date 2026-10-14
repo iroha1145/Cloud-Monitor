@@ -320,34 +320,6 @@ def save_normalized(db: Database, request_id: str, record: dict) -> None:
     )
 
 
-def record_from_payload(payload: dict, received_at: Optional[str] = None) -> dict:
-    """兼容辅助：只整理字段形状，不代表官方规范化或上游接收确认。"""
-    if not isinstance(payload, dict):
-        return {}
-    periods_in = payload.get("periods") if isinstance(payload.get("periods"), dict) else {}
-
-    def period(name: str) -> dict:
-        top = payload.get(name)
-        nested = periods_in.get(name)
-        if isinstance(top, dict):
-            return top
-        if isinstance(nested, dict):
-            return nested
-        return {}
-
-    return {
-        "deviceId": payload.get("deviceId") or payload.get("id"),
-        "updatedAt": payload.get("updatedAt"),
-        "receivedAt": received_at or payload.get("receivedAt"),
-        "periodWindows": payload.get("periodWindows"),
-        "periods": {
-            "today": period("today"),
-            "month": period("month"),
-            "allTime": period("allTime"),
-        },
-    }
-
-
 def replay_record(row: dict) -> Optional[dict]:
     raw = row.get("normalized_json")
     if isinstance(raw, str) and raw.strip():
@@ -396,11 +368,6 @@ def can_supersede(old: dict, saved: dict) -> bool:
     if _as_flag(old.get("writes_usage")) and not _as_flag(saved.get("writes_usage")):
         return False
     return True
-
-
-def outbox_ingest_sequence(db: Database, request_id: str) -> int:
-    row = _outbox_identity(db, request_id)
-    return int((row or {}).get("ingest_sequence") or 0)
 
 
 def _outbox_identity(db: Database, request_id: str) -> Optional[dict]:
@@ -476,29 +443,30 @@ def mark_failed(
     *,
     max_attempts: int = MAX_ATTEMPTS_DEFAULT,
 ) -> None:
-    db.execute(
-        """
-        UPDATE tm_ingest_outbox
-        SET attempts = attempts + 1, last_error = ?
-        WHERE request_id = ?
-        """,
-        (error[:500], request_id),
-    )
-    row = db.fetchone(
-        "SELECT attempts FROM tm_ingest_outbox WHERE request_id = ?",
-        (request_id,),
-    )
-    if row and int(row["attempts"] or 0) >= max_attempts:
+    with db.transaction():
         db.execute(
             """
             UPDATE tm_ingest_outbox
-            SET state = 'rejected', last_error = ?, terminal_at = COALESCE(terminal_at, ?),
-                terminal_reason = 'snapshot_attempts_exhausted'
+            SET attempts = attempts + 1, last_error = ?
             WHERE request_id = ?
             """,
-            ((f"exceeded {max_attempts} attempts: {error}")[:500],
-             now_z(), request_id),
+            (error[:500], request_id),
         )
+        row = db.fetchone(
+            "SELECT attempts FROM tm_ingest_outbox WHERE request_id = ?",
+            (request_id,),
+        )
+        if row and int(row["attempts"] or 0) >= max_attempts:
+            db.execute(
+                """
+                UPDATE tm_ingest_outbox
+                SET state = 'rejected', last_error = ?, terminal_at = COALESCE(terminal_at, ?),
+                    terminal_reason = 'snapshot_attempts_exhausted'
+                WHERE request_id = ?
+                """,
+                ((f"exceeded {max_attempts} attempts: {error}")[:500],
+                 now_z(), request_id),
+            )
 
 
 def mark_rejected(db: Database, request_id: str, error: str) -> None:
@@ -634,27 +602,28 @@ def prune_done(db: Database, *, retention_hours: int = DONE_RETENTION_HOURS) -> 
 def set_snapshot_status(
     db: Database, *, success: bool, error: Optional[str] = None, request_id: Optional[str] = None
 ) -> None:
-    if success:
+    with db.transaction():
+        if success:
+            db.execute(
+                "INSERT INTO tm_meta (key, value) VALUES ('last_snapshot_success_at', ?)"
+                " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (now_z(),),
+            )
+            db.execute(
+                "INSERT INTO tm_meta (key, value) VALUES ('last_snapshot_error', '')"
+                " ON CONFLICT(key) DO UPDATE SET value = ''",
+            )
+        else:
+            db.execute(
+                "INSERT INTO tm_meta (key, value) VALUES ('last_snapshot_error', ?)"
+                " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                ((error or "unknown")[:500],),
+            )
         db.execute(
-            "INSERT INTO tm_meta (key, value) VALUES ('last_snapshot_success_at', ?)"
+            "INSERT INTO tm_meta (key, value) VALUES ('last_snapshot_error_request_id', ?)"
             " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (now_z(),),
+            ("" if success else request_id or "",),
         )
-        db.execute(
-            "INSERT INTO tm_meta (key, value) VALUES ('last_snapshot_error', '')"
-            " ON CONFLICT(key) DO UPDATE SET value = ''",
-        )
-    else:
-        db.execute(
-            "INSERT INTO tm_meta (key, value) VALUES ('last_snapshot_error', ?)"
-            " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            ((error or "unknown")[:500],),
-        )
-    db.execute(
-        "INSERT INTO tm_meta (key, value) VALUES ('last_snapshot_error_request_id', ?)"
-        " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        ("" if success else request_id or "",),
-    )
 
 
 def snapshot_health(db: Database) -> dict:

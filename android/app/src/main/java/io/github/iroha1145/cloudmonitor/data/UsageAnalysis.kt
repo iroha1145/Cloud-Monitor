@@ -144,12 +144,7 @@ private fun entities(period: PeriodTotals, kind: String): List<UsageEntity> {
         val total = raw.counter()?.takeIf { it > 0 } ?: return@mapNotNull null
         UsageEntity(
             id = id,
-            name = if (kind == "client") when (id) {
-                "codex" -> "Codex"
-                "claude" -> "Claude Code"
-                "cursor" -> "Cursor"
-                else -> id
-            } else id,
+            name = if (kind == "client") clientDisplayName(id) else id,
             totalTokens = total,
             costUsd = source[kind + "Costs"].record()[id].usageNumber(),
             components = normalizeComponents(source, kind, id),
@@ -165,14 +160,25 @@ private fun usageProvider(id: String): String {
     val name = id.lowercase()
     return when {
         listOf("claude", "opus", "sonnet", "haiku", "anthropic").any { it in name } -> "anthropic"
-        listOf("gpt", "codex", "openai").any { it in name } -> "openai"
+        listOf("gpt", "codex", "openai", "chatgpt").any { it in name } ||
+            Regex("""(?:^|[^a-z])o[1-9](?:[-.]|$)""").containsMatchIn(name) -> "openai"
         "cursor" in name || "composer" in name -> "cursor"
-        Regex("""(?:^|[^a-z0-9])muse[\s-]*spark""").containsMatchIn(name) -> "meta"
-        "gemini" in name || "google" in name -> "google"
+        Regex("""(?:^|[^a-z0-9])muse[\s-]*spark""").containsMatchIn(name) ||
+            Regex("""(?:^|[^a-z])llama""").containsMatchIn(name) || "meta" in name -> "meta"
+        "gemini" in name || "gemma" in name || "google" in name -> "google"
         "deepseek" in name -> "deepseek"
+        "qwen" in name || "qwq" in name -> "qwen"
         "grok" in name || "xai" in name -> "xai"
-        "kimi" in name || "moonshot" in name || Regex("""(?:^|[^a-z0-9])k3(?:[-._]|$)""").containsMatchIn(name) -> "kimi"
+        "kimi" in name || "moonshot" in name ||
+            Regex("""(?:^|[^a-z0-9])(k2d6-agent|k3-agent|k[23])(?:[-._]|$)""").containsMatchIn(name) -> "kimi"
         "glm" in name || "zhipu" in name || Regex("""\bzai\b""").containsMatchIn(name) -> "glm"
+        "mistral" in name || "mixtral" in name || "codestral" in name -> "mistral"
+        "minimax" in name -> "minimax"
+        "doubao" in name -> "doubao"
+        "hunyuan" in name -> "hunyuan"
+        "command-r" in name || "cohere" in name || "aya-" in name -> "cohere"
+        name == "pi" || name.startsWith("pi-") || "inflection" in name -> "pi"
+        "copilot" in name -> "copilot"
         else -> "other"
     }
 }

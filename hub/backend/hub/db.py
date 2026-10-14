@@ -121,6 +121,7 @@ class Database:
         self.path = Path(path)
         self._lock = threading.RLock()
         self._closed = False
+        self._prune_thread: Optional[threading.Thread] = None
         if str(self.path) != ":memory:":
             self.path.parent.mkdir(parents=True, exist_ok=True)
             self._conn = sqlite3.connect(
@@ -204,6 +205,9 @@ class Database:
     # ------------------------------------------------------------ lifecycle
 
     def close(self) -> None:
+        thread = self._prune_thread
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=5.0)
         with self._lock:
             if self._closed:
                 return

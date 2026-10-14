@@ -87,7 +87,6 @@ class Settings:
     provider_status_enabled: bool = True
     provider_status_cache_seconds: int = 300
     provider_status_timeout_seconds: float = 2.5
-    provider_status_budget_seconds: float = 3.0
     overview_cache_seconds: int = 30  # overview 响应缓存 TTL（0=禁用）
     tm_background_interval: int = 300  # 后台维护循环间隔秒（outbox 重放等）
     cm_demo: bool = False  # true 时 / 返回演示页（假数据）
@@ -155,11 +154,6 @@ def load_settings() -> Settings:
         else _default_frontend_dir()
     )
 
-    try:
-        max_records = int(os.environ.get("MAX_RECORDS_PER_PUSH", "500"))
-    except ValueError:
-        max_records = 500
-
     cors_raw = (os.environ.get("CORS_ORIGINS") or "").strip()
     cors_origins = tuple(
         origin.strip() for origin in cors_raw.split(",") if origin.strip()
@@ -200,7 +194,7 @@ def load_settings() -> Settings:
         access_token=access_token,
         database_path=database_path,
         frontend_dir=frontend_dir,
-        max_records_per_push=max(1, min(max_records, 500)),
+        max_records_per_push=_int_env("MAX_RECORDS_PER_PUSH", 500, minimum=1, maximum=500),
         device_keys=device_keys,
         cors_origins=cors_origins,
         docs_enabled=_env_bool(os.environ.get("DOCS_ENABLED")),
@@ -220,7 +214,6 @@ def load_settings() -> Settings:
         provider_status_timeout_seconds=_float_env(
             "PROVIDER_STATUS_TIMEOUT_SECONDS", 2.5, minimum=0.1, maximum=3.0
         ),
-        provider_status_budget_seconds=3.0,
         overview_cache_seconds=_int_env(
             "OVERVIEW_CACHE_SECONDS", 30, minimum=0, maximum=300
         ),

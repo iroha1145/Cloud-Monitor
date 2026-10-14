@@ -104,8 +104,12 @@ def version_gt(left: str, right: str) -> bool:
     return a + (0,) * (n - len(a)) > b + (0,) * (n - len(b))
 
 
+HEX_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
+
+
 def _norm_sha(raw: str) -> str:
-    return (raw or "").strip().lower()[:40]
+    s = (raw or "").strip().lower()[:40]
+    return s if HEX_SHA_RE.fullmatch(s) else ""
 
 
 def _release_item(row: dict[str, Any]) -> dict[str, Any]:
@@ -133,6 +137,7 @@ class UpdateService:
         self.settings = settings
         self._fetch = fetch
         self._cache = _Cache()
+        self._cache_lock = Lock()
         self._apply_lock = Lock()
 
     @property
@@ -299,17 +304,19 @@ class UpdateService:
     def current(self) -> dict[str, str]:
         return {
             "version": self.settings.cm_version or "dev",
-            "git_sha": self.settings.cm_git_sha or "",
+            "git_sha": _norm_sha(self.settings.cm_git_sha),
         }
 
     def check(self, *, force: bool = False) -> dict[str, Any]:
         now = time.monotonic()
+        with self._cache_lock:
+            cached = self._cache
         if (
             not force
-            and self._cache.payload is not None
-            and now - self._cache.at < CACHE_SECONDS
+            and cached.payload is not None
+            and now - cached.at < CACHE_SECONDS
         ):
-            payload = dict(self._cache.payload)
+            payload = dict(cached.payload)
             payload["job"] = self.read_job()
             payload["apply_enabled"] = self.apply_enabled()
             return payload
@@ -355,7 +362,7 @@ class UpdateService:
         cur_sha = _norm_sha(cur["git_sha"])
         main_sha = _norm_sha((main or {}).get("sha") or "")
         main_ahead = bool(main_sha and cur_sha and not main_sha.startswith(cur_sha) and not cur_sha.startswith(main_sha[: len(cur_sha)]))
-        if main_sha and not cur_sha:
+        if main_sha and not cur_sha and cur["version"] in ("", "dev"):
             main_ahead = True
 
         payload = {
@@ -370,7 +377,8 @@ class UpdateService:
             "github_error": github_error,
             "checked_at": _iso_now(),
         }
-        self._cache = _Cache(at=now, payload=payload)
+        with self._cache_lock:
+            self._cache = _Cache(at=now, payload=payload)
         out = dict(payload)
         out["job"] = self.read_job()
         out["apply_enabled"] = self.apply_enabled()
@@ -379,45 +387,42 @@ class UpdateService:
     def apply(self, ref: str) -> dict[str, Any]:
         # FastAPI runs sync endpoints in multiple threads even with one worker.
         with self._apply_lock, self._coordination_lock(allow_legacy_enqueue=True):
-            return self._enqueue(ref)
-
-    def _enqueue(self, ref: str) -> dict[str, Any]:
-        target = parse_ref(ref)
-        d = self.update_dir
-        if d is None:
-            raise HTTPException(
-                status_code=503,
-                detail="未启用在线更新：请用 install.sh 安装，宿主机才会挂载更新目录并启动监视器",
-            )
-        job = self.read_job()
-        if job.get("state") in {"queued", "running", "unknown"} or (d / "request.json").exists():
-            raise HTTPException(status_code=409, detail="已有更新在进行")
-        req_id = uuid.uuid4().hex[:16]
-        request = {
-            "id": req_id,
-            "ref": target,
-            "requested_at": _iso_now(),
-        }
-        try:
-            # Retire old API receipts before publication, so a crash or an
-            # immediately completed new request cannot resurrect an old result.
-            for name in ("cancel.json", "publication-error.json"):
-                (d / name).unlink(missing_ok=True)
-            # Publish once. read_job derives queued from this durable request,
-            # leaving the watcher's running/finished status untouched.
-            _atomic_write(d / "request.json", request)
-        except OSError as exc:
+            target = parse_ref(ref)
+            d = self.update_dir
+            if d is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail="未启用在线更新：请用 install.sh 安装，宿主机才会挂载更新目录并启动监视器",
+                )
+            job = self.read_job()
+            if job.get("state") in {"queued", "running", "unknown"} or (d / "request.json").exists():
+                raise HTTPException(status_code=409, detail="已有更新在进行")
+            req_id = uuid.uuid4().hex[:16]
+            request = {
+                "id": req_id,
+                "ref": target,
+                "requested_at": _iso_now(),
+            }
             try:
-                _atomic_write(d / "publication-error.json", {
-                    "id": req_id, "state": "error", "ref": target,
-                    "message": "更新请求写入失败", "updated_at": _iso_now(),
-                })
-            except OSError:
-                # A completely unwritable control mount still has the HTTP
-                # failure response; the read-only host status is never changed.
-                log.warning("更新请求写入失败，且无法保存失败回执")
-            raise HTTPException(status_code=503, detail="更新请求写入失败，请检查更新目录") from exc
-        return self.read_job()
+                # Retire old API receipts before publication, so a crash or an
+                # immediately completed new request cannot resurrect an old result.
+                for name in ("cancel.json", "publication-error.json"):
+                    (d / name).unlink(missing_ok=True)
+                # Publish once. read_job derives queued from this durable request,
+                # leaving the watcher's running/finished status untouched.
+                _atomic_write(d / "request.json", request)
+            except OSError as exc:
+                try:
+                    _atomic_write(d / "publication-error.json", {
+                        "id": req_id, "state": "error", "ref": target,
+                        "message": "更新请求写入失败", "updated_at": _iso_now(),
+                    })
+                except OSError:
+                    # A completely unwritable control mount still has the HTTP
+                    # failure response; the read-only host status is never changed.
+                    log.warning("更新请求写入失败，且无法保存失败回执")
+                raise HTTPException(status_code=503, detail="更新请求写入失败，请检查更新目录") from exc
+            return self.read_job()
 
     def cancel(self) -> dict[str, Any]:
         d = self.update_dir
@@ -538,7 +543,7 @@ def build_update_router(settings: Settings, service: UpdateService) -> APIRouter
         require_access_token(request, settings)
         try:
             raw = await request.json()
-        except Exception as exc:
+        except (ValueError, UnicodeDecodeError, RecursionError) as exc:
             raise HTTPException(status_code=400, detail="请求体不是合法 JSON") from exc
         try:
             body = ApplyBody.model_validate(raw)

@@ -33,7 +33,7 @@ npx shadcn@latest add @beui/button-stateful @beui/number-ticker
 
 beUI Tabs 支持 `Tabs`、`TabsList`、`TabsTrigger`、`TabsContent`，`variant="segment" | "pill" | "underline"`，受控 `value/onValueChange`。当前源码没有实现左右箭头焦点游走，关键分区优先使用 shadcn Tabs 的完整键盘交互。可以把 beUI 留给刷新状态和数字变化，避免重叠实现。
 
-Rare UI 通知铃依赖 `motion`、`@radix-ui/react-slot` 和 `@/lib/utils` 的 cn；告警数量变化时才产生摆动，支持 `useReducedMotion`。需要真实 count 变化，不设置持续循环动画。
+Rare UI 通知铃依赖 `motion` 和 `@/lib/utils` 的 cn；告警数量变化时才产生摆动，支持 `useReducedMotion`。需要真实 count 变化，不设置持续循环动画。
 
 ## 动效规范
 

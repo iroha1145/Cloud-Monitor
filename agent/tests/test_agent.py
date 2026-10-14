@@ -1146,3 +1146,66 @@ def test_start_bridge_thread_keeps_running_after_startup_4xx(tmp_path, monkeypat
     thread.join(timeout=0.05)
     # 线程异常不会经 join() 冒泡：必须显式断言它仍存活，否则线程真崩了此测试也过
     assert thread.is_alive()
+
+
+def test_bridge_state_save_oserror_after_push_does_not_mark_push_failed(tmp_path, monkeypatch, caplog):
+    cfg = tm_config(
+        tmp_path,
+        token_monitor_hub_url="https://tm.example.com",
+        token_monitor_secret="s" * 32,
+        token_monitor_interval_seconds=60,
+    )
+    state = AgentState(cfg.state_path)
+    state.device_id = "dev-x"
+    state.data["bridge_last_error"] = "old error"
+    state.data["bridge_last_error_at"] = "2026-08-01T00:00:00+00:00"
+    agent = make_agent(cfg, state, FakeSession())
+
+    monkeypatch.setattr(tm, "check_hub_health", lambda *a, **k: None)
+    monkeypatch.setattr(
+        tm,
+        "push_to_token_monitor",
+        lambda *a, **k: {"today": 10, "month": 10, "allTime": 10},
+    )
+
+    def fail_save():
+        raise OSError("disk full")
+
+    monkeypatch.setattr(state, "save", fail_save)
+
+    recorded_errors: list[str] = []
+    monkeypatch.setattr(tm, "_record_bridge_error", lambda _agent, msg: recorded_errors.append(msg))
+
+    waits: list[float] = []
+    real_event = threading.Event
+
+    class StopAfterFirstWait:
+        def __init__(self) -> None:
+            self._ev = real_event()
+
+        def set(self) -> None:
+            self._ev.set()
+
+        def is_set(self) -> bool:
+            return self._ev.is_set()
+
+        def wait(self, timeout: float | None = None) -> bool:
+            if timeout is not None:
+                waits.append(timeout)
+                self._ev.set()
+                return True
+            return self._ev.wait(timeout)
+
+    monkeypatch.setattr(tm.threading, "Event", StopAfterFirstWait)
+
+    with caplog.at_level("WARNING", logger="sync-agent.tm-bridge"):
+        thread = tm.start_bridge_thread(agent)
+        assert thread is not None
+        thread.join(timeout=1.0)
+
+    assert recorded_errors == []
+    assert state.data["bridge_last_error"] is None
+    assert state.data["bridge_last_error_at"] is None
+    assert waits == [60]
+    assert "清理桥接错误状态落盘失败" in caplog.text
+

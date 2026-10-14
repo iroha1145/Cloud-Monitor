@@ -36,8 +36,6 @@ import io.github.iroha1145.cloudmonitor.ui.theme.EaseSmoothOut
 import io.github.iroha1145.cloudmonitor.ui.theme.Motion
 import io.github.iroha1145.cloudmonitor.vm.AuxStatus
 import io.github.iroha1145.cloudmonitor.vm.QuotaPage
-import java.text.NumberFormat
-import java.util.Currency
 import java.util.Locale
 
 fun LazyListScope.quotaItems(state: QuotaPage, columns: Int) {
@@ -94,7 +92,7 @@ private fun QuotaContent(state: QuotaPage, showCards: Boolean) {
             PanelHead("额度概况", "服务商配额和手动登记的账单分别展示")
             Spacer(Modifier.height(14.dp))
             val providers = limits.map { it.provider }.filter { it.isNotBlank() }.toSet().size
-            val nearLimit = limits.sumOf { provider -> provider.windows.count { (it.usedPercent ?: -1.0) >= 75.0 } }
+            val nearLimit = limits.sumOf { provider -> provider.windows.count { (quotaPercent(it) ?: -1.0) >= 75.0 } }
             val summary = listOf(
                 "已连接服务" to "$providers 个",
                 "接近额度上限" to "$nearLimit 个",
@@ -128,14 +126,14 @@ private fun QuotaContent(state: QuotaPage, showCards: Boolean) {
         }
         if (showSubscriptions) {
             Text("订阅与账单", color = cm.ink, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium, modifier = Modifier.semantics { heading() })
-            Text("来自已登记的订阅和充值记录。金额不代表实时余额。", color = cm.ink2, fontSize = 12.sp, lineHeight = 18.sp)
+            Text("来自已登记的订阅和充值记录。", color = cm.ink2, fontSize = 12.sp, lineHeight = 18.sp)
             state.subscriptions?.updatedAt?.let { Text("更新于 ${Format.fmtDateTime(it, zone)}", color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
             when {
                 state.subsStatus == AuxStatus.Error -> Panel { Text("订阅清单读取失败，稍后刷新重试。", color = cm.crit, style = MaterialTheme.typography.bodyMedium) }
                 state.subsStatus == AuxStatus.Loading -> Panel { EmptyHint("正在读取订阅清单…") }
                 subscriptions.isEmpty() -> Panel {
                     Text("尚未记录订阅", color = cm.ink, style = MaterialTheme.typography.titleMedium)
-                    Text("已有的订阅记录会显示在这里；缺失的价格不会按零元计算。", color = cm.ink2, style = MaterialTheme.typography.bodyMedium)
+                    Text("添加的订阅与充值计划将在此展示。", color = cm.ink2, style = MaterialTheme.typography.bodyMedium)
                 }
                 else -> if (showCards) BoxWithConstraints(Modifier.fillMaxWidth()) {
                     val columns = if (maxWidth >= 740.dp && fontScale <= 1.35f) 2 else 1
@@ -176,7 +174,7 @@ private fun ProviderQuota(provider: LimitProvider, overview: Overview?, zone: St
         provider.sourceMessage?.takeIf { it.isNotBlank() }?.let { Text(it, color = cm.warnInk, style = MaterialTheme.typography.bodySmall) }
         if (provider.balanceUsd != null || balance != null) {
             Spacer(Modifier.height(16.dp))
-            QuotaMetric("账户余额", provider.balanceUsd?.takeIf { it.isFinite() }?.let(Format::fmtUsd) ?: balance?.let(Format::fmtCompact) ?: "未提供")
+            QuotaMetric("账户余额", provider.balanceUsd?.takeIf { it.isFinite() }?.let(Format::fmtUsd) ?: balance?.let { quotaBalanceAmount(it, balanceCurrency(provider), null) } ?: "未提供")
         }
         if (provider.windows.isEmpty() && provider.balanceUsd == null && balance == null) {
             Spacer(Modifier.height(16.dp))
@@ -211,10 +209,8 @@ private fun QuotaWindow(window: LimitWindow, provider: LimitProvider, generatedA
     val remaining = window.remaining?.takeIf { it.isFinite() && it >= 0 }
     val limit = window.limit?.takeIf { it.isFinite() && it >= 0 }
     val explicitPercent = window.usedPercent?.takeIf { it.isFinite() && it >= 0 }
-    val derived = if (used != null && limit != null && limit > 0) used / limit * 100 else null
-    val percent = (explicitPercent ?: derived)?.coerceIn(0.0, 100.0)
+    val percent = quotaPercent(window)
     val metric = window.metric.orEmpty().lowercase()
-    val currency = window.currency ?: if (metric == "spend") "USD" else null
     val color = quotaBarColor(cardIndex, percent)
     val label = window.label ?: window.name ?: window.window ?: window.kind ?: "使用额度"
     val headline = quotaHeadline(window, provider)
@@ -231,11 +227,11 @@ private fun QuotaWindow(window: LimitWindow, provider: LimitProvider, generatedA
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (explicitPercent != null) Text("剩余 ${percentText(100.0 - explicitPercent.coerceIn(0.0, 100.0))}", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
-            used?.let { Text("已用 ${quotaAmount(it, currency)}", color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
-            remaining?.let { Text("剩余 ${quotaAmount(it, currency)}", color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
-            limit?.let { Text("上限 ${quotaAmount(it, currency)}", color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
+            used?.let { Text("已用 ${quotaAmount(it, window, provider.provider)}", color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
+            remaining?.let { Text("剩余 ${quotaAmount(it, window, provider.provider)}", color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
+            limit?.let { Text("上限 ${quotaAmount(it, window, provider.provider)}", color = cm.ink2, style = MaterialTheme.typography.bodySmall) }
         }
-        if (explicitPercent == null && derived != null) Text("已用比例 ${percentText(derived)}，按已用额度与上限计算。", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+        if (explicitPercent == null && percent != null) Text("已用比例 ${percentText(percent)}，按已用额度与上限计算。", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
         val reset = Format.parseMillis(window.resetsAt)
         val snapshot = Format.parseMillis(generatedAt) ?: System.currentTimeMillis()
         val boundaryName = if (window.resetsAt.isNullOrBlank()) "期限" else "${boundary}时间"
@@ -403,9 +399,3 @@ private fun subscriptionKeys(subscriptions: List<Subscription>): List<String> {
 }
 
 private fun percentText(value: Double): String = String.format(Locale.US, "%.1f", value).removeSuffix(".0") + "%"
-
-private fun quotaAmount(value: Double, currency: String?): String {
-    if (currency.isNullOrBlank()) return Format.fmtCompact(value)
-    return runCatching { NumberFormat.getCurrencyInstance(Locale.SIMPLIFIED_CHINESE).apply { this.currency = Currency.getInstance(currency.uppercase(Locale.US)) }.format(value) }
-        .getOrElse { "${currency.uppercase(Locale.US)} ${String.format(Locale.US, "%.2f", value)}" }
-}

@@ -6,3 +6,6 @@ https://github.com/Javis603/token-monitor/tree/dcccfb01557e2786888fd5479552f392a
 
 StepFun icon from v0.64.0; Muse Code uses the existing Meta mark as upstream does:
 https://github.com/Javis603/token-monitor/tree/9ad1ca2f6ec27e497eb38fffe7d9533aec0d3c38/assets/icons
+
+CatPaw and FX icons from v0.70.0; MiniMax Code (mcode) uses the existing MiniMax mark as upstream does:
+https://github.com/Javis603/token-monitor/tree/ac4eeb2c4aea239dd94b67f074c73f69aafc46f8/assets/icons

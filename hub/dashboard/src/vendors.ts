@@ -45,11 +45,59 @@ const CLIENT_NAMES: Record<string, string> = {
   cline: "Cline",
   typesafe: "TypeSafe",
   alibaba: "Alibaba Cloud",
+  catpaw: "CatPaw",
+  fx: "FX",
+  mcode: "MiniMax Code",
+};
+
+const CLIENT_TITLES: Record<string, string> = {
+  codex: "Codex",
+  claude: "Claude Code",
+  cursor: "Cursor",
+  gemini: "Gemini CLI",
+  opencode: "OpenCode",
+  openclaw: "OpenClaw",
+  pi: "Pi",
+  omp: "Oh My Pi",
+  kimi: "Kimi Code",
+  qoder: "Qoder",
+  qodercn: "Qoder (中国)",
+  trae: "Trae",
+  kiro: "Kiro",
+  copilot: "GitHub Copilot",
+  zed: "Zed",
+  kilo: "Kilo Code",
+  kilocode: "Kilo Code",
+  commandcode: "Command Code",
+  codebuddy: "CodeBuddy",
+  workbuddy: "WorkBuddy",
+  antigravity: "Antigravity",
+  cherrystudio: "Cherry Studio",
+  hermes: "Hermes Agent",
+  "hermes-agent": "Hermes Agent",
+  micode: "MiCode",
+  mimo: "Xiaomi MiMo",
+  zcode: "Z Code",
+  proma: "Proma",
+  dsh: "DSH",
+  reasonix: "Reasonix",
+  cline: "Cline",
+  ollama: "Ollama",
+  lmstudio: "LM Studio",
+  unsloth: "Unsloth",
+  ...CLIENT_NAMES,
+  stepfun: "阶跃星辰",
+  alibaba: "阿里云百炼",
 };
 
 const VENDOR_NAMES: Record<string, string> = Object.fromEntries(
   VENDORS.map((vendor) => [vendor.id, vendor.name]),
 );
+
+export function clientName(id: string): string {
+  const key = id.trim().toLowerCase();
+  return CLIENT_TITLES[key] ?? id;
+}
 
 export function providerFor(name: string): string {
   return vendorFor(name)?.id ?? "other";

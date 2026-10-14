@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify or restore the byte-for-byte, pinned v0.64.0 Hub dependency closure.
+"""Verify or restore the byte-for-byte, pinned v0.70.0 Hub dependency closure.
 
 The lock is deliberately committed separately from the generated vendor manifest.
 No downloads or npm installation are performed. A future release needs a reviewed
@@ -15,7 +15,7 @@ import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-PIN = "9ad1ca2f6ec27e497eb38fffe7d9533aec0d3c38"
+PIN = "ac4eeb2c4aea239dd94b67f074c73f69aafc46f8"
 REQUIRE = re.compile(r"require\(['\"]([^'\"]+)['\"]\)")
 
 
@@ -59,8 +59,8 @@ def manifest(lock: dict) -> str:
 
 
 def verify(root: Path, lock: dict, *, vendor: bool) -> None:
-    if lock["commit"] != PIN or lock["release"] != "v0.64.0":
-        raise ValueError("The reviewed v0.64.0 source pin was changed")
+    if lock["commit"] != PIN or lock["release"] != "v0.70.0":
+        raise ValueError("The reviewed v0.70.0 source pin was changed")
     expected = set(lock["files"])
     actual = closure(root, lock["entries"])
     if actual != expected:
@@ -83,9 +83,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--check", action="store_true")
-    mode.add_argument("--source", type=Path, help="Extracted official v0.64.0 source directory")
+    mode.add_argument("--source", type=Path, help="Extracted official v0.70.0 source directory")
     args = parser.parse_args()
-    lock = json.loads((ROOT / "upstream-v064.json").read_text())
+    lock = json.loads((ROOT / "upstream-v070.json").read_text())
     target = ROOT / "vendor"
     if args.source:
         source = args.source.resolve()
@@ -101,7 +101,7 @@ def main() -> None:
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source / relative, destination)
         shutil.copyfile(source / "LICENSE", target / "LICENSE-token-monitor")
-        (target / "MANIFEST.txt").write_text(manifest(lock), encoding="utf-8", newline="\n")
+        (target / "MANIFEST.txt").write_bytes(manifest(lock).encode("utf-8"))
     verify(target, lock, vendor=True)
     print(f"Verified {lock['release']} ({PIN}): {len(lock['files'])} source files and MIT license")
 

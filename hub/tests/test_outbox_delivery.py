@@ -12,7 +12,7 @@ from email.utils import format_datetime
 import httpx
 import pytest
 
-from conftest import TM_SECRET, limits_only_payload, make_cloud_app, widget_style_payload
+from conftest import TM_SECRET, limits_only_payload, make_cloud_app, record_from_payload, widget_style_payload
 from hub.db import Database
 from hub import tm_outbox as outbox, tm_snapshots as snapshots
 from hub.tm_forwarding import (
@@ -95,7 +95,7 @@ def test_expiry_does_not_clear_an_unresolved_confirmed_snapshot_error(database):
     db = database
     outbox.record_pending(db, request_id="unknown", device_id="legacy", payload=usage("legacy"))
     outbox.record_pending(db, request_id="confirmed", device_id="current", payload=usage("current"))
-    outbox.save_normalized(db, "confirmed", outbox.record_from_payload(usage("current")))
+    outbox.save_normalized(db, "confirmed", record_from_payload(usage("current")))
     db.execute("UPDATE tm_ingest_outbox SET received_at='2000-01-01T00:00:00Z', last_error='disk busy' WHERE request_id='unknown'")
     outbox.mark_failed(db, "confirmed", "disk busy")
     outbox.set_snapshot_status(db, success=False, error="disk busy", request_id="confirmed")
@@ -144,13 +144,13 @@ def test_integrity_error_is_terminal_while_locked_error_remains_retryable(databa
     db = database
     payload = usage("integrity")
     outbox.record_pending(db, request_id="integrity", device_id="integrity", payload=payload)
-    outbox.save_normalized(db, "integrity", outbox.record_from_payload(payload))
+    outbox.save_normalized(db, "integrity", record_from_payload(payload))
     db.execute("CREATE TRIGGER constraint_failure BEFORE INSERT ON tm_snapshot_buckets BEGIN SELECT RAISE(ABORT, 'constraint rejected'); END")
     assert outbox.replay_pending(db)["rejected"] == 1
     assert db.fetchone("SELECT state, attempts FROM tm_ingest_outbox WHERE request_id='integrity'") == {"state": "rejected", "attempts": 1}
     db.execute("DROP TRIGGER constraint_failure")
     outbox.record_pending(db, request_id="locked", device_id="locked", payload=usage("locked"))
-    outbox.save_normalized(db, "locked", outbox.record_from_payload(usage("locked")))
+    outbox.save_normalized(db, "locked", record_from_payload(usage("locked")))
     def locked(*args, **kwargs):
         raise sqlite3.OperationalError("database is locked")
     monkeypatch.setattr(snapshots, "write_snapshot", locked)
@@ -897,7 +897,7 @@ def test_full_queued_body_with_numeric_window_end_cannot_block_other_devices(dat
             self.calls = []
         def request(self, method, path, *, json_body):
             self.calls.append(json_body["deviceId"])
-            record = outbox.record_from_payload(json_body, snapshots.utc_z(clock.value))
+            record = record_from_payload(json_body, snapshots.utc_z(clock.value))
             return httpx.Response(200, json={"stats": {"devices": [record]}})
     core = Core()
     assert queue.process_due(core, max_items=2)["processed"] == 2

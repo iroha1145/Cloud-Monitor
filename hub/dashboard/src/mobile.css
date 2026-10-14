@@ -596,6 +596,8 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+    /* A model name that wraps to more lines must not push its tile below its row. */
+    justify-content: flex-end;
     gap: 6px;
     min-width: 0;
     padding: 0;
@@ -614,7 +616,8 @@
   }
   .matrix-cell {
     width: min(100%, 86px);
-    height: 48px;
+    height: auto;
+    aspect-ratio: 1;
     min-height: 0;
     font-size: 11px;
   }
@@ -623,9 +626,6 @@
   }
   .client-rows {
     padding-inline: 16px;
-  }
-  .client-note {
-    margin-inline: 16px;
   }
   .provider-strip {
     padding: 14px 16px;

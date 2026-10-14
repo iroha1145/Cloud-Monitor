@@ -46,7 +46,7 @@ for (const viewport of [
               return { width: rect.width, height: rect.height };
             },
           ),
-          squares: [...document.querySelectorAll(".cm-activity-cell")].map(
+          squares: [...document.querySelectorAll(".cm-activity-cell, .matrix-cell")].map(
             (node) => {
               const rect = node.getBoundingClientRect();
               return Math.abs(rect.width - rect.height);

@@ -70,8 +70,9 @@ object Format {
 
     fun fmtUsd(v: Double): String {
         if (!v.isFinite()) return "未提供"
-        val sign = if (v < 0) "-" else ""
-        return sign + "$" + checkNotNull(usdLocal.get()).format(abs(v))
+        val clean = if (abs(v) < 0.005) 0.0 else v
+        val sign = if (clean < 0) "-" else ""
+        return sign + "$" + checkNotNull(usdLocal.get()).format(abs(clean))
     }
 
     /** Web `pct`: always one decimal, including 0.0%. */
@@ -344,18 +345,102 @@ object Format {
 
 val PROVIDER_NAMES = mapOf(
     "anthropic" to "Anthropic",
+    "claude" to "Claude",
     "openai" to "OpenAI",
+    "codex" to "OpenAI Codex",
     "cursor" to "Cursor",
     "google" to "Google",
     "gemini" to "Gemini",
     "github" to "GitHub",
-    "copilot" to "Copilot",
+    "copilot" to "GitHub Copilot",
     "zhipu" to "智谱",
     "moonshot" to "Moonshot",
     "kimi" to "Kimi",
     "glm" to "GLM",
+    "zai" to "Z.ai",
+    "zaiteam" to "Z.ai Team",
     "deepseek" to "DeepSeek",
+    "qwen" to "Qwen",
+    "mistral" to "Mistral",
+    "meta" to "Meta",
+    "minimax" to "MiniMax",
+    "doubao" to "豆包",
+    "volcengine" to "火山引擎",
+    "hunyuan" to "混元",
+    "codebuddy" to "CodeBuddy",
+    "cohere" to "Cohere",
+    "pi" to "Pi",
+    "qoder" to "Qoder",
+    "qodercn" to "Qoder (中国)",
+    "trae" to "Trae",
+    "kiro" to "Kiro",
+    "kilocode" to "Kilo Code",
+    "openrouter" to "OpenRouter",
+    "antigravity" to "Antigravity",
+    "xiaomi" to "小米",
+    "mimo" to "小米 MiMo",
+    "stepfun" to "阶跃星辰",
+    "cline" to "Cline",
+    "typesafe" to "Typesafe",
+    "alibaba" to "阿里云百炼",
+    "thirdparty" to "第三方接口",
     "grok" to "SpaceXAI",
     "xai" to "SpaceXAI",
     "grok-web" to "SpaceXAI (Web)",
+    "other" to "其他",
 )
+
+val CLIENT_NAMES = mapOf(
+    "codex" to "Codex",
+    "claude" to "Claude Code",
+    "cursor" to "Cursor",
+    "gemini" to "Gemini CLI",
+    "opencode" to "OpenCode",
+    "openclaw" to "OpenClaw",
+    "pi" to "Pi",
+    "omp" to "Oh My Pi",
+    "kimi" to "Kimi Code",
+    "qoder" to "Qoder",
+    "qodercn" to "Qoder (中国)",
+    "trae" to "Trae",
+    "kiro" to "Kiro",
+    "copilot" to "GitHub Copilot",
+    "zed" to "Zed",
+    "kilocode" to "Kilo Code",
+    "commandcode" to "Command Code",
+    "codebuddy" to "CodeBuddy",
+    "workbuddy" to "WorkBuddy",
+    "antigravity" to "Antigravity",
+    "cherrystudio" to "Cherry Studio",
+    "hermes" to "Hermes Agent",
+    "hermes-agent" to "Hermes Agent",
+    "micode" to "MiCode",
+    "zcode" to "Z Code",
+    "proma" to "Proma",
+    "dsh" to "DSH",
+    "reasonix" to "Reasonix",
+    "cline" to "Cline",
+    "ollama" to "Ollama",
+    "lmstudio" to "LM Studio",
+    "unsloth" to "Unsloth",
+    "factory" to "Factory Droid",
+    "droid" to "Factory Droid",
+    "amp" to "Amp",
+    "devin" to "Devin",
+    "muse" to "Muse Code",
+    "mimo" to "Xiaomi MiMo",
+    "stepfun" to "阶跃星辰",
+    "typesafe" to "TypeSafe",
+    "alibaba" to "阿里云百炼",
+    "catpaw" to "CatPaw",
+    "fx" to "FX",
+    "mcode" to "MiniMax Code",
+)
+
+fun clientDisplayName(id: String?): String {
+    val raw = id.orEmpty().trim()
+    if (raw.isEmpty()) return "未知客户端"
+    val lower = raw.lowercase(Locale.US)
+    return CLIENT_NAMES[lower] ?: PROVIDER_NAMES[lower] ?: raw
+}
+

@@ -71,6 +71,34 @@ def seed_bucket(db, device, day, bucket, total, *, tz="", received=None, cost=0.
     )
 
 
+def record_from_payload(payload: dict, received_at: str | None = None) -> dict:
+    """测试辅助：将原始 ingest 载荷转换为模拟的 tm-core 已确认记录形状。"""
+    if not isinstance(payload, dict):
+        return {}
+    periods_in = payload.get("periods") if isinstance(payload.get("periods"), dict) else {}
+
+    def period(name: str) -> dict:
+        top = payload.get(name)
+        nested = periods_in.get(name)
+        if isinstance(top, dict):
+            return top
+        if isinstance(nested, dict):
+            return nested
+        return {}
+
+    return {
+        "deviceId": payload.get("deviceId") or payload.get("id"),
+        "updatedAt": payload.get("updatedAt"),
+        "receivedAt": received_at or payload.get("receivedAt"),
+        "periodWindows": payload.get("periodWindows"),
+        "periods": {
+            "today": period("today"),
+            "month": period("month"),
+            "allTime": period("allTime"),
+        },
+    }
+
+
 def free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))

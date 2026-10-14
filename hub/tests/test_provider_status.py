@@ -740,3 +740,63 @@ def test_refuses_non_allowlisted_url():
 
     with pytest.raises(ValueError):
         _safe_url("https://evil.example/api/v2/summary.json")
+
+
+def test_cold_cache_all_providers_fail_returns_unknown_without_stale():
+    async def run():
+        mapping = {
+            STATUS_PAGES["anthropic"].summary_url: (503, {"error": "down"}),
+            STATUS_PAGES["anthropic"].status_url: (503, {"error": "down"}),
+            STATUS_PAGES["openai"].summary_url: (503, {"error": "down"}),
+            STATUS_PAGES["openai"].status_url: (503, {"error": "down"}),
+        }
+        client, _ = await _client(mapping)
+        svc = ProviderStatusService(cache_seconds=300, timeout_seconds=2.5)
+        try:
+            return await svc.snapshot(
+                client=client,
+                observed={"anthropic": ["claude"], "openai": ["codex"]},
+            )
+        finally:
+            await client.aclose()
+
+    snap = asyncio.run(run())
+    assert snap["partial"] is True
+    assert len(snap["errors"]) == 2
+    assert {p["provider"] for p in snap["providers"]} == {"anthropic", "openai"}
+    assert all(p["status"] == "unknown" for p in snap["providers"])
+    assert all(p["stale"] is False for p in snap["providers"])
+
+
+def test_warm_cache_full_failure_keeps_last_good_with_current_errors():
+    async def run():
+        clock = {"t": 1000.0}
+        mapping = {
+            STATUS_PAGES["anthropic"].summary_url: (200, _claude_ok()),
+            STATUS_PAGES["openai"].summary_url: (503, {"error": "down"}),
+            STATUS_PAGES["openai"].status_url: (503, {"error": "down"}),
+        }
+        client, _ = await _client(mapping)
+        svc = ProviderStatusService(cache_seconds=10, timeout_seconds=2.5, monotonic=lambda: clock["t"])
+        observed = {"anthropic": ["claude"], "openai": ["codex"]}
+        try:
+            first = await svc.snapshot(client=client, observed=observed)
+            mapping[STATUS_PAGES["anthropic"].summary_url] = (503, {"error": "down"})
+            mapping[STATUS_PAGES["anthropic"].status_url] = (503, {"error": "down"})
+            clock["t"] = 1011.0
+            await svc.snapshot(client=client, observed=observed)  # SWR: old value, refresh in background
+            await asyncio.sleep(0.05)
+            after = await svc.snapshot(client=client, observed=observed)
+            return first, after
+        finally:
+            await client.aclose()
+
+    first, after = asyncio.run(run())
+    assert [e["provider"] for e in first["errors"]] == ["openai"]
+    by_provider = {p["provider"]: p for p in after["providers"]}
+    assert by_provider["anthropic"]["status"] == {p["provider"]: p for p in first["providers"]}["anthropic"]["status"]
+    assert by_provider["anthropic"]["status"] != "unknown"
+    assert all(p["stale"] is True for p in after["providers"])
+    assert after["partial"] is True
+    # The cached copy reports the failed refresh, not the last good round's errors.
+    assert sorted(e["provider"] for e in after["errors"]) == ["anthropic", "openai"]

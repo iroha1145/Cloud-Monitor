@@ -522,7 +522,6 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                 <NotificationBell
                   className="topbar-bell"
                   count={statusCount}
-                  variant="dot"
                   size={34}
                   color="orange"
                   onClick={(event) => { rememberDialogOpener(event.currentTarget); setNotifications(true); }}
@@ -744,7 +743,11 @@ export default function App({ initialData, initialToken = "", hosted = false, is
         </Suspense>
         </AppErrorBoundary>
       )}
-      {dialogError && <DialogErrorNotice onDismiss={() => setDialogError(false)} />}
+      {dialogError && (
+        <DialogErrorNotice
+          onDismiss={() => setDialogError(false)}
+        />
+      )}
       <AnimatePresence>
         {toast && (
           <motion.div

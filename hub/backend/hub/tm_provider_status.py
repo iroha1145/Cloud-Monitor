@@ -903,7 +903,12 @@ class ProviderStatusService:
             # 全部状态页故障时保留 last-known-good；不能用 unknown 覆盖好缓存。
             stale = self._mark_stale(previous.payload, True)
             stale["partial"] = True
-            stale["errors"] = list(stale.get("errors") or []) + list(errors)
+            stale["errors"] = list(errors)
+            self._cache = _CacheEntry(
+                fetched_at=previous.fetched_at,
+                key=key,
+                payload=copy.deepcopy(stale),
+            )
             return stale
         # 成功或部分成功才替换缓存，供 SWR 返回旧值。
         self._cache = _CacheEntry(

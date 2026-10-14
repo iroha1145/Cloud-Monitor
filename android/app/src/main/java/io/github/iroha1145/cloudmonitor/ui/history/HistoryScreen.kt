@@ -427,14 +427,16 @@ private fun SessionsCard(overview: Overview, zone: String, today: String, modelC
 private fun SessionDetail(session: SessionRow, zone: String, generatedAt: String?, modelColors: Map<String, Color>) {
     val cm = CmColorsCurrent
     var expanded by rememberSaveable(session.key) { mutableStateOf(false) }
+    val activity = sessionActivity(session, generatedAt)
+    val activityColor = if (activity == "等待输入") cm.warnInk else cm.ink2
     Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             ClientLogo(session.client, size = 20.dp)
             Column(Modifier.weight(1f)) {
                 Text(sessionTitle(session), color = cm.ink, fontSize = 14.sp,
                     lineHeight = 20.sp, fontWeight = FontWeight.Medium)
-                Text("${session.client ?: "客户端未提供"} · ${sessionActivity(session, generatedAt)}",
-                    color = cm.ink2, fontSize = 11.sp, lineHeight = 16.sp)
+                Text("${session.client ?: "客户端未提供"} · $activity",
+                    color = activityColor, fontSize = 11.sp, lineHeight = 16.sp)
             }
         }
         Text("最后活动 ${Format.fmtDateTime(session.lastUsedAt, zone).ifBlank { "未提供" }}", color = cm.ink2, fontSize = 11.sp, lineHeight = 16.sp)
@@ -457,13 +459,40 @@ private fun SessionDetail(session: SessionRow, zone: String, generatedAt: String
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("来源设备 · ${session.device ?: session.deviceId ?: "未提供"}", color = cm.ink2, style = MaterialTheme.typography.bodyMedium)
             session.sessionKind?.takeIf { it.isNotBlank() }?.let { Text("会话类型 · $it", color = cm.ink2, style = MaterialTheme.typography.bodyMedium) }
-            Text("活动状态 · ${sessionActivity(session, generatedAt)}", color = cm.ink2, style = MaterialTheme.typography.bodyMedium)
+            Text("活动状态 · $activity", color = activityColor, style = MaterialTheme.typography.bodyMedium)
             sessionContext(session)?.let { (used, remaining) ->
                 Text("上次上报的上下文 · ${Format.fmtInt(session.contextTokens ?: 0.0)} / ${Format.fmtInt(session.contextWindow ?: 0.0)} 词元 · 已用 $used% · 剩余 $remaining%",
                     color = cm.ink2, style = MaterialTheme.typography.bodySmall)
                 Box(Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(4.dp)).background(cm.inset)) {
                     Box(Modifier.fillMaxWidth(used.coerceIn(0, 100) / 100f).fillMaxHeight().background(cm.brand))
                 }
+            }
+            val timedOut = session.timedOutputTokens
+            val timedMs = session.timedDurationMs
+            if (timedOut != null && timedMs != null && timedOut > 0.0 && timedMs > 0.0) {
+                val tokPerSec = String.format(Locale.US, "%.1f", timedOut / (timedMs / 1000.0))
+                Text("输出速率 · $tokPerSec 词元/秒", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+            }
+            session.promptCache?.ttlSeconds?.takeIf { it > 0 }?.let { ttl ->
+                val ttlLabel = if (ttl >= 3600) "${ttl / 3600} 小时" else "${ttl / 60} 分钟"
+                Text("提示词缓存 · TTL $ttlLabel", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+            }
+            session.unpricedTokens?.takeIf { it > 0.0 }?.let { unpriced ->
+                Text("未计费词元 · ${Format.fmtInt(unpriced)} 词元", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+            }
+            val parentLabel = listOfNotNull(
+                session.parentClient?.takeIf { it.isNotBlank() }?.let(::clientDisplayName),
+                session.parentSessionId?.takeIf { it.isNotBlank() },
+            ).joinToString(" · ")
+            if (parentLabel.isNotEmpty()) {
+                Text("父级会话 · $parentLabel", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
+            }
+            val sourceLabel = listOfNotNull(
+                session.usageSource?.takeIf { it.isNotBlank() },
+                session.usageCoverage?.takeIf { it.isNotBlank() },
+            ).joinToString(" · ")
+            if (sourceLabel.isNotEmpty()) {
+                Text("用量来源 · $sourceLabel", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
             }
             Text("会话标识 · ${session.sessionId ?: "未提供"}", color = cm.ink2, style = MaterialTheme.typography.bodySmall)
             Text("开始于 ${Format.fmtDateTime(session.startedAt, zone).ifBlank { "未提供" }}", color = cm.ink2, style = MaterialTheme.typography.bodySmall)

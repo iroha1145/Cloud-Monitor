@@ -205,7 +205,7 @@ fun MatrixGrid(rows: List<String>, cols: List<String>, modifier: Modifier = Modi
         Column(Modifier.horizontalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
                 Text("客户端", Modifier.width(110.dp), style = MaterialTheme.typography.labelMedium, color = cm.mute)
-                cols.forEach { Text(it, Modifier.width(112.dp), style = MaterialTheme.typography.labelMedium, color = cm.mute) }
+                cols.forEach { Text(it, Modifier.width(96.dp), style = MaterialTheme.typography.labelMedium, color = cm.mute) }
             }
             rows.forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -214,7 +214,7 @@ fun MatrixGrid(rows: List<String>, cols: List<String>, modifier: Modifier = Modi
                         val value = valueAt(row, column)
                         val level = matrixHeatLevel(value, max).coerceIn(cm.hm.indices)
                         val formatted = if (cost) Format.fmtUsd(value) else Format.fmtCompact(value)
-                        Box(Modifier.width(112.dp).heightIn(min = 56.dp).clip(RoundedCornerShape(10.dp)).background(cm.hm[level])
+                        Box(Modifier.size(96.dp).clip(RoundedCornerShape(10.dp)).background(cm.hm[level])
                             .clickable(role = Role.Button) { tip.show("$row · $column", listOf((if (cost) "费用" else "词元用量") to if (cost) Format.fmtUsd(value) else Format.fmtInt(value))) }
                             .semantics { contentDescription = "$row，$column，$formatted" }.padding(10.dp), contentAlignment = Alignment.Center) {
                             Text(formatted, color = cm.hmInk[level], style = MaterialTheme.typography.bodySmall,

@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { ComponentProps, ReactNode } from "react";
-import { Slot, Slottable } from "@radix-ui/react-slot";
+import type { ComponentProps } from "react";
 import {
   animate,
   AnimatePresence,
@@ -31,10 +30,7 @@ const COLORS = {
 
 // all sizes are a fraction of the size prop
 const ICON = 0.56;
-const BADGE = 0.38;
 const DOT = 0.22;
-const FONT = 0.21;
-const PAD = 0.09;
 // how far out the badge sits, 1 puts it right on the edge
 const ORBIT = 0.9;
 
@@ -47,7 +43,6 @@ const SWING_SPRING = {
   restDelta: 0.01,
 } as const;
 const CLAPPER_SPRING = { stiffness: 300, damping: 14, mass: 1 };
-const COLUMN_SPRING = { stiffness: 400, damping: 30, mass: 0.9 };
 const ENTER_SPRING = { type: "spring", stiffness: 600, damping: 20 } as const;
 const FADE = { duration: 0.15 } as const;
 
@@ -58,21 +53,11 @@ const BURST = 5;
 const CLAPPER_SWEEP = 13;
 const CLAPPER_VELOCITY = 450;
 
-// how many digits to keep above and below, and how far behind the spring can get
-const WINDOW = 3;
-const LAG = 2;
-
-// a taller window would show the next digit at rest, so the fade rides velocity instead
-const ROLL_FADE = 34;
-const ROLL_VELOCITY = 9;
-
 const clamp = (value: number, limit: number) =>
   Math.max(-limit, Math.min(limit, value));
 
-const digitOf = (value: number) => ((value % 10) + 10) % 10;
-
-function badgeMetrics(size: number, dot: boolean) {
-  const side = size * (dot ? DOT : BADGE);
+function badgeMetrics(size: number) {
+  const side = size * DOT;
   return {
     side,
     // puts the badge on the circle so it lines up at any size
@@ -152,69 +137,18 @@ function BellIcon({
   );
 }
 
-// this only moves the way the count moved, so the digits roll the right way
-function DigitColumn({ value, reduced }: { value: number; reduced: boolean }) {
-  const position = useSpring(value, COLUMN_SPRING);
-  const y = useTransform(position, (p) => `${-p * 100}%`);
-  const velocity = useVelocity(position);
-  const mask = useTransform(velocity, (v) => {
-    const fade = Math.min(ROLL_FADE, (Math.abs(v) / ROLL_VELOCITY) * ROLL_FADE);
-    return `linear-gradient(to bottom, transparent 0%, #000 ${fade}%, #000 ${100 - fade}%, transparent 100%)`;
-  });
-
-  useEffect(() => {
-    const gap = value - position.get();
-    // on a big jump, move it closer first so there are still digits to show
-    if (Math.abs(gap) > LAG) position.jump(value - Math.sign(gap) * LAG);
-    if (reduced) position.jump(value);
-    else position.set(value);
-  }, [value, reduced, position]);
-
-  return (
-    <motion.span
-      className="relative inline-block h-[1em] overflow-hidden"
-      style={{
-        width: "1ch",
-        maskImage: reduced ? undefined : mask,
-        WebkitMaskImage: reduced ? undefined : mask,
-      }}
-    >
-      <motion.span className="absolute inset-0" style={{ y }}>
-        {Array.from({ length: WINDOW * 2 + 1 }, (_, i) => {
-          const tile = value - WINDOW + i;
-          return (
-            <span
-              key={tile}
-              className="absolute inset-x-0 flex justify-center"
-              style={{ top: `${tile * 100}%` }}
-            >
-              {digitOf(tile)}
-            </span>
-          );
-        })}
-      </motion.span>
-    </motion.span>
-  );
-}
-
 function CountBadge({
   total,
-  max,
   size,
   color,
-  dot,
   reduced,
 }: {
   total: number;
-  max: number;
   size: number;
   color: keyof typeof COLORS;
-  dot: boolean;
   reduced: boolean;
 }) {
-  const { side, inset } = badgeMetrics(size, dot);
-  const clamped = total > max;
-  const places = clamped ? 0 : String(total).length;
+  const { side, inset } = badgeMetrics(size);
 
   return (
     <AnimatePresence initial={false}>
@@ -233,35 +167,12 @@ function CountBadge({
             right: inset,
             height: side,
             minWidth: side,
-            paddingInline: dot ? 0 : size * PAD,
-            fontSize: size * FONT,
           }}
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0, opacity: 0 }}
           transition={reduced ? FADE : ENTER_SPRING}
-        >
-          {!dot && (
-            <span
-              className="flex font-semibold leading-none tracking-tight text-white"
-              // digits need the same width or the columns shift
-              style={{ fontVariantNumeric: "tabular-nums" }}
-            >
-              {clamped
-                ? `${max}+`
-                : Array.from({ length: places }, (_, i) => {
-                    const place = places - 1 - i;
-                    return (
-                      <DigitColumn
-                        key={place}
-                        value={Math.floor(total / 10 ** place)}
-                        reduced={reduced}
-                      />
-                    );
-                  })}
-            </span>
-          )}
-        </motion.span>
+        />
       )}
     </AnimatePresence>
   );
@@ -277,63 +188,22 @@ export type NotificationBellProps = Omit<
   | "onDragEnd"
 > & {
   count?: number;
-  max?: number;
-  variant?: "count" | "dot";
   size?: number;
   color?: keyof typeof COLORS;
-  asChild?: boolean;
-  children?: ReactNode;
 };
 
 export function NotificationBell({
   count = 0,
-  max = 99,
-  variant = "count",
   size = 48,
   color = "red",
-  asChild = false,
   className,
   style,
-  children,
   ...props
 }: NotificationBellProps) {
   const reduced = useReducedMotion() ?? false;
   const total = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
   // use the total so a weird count cannot ring the bell
   const { swing, clapper } = useBellRing(total, reduced);
-
-  const badge = (
-    <CountBadge
-      total={total}
-      max={max}
-      size={size}
-      color={color}
-      dot={variant === "dot"}
-      reduced={reduced}
-    />
-  );
-
-  // this is also the button label, so the count gets read out when it changes
-  const label = (
-    <span role="status" className="sr-only">
-      {total > 0 ? `Notifications, ${total} unread` : "Notifications"}
-    </span>
-  );
-
-  if (asChild) {
-    return (
-      <Slot
-        data-slot="notification-bell"
-        className={cn("relative", className)}
-        style={style}
-        {...props}
-      >
-        <Slottable>{children}</Slottable>
-        {label}
-        {badge}
-      </Slot>
-    );
-  }
 
   return (
     <button
@@ -348,11 +218,16 @@ export function NotificationBell({
       style={{ width: size, height: size, ...style }}
       {...props}
     >
-      {label}
       <BellIcon side={size * ICON} swing={swing} clapper={clapper} />
-      {badge}
+      <CountBadge
+        total={total}
+        size={size}
+        color={color}
+        reduced={reduced}
+      />
     </button>
   );
 }
 
 export default NotificationBell;
+

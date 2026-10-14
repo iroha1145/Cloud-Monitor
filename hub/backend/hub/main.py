@@ -21,7 +21,7 @@ from .auth import (
     require_access_token,
     resolve_write_binding,
 )
-from .body_limit import TmBodyLimitMiddleware
+from .body_limit import DEFAULT_LIMITED_PATHS, TmBodyLimitMiddleware
 from .compression import NegotiatedGZipMiddleware
 from .config import Settings, load_settings
 from .db import Database
@@ -135,7 +135,6 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app.state.provider_status = ProviderStatusService(
         cache_seconds=settings.provider_status_cache_seconds,
         timeout_seconds=settings.provider_status_timeout_seconds,
-        budget_seconds=settings.provider_status_budget_seconds,
     )
     app.include_router(build_tm_router(settings, app.state.db))
     # 云端用量面板数据（/api/v1/tm/overview + /api/v1/tm/subscriptions）
@@ -151,8 +150,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app.add_middleware(
         TmBodyLimitMiddleware,
         limits={
-            "/api/ingest": 1024 * 1024,
-            "/api/subscriptions": 1024 * 1024,
+            **DEFAULT_LIMITED_PATHS,
             "/api/v1/sync/push": settings.max_sync_body_bytes,
             "/api/v1/system/update": 4096,
         },
