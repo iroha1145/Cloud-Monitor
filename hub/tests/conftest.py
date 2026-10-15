@@ -108,7 +108,7 @@ def free_port() -> int:
 class NodeHub:
     """直接以官方 createHub() 起一个 hub 进程（不经 Cloud 代理，做差分基线）。"""
 
-    def __init__(self, data_file: Path):
+    def __init__(self, data_file: Path, *, tenants: dict | None = None, tm_secret: str = TM_SECRET):
         self.port = free_port()
         self.data_file = data_file
         self.proc = subprocess.Popen(
@@ -116,7 +116,8 @@ class NodeHub:
             env={
                 **os.environ,
                 "TOKEN_MONITOR_PORT": str(self.port),
-                "TOKEN_MONITOR_SECRET": TM_SECRET,
+                "TOKEN_MONITOR_SECRET": tm_secret,
+                "TENANTS_JSON": json.dumps(tenants) if tenants else "",
                 "TOKEN_MONITOR_DATA_FILE": str(data_file),
             },
             stdout=subprocess.DEVNULL,

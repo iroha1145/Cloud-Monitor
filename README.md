@@ -144,7 +144,7 @@ Cursor 的 Auto/default 模型按官方规则归并到 cursor-auto，同时保�
 - **保留：** 近 7 天按设备本地日、5 分钟桶 UPSERT（同桶留最后一次）；更早每天每设备一个锚点；370 天硬删。清理按阈值触发（至少间隔 10 分钟），不在每次 ingest 扫全表。只更新 limits 的请求不写 token 历史点
 - **时区：** 快照日归属看设备 `periodWindows`（today.key → timeZone+updatedAt → endsAt 反推 → UTC 回退并留空标注）。非法时区网关直接 400。面板活动统计默认 `DASHBOARD_TIME_ZONE=Asia/Tokyo`
 - **隐私：** `devices.json` 可能带 limits 里的账户邮箱、计划名、订阅金额（官方字段，在 TM 密钥后面）。SQLite 快照只存 token / 成本聚合和客户端、模型名，不含账户身份。面板用 `ACCESS_TOKEN`
-- **备份：** `hub/scripts/backup.sh <目录>` 备份 `tm-core-data`（devices.json）和 `cloud-hub-data`（SQLite）。恢复用 `hub/scripts/restore.sh <备份目录>`。脚本会带上同目录的 compose override，并按实际卷名写入，避免把备份截空或写到另一套卷上
+- **备份：** `hub/scripts/backup.sh <目录>` 备份 `tm-core-data`（devices.json）和 `cloud-hub-data`（SQLite），包含主用户及所有已落盘的租户，SQLite 使用在线一致性备份。恢复用 `hub/scripts/restore.sh <备份目录>`；恢复会短暂停止整套服务。旧版单用户备份仍可恢复，且不会删除现有租户数据。密钥配置 `hub/.env` 需另外安全保存，业务数据备份不包含密钥
 
 ## OpenWebUI-Monitor 记录同步
 
@@ -195,6 +195,39 @@ agent 变量见 `agent/.env.example`。
 会返回 503 并提示重跑安装脚本；新版宿主脚本也会修复旧锁权限。
 
 用 `install.sh` 安装或再跑一遍即可创建该目录并启动监视器（有 systemd 就用服务，否则 nohup）。只 `docker compose up`、没跑过安装脚本的话，检索仍然可用，点更新会返回 503。演示页（含 GitHub Pages）为静态演示模式，不会修改服务器。
+
+## 同一地址供朋友使用
+
+所有人使用同一个 HTTPS 地址，由不同密钥区分用户。每人有独立的设备、订阅、同步设置、历史数据库和缓存；主用户与朋友的数据也分开保存。整套服务共用 Python 和 Node 两个容器，更新或重启会一起影响所有人。
+
+先通过安装脚本配置主实例及其三把密钥，再在项目根目录创建朋友：
+
+```bash
+sudo python3 hub/scripts/tenant.py add alice
+sudo python3 hub/scripts/tenant.py add bob
+sudo docker compose --project-directory hub up -d --force-recreate
+```
+
+脚本会生成两把不同的强随机密钥，并保存到 `hub/.env` 的 `TENANTS_JSON`。把同一个面板地址与该朋友的两把密钥私发给对方：
+
+- 网页 / 安卓使用 `access_token` 登录。
+- Token Monitor 的「多设备同步」使用 `tm_secret`，Hub 地址仍是同一个面板地址。
+- 同一人的多台设备可以共用其同步密钥；不同朋友分别创建用户。
+
+常用管理命令：
+
+```bash
+sudo python3 hub/scripts/tenant.py list          # 只列用户和角色
+sudo python3 hub/scripts/tenant.py show alice    # 查看该用户的两把密钥
+sudo python3 hub/scripts/tenant.py rotate alice  # 重新生成两把密钥
+sudo python3 hub/scripts/tenant.py remove alice  # 撤销配置，保留历史数据
+```
+
+新增、轮换或撤销后，都需执行 `sudo docker compose --project-directory hub up -d --force-recreate`，让两个服务加载新配置；生效后旧密钥失效。脚本不会自行重启服务。
+
+朋友默认是 `role=user`，可以维护自己的数据，不能触发或取消服务器更新。主人使用主实例的 `ACCESS_TOKEN`，在网页更新 `main` 后，两个容器统一更新，所有用户继续使用原地址、密钥和数据。此功能需要通过 `install.sh` 配置宿主机更新监视器。
+
+也可以直接在 `hub/.env` 配置 `TENANTS_JSON`，格式见 `.env.example`。独立存储位于两个数据卷的 `tenants/<用户>/`，不是独立容器隔离；所有业务数据统一纳入上述备份和恢复流程。当前多用户功能覆盖 Token Monitor，OpenWebUI 记录同步仍使用主实例原有密钥。
 
 ## 界面开发
 

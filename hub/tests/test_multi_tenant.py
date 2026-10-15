@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -15,6 +16,11 @@ ALICE_TM = "alice-tm-secret-0123456789abcdef0001"
 ALICE_READ = "alice-read-token-0123456789abcdef02"
 BOB_TM = "bob-tm-secret-0123456789abcdef000003"
 BOB_READ = "bob-read-token-0123456789abcdef0004"
+
+TENANTS = {
+    "alice": {"tm_secret": ALICE_TM, "access_token": ALICE_READ, "role": "user"},
+    "bob": {"tm_secret": BOB_TM, "access_token": BOB_READ, "role": "admin"},
+}
 
 
 def test_parse_tenants_and_distinct_secrets(monkeypatch, tmp_path: Path):
@@ -87,7 +93,7 @@ def test_parse_tenants_and_distinct_secrets(monkeypatch, tmp_path: Path):
 
 @requires_node
 def test_multi_tenant_physical_isolation_and_same_device_id(tmp_path: Path):
-    node = NodeHub(tmp_path / "devices.json")
+    node = NodeHub(tmp_path / "devices.json", tenants=TENANTS)
     try:
         settings = Settings(
             api_key=API_KEY,
@@ -240,6 +246,24 @@ def test_multi_tenant_physical_isolation_and_same_device_id(tmp_path: Path):
             assert ov_b["totals"]["today"]["totalTokens"] == 95000
             assert [d["hostname"] for d in ov_b["devices"]] == ["bob-workstation"]
 
+            # 外部租户头不能覆盖由实际密钥选择的作用域。
+            forged = client.get(
+                "/api/v1/tm/overview",
+                headers={"Authorization": f"Bearer {ALICE_READ}", "X-CM-Tenant-Id": "bob"},
+            )
+            assert [d["hostname"] for d in forged.json()["devices"]] == ["alice-macbook"]
+            forged_sync = client.get(
+                "/api/devices",
+                headers={"X-Token-Monitor-Secret": ALICE_TM, "X-CM-Tenant-Id": "bob"},
+            )
+            assert [d["hostname"] for d in forged_sync.json()["devices"]] == ["alice-macbook"]
+            assert client.delete(
+                "/api/devices/shared-mac", headers={"Authorization": f"Bearer {ALICE_READ}"},
+            ).status_code == 401
+            assert client.get(
+                "/api/v1/tm/overview", headers={"Authorization": f"Bearer {ALICE_TM}"},
+            ).status_code == 401
+
             sub_bob = client.get(
                 "/api/v1/tm/subscriptions",
                 headers={"Authorization": f"Bearer {BOB_READ}"},
@@ -286,6 +310,22 @@ def test_multi_tenant_physical_isolation_and_same_device_id(tmp_path: Path):
                 headers={"Authorization": f"Bearer {ALICE_READ}"},
             )
             assert r_owui.status_code == 401
+    finally:
+        node.stop()
+
+
+@requires_node
+@pytest.mark.parametrize("configured", [False, True])
+def test_node_rejects_unconfigured_tenants_without_registering_them(tmp_path: Path, configured):
+    node = NodeHub(tmp_path / "devices.json", tenants=TENANTS if configured else None)
+    try:
+        for secret in (TM_SECRET, ALICE_TM):
+            response = httpx.get(
+                f"{node.url}/api/stats",
+                headers={"X-Token-Monitor-Secret": secret, "X-CM-Tenant-Id": "unconfigured"},
+            )
+            assert response.status_code == 401
+        assert not (tmp_path / "tenants" / "unconfigured").exists()
     finally:
         node.stop()
 
@@ -377,7 +417,7 @@ def test_multi_tenant_system_update_role_enforcement(tmp_path: Path):
 @requires_node
 def test_pure_multi_tenant_without_root_tm_secret(tmp_path: Path):
     """不配置根 TOKEN_MONITOR_SECRET、仅配置 TENANTS_JSON 时，租户读写与健康探针正常。"""
-    node = NodeHub(tmp_path / "devices.json")
+    node = NodeHub(tmp_path / "devices.json", tenants={"alice": TENANTS["alice"]}, tm_secret="")
     try:
         settings = Settings(
             api_key=API_KEY,

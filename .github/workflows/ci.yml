@@ -155,3 +155,70 @@ jobs:
           echo "== backup content verification =="
           python3 -c "import sqlite3,sys; con=sqlite3.connect(sys.argv[1]); n=con.execute('SELECT COUNT(*) FROM tm_snapshot_buckets').fetchone()[0]; assert n>=1, n" "$latest/cloud-monitor.sqlite3"
           docker compose down
+
+  multi-tenant-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+      - name: 准备同地址多用户配置与本地 main 更新源
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          task_root="$RUNNER_TEMP/cm-multi-tenant-e2e"
+          install_dir="$task_root/install"
+          mkdir -p "$task_root"
+          git init --bare "$task_root/origin.git"
+          git push "$task_root/origin.git" HEAD:refs/heads/main
+          git --git-dir="$task_root/origin.git" symbolic-ref HEAD refs/heads/main
+          git clone "$task_root/origin.git" "$install_dir"
+          version=$(tr -d '[:space:]' < "$install_dir/VERSION")
+          sha=$(git -C "$install_dir" rev-parse --short HEAD)
+          cat > "$install_dir/hub/.env" <<EOF
+          API_KEY=ci-placeholder-key-0123456789abcdef
+          ACCESS_TOKEN=ci-placeholder-read-0123456789abcdef
+          TOKEN_MONITOR_SECRET=ci-placeholder-tm-0123456789abcdef
+          COMPOSE_PROJECT_NAME=cm-multi-tenant-e2e
+          CM_UPDATE_RUNTIME_HOST=$task_root/runtime
+          CM_VERSION=$version
+          CM_GIT_SHA=$sha
+          GITHUB_TOKEN=$GH_TOKEN
+          PROVIDER_STATUS_ENABLED=false
+          CM_DEMO=false
+          EOF
+          python3 "$install_dir/hub/scripts/tenant.py" --env-file "$install_dir/hub/.env" add alice >/dev/null
+          python3 "$install_dir/hub/scripts/tenant.py" --env-file "$install_dir/hub/.env" add bob >/dev/null
+          sudo chown -R root:root "$task_root"
+          sudo chmod 600 "$install_dir/hub/.env"
+          sudo install -d -o 999 -g 999 -m 0770 "$install_dir/hub/update-control"
+          sudo install -d -o root -g 999 -m 0750 "$task_root/runtime"
+          sudo install -o root -g 999 -m 0640 /dev/null "$task_root/runtime/update.lock"
+          sudo docker compose --project-directory "$install_dir/hub" up -d --build
+      - name: 同网址多用户隔离、网页更新、重启与完整备份恢复
+        run: |
+          sudo env GITHUB_ACTIONS=true CM_UPDATE_RUNTIME_HOST="$RUNNER_TEMP/cm-multi-tenant-e2e/runtime" \
+            python3 hub/tests/multi_tenant_e2e.py \
+            --install-dir "$RUNNER_TEMP/cm-multi-tenant-e2e/install" \
+            --task-root "$RUNNER_TEMP/cm-multi-tenant-e2e" \
+            --project cm-multi-tenant-e2e
+      - name: 容器日志与清理
+        if: always()
+        run: |
+          sudo bash -s -- "$RUNNER_TEMP/cm-multi-tenant-e2e/install/hub" <<'SH'
+          set -uo pipefail
+          hub="$1"
+          if [[ ! -f "$hub/.env" ]]; then exit 0; fi
+          source "$hub/scripts/lib.sh"
+          cm_compose "$hub" logs --no-color --tail 100
+          cm_compose "$hub" down -v --remove-orphans
+          SH
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: always()
+        with:
+          name: multi-tenant-evidence
+          path: ${{ runner.temp }}/cm-multi-tenant-e2e/multi-tenant-e2e.json

@@ -50,12 +50,6 @@ function parseTenantsEnv(raw) {
   return map;
 }
 
-function headerSecret(req) {
-  const auth = String(req.headers.authorization || '');
-  if (auth.toLowerCase().startsWith('bearer ')) return auth.slice(7).trim();
-  return String(req.headers['x-token-monitor-secret'] || '').trim();
-}
-
 const tenantSecrets = parseTenantsEnv(process.env.TENANTS_JSON);
 const hasExplicitTenantsEnv = tenantSecrets.size > 0;
 const effectiveDefaultSecret = secret || (hasExplicitTenantsEnv ? [...tenantSecrets.values()][0] : '');
@@ -109,14 +103,7 @@ hub.server.on('request', (req, res) => {
     return sendJson(res, 400, { error: 'bad_request', message: 'invalid tenant id' });
   }
 
-  let tenantSecret = tenantSecrets.get(tenantId);
-  if (!tenantSecret && !hasExplicitTenantsEnv && secret) {
-    const provided = headerSecret(req);
-    if (provided.length >= 32) {
-      tenantSecret = provided;
-      tenantSecrets.set(tenantId, provided);
-    }
-  }
+  const tenantSecret = tenantSecrets.get(tenantId);
   if (!tenantSecret) {
     return sendJson(res, 401, { error: 'unauthorized' });
   }
