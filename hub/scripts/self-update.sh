@@ -178,6 +178,10 @@ else
   git_in checkout -q --detach "refs/tags/$REF" || fail "无法检出标签 $REF"
 fi
 
+# Git 切换后重载目标版本的库，后续重建使用同版本的 compose / 实例函数。
+# shellcheck source=lib.sh
+source "$SCRIPT_DIR/lib.sh"
+
 VER="dev"
 if [[ -f "$INSTALL_DIR/VERSION" ]]; then
   VER="$(tr -d '[:space:]' <"$INSTALL_DIR/VERSION")"
@@ -193,14 +197,16 @@ write_status "$ID" running "$REF" "正在重建容器（$VER $SHA）"
   compose up -d --build
 ) || fail "容器重建失败（代码已更新，服务未重启）"
 
-# 托管实例共用本仓库代码，主实例重建成功后逐个跟进。单个实例失败不影响
-# 主实例的结果，失败名单写进最终状态，面板上能看到。
+# 托管实例共用本仓库代码，主实例重建成功后逐个跟进。停用实例保留原样；
+# 单个实例失败继续处理其余实例，最后报错，但不回滚已经更新的主实例。
 # compose 不得读到循环的 stdin，否则会吞掉后面的实例名。
 FAILED_INSTANCES=""
+cm_lock_instances "$HUB"
 while IFS= read -r name; do
+  cm_instance_enabled "$HUB" "$name" || continue
   write_status "$ID" running "$REF" "正在重建托管实例 $name（$VER $SHA）"
   if ! (
-    cm_write_build_identity "$HUB/instances/$name/.env" "$VER" "$SHA"
+    cm_write_build_identity "$HUB/instances/$name/.env" "$VER" "$SHA" || exit 1
     export CM_VERSION="$VER" CM_GIT_SHA="$SHA"
     cm_instance_compose "$HUB" "$name" up -d --build </dev/null
   ); then
@@ -210,8 +216,7 @@ while IFS= read -r name; do
 done < <(cm_list_instances "$HUB")
 
 if [[ -n "$FAILED_INSTANCES" ]]; then
-  write_status "$ID" ok "$REF" "已更新到 $REF（$VER $SHA）。托管实例重建失败：$FAILED_INSTANCES，请在宿主机查看 compose 日志。"
-else
-  write_status "$ID" ok "$REF" "已更新到 $REF（$VER $SHA）。请刷新面板。"
+  fail "主实例已更新到 $REF（$VER $SHA），但托管实例重建失败：$FAILED_INSTANCES，请在宿主机查看 compose 日志并重试。"
 fi
+write_status "$ID" ok "$REF" "已更新到 $REF（$VER $SHA）。请刷新面板。"
 FINAL_STATE=ok

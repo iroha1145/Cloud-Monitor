@@ -19,7 +19,7 @@ jobs:
       - name: 安装依赖（含 pip-audit）
         run: |
           python -m pip install --upgrade pip
-          pip install -r hub/requirements.txt pytest pip-audit
+          pip install -r hub/requirements-test.txt pip-audit
           pip install -r agent/requirements.txt
       - name: compileall
         run: python -m compileall -q hub/backend agent/sync_agent.py agent/token_monitor_bridge.py agent/healthcheck.py
@@ -155,3 +155,74 @@ jobs:
           echo "== backup content verification =="
           python3 -c "import sqlite3,sys; con=sqlite3.connect(sys.argv[1]); n=con.execute('SELECT COUNT(*) FROM tm_snapshot_buckets').fetchone()[0]; assert n>=1, n" "$latest/cloud-monitor.sqlite3"
           docker compose down
+
+  hosted-instances-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+      - name: 准备独立安装目录与本地 main 更新源
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          task_root="$RUNNER_TEMP/cm-hosted-e2e"
+          install_dir="$task_root/install"
+          mkdir -p "$task_root"
+          git init --bare "$task_root/origin.git"
+          git push "$task_root/origin.git" HEAD:refs/heads/main
+          git --git-dir="$task_root/origin.git" symbolic-ref HEAD refs/heads/main
+          git clone "$task_root/origin.git" "$install_dir"
+          version=$(tr -d '[:space:]' < "$install_dir/VERSION")
+          sha=$(git -C "$install_dir" rev-parse --short HEAD)
+          cat > "$install_dir/hub/.env" <<EOF
+          API_KEY=ci-placeholder-key-0123456789abcdef
+          ACCESS_TOKEN=ci-placeholder-read-0123456789abcdef
+          TOKEN_MONITOR_SECRET=ci-placeholder-tm-0123456789abcdef
+          COMPOSE_PROJECT_NAME=cm-hosted-e2e-main
+          CM_UPDATE_RUNTIME_HOST=$task_root/runtime
+          CM_VERSION=$version
+          CM_GIT_SHA=$sha
+          GITHUB_TOKEN=$GH_TOKEN
+          PROVIDER_STATUS_ENABLED=false
+          CM_DEMO=false
+          EOF
+          sudo chown -R root:root "$task_root"
+          sudo chmod 600 "$install_dir/hub/.env"
+          sudo install -d -o 999 -g 999 -m 0770 "$install_dir/hub/update-control"
+          sudo install -d -o root -g 999 -m 0750 "$task_root/runtime"
+          sudo install -o root -g 999 -m 0640 /dev/null "$task_root/runtime/update.lock"
+          sudo docker compose --project-directory "$install_dir/hub" up -d --build
+      - name: 网页请求 main 后同步真实朋友容器并保留数据
+        run: |
+          sudo env GITHUB_ACTIONS=true CM_UPDATE_RUNTIME_HOST="$RUNNER_TEMP/cm-hosted-e2e/runtime" \
+            python3 hub/tests/hosted_instances_e2e.py \
+            --install-dir "$RUNNER_TEMP/cm-hosted-e2e/install" \
+            --task-root "$RUNNER_TEMP/cm-hosted-e2e" \
+            --main-project cm-hosted-e2e-main
+      - name: 容器日志与清理
+        if: always()
+        run: |
+          sudo bash -s -- "$RUNNER_TEMP/cm-hosted-e2e/install/hub" <<'SH'
+          set -uo pipefail
+          hub="$1"
+          if [[ ! -f "$hub/.env" ]]; then exit 0; fi
+          source "$hub/scripts/lib.sh"
+          cm_compose "$hub" logs --no-color --tail 100
+          for name in alice bob; do
+            if cm_require_instance "$hub" "$name" >/dev/null 2>&1; then
+              cm_instance_compose "$hub" "$name" logs --no-color --tail 100
+              cm_instance_compose "$hub" "$name" down -v --remove-orphans
+            fi
+          done
+          cm_compose "$hub" down -v --remove-orphans
+          SH
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: always()
+        with:
+          name: hosted-instances-evidence
+          path: ${{ runner.temp }}/cm-hosted-e2e/hosted-instances-e2e.json

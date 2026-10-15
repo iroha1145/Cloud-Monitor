@@ -16,7 +16,7 @@ jobs:
           cache-dependency-path: hub/dashboard/package-lock.json
       - name: 安装后端和前端依赖
         run: |
-          pip install -r hub/requirements.txt pytest
+          pip install -r hub/requirements-test.txt
           cd hub/dashboard
           npm ci --no-audit --no-fund
           npx playwright install --with-deps chromium

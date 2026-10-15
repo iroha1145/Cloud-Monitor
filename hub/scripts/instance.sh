@@ -15,8 +15,8 @@ usage() {
 用法: hub/scripts/instance.sh <命令> [参数]
 
   add <名称> <宿主端口>   生成独立密钥与端口配置并启动（端口只绑 127.0.0.1）
-  up <名称>               按当前代码重建并启动
-  down <名称>             停止（保留数据）
+  up <名称>               按当前代码重建并启动，恢复随主实例更新
+  down <名称>             停止并暂停随主实例更新（保留数据）
   remove <名称>           停止并删除该实例的数据卷与配置（不可恢复）
   ps <名称>               查看容器状态
   logs <名称>             查看最近日志
@@ -152,12 +152,14 @@ cmd_up() {
   cm_require_instance "$HUB" "$name"
   stamp_build_identity "$HUB/instances/$name/.env"
   cm_instance_compose "$HUB" "$name" up -d --build
+  rm -f -- "$HUB/instances/$name/.disabled"
 }
 
 cmd_down() {
   local name="${1:-}"
   [[ -n "$name" ]] || usage
   cm_require_instance "$HUB" "$name"
+  : >"$HUB/instances/$name/.disabled"
   cm_instance_compose "$HUB" "$name" down
 }
 
@@ -191,10 +193,14 @@ cmd_logs() {
 }
 
 cmd_list() {
-  local name found=0
+  local name state found=0
   while IFS= read -r name; do
     found=1
-    printf '%-24s 127.0.0.1:%s\n' "$name" "$(instance_port "$name")"
+    state="已停用"
+    if cm_instance_enabled "$HUB" "$name"; then
+      state="已启用"
+    fi
+    printf '%-24s 127.0.0.1:%s %s\n' "$name" "$(instance_port "$name")" "$state"
   done < <(cm_list_instances "$HUB")
   (( found )) || echo "（没有托管实例）"
 }
@@ -202,6 +208,9 @@ cmd_list() {
 command="${1:-}"
 [[ -n "$command" ]] || usage
 shift
+case "$command" in
+  add|up|down|remove) cm_lock_instances "$HUB" ;;
+esac
 case "$command" in
   add) cmd_add "$@" ;;
   up) cmd_up "$@" ;;

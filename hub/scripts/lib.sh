@@ -36,10 +36,10 @@ PY
 cm_write_build_identity() {
   local envf="$1" ver="$2" sha="$3"
   [[ -f "$envf" ]] || return 0
-  grep -v -E '^(CM_VERSION|CM_GIT_SHA)=' "$envf" >"$envf.tmp" || true
-  printf 'CM_VERSION=%s\nCM_GIT_SHA=%s\n' "$ver" "$sha" >>"$envf.tmp"
+  awk '!/^(CM_VERSION|CM_GIT_SHA)=/' "$envf" >"$envf.tmp" || return 1
+  printf 'CM_VERSION=%s\nCM_GIT_SHA=%s\n' "$ver" "$sha" >>"$envf.tmp" || return 1
+  chmod 600 "$envf.tmp" || return 1
   mv "$envf.tmp" "$envf"
-  chmod 600 "$envf"
 }
 
 # 托管实例：hub/instances/<名称>/ 下放 .env 与 compose.override.yml，
@@ -71,6 +71,23 @@ cm_list_instances() {
     cm_require_instance "$hub_dir" "$name" 2>/dev/null || continue
     printf '%s\n' "$name"
   done
+}
+
+cm_instance_enabled() {
+  local marker="$1/instances/$2/.disabled"
+  [[ ! -e "$marker" && ! -L "$marker" ]]
+}
+
+cm_lock_instances() {
+  local dir="$1/instances"
+  if [[ -L "$dir" || -L "$dir/.lock" ]]; then
+    echo "拒绝符号链接托管实例锁目录或文件" >&2
+    return 1
+  fi
+  mkdir -p "$dir" || return 1
+  # 共享 inode；更新脚本的 FD 9 留给整站更新锁。
+  exec 8>>"$dir/.lock" || return 1
+  flock 8
 }
 
 cm_instance_compose() {

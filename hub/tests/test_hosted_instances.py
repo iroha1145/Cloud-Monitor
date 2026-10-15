@@ -10,6 +10,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import textwrap
+import time
 
 import pytest
 import yaml
@@ -37,6 +39,16 @@ if args[:2] == ['volume', 'inspect']:
 fail = os.environ.get('CM_TEST_FAIL_PROJECT')
 if fail and fail in args:
     sys.exit(1)
+gate = os.environ.get('CM_TEST_DOCKER_GATE_PROJECT')
+if gate and gate in args and args[-3:] == ['up', '-d', '--build']:
+    from pathlib import Path
+    import time
+    Path(os.environ['CM_TEST_REACHED']).touch()
+    deadline = time.monotonic() + 10
+    while not Path(os.environ['CM_TEST_RESUME']).exists():
+        if time.monotonic() > deadline:
+            raise SystemExit('docker gate timed out')
+        time.sleep(.005)
 """
 
 
@@ -53,7 +65,10 @@ def _compose_calls(events, project):
 def _write_instance(hub, name, port=7879):
     d = hub / "instances" / name
     d.mkdir(parents=True)
-    (d / ".env").write_text("API_KEY=x\nACCESS_TOKEN=y\nTOKEN_MONITOR_SECRET=z\n")
+    (d / ".env").write_text(
+        f"API_KEY={name}-api\nACCESS_TOKEN={name}-access\nTOKEN_MONITOR_SECRET={name}-tm\n"
+        "CM_VERSION=old\nCM_GIT_SHA=old-sha\n"
+    )
     (d / "compose.override.yml").write_text(
         f'services:\n  cloud-hub:\n    ports: !override\n      - "127.0.0.1:{port}:7878"\n'
     )
@@ -80,7 +95,9 @@ def _run_self_update(tmp_path, extra_env=None):
 def test_self_update_rebuilds_each_valid_instance_after_main(tmp_path):
     service, hub, events, env, checkout = _run_self_update(tmp_path)
     alice = _write_instance(hub, "alice")
-    _write_instance(hub, "bob", 7880)
+    bob = _write_instance(hub, "bob", 7880)
+    (checkout / "VERSION").write_text("0.9.0\n")
+    (hub / ".env").write_text("API_KEY=main-api\nACCESS_TOKEN=main-access\nTOKEN_MONITOR_SECRET=main-tm\n")
     _write_instance(hub, "Bad")  # 非法名称：跳过
     (hub / "instances" / "half").mkdir()  # 缺 override：跳过
     (hub / "instances" / "half" / ".env").write_text("API_KEY=x\n")
@@ -101,27 +118,143 @@ def test_self_update_rebuilds_each_valid_instance_after_main(tmp_path):
     assert files == [str(hub / "docker-compose.yml"), str(alice / "compose.override.yml")]
     assert not any("cm-Bad" in e or "cm-half" in e for e in log)
 
-    env_text = (alice / ".env").read_text()
-    assert "CM_VERSION=dev\nCM_GIT_SHA=abc1234\n" in env_text
-    assert "API_KEY=x" in env_text
+    for directory, name in ((hub, "main"), (alice, "alice"), (bob, "bob")):
+        values = dict(line.split("=", 1) for line in (directory / ".env").read_text().splitlines())
+        assert values == {
+            "API_KEY": f"{name}-api", "ACCESS_TOKEN": f"{name}-access",
+            "TOKEN_MONITOR_SECRET": f"{name}-tm", "CM_VERSION": "0.9.0", "CM_GIT_SHA": "abc1234",
+        }
     job = service.read_job()
     assert job["state"] == "ok"
     assert "托管实例重建失败" not in job["message"]
 
 
-def test_one_failed_instance_does_not_fail_main_or_skip_the_rest(tmp_path):
+def test_one_failed_instance_reports_error_without_rolling_back_main_or_skipping_rest(tmp_path):
     service, hub, events, env, checkout = _run_self_update(tmp_path, {"CM_TEST_FAIL_PROJECT": "cm-alice"})
     _write_instance(hub, "alice")
     _write_instance(hub, "bob", 7880)
     service.apply("main")
 
     result = subprocess.run(["bash", str(SCRIPTS / "self-update.sh"), str(checkout)], env=env, capture_output=True, text=True)
-    assert result.returncode == 0, result.stderr
-    assert any(e[-3:] == ["up", "-d", "--build"] for e in _compose_calls(_events(events), "cm-bob"))
+    assert result.returncode == 1, result.stderr
+    commands = _events(events)
+    assert any(e[-3:] == ["up", "-d", "--build"] for e in _compose_calls(commands, "cm-bob"))
+    assert not any("down" in e for e in commands)
     job = service.read_job()
-    assert job["state"] == "ok"
+    assert job["state"] == "error"
+    assert "主实例已更新到 main（dev abc1234）" in job["message"]
     assert "托管实例重建失败：alice" in job["message"]
     assert "bob" not in job["message"]
+    assert not (hub / "update-control" / "request.json").exists()
+
+
+def test_disabled_instance_stays_stopped_across_update_until_up(tmp_path):
+    service, hub, events, env, checkout = _run_self_update(tmp_path)
+    alice = _write_instance(hub, "alice")
+    _write_instance(hub, "bob", 7880)
+    (hub / "scripts").mkdir()
+    for name in ("instance.sh", "lib.sh"):
+        shutil.copy2(SCRIPTS / name, hub / "scripts" / name)
+    before = (alice / ".env").read_text()
+    stopped = _instance(hub, env, "down", "alice")
+    assert stopped.returncode == 0, stopped.stderr
+    assert "已停用" in _instance(hub, env, "list").stdout
+
+    service.apply("main")
+    result = subprocess.run(["bash", str(SCRIPTS / "self-update.sh"), str(checkout)], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert not any("up" in e for e in _compose_calls(_events(events), "cm-alice"))
+    assert any("up" in e for e in _compose_calls(_events(events), "cm-bob"))
+    assert (alice / ".env").read_text() == before
+    assert (alice / ".disabled").exists()
+
+    started = _instance(hub, env, "up", "alice")
+    assert started.returncode == 0, started.stderr
+    assert not (alice / ".disabled").exists()
+    previous_events = len(_events(events))
+    service.apply("main")
+    result = subprocess.run(["bash", str(SCRIPTS / "self-update.sh"), str(checkout)], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert any("up" in e for e in _compose_calls(_events(events)[previous_events:], "cm-alice"))
+    assert service.read_job()["state"] == "ok"
+
+
+def test_instance_identity_write_failure_preserves_secrets_and_continues(tmp_path):
+    service, hub, events, env, checkout = _run_self_update(tmp_path)
+    alice = _write_instance(hub, "alice")
+    _write_instance(hub, "bob", 7880)
+    before = (alice / ".env").read_text()
+    (alice / ".env.tmp").mkdir()
+    service.apply("main")
+
+    result = subprocess.run(["bash", str(SCRIPTS / "self-update.sh"), str(checkout)], env=env, capture_output=True, text=True)
+    assert result.returncode == 1, result.stderr
+    assert (alice / ".env").read_text() == before
+    assert not _compose_calls(_events(events), "cm-alice")
+    assert any("up" in e for e in _compose_calls(_events(events), "cm-bob"))
+    job = service.read_job()
+    assert job["state"] == "error"
+    assert "托管实例重建失败：alice" in job["message"]
+
+
+def test_down_waits_for_running_update_then_stays_disabled(tmp_path):
+    real_flock = shutil.which("flock")
+    assert real_flock is not None
+    service, hub, events, env, checkout = _run_self_update(tmp_path, {"CM_TEST_DOCKER_GATE_PROJECT": "cm-alice"})
+    alice = _write_instance(hub, "alice")
+    _write_instance(hub, "bob", 7880)
+    (hub / "scripts").mkdir()
+    for name in ("instance.sh", "lib.sh"):
+        shutil.copy2(SCRIPTS / name, hub / "scripts" / name)
+    # Signal that down reached the real blocking syscall; do not replace its
+    # locking semantics with the coordination fixture's nonblocking stub.
+    _executable(tmp_path / "bin" / "flock", f"""#!{sys.executable}
+import os, sys
+from pathlib import Path
+waiting = os.environ.get('CM_TEST_LOCK_WAITING')
+if waiting and sys.argv[1:] == ['8']:
+    Path(waiting).touch()
+os.execv({real_flock!r}, [{real_flock!r}, *sys.argv[1:]])
+""")
+    reached, resume = Path(env["CM_TEST_REACHED"]), Path(env["CM_TEST_RESUME"])
+    waiting = tmp_path / "down-waiting"
+    service.apply("main")
+    update = subprocess.Popen(["bash", str(SCRIPTS / "self-update.sh"), str(checkout)], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    down = None
+    try:
+        deadline = time.monotonic() + 10
+        while not reached.exists() and update.poll() is None and time.monotonic() < deadline:
+            time.sleep(.005)
+        assert reached.exists(), update.communicate(timeout=2)
+        down = subprocess.Popen(
+            ["bash", str(hub / "scripts" / "instance.sh"), "down", "alice"],
+            env={**env, "CM_TEST_LOCK_WAITING": str(waiting)}, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        deadline = time.monotonic() + 10
+        while not waiting.exists() and down.poll() is None and time.monotonic() < deadline:
+            time.sleep(.005)
+        assert waiting.exists(), down.communicate(timeout=2)
+        with pytest.raises(subprocess.TimeoutExpired):
+            down.communicate(timeout=.2)
+        assert not (alice / ".disabled").exists()
+        resume.touch()
+        output = update.communicate(timeout=10)
+        assert update.returncode == 0, output
+        output = down.communicate(timeout=10)
+        assert down.returncode == 0, output
+        assert (alice / ".disabled").exists()
+
+        previous_events = len(_events(events))
+        service.apply("main")
+        result = subprocess.run(["bash", str(SCRIPTS / "self-update.sh"), str(checkout)], env=env, capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        assert not any("up" in e for e in _compose_calls(_events(events)[previous_events:], "cm-alice"))
+    finally:
+        resume.touch()
+        for process in (update, down):
+            if process is not None and process.poll() is None:
+                process.kill()
+                process.communicate(timeout=5)
 
 
 def test_self_update_without_instances_keeps_original_message(tmp_path):
@@ -131,6 +264,102 @@ def test_self_update_without_instances_keeps_original_message(tmp_path):
     assert result.returncode == 0, result.stderr
     assert service.read_job()["message"] == "已更新到 main（dev abc1234）。请刷新面板。"
     assert not any("-p" in e for e in _events(events))
+
+
+def test_real_git_upgrade_from_legacy_then_updates_friends_on_next_request(tmp_path):
+    real_git = shutil.which("git")
+    assert real_git is not None
+    service, hub, events, env, checkout = _run_self_update(tmp_path)
+    (tmp_path / "bin" / "git").unlink()
+
+    def git(*args, cwd=checkout):
+        return subprocess.run(
+            [real_git, "-c", "user.name=Cloud Monitor Test", "-c", "user.email=test@example.invalid",
+             "-c", "commit.gpgsign=false", *args],
+            cwd=cwd, check=True, capture_output=True, text=True,
+        ).stdout.strip()
+
+    origin = tmp_path / "origin.git"
+    git("init", "--bare", str(origin), cwd=tmp_path)
+    git("init", "-b", "main")
+    git("config", "core.autocrlf", "false")
+    git("remote", "add", "origin", str(origin))
+    scripts = hub / "scripts"
+    scripts.mkdir()
+    updater = (SCRIPTS / "self-update.sh").read_text()
+    library = (SCRIPTS / "lib.sh").read_text()
+    switch_end = '\n  git_in checkout -q --detach "refs/tags/$REF" || fail "无法检出标签 $REF"\nfi\n'
+    prefix, boundary, _tail = updater.partition(switch_end)
+    assert boundary
+    # The deployed single-instance updater continues its old tail after Git
+    # replaces the script's inode. It cannot adopt new functions mid-request.
+    legacy_tail = textwrap.dedent(r'''
+        VER="dev"
+        if [[ -f "$INSTALL_DIR/VERSION" ]]; then
+          VER="$(tr -d '[:space:]' <"$INSTALL_DIR/VERSION")"
+        fi
+        SHA="$(git_in rev-parse --short HEAD)"
+        if [[ -f "$ENVF" ]]; then
+          grep -v -E '^(CM_VERSION|CM_GIT_SHA)=' "$ENVF" >"$ENVF.tmp" || true
+          printf 'CM_VERSION=%s\nCM_GIT_SHA=%s\n' "$VER" "$SHA" >>"$ENVF.tmp"
+          mv "$ENVF.tmp" "$ENVF"
+          chmod 600 "$ENVF"
+        fi
+        write_status "$ID" running "$REF" "正在重建容器（$VER $SHA）"
+        (
+          cd "$HUB"
+          export CM_VERSION="$VER" CM_GIT_SHA="$SHA"
+          compose up -d --build
+        ) || fail "容器重建失败（代码已更新，服务未重启）"
+        write_status "$ID" ok "$REF" "已更新到 $REF（$VER $SHA）。请刷新面板。"
+        FINAL_STATE=ok
+    ''')
+    (scripts / "self-update.sh").write_text(prefix + boundary + legacy_tail)
+    legacy_library = library.partition("\n# 把面板显示的版本写进 env 文件")[0] + "\n"
+    assert "cm_write_build_identity" not in legacy_library
+    (scripts / "lib.sh").write_text(legacy_library)
+    (checkout / "VERSION").write_text("0.8.0\n")
+    git("add", "hub/scripts", "VERSION")
+    git("commit", "-m", "Legacy single-instance updater")
+    legacy_sha = git("rev-parse", "HEAD")
+    git("push", "-u", "origin", "main")
+
+    (scripts / "self-update.sh").write_text(updater)
+    (scripts / "lib.sh").write_text(library)
+    (checkout / "VERSION").write_text("0.9.0\n")
+    git("add", "hub/scripts", "VERSION")
+    git("commit", "-m", "Hosted instance updater")
+    target_sha = git("rev-parse", "HEAD")
+    target_short = git("rev-parse", "--short", "HEAD")
+    git("push", "origin", "main")
+    git("reset", "--hard", legacy_sha)
+    (hub / ".env").write_text("API_KEY=main-api\nACCESS_TOKEN=main-access\nTOKEN_MONITOR_SECRET=main-tm\n")
+
+    service.apply("main")
+    first = subprocess.run(["bash", str(scripts / "self-update.sh"), str(checkout)], env=env, capture_output=True, text=True)
+    assert first.returncode == 0, (first.stdout, first.stderr)
+    assert git("rev-parse", "HEAD") == target_sha
+    assert (scripts / "lib.sh").read_text() == library
+    assert service.read_job()["state"] == "ok"
+    assert any(e[-3:] == ["up", "-d", "--build"] for e in _events(events))
+    assert f"CM_VERSION=0.9.0\nCM_GIT_SHA={target_short}\n" in (hub / ".env").read_text()
+
+    alice = _write_instance(hub, "alice")
+    bob = _write_instance(hub, "bob", 7880)
+    previous_events = len(_events(events))
+    service.apply("main")
+    second = subprocess.run(["bash", str(scripts / "self-update.sh"), str(checkout)], env=env, capture_output=True, text=True)
+    assert second.returncode == 0, (second.stdout, second.stderr)
+    ups = [e for e in _events(events)[previous_events:] if e[-3:] == ["up", "-d", "--build"]]
+    assert "-p" not in ups[0]
+    assert [e[e.index("-p") + 1] for e in ups[1:]] == ["cm-alice", "cm-bob"]
+    for directory, name in ((hub, "main"), (alice, "alice"), (bob, "bob")):
+        values = dict(line.split("=", 1) for line in (directory / ".env").read_text().splitlines())
+        assert values == {
+            "API_KEY": f"{name}-api", "ACCESS_TOKEN": f"{name}-access",
+            "TOKEN_MONITOR_SECRET": f"{name}-tm", "CM_VERSION": "0.9.0", "CM_GIT_SHA": target_short,
+        }
+    assert service.read_job()["state"] == "ok"
 
 
 # ------------------------------------------------------------- instance.sh
@@ -190,7 +419,18 @@ def test_add_creates_isolated_config_and_starts(hub_copy):
     assert ups[0][ups[0].index("--env-file") + 1] == str(d / ".env")
 
     listed = _instance(hub, env, "list")
-    assert listed.stdout.split() == ["alice", "127.0.0.1:7879"]
+    assert listed.stdout.split() == ["alice", "127.0.0.1:7879", "已启用"]
+
+
+@pytest.mark.parametrize("command", ["up", "down"])
+def test_failed_instance_command_keeps_disable_intent(hub_copy, command):
+    hub, _events_path, env = hub_copy
+    alice = _write_instance(hub, "alice")
+    if command == "up":
+        (alice / ".disabled").touch()
+    result = _instance(hub, {**env, "CM_TEST_FAIL_PROJECT": "cm-alice"}, command, "alice")
+    assert result.returncode == 1
+    assert (alice / ".disabled").exists()
 
 
 @pytest.mark.parametrize(
