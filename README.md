@@ -196,6 +196,27 @@ agent 变量见 `agent/.env.example`。
 
 用 `install.sh` 安装或再跑一遍即可创建该目录并启动监视器（有 systemd 就用服务，否则 nohup）。只 `docker compose up`、没跑过安装脚本的话，检索仍然可用，点更新会返回 503。演示页（含 GitHub Pages）为静态演示模式，不会修改服务器。
 
+## 托管朋友的实例
+
+给少数朋友各开一个独立面板时，不必多份 clone 或做多租户：同一份代码可以再跑几套 compose 项目，密钥、端口和数据卷各自独立。主实例的网页面板更新 `main` 后，会依次更新活跃的托管实例。
+
+```bash
+sudo hub/scripts/instance.sh add alice 7879   # 生成三把新密钥并启动，结束时打印给对方的密钥
+sudo hub/scripts/instance.sh list             # 名称、端口与启用状态
+sudo hub/scripts/instance.sh down alice       # 持久暂停，保留数据，在线更新时跳过
+sudo hub/scripts/instance.sh up alice         # 按当前代码重建并恢复运行
+sudo hub/scripts/instance.sh remove alice     # 删除数据卷与配置（需输入名称确认）
+```
+
+- 配置写在 `hub/instances/<名称>/`（`.env` + `compose.override.yml`，已加入 `.gitignore` / `.dockerignore`），compose 项目名为 `cm-<名称>`，数据卷互不相通。显式指定 env 文件，主实例的 `hub/.env` 不会被读入。
+- 端口只绑 `127.0.0.1`；反代给每人一个子域名（看板挂在根路径，不适合路径前缀），SSE 路径同样关闭缓冲。
+- 主实例的网页面板更新 `main` 后，`self-update.sh` 先重建主实例，再逐个重建活跃的托管实例；某个实例失败会继续处理其他实例，失败名单会在主面板的更新状态中标明。`down` 暂停的实例不会被更新重新启动，执行 `up` 后恢复跟随更新。
+- 托管实例不挂载更新目录，朋友的面板只能检索版本，不能触发或取消服务器更新。
+- 创建实例前，先让主实例更新到包含本功能的 `main`；使用 `install.sh` 安装的主实例已带宿主机更新监视器。只手动运行 Compose 的部署需要先运行安装脚本配置监视器。
+- 需要 Docker Compose v2.24.4 及以上（override 用 `!override` 替换端口与挂载，旧版会追加而与主实例冲突）。
+- 备份 / 恢复加 `--instance <名称>`：`hub/scripts/backup.sh --instance alice <目录>`。恢复时只会写入 `cm-alice_*` 卷，找不到不会回退到主实例的卷。
+- 你是服务器管理员，能看到朋友的全部数据，请事先说明。
+
 ## 界面开发
 
 新版面板源代码位于 `hub/dashboard/`，包含手机底部导航、模型纵向指标、缓存明细浮窗、设备与订阅卡片，以及日／周／月活动和每日归档。Docker 构建会自动编译前端；直接运行 Python 后端时，先执行 `cd hub/dashboard && npm ci && npm run build`；未构建时首页返回 404「未找到前端页面」并提示构建命令，构建后重启服务即可。
@@ -205,6 +226,8 @@ agent 变量见 `agent/.env.example`。
 ## 测试
 
 Python ≥ 3.9 即可（macOS 自带的 3.9 也行；镜像和 CI 用 3.12）。两套测试目录的 conftest 模块名相同，要分开跑，不要合成一条 pytest：
+
+先安装后端测试依赖：`python -m pip install -r hub/requirements-test.txt -r agent/requirements.txt`。
 
 ```bash
 cd hub   && PYTHONPATH=backend python -m pytest tests/ -q

@@ -18,7 +18,7 @@ if [ ! -x .venv/bin/python ]; then
   python3 -m venv .venv
 fi
 .venv/bin/pip install --upgrade pip -q
-.venv/bin/pip install -q -r hub/requirements.txt -r agent/requirements.txt pytest
+.venv/bin/pip install -q -r hub/requirements-test.txt -r agent/requirements.txt
 
 # 3) 生成 hub/.env（仅在缺失时）：三把互不相同的强随机密钥；默认演示模式
 if [ ! -f hub/.env ]; then

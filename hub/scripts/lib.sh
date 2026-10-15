@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 运维脚本共享库：compose 探测与更新锁初始化。
-# 由 install.sh 与 hub/scripts/self-update.sh source，不单独执行。
+# 运维脚本共享库：compose 探测、更新锁初始化与托管实例。
+# 由 install.sh 与 hub/scripts/ 下的运维脚本 source，不单独执行。
 
 cm_compose() {
   # 第一个参数固定为 compose 项目目录：目录是显式契约，不依赖调用方记得先 cd。
@@ -30,4 +30,72 @@ try:
 finally:
     os.close(fd)
 PY
+}
+
+# 把面板显示的版本写进 env 文件（文件不存在时跳过）。
+cm_write_build_identity() {
+  local envf="$1" ver="$2" sha="$3"
+  [[ -f "$envf" ]] || return 0
+  awk '!/^(CM_VERSION|CM_GIT_SHA)=/' "$envf" >"$envf.tmp" || return 1
+  printf 'CM_VERSION=%s\nCM_GIT_SHA=%s\n' "$ver" "$sha" >>"$envf.tmp" || return 1
+  chmod 600 "$envf.tmp" || return 1
+  mv "$envf.tmp" "$envf"
+}
+
+# 托管实例：hub/instances/<名称>/ 下放 .env 与 compose.override.yml，
+# 与主实例共用同一份代码和镜像构建上下文，项目名、密钥、端口与数据卷各自独立。
+# 名称同时用作 compose 项目名后缀，只能是小写字母、数字、- 和 _。
+cm_valid_instance_name() {
+  [[ "$1" =~ ^[a-z0-9][a-z0-9_-]{0,31}$ ]]
+}
+
+cm_require_instance() {
+  local hub_dir="$1" name="$2"
+  if ! cm_valid_instance_name "$name"; then
+    echo "非法实例名: $name（小写字母、数字、- 和 _，最多 32 个字符）" >&2
+    return 1
+  fi
+  local dir="$hub_dir/instances/$name"
+  if [[ -L "$dir" || ! -f "$dir/.env" || ! -f "$dir/compose.override.yml" ]]; then
+    echo "找不到托管实例: $name（需要 $dir/.env 与 compose.override.yml）" >&2
+    return 1
+  fi
+}
+
+cm_list_instances() {
+  local hub_dir="$1" dir name
+  for dir in "$hub_dir"/instances/*/; do
+    dir="${dir%/}"
+    [[ -d "$dir" && ! -L "$dir" ]] || continue
+    name="$(basename "$dir")"
+    cm_require_instance "$hub_dir" "$name" 2>/dev/null || continue
+    printf '%s\n' "$name"
+  done
+}
+
+cm_instance_enabled() {
+  local marker="$1/instances/$2/.disabled"
+  [[ ! -e "$marker" && ! -L "$marker" ]]
+}
+
+cm_lock_instances() {
+  local dir="$1/instances"
+  if [[ -L "$dir" || -L "$dir/.lock" ]]; then
+    echo "拒绝符号链接托管实例锁目录或文件" >&2
+    return 1
+  fi
+  mkdir -p "$dir" || return 1
+  # 共享 inode；更新脚本的 FD 9 留给整站更新锁。
+  exec 8>>"$dir/.lock" || return 1
+  flock 8
+}
+
+cm_instance_compose() {
+  # 显式 --env-file 时 compose 不再读取 hub/.env，主实例的密钥不会混入。
+  local hub_dir="$1" name="$2"
+  shift 2
+  local dir="$hub_dir/instances/$name"
+  cm_compose "$hub_dir" -p "cm-$name" \
+    -f "$hub_dir/docker-compose.yml" -f "$dir/compose.override.yml" \
+    --env-file "$dir/.env" "$@"
 }
