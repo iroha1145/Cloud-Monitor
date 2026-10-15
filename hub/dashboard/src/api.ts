@@ -1,4 +1,5 @@
 import { API_ENDPOINTS, normalizeOverview, type DashboardData, type TrendPoint } from "./data";
+import { browserTimeZone } from "./lib/datetime";
 
 type AuxOutcome = "fulfilled" | "rejected" | "skipped";
 
@@ -99,7 +100,7 @@ export async function requestJSON(path: string, token: string, signal?: AbortSig
   }, 15000);
   try {
     const response = await fetch(path, {
-      headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: controller.signal,
+      headers: { Authorization: `Bearer ${token}`, "X-CM-Time-Zone": browserTimeZone() }, cache: "no-store", signal: controller.signal,
     });
     if (!response.ok) throw new ApiError(response.status,
       response.status === 401 || response.status === 403 ? "访问密钥不正确，或没有读取权限。" :

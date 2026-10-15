@@ -3,7 +3,7 @@
  * All demo records are synthetic. The live adapter consumes the existing v2
  * /api/v1/tm/overview contract without changing aggregation or fetching secrets.
  */
-import { DAY_MS, dayKeyZoned, isValidTimeZone } from "./lib/datetime";
+import { DAY_MS, browserTimeZone, dayKeyZoned, isValidTimeZone } from "./lib/datetime";
 import { clientName, providerFor, providerName } from "./vendors";
 
 export type PeriodKey = "today" | "month" | "allTime";
@@ -1480,8 +1480,6 @@ export function normalizeOverview(
 }
 
 const DAY = DAY_MS;
-const DEMO_TIME_ZONE = "Asia/Tokyo";
-const dayKey = (date: Date): string => dayKeyZoned(date, DEMO_TIME_ZONE) ?? "";
 const cents = (value: number): number => Math.round(value * 100) / 100;
 const DEMO_MODELS = [
   {
@@ -1691,14 +1689,16 @@ function sumDemoPeriods(items: PeriodUsage[]): PeriodUsage {
   return sum;
 }
 
-/** Deterministic, anonymous sample; dates follow the dashboard's Tokyo day.
+/** Deterministic, anonymous sample; dates follow the browser's local day.
  *  This is the single demo source for the web panel.
  *  `refreshes` adds a little usage to today, so each demo refresh shows new numbers. */
-export function createDemoData(now = new Date(), refreshes = 0): DashboardData {
-  const today = dayKey(now);
+export function createDemoData(now = new Date(), refreshes = 0, timeZone = browserTimeZone()): DashboardData {
+  const zone = safeTimeZone(timeZone);
+  const today = dayKeyZoned(now, zone) ?? "";
+  const calendarDay = new Date(`${today}T12:00:00Z`);
   const history = Array.from({ length: 90 }, (_, index) => {
     const offset = 89 - index;
-    const day = dayKey(new Date(now.getTime() - offset * DAY));
+    const day = new Date(calendarDay.getTime() - offset * DAY).toISOString().slice(0, 10);
     const weekend = [0, 6].includes(new Date(day + "T12:00:00Z").getUTCDay());
     const weight =
       0.52 +
@@ -1760,7 +1760,7 @@ export function createDemoData(now = new Date(), refreshes = 0): DashboardData {
     osVersion: ["15.5", "24H2", "24.04 LTS"][index],
     runtime: index === 2 ? "service" : "desktop",
     syncIntervalMs: index === 2 ? 600_000 : 300_000,
-    timeZone: DEMO_TIME_ZONE,
+    timeZone: zone,
     projectsEnabled: index !== 2,
     historyAvailable: true,
     clientHealth: device.clients.map((name) => ({
@@ -1853,21 +1853,21 @@ export function createDemoData(now = new Date(), refreshes = 0): DashboardData {
       lastUsedAt: relative(-(index * 39 + 3) * 60_000),
     };
   });
-  const tokyoHour = Number(
+  const localHour = Number(
     new Intl.DateTimeFormat("en-GB", {
-      timeZone: DEMO_TIME_ZONE,
+      timeZone: zone,
       hour: "2-digit",
       hourCycle: "h23",
     }).format(now),
   );
   const hourlyWeights = Array.from({ length: 24 }, (_, hour) =>
-    hour <= tokyoHour ? 1 + Math.pow(Math.sin((hour + 1) * 0.47), 2) * 3 : 0,
+    hour <= localHour ? 1 + Math.pow(Math.sin((hour + 1) * 0.47), 2) * 3 : 0,
   );
   const weightTotal = hourlyWeights.reduce((sum, weight) => sum + weight, 0);
   let hourlyRemaining = todayPeriod.totalTokens;
   const hourly = hourlyWeights.map((weight, hour) => {
     const totalTokens =
-      hour === tokyoHour
+      hour === localHour
         ? hourlyRemaining
         : Math.round((todayPeriod.totalTokens * weight) / weightTotal);
     hourlyRemaining -= totalTokens;
@@ -1876,7 +1876,7 @@ export function createDemoData(now = new Date(), refreshes = 0): DashboardData {
   return {
     mode: "demo",
     generatedAt: now.toISOString(),
-    timeZone: DEMO_TIME_ZONE,
+    timeZone: zone,
     features: {
       trend_models: true,
       activity_hourly: true,
@@ -1885,7 +1885,7 @@ export function createDemoData(now = new Date(), refreshes = 0): DashboardData {
       history_daily: true,
     },
     activityMetadata: {
-      timeZone: DEMO_TIME_ZONE,
+      timeZone: zone,
       today,
       month: today.slice(0, 7),
       hourlyDay: today,

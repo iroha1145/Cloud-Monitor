@@ -46,6 +46,7 @@ import json
 import logging
 import math
 import time as _time
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from itertools import groupby
@@ -394,9 +395,16 @@ def activity_report(
 
     local_now, tz = _now_for_dashboard(dashboard_tz, now)
     today_key = local_now.date().isoformat()
-    start_day = (local_now.date() - timedelta(days=FINE_ACTIVITY_DAYS)).isoformat()
+    start_date = local_now.date() - timedelta(days=FINE_ACTIVITY_DAYS)
+    start_day = start_date.isoformat()
     end_day = (local_now.date() + timedelta(days=1)).isoformat()
-    rows = _load_fine_buckets(db, start_day, end_day)
+    # Device-local dates can differ by two days across UTC-12 and UTC+14.
+    # Keep complete device days for the SQL delta, then trim in the viewer's zone.
+    rows = _load_fine_buckets(
+        db,
+        (start_date - timedelta(days=2)).isoformat(),
+        (local_now.date() + timedelta(days=3)).isoformat(),
+    )
 
     by_device: dict[str, list[dict]] = {}
     for device_id, group in groupby(rows, key=lambda row: row["device_id"]):
@@ -453,6 +461,8 @@ def activity_report(
                 continue
             local = moment.astimezone(tz)
             dash_day = local.date().isoformat()
+            if not start_day <= dash_day <= end_day:
+                continue
             # 5 分钟差分按仪表盘日入 daily（含跨日溢出的次日）；
             # 只有转换后日期 == 仪表盘今日 才进 24 小时图。
             fine_daily[dash_day] = fine_daily.get(dash_day, 0) + entry["delta"]
@@ -877,6 +887,7 @@ class OverviewCache:
         "_generation",
         "_lock",
         "_inflight",
+        "_time_zones",
     )
 
     def __init__(self, ttl_seconds: float = 30.0):
@@ -887,6 +898,19 @@ class OverviewCache:
         self._generation = 0
         self._inflight: asyncio.Future | None = None
         self._lock = Lock()
+        self._time_zones: OrderedDict[str, OverviewCache] = OrderedDict()
+
+    def for_time_zone(self, time_zone: str) -> OverviewCache:
+        with self._lock:
+            cache = self._time_zones.get(time_zone)
+            if cache is None:
+                cache = OverviewCache(self._ttl)
+                self._time_zones[time_zone] = cache
+                if len(self._time_zones) > 8:
+                    self._time_zones.popitem(last=False)
+            else:
+                self._time_zones.move_to_end(time_zone)
+            return cache
 
     @property
     def generation(self) -> int:
@@ -921,6 +945,8 @@ class OverviewCache:
         with self._lock:
             self._generation += 1
             self._expires_at = 0.0
+            for cache in self._time_zones.values():
+                cache.invalidate()
 
     def claim_refresh(self) -> tuple[bool, asyncio.Future]:
         with self._lock:
@@ -952,6 +978,14 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
     overview_cache = OverviewCache(
         ttl_seconds=float(settings.overview_cache_seconds)
     )
+
+    def _request_time_zone(request: Request) -> str:
+        time_zone = request.headers.get("X-CM-Time-Zone")
+        if time_zone is None:
+            return settings.dashboard_time_zone
+        if len(time_zone) > 128 or _zone(time_zone) is None:
+            raise HTTPException(400, "X-CM-Time-Zone 必须是有效 IANA 时区")
+        return time_zone
 
     def _resolve_scope(
         request: Request, binding: AccessBinding
@@ -997,13 +1031,14 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         history_error: Optional[str],
         raw_devices: Optional[list],
         devices_error: Optional[str],
+        time_zone: str,
     ) -> dict:
         overview = build_overview(
             target_db,
             stats,
             history=history,
             raw_devices=raw_devices,
-            dashboard_time_zone=settings.dashboard_time_zone,
+            dashboard_time_zone=time_zone,
             provider_status_enabled=settings.provider_status_enabled,
         )
         if history_error:
@@ -1040,6 +1075,9 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
     async def tm_overview(request: Request) -> dict:
         binding = resolve_access_binding(request, settings)
         target_db, core, cache, _provider_svc = _resolve_scope(request, binding)
+        time_zone = _request_time_zone(request)
+        if time_zone != settings.dashboard_time_zone:
+            cache = cache.for_time_zone(time_zone)
 
         generation = cache.generation
         cached = cache.get()
@@ -1082,7 +1120,7 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
                 raw, devices_error = f_dev.result()
             raw_devices = raw.get("devices") if isinstance(raw, dict) else None
             return _assemble_overview(
-                target_db, stats, history, history_error, raw_devices, devices_error
+                target_db, stats, history, history_error, raw_devices, devices_error, time_zone
             )
 
         try:
@@ -1160,6 +1198,7 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         """370 天设备本地日归档分页。不塞进每 5 分钟刷新的 Overview。"""
         binding = resolve_access_binding(request, settings)
         target_db, _core, _cache, _provider_svc = _resolve_scope(request, binding)
+        time_zone = _request_time_zone(request)
         try:
             limit = int(limit)
         except (TypeError, ValueError):
@@ -1183,7 +1222,7 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         return {
             "schema_version": 1,
             "day_basis": "device-local",
-            "dashboard_time_zone": settings.dashboard_time_zone,
+            "dashboard_time_zone": time_zone,
             "retention_days": HARD_RETENTION_DAYS,
             "mixed_time_zones": page["mixed_time_zones"],
             "device_time_zone": page["device_time_zone"],

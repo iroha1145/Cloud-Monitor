@@ -1,4 +1,5 @@
 import type { DashboardData } from "./data";
+import { browserTimeZone } from "./lib/datetime";
 
 type JsonObject = Record<string, unknown>;
 const object = (value: unknown): JsonObject =>
@@ -184,6 +185,7 @@ async function requestJson(
       method: ref === undefined ? "GET" : "POST",
       headers: {
         Authorization: `Bearer ${token}`,
+        "X-CM-Time-Zone": browserTimeZone(),
         ...(ref === undefined ? {} : { "Content-Type": "application/json" }),
       },
       ...(ref === undefined ? {} : { body: JSON.stringify({ ref }) }),

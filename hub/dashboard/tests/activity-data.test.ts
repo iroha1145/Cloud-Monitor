@@ -82,7 +82,7 @@ test("partial, delayed, pending and stale snapshots retain separate service noti
 });
 
 test("demo dates agree with activity and hourly totals while coverage stays undisclosed", () => {
-  const data = createDemoData(new Date("2026-09-04T15:05:00Z"));
+  const data = createDemoData(new Date("2026-09-04T15:05:00Z"), 0, "Asia/Tokyo");
   assert.equal(data.activityMetadata?.today, "2026-09-05");
   assert.equal(data.activityMetadata?.month, "2026-09");
   assert.equal(data.activityMetadata?.hourlyDay, "2026-09-05");
