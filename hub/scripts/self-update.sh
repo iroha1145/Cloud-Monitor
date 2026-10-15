@@ -145,6 +145,9 @@ FINAL_STATE=""
 
 cleanup_req() {
   rm -f "$REQ"
+  if [[ -n "${ENV_TMP:-}" ]]; then
+    rm -f -- "$ENV_TMP"
+  fi
   if [[ -z "$FINAL_STATE" ]]; then
     write_status "$ID" error "$REF" "更新中断，请重试" || true
   fi
@@ -185,10 +188,19 @@ fi
 SHA="$(git_in rev-parse --short HEAD)"
 
 if [[ -f "$ENVF" ]]; then
-  grep -v -E '^(CM_VERSION|CM_GIT_SHA)=' "$ENVF" >"$ENVF.tmp" || true
-  printf 'CM_VERSION=%s\nCM_GIT_SHA=%s\n' "$VER" "$SHA" >>"$ENVF.tmp"
-  mv "$ENVF.tmp" "$ENVF"
-  chmod 600 "$ENVF"
+  # tenant.py 使用同一稳定锁文件，防止更新写版本时覆盖刚分配的密钥。
+  refuse_symlink "$ENVF.lock" || fail "密钥配置锁异常"
+  [[ ! -e "$ENVF.lock" || -f "$ENVF.lock" ]] || fail "密钥配置锁必须是普通文件"
+  umask 077
+  exec 8>>"$ENVF.lock" || fail "无法打开密钥配置锁"
+  flock -n 8 || fail "密钥配置正在修改，请稍后重试更新"
+  ENV_TMP="$(mktemp "$HUB/.env.update.XXXXXX")" || fail "无法创建配置临时文件"
+  awk '!/^(CM_VERSION|CM_GIT_SHA)=/' "$ENVF" >"$ENV_TMP" || fail "无法读取密钥配置"
+  printf 'CM_VERSION=%s\nCM_GIT_SHA=%s\n' "$VER" "$SHA" >>"$ENV_TMP" || fail "无法写入版本配置"
+  mv -- "$ENV_TMP" "$ENVF" || fail "无法保存版本配置"
+  ENV_TMP=""
+  flock -u 8
+  exec 8>&-
 fi
 
 write_status "$ID" running "$REF" "正在重建容器（$VER $SHA）"

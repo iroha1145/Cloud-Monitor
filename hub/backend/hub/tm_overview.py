@@ -56,7 +56,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from .auth import CodedHTTPException, require_access_token
+from .auth import AccessBinding, CodedHTTPException, resolve_access_binding
 from .config import Settings
 from .db import Database
 from .tm_outbox import snapshot_health
@@ -953,15 +953,25 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         ttl_seconds=float(settings.overview_cache_seconds)
     )
 
-    def _core(request: Request) -> TmCore:
-        return request.app.state.tm_core
-
-    def _require_core() -> None:
-        if not settings.tm_ingest_secret:
-            raise CodedHTTPException(
-                404, "token_monitor_secret_unconfigured", "未启用 token-monitor 接入"
+    def _resolve_scope(
+        request: Request, binding: AccessBinding
+    ) -> tuple[Database, Any, OverviewCache, Any]:
+        if binding.tenant_id == "default":
+            if not settings.tm_ingest_secret:
+                raise CodedHTTPException(
+                    404, "token_monitor_secret_unconfigured", "未启用 token-monitor 接入"
+                )
+            return (
+                db,
+                getattr(request.app.state, "tm_core", None),
+                overview_cache,
+                getattr(request.app.state, "provider_status", None),
             )
-
+        tenants_map = getattr(request.app.state, "tm_tenants", None) or {}
+        scope = tenants_map.get(binding.tenant_id)
+        if scope is None:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        return scope.db, scope.core, scope.overview_cache, scope.provider_status
 
     def _fetch_sync(core: TmCore, path: str) -> tuple[Optional[dict], Optional[str]]:
         """同步辅助读取（测试 TestClient 回退）。"""
@@ -981,6 +991,7 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         return data, None
 
     def _assemble_overview(
+        target_db: Database,
         stats: dict,
         history: Optional[dict],
         history_error: Optional[str],
@@ -988,7 +999,7 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         devices_error: Optional[str],
     ) -> dict:
         overview = build_overview(
-            db,
+            target_db,
             stats,
             history=history,
             raw_devices=raw_devices,
@@ -1016,8 +1027,8 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
             )
         return overview
 
-    def _stale_overview(reason: str) -> Optional[dict]:
-        cached = overview_cache.get(allow_stale=True)
+    def _stale_overview(cache: OverviewCache, reason: str) -> Optional[dict]:
+        cached = cache.get(allow_stale=True)
         if cached is None:
             return None
         # Do not mutate the cached response or its existing partial errors.
@@ -1027,14 +1038,14 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
 
     @router.get("/api/v1/tm/overview")
     async def tm_overview(request: Request) -> dict:
-        require_access_token(request, settings)
-        _require_core()
+        binding = resolve_access_binding(request, settings)
+        target_db, core, cache, _provider_svc = _resolve_scope(request, binding)
 
-        generation = overview_cache.generation
-        cached = overview_cache.get()
+        generation = cache.generation
+        cached = cache.get()
         if cached is not None:
             return cached
-        owned, waiter = overview_cache.claim_refresh()
+        owned, waiter = cache.claim_refresh()
         if not owned:
             try:
                 # One client cancelling/timing out must not cancel the
@@ -1048,7 +1059,7 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
                 timed_out = isinstance(exc, asyncio.TimeoutError) or (
                     isinstance(exc, HTTPException) and exc.status_code == 504
                 )
-                stale = _stale_overview("refresh_timeout" if timed_out else "refresh_failed")
+                stale = _stale_overview(cache, "refresh_timeout" if timed_out else "refresh_failed")
                 if stale is not None:
                     return stale
                 if isinstance(exc, asyncio.TimeoutError):
@@ -1071,16 +1082,15 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
                 raw, devices_error = f_dev.result()
             raw_devices = raw.get("devices") if isinstance(raw, dict) else None
             return _assemble_overview(
-                stats, history, history_error, raw_devices, devices_error
+                target_db, stats, history, history_error, raw_devices, devices_error
             )
 
         try:
-            core = _core(request)
             overview = await asyncio.wait_for(
                 asyncio.to_thread(_build), OVERVIEW_REFRESH_TIMEOUT_SECONDS
             )
-            overview_cache.put(overview, generation=generation)
-            overview_cache.finish_refresh(overview)
+            cache.put(overview, generation=generation)
+            cache.finish_refresh(overview)
             return overview
         except BaseException as exc:
             # Cancelling the owner must release the single-flight slot too.
@@ -1090,11 +1100,12 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
                 failure = HTTPException(503, "总览刷新中断，请稍后重试")
             elif isinstance(exc, asyncio.TimeoutError):
                 failure = HTTPException(504, "总览刷新超时，请稍后重试")
-            overview_cache.fail_refresh(failure)
+            cache.fail_refresh(failure)
             if not isinstance(exc, Exception):
                 raise
             stale = _stale_overview(
-                "refresh_timeout" if isinstance(exc, asyncio.TimeoutError) else "refresh_failed"
+                cache,
+                "refresh_timeout" if isinstance(exc, asyncio.TimeoutError) else "refresh_failed",
             )
             if stale is not None:
                 return stale
@@ -1105,9 +1116,9 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
     @router.get("/api/v1/tm/subscriptions")
     def tm_subscriptions_read(request: Request) -> dict:
         """面板只读订阅清单：服务端持 TM 密钥向 tm-core 取数，ACCESS_TOKEN 鉴权。"""
-        require_access_token(request, settings)
-        _require_core()
-        data, _ = _fetch_sync(_core(request), "/api/subscriptions")
+        binding = resolve_access_binding(request, settings)
+        _target_db, core, _cache, _provider_svc = _resolve_scope(request, binding)
+        data, _ = _fetch_sync(core, "/api/subscriptions")
         if data is None:
             raise HTTPException(status_code=502, detail="tm-core 订阅数据不可用")
         subscriptions = data.get("subscriptions")
@@ -1119,14 +1130,13 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
     @router.get("/api/v1/tm/provider-status")
     async def tm_provider_status(request: Request) -> dict:
         """Cloud 扩展：官方状态页。ACCESS_TOKEN only；禁止 TOKEN_MONITOR_SECRET。"""
-        require_access_token(request, settings)
-        _require_core()
+        binding = resolve_access_binding(request, settings)
+        _target_db, core, _cache, service = _resolve_scope(request, binding)
         if not settings.provider_status_enabled:
             raise HTTPException(status_code=404, detail="provider-status 未启用")
 
-        stats, stats_error = await asyncio.to_thread(_fetch_sync, _core(request), "/api/stats")
+        stats, stats_error = await asyncio.to_thread(_fetch_sync, core, "/api/stats")
         observed = discover_providers(stats)
-        service = request.app.state.provider_status
         client = getattr(request.app.state, "http_provider", request.app.state.http_async)
         envelope = await service.snapshot(client=client, observed=observed)
         if stats_error:
@@ -1148,8 +1158,8 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         to: Optional[str] = None,
     ) -> dict:
         """370 天设备本地日归档分页。不塞进每 5 分钟刷新的 Overview。"""
-        require_access_token(request, settings)
-        _require_core()
+        binding = resolve_access_binding(request, settings)
+        target_db, _core, _cache, _provider_svc = _resolve_scope(request, binding)
         try:
             limit = int(limit)
         except (TypeError, ValueError):
@@ -1163,7 +1173,7 @@ def build_tm_overview_router(settings: Settings, db: Database) -> tuple[APIRoute
         if to is not None and valid_day_key(to) is None:
             raise HTTPException(status_code=400, detail="to 必须是 YYYY-MM-DD")
         page = query_daily_archive(
-            db,
+            target_db,
             cursor=cursor,
             limit=limit,
             device_id=device_id,

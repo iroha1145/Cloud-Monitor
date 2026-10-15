@@ -29,7 +29,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
-from .auth import require_access_token
+from .auth import resolve_access_binding
 from .config import Settings
 from .services import parse_iso_datetime
 from .tm_snapshots import utc_seconds_z
@@ -532,15 +532,20 @@ def build_update_router(settings: Settings, service: UpdateService) -> APIRouter
 
     @router.get("/update")
     def get_update(request: Request, refresh: int = 0) -> dict[str, Any]:
-        require_access_token(request, settings)
+        binding = resolve_access_binding(request, settings)
         try:
-            return service.check(force=bool(refresh))
+            out = dict(service.check(force=bool(refresh)))
         except ValueError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
+        if binding.role != "admin":
+            out["apply_enabled"] = False
+        return out
 
     @router.post("/update")
     async def post_update(request: Request) -> dict[str, Any]:
-        require_access_token(request, settings)
+        binding = resolve_access_binding(request, settings)
+        if binding.role != "admin":
+            raise HTTPException(status_code=403, detail="仅管理员可执行系统更新")
         try:
             raw = await request.json()
         except (ValueError, UnicodeDecodeError, RecursionError) as exc:
@@ -557,7 +562,9 @@ def build_update_router(settings: Settings, service: UpdateService) -> APIRouter
 
     @router.post("/update/cancel")
     def cancel_update(request: Request) -> dict[str, Any]:
-        require_access_token(request, settings)
+        binding = resolve_access_binding(request, settings)
+        if binding.role != "admin":
+            raise HTTPException(status_code=403, detail="仅管理员可执行系统更新")
         return service.cancel()
 
     return router

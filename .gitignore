@@ -3,6 +3,9 @@ __pycache__/
 .pytest_cache/
 .venv/
 .env
+.env.lock
+.env.update.*
+.tenant-env-*
 agent-state.json
 *.sqlite3
 *.sqlite3-shm

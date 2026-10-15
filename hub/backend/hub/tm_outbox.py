@@ -533,7 +533,7 @@ def expire_pending(db: Database, request_id: str, reason: str) -> bool:
             (now_z(), reason, reason, request_id),
         )
         _clear_retired_snapshot_error(db, [row])
-    _invalidate_overview()
+    _invalidate_overview(db)
     return True
 
 
@@ -560,7 +560,7 @@ def expire_unconfirmed(db: Database) -> int:
             )
         _clear_retired_snapshot_error(db, rows)
     if rows:
-        _invalidate_overview()
+        _invalidate_overview(db)
     return len(rows)
 
 
@@ -671,13 +671,21 @@ def snapshot_health(db: Database) -> dict:
 _overview_invalidator: Callable[[], None] | None = None
 
 
-def set_overview_invalidator(fn: Callable[[], None] | None) -> None:
+def set_overview_invalidator(
+    fn: Callable[[], None] | None, db: Database | None = None
+) -> None:
     global _overview_invalidator
-    _overview_invalidator = fn
+    if db is not None:
+        db._overview_invalidator = fn  # type: ignore[attr-defined]
+    else:
+        _overview_invalidator = fn
 
 
-def _invalidate_overview() -> None:
-    if _overview_invalidator is not None:
+def _invalidate_overview(db: Database | None = None) -> None:
+    fn = getattr(db, "_overview_invalidator", None) if db is not None else None
+    if fn is not None:
+        fn()
+    elif _overview_invalidator is not None:
         _overview_invalidator()
 
 
@@ -798,7 +806,7 @@ def replay_pending(
                     supersede_older_pending(db, row["device_id"], row["request_id"])
             set_snapshot_status(db, success=True)
             stats["completed"] += 1
-            _invalidate_overview()
+            _invalidate_overview(db)
         except Exception as exc:  # noqa: BLE001
             # 重放循环只读写 SQLite。若以后在这里加入网络调用，连接失败会按失败计次，
             # 次数用完后整行被永久拒绝；那时要单独捕获连接错误并中止本轮，下轮再试。
