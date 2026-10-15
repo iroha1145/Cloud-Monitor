@@ -142,7 +142,8 @@ Cursor 的 Auto/default 模型按官方规则归并到 cursor-auto，同时保�
 ## 数据怎么留、时区、隐私、备份
 
 - **保留：** 近 7 天按设备本地日、5 分钟桶 UPSERT（同桶留最后一次）；更早每天每设备一个锚点；370 天硬删。清理按阈值触发（至少间隔 10 分钟），不在每次 ingest 扫全表。只更新 limits 的请求不写 token 历史点
-- **时区：** 快照日归属看设备 `periodWindows`（today.key → timeZone+updatedAt → endsAt 反推 → UTC 回退并留空标注）。非法时区网关直接 400。面板活动统计默认 `DASHBOARD_TIME_ZONE=Asia/Tokyo`
+- **时区：** 网页自动使用各自浏览器的时区显示时间，并按该时区生成近期活动的日期和小时分组；不同用户、不同浏览器互不影响。快照日归属和每日归档仍按设备 `periodWindows`（today.key → timeZone+updatedAt → endsAt 反推 → UTC 回退并留空标注），保留采集端原始统计口径。未提供浏览器时区的客户端使用 `DASHBOARD_TIME_ZONE=Asia/Tokyo` 作为回退。
+- **外观：** 默认跟随浏览器的深色／浅色偏好，系统切换后网页同步变化；也可手动切换明暗，或点「跟随系统」恢复自动。偏好仅保存在当前浏览器。
 - **隐私：** `devices.json` 可能带 limits 里的账户邮箱、计划名、订阅金额（官方字段，在 TM 密钥后面）。SQLite 快照只存 token / 成本聚合和客户端、模型名，不含账户身份。面板用 `ACCESS_TOKEN`
 - **备份：** `hub/scripts/backup.sh <目录>` 备份 `tm-core-data`（devices.json）和 `cloud-hub-data`（SQLite），包含主用户及所有已落盘的租户，SQLite 使用在线一致性备份。恢复用 `hub/scripts/restore.sh <备份目录>`；恢复会短暂停止整套服务。旧版单用户备份仍可恢复，且不会删除现有租户数据。密钥配置 `hub/.env` 需另外安全保存，业务数据备份不包含密钥
 
@@ -172,7 +173,7 @@ docker compose up -d --build
 | `DEVICE_KEYS_JSON` | 每设备写密钥（记录链路） | 空 |
 | `CORS_ORIGINS` / `DOCS_ENABLED` | 默认都关 | 关 |
 | `MAX_RECORDS_PER_PUSH` | 记录单批上限 | `500` |
-| `DASHBOARD_TIME_ZONE` | 面板活动统计时区 | `Asia/Tokyo` |
+| `DASHBOARD_TIME_ZONE` | 未提供客户端时区时的面板回退时区 | `Asia/Tokyo` |
 | `PROVIDER_STATUS_ENABLED` | 官方状态页 | `true` |
 | `PROVIDER_STATUS_CACHE_SECONDS` | 状态页缓存 TTL（SWR） | `300` |
 | `PROVIDER_STATUS_TIMEOUT_SECONDS` | 单页超时（总预算 3s） | `2.5` |

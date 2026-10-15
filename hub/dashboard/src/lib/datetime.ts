@@ -2,6 +2,14 @@
 
 export const DAY_MS = 86_400_000;
 
+export function browserTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
 /** 带时区格式化；非法时区回退 null，兜本文案由调用方决定。 */
 export function formatZoned(
   date: Date,

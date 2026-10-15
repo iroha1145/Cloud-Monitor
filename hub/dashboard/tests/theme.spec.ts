@@ -72,3 +72,73 @@ test("theme toggle follows a changed system preference until the user chooses", 
   await expectTheme(page, "light");
   expect(errors).toEqual([]);
 });
+
+for (const colorScheme of ["light", "dark"] as const) {
+  test(`new visitors follow ${colorScheme} before the app loads`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme });
+    await page.route("**/src/main.tsx*", route => route.abort());
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", colorScheme);
+    await expect(page.locator("html")).toHaveCSS("color-scheme", colorScheme);
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", colorScheme === "dark" ? "#111111" : "#fafafa");
+  });
+}
+
+test("manual mode can return to system and stays automatic after refresh", async ({ page }) => {
+  const errors = await openDashboard(page);
+  await page.getByRole("button", { name: "切换深色模式" }).click();
+  await expectTheme(page, "dark");
+  await page.reload();
+  await expectTheme(page, "dark");
+  await page.getByRole("button", { name: "跟随系统", exact: true }).click();
+  await expect(page.getByRole("button", { name: "跟随系统", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("cm_theme"))).toBe("system");
+  await page.reload();
+  await expect(page.getByRole("button", { name: "跟随系统", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#111111");
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  expect(errors).toEqual([]);
+});
+
+test("legacy manual preference can be replaced with persistent system mode", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("cm-preview-theme", "dark"));
+  await openDashboard(page);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.getByRole("button", { name: "跟随系统", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await page.getByRole("button", { name: "跟随系统", exact: true }).click();
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(page.getByRole("button", { name: "跟随系统", exact: true })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("unavailable storage preserves manual override in memory and allows automatic mode", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "localStorage", { get() { throw new DOMException("Unavailable", "SecurityError"); } });
+  });
+  const errors = await openDashboard(page);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.getByRole("button", { name: "切换浅色模式" }).click();
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await page.getByRole("button", { name: "跟随系统", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  expect(errors).toEqual([]);
+});
+
+test("system mode remains available in a 320px topbar without overflow", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await openDashboard(page);
+  const follow = page.getByRole("button", { name: "跟随系统", exact: true });
+  await expect(follow).toBeVisible();
+  await follow.click();
+  await expect(follow).toHaveAttribute("aria-pressed", "true");
+  expect(await page.locator(".app-topbar").evaluate(bar => bar.scrollWidth <= bar.clientWidth)).toBe(true);
+});

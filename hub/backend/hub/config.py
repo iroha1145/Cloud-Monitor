@@ -129,7 +129,7 @@ class Settings:
     protocol_version: int = PROTOCOL_VERSION
     tm_ingest_secret: str = ""  # token-monitor 接入密钥（TOKEN_MONITOR_SECRET），空 = 停用
     tm_core_url: str = "http://127.0.0.1:17321"  # vendored 官方 Node hub 地址
-    dashboard_time_zone: str = "Asia/Tokyo"  # 面板活动统计时区（DASHBOARD_TIME_ZONE）
+    dashboard_time_zone: str = "Asia/Tokyo"  # 未提供客户端时区时的回退（DASHBOARD_TIME_ZONE）
     tm_outbox_max_pending: int = 1000  # 快照发件箱 pending 上限（背压阈值）
     max_sync_body_bytes: int = 2 * 1024 * 1024  # /api/v1/sync/push 实际正文字节上限
     tm_background_enabled: bool = True  # 后台重放/回填线程（测试可关）

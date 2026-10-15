@@ -215,6 +215,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             allow_headers=[
                 "Authorization", "Content-Type", "X-Token-Monitor-Secret",
                 "X-Token-Monitor-Response", "X-Token-Monitor-Stream",
+                "X-CM-Time-Zone",
             ],
         )
 

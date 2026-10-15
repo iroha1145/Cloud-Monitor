@@ -94,7 +94,7 @@ test("sample day, month, all-time, trend and hourly views share a consistent tim
 });
 
 test("sample dates use Tokyo day at UTC midnight boundaries", () => {
-  const data = createDemoData(new Date("2026-09-04T15:05:00Z"));
+  const data = createDemoData(new Date("2026-09-04T15:05:00Z"), 0, "Asia/Tokyo");
   assert.equal(data.trend.at(-1)?.day, "2026-09-05");
   assert.equal(data.hourly[0].totalTokens, data.periods.today.totalTokens);
   assert.equal(

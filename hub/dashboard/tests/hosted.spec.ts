@@ -16,6 +16,32 @@ const login = async (page: import("@playwright/test").Page) => {
   await expect(page.getByRole("button", { name: "查看 gpt-5.2 详情" })).toBeVisible();
 };
 
+for (const timeZone of ["Asia/Tokyo", "America/Los_Angeles"]) {
+  test(`real dashboard and archive follow browser timezone ${timeZone}`, async ({ browser }) => {
+    const context = await browser.newContext({ baseURL: "http://127.0.0.1:18888", timezoneId: timeZone });
+    try {
+      const page = await context.newPage();
+      const overviewResponse = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/tm/overview");
+      await login(page);
+      const response = await overviewResponse;
+      expect(response.request().headers()["x-cm-time-zone"]).toBe(timeZone);
+      const overview = await response.json();
+      expect(overview.dashboard_time_zone).toBe(timeZone);
+      expect(overview.activity.time_zone).toBe(timeZone);
+      expect(overview.activity.hourly_today.time_zone).toBe(timeZone);
+      await expect(page.locator(".heading-kicker")).toContainText(timeZone);
+      const archiveResponse = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/tm/history/daily");
+      await page.getByRole("link", { name: "历史记录", exact: true }).first().click();
+      const archive = await archiveResponse;
+      expect(archive.request().headers()["x-cm-time-zone"]).toBe(timeZone);
+      expect((await archive.json()).dashboard_time_zone).toBe(timeZone);
+      await expect(page.locator(".archive-panel")).toContainText(timeZone);
+    } finally {
+      await context.close();
+    }
+  });
+}
+
 test("queued upload recovers into real history and visible model data after the worker confirms it", async ({ page, request }) => {
   const readHeaders = { Authorization: `Bearer ${READ_TOKEN}` };
   const ingestHeaders = { "X-Token-Monitor-Secret": "unit-tm-secret-0123456789abcdef0000" };

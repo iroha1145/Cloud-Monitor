@@ -16,6 +16,17 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
 鉴权：面板与 Cloud 扩展一律 `Authorization: Bearer ACCESS_TOKEN`。
 `TOKEN_MONITOR_SECRET` 不能读这些端点。Token Monitor 未启用 → 404。
 
+网页在请求中发送 `X-CM-Time-Zone: <IANA 时区>`（由浏览器
+`Intl.DateTimeFormat().resolvedOptions().timeZone` 获取）。`overview` 与
+`history/daily` 接受此可选请求头；非法或空时区返回 400，未提供时保持
+`DASHBOARD_TIME_ZONE` 回退，兼容原有客户端。`dashboard_time_zone`、
+`dashboard_period`、活动小时和近期活动日按该请求的时区生成，缓存与并发刷新
+按租户和时区分别保存，写入会使该租户所有时区的缓存失效。
+
+`totals`、`trend`、`trend_models`、设备 `periodWindows` 和每日归档的
+日期仍保留设备本地日口径；归档日期和游标不会因查看者时区而重新贴标签。
+`history/daily.dashboard_time_zone` 仅表示查看者的显示时区。
+
 ## 响应骨架（v2，新增字段只增不改）
 
 ```jsonc
@@ -23,7 +34,7 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
   "overview_schema_version": 2,
   "generated_at": "2026-08-23T05:00:00.000Z",
   "staleAfterMs": 600000,
-  "dashboard_time_zone": "Asia/Tokyo",        // DASHBOARD_TIME_ZONE
+  "dashboard_time_zone": "Asia/Tokyo",        // 请求时区，未提供则 DASHBOARD_TIME_ZONE
   "features": {                                // 面板能力声明
     "trend_models": true,
     "activity_hourly": true,

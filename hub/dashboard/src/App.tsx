@@ -42,6 +42,7 @@ import { BrandMark } from "./BrandMark";
 import GlideMenu from "./components/primitives/GlideMenu";
 import { downloadCsv, rowsToCsv } from "./lib/csv";
 import { scrollToTop } from "./lib/scroll";
+import { useTheme } from "./lib/theme";
 import { formatZoned } from "./lib/datetime";
 import {
   createDemoData,
@@ -89,17 +90,14 @@ const SHOWCASE_UI = import.meta.env.VITE_SHOWCASE_UI === "true";
 
 const getPage = (): PageId =>
   PAGES.find((p) => p.id === location.hash.slice(1))?.id || "overview";
-function safePreference() {
-  return document.documentElement.classList.contains("dark");
-}
 
 type AppProps = { initialData?: DashboardData; initialToken?: string; hosted?: boolean; isolatedDemo?: boolean; onSignOut?: () => void };
 export default function App({ initialData, initialToken = "", hosted = false, isolatedDemo = false, onSignOut }: AppProps) {
   const [data, setData] = useState<DashboardData>(() => initialData || createDemoData());
   const [page, setPage] = useState<PageId>(getPage),
     [period, setPeriod] = useState<PeriodKey>("today");
-  const [dark, setDark] = useState(safePreference),
-    [mobile, setMobile] = useState(false);
+  const { dark, followsSystem, followSystem, toggleTheme } = useTheme();
+  const [mobile, setMobile] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false),
     [settings, setSettings] = useState(false),
     [design, setDesign] = useState(false),
@@ -170,31 +168,6 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", dark);
-    document.documentElement.dataset.theme = dark ? "dark" : "light";
-    // The browser chrome takes the page colour of the theme just applied.
-    const page = getComputedStyle(document.documentElement).getPropertyValue("--page").trim();
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", page);
-  }, [dark]);
-  useEffect(() => {
-    const preference = matchMedia("(prefers-color-scheme: dark)");
-    const changed = () => {
-      try { if (localStorage.getItem("cm_theme") || localStorage.getItem("cm-preview-theme")) return; } catch { /* private mode */ }
-      setDark(preference.matches);
-    };
-    preference.addEventListener("change", changed);
-    return () => preference.removeEventListener("change", changed);
-  }, []);
-  const toggleTheme = () => {
-    // A document view transition blocks pointer input while its snapshot animates.
-    // Keep the page interactive and animate only the theme button's icons.
-    setDark(current => {
-      const next = !current;
-      try { localStorage.setItem("cm_theme", next ? "dark" : "light"); } catch { /* private mode */ }
-      return next;
-    });
-  };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -500,7 +473,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                 title="外观模式"
                 preserveAction
                 rows={[
-                  { label: "当前", value: dark ? "深色模式" : "浅色模式" },
+                  { label: "当前", value: `${dark ? "深色模式" : "浅色模式"}${followsSystem ? " · 跟随系统" : " · 手动"}` },
                   {
                     label: "点击切换",
                     value: dark ? "浅色模式" : "深色模式",
@@ -518,6 +491,15 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                   </span>
                 </button>
               </MetricTooltip>
+              <button
+                className="plain-button"
+                style={{ paddingInline: 8, fontSize: 12, background: followsSystem ? "var(--hover)" : undefined }}
+                aria-pressed={followsSystem}
+                title={followsSystem ? "已跟随系统外观" : "恢复跟随系统外观"}
+                onClick={followSystem}
+              >
+                跟随系统
+              </button>
               {SHOWCASE_UI && (
                 <NotificationBell
                   className="topbar-bell"
