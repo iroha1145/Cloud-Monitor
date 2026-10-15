@@ -1,11 +1,12 @@
 import type { Quota } from "./data";
 import { formatMoney as money } from "./money";
 
-const number = (value: number) => {
-  const rounded = Math.round(value * 100) / 100;
-  const clean = Math.abs(rounded) < 0.0005 ? 0 : rounded;
-  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(clean);
-};
+// Values that round to zero at two decimals would print as "-0"; leave every
+// other value to Intl so its rounding is not disturbed by a float pre-round.
+const number = (value: number) =>
+  new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(
+    Math.abs(value) < 0.005 ? 0 : value,
+  );
 
 export function quotaAmount(value: number, quota: Pick<Quota, "metric" | "currency" | "provider" | "kind" | "limitId">): string {
   const currency = quota.currency?.toUpperCase();

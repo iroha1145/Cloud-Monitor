@@ -141,3 +141,46 @@ test("skewed live matrix keeps 万-scale cells colored against a 亿-scale peak"
     animations: "disabled",
   });
 });
+
+test.describe("phone matrix", () => {
+  test.use({ viewport: { width: 320, height: 740 }, isMobile: true, hasTouch: true });
+
+  test("tiles in one row stay level when a model name wraps to more lines", async ({ page }) => {
+    const overview = structuredClone(contractOverview);
+    const today = overview.totals.today;
+    today.models = {
+      "opus-4.5": 1_000_000,
+      "gpt-5.2": 846_320,
+      "gemini-2.5-flash-lite-preview-06-17": 420_000,
+    };
+    today.clientModels = {
+      claude: { "opus-4.5": 1_000_000 },
+      codex: { "gpt-5.2": 846_320, "gemini-2.5-flash-lite-preview-06-17": 420_000 },
+    };
+    await page.route("**/api/**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(route.request().url().endsWith("/overview") ? overview : {}),
+      }),
+    );
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/");
+    await page.getByRole("button", { name: "连接我的数据" }).click();
+    await page.getByLabel("访问密钥", { exact: true }).fill("local-matrix-wrap");
+    await page.getByRole("button", { name: "连接并查看真实用量" }).click();
+    await expect(page.getByText("当前展示真实数据")).toBeAttached();
+    await page.goto("/#models");
+    await page.setViewportSize({ width: 320, height: 740 });
+    await expect(page.locator(".matrix-cell").first()).toBeVisible();
+    const rows = await page.locator(".matrix-table tbody tr").evaluateAll((trs) =>
+      trs.map((tr) => {
+        const tops = [...tr.querySelectorAll(".matrix-cell")].map((cell) => cell.getBoundingClientRect().top);
+        return Math.max(...tops) - Math.min(...tops);
+      }),
+    );
+    expect(rows.length).toBe(2);
+    for (const spread of rows) expect(spread).toBeLessThan(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  });
+});
