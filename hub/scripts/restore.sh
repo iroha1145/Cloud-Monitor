@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 恢复：把两份备份写回两个独立卷，并校验时间点一致性。
+# 恢复默认实例及备份内的租户；备份未包含的租户数据保留。
 # 用法: ./restore.sh <备份目录>（如 cloud-monitor-backup-20260823-120000）
 set -eu
 
@@ -8,9 +8,12 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 HUB_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 # shellcheck source=lib.sh
 . "$SCRIPT_DIR/lib.sh"
+HELPER="$SCRIPT_DIR/backup_data.py"
 
 [ -f "$BACKUP/devices.json" ] || { echo "缺少 devices.json" >&2; exit 1; }
 [ -f "$BACKUP/cloud-monitor.sqlite3" ] || { echo "缺少 cloud-monitor.sqlite3" >&2; exit 1; }
+# 在停止服务前拒绝非法租户目录、符号链接与损坏的数据文件。
+python3 "$HELPER" validate "$BACKUP"
 # compose run -v 相对的是工程目录；收成绝对路径再挂 /backup
 BACKUP=$(CDPATH= cd -- "$BACKUP" && pwd)
 
@@ -23,30 +26,17 @@ fi
 
 resolve_named_volume() {
   logical="$1"
-  proj=""
-  if command -v python3 >/dev/null 2>&1; then
-    proj=$(cm_compose "$HUB_DIR" config --format json 2>/dev/null | python3 -c '
+  candidate=$(cm_compose "$HUB_DIR" config --format json | python3 -c '
 import json, sys
-try:
-    print(json.load(sys.stdin).get("name") or "")
-except Exception:
-    print("")
-' || true)
-  fi
-  [ -n "$proj" ] || proj=$(basename "$HUB_DIR")
-  candidate="${proj}_${logical}"
+config = json.load(sys.stdin)
+print(config.get("volumes", {}).get(sys.argv[1], {}).get("name") or "")
+' "$logical") || { echo "无法解析 Compose 数据卷: $logical" >&2; exit 1; }
+  [ -n "$candidate" ] || { echo "Compose 未声明实际卷名: $logical" >&2; exit 1; }
   if docker volume inspect "$candidate" >/dev/null 2>&1; then
     echo "$candidate"
     return
   fi
-  for p in cloud-monitor hub; do
-    if docker volume inspect "${p}_${logical}" >/dev/null 2>&1; then
-      echo "${p}_${logical}"
-      return
-    fi
-  done
-  echo "找不到卷 ${logical}（试过 ${candidate}）" >&2
-  docker volume ls >&2
+  echo "找不到 Compose 声明的数据卷 $candidate；请检查项目名和 compose override，不会恢复到其他项目的卷" >&2
   exit 1
 }
 
@@ -60,7 +50,7 @@ echo "将写入卷: $TM_VOL / $HUB_VOL"
 echo "停止服务以保证一致性写入..."
 cm_compose "$HUB_DIR" down
 
-echo "恢复 tm-core devices.json..."
+echo "恢复默认实例和所有备份租户的 tm-core 状态..."
 # 用各镜像自身执行写入：容器内以 root 运行 cp 后按镜像内服务用户 chown，
 # 否则文件属主 root、hub(tm-core) 进程只读，SQLite 打开即 "readonly database"。
 # compose 服务声明了 cap_drop ALL + read_only：无 DAC_OVERRIDE/CHOWN 时
@@ -69,14 +59,14 @@ cm_compose "$HUB_DIR" run --rm --no-deps --user=0 \
   --cap-add=DAC_OVERRIDE --cap-add=CHOWN --cap-add=FOWNER \
   -v "$BACKUP:/backup:ro" \
   --entrypoint sh tm-core -c \
-  'cp /backup/devices.json /data/devices.json && chown "$(id -u monitor):$(id -g monitor)" /data/devices.json'
+  'exec sh -s -- /backup /data "$(id -u monitor)" "$(id -g monitor)"' \
+  < "$SCRIPT_DIR/restore_tm.sh"
 
-echo "恢复 SQLite..."
+echo "恢复默认实例和所有备份租户的 SQLite..."
 cm_compose "$HUB_DIR" run --rm --no-deps --user=0 \
   --cap-add=DAC_OVERRIDE --cap-add=CHOWN --cap-add=FOWNER \
   -v "$BACKUP:/backup:ro" \
-  --entrypoint sh cloud-hub -c \
-  'cp /backup/cloud-monitor.sqlite3 /data/cloud-monitor.sqlite3 && rm -f /data/cloud-monitor.sqlite3-wal /data/cloud-monitor.sqlite3-shm && chown "$(id -u monitor):$(id -g monitor)" /data/cloud-monitor.sqlite3'
+  --entrypoint python3 cloud-hub - restore-hub /backup /data < "$HELPER"
 
 echo "启动服务并验证..."
 cm_compose "$HUB_DIR" up -d
