@@ -71,7 +71,7 @@ test('mobile sheet has three keyboard stops, traps focus, restores scroll and cl
   await expect.poll(() => dialog.evaluate(el => el.contains(document.activeElement))).toBeTruthy();
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
-  await expect(page.getByRole('button', { name: '打开导航', exact: true })).toBeFocused();
+  await expect(page.locator('.feel-nav-peek')).toBeFocused();
   await expect.poll(() => page.locator('body').evaluate(el => getComputedStyle(el).overflow)).not.toBe('hidden');
   await page.locator('.feel-nav-peek').click();
   await dialog.getByRole('link', { name: '模型分析', exact: false }).click();
@@ -276,4 +276,62 @@ test('reduced motion clears inner row and cell decoration', async ({ page }) => 
   await page.locator('.matrix-panel').evaluate(el => window.scrollBy(0, el.getBoundingClientRect().top - 260));
   await page.evaluate(() => new Promise(requestAnimationFrame));
   expect(await page.locator('[data-feel-item-active]').count()).toBe(0);
+});
+
+test('mobile navigation returns to its actual opener without scrolling the background', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/demo.html#overview');
+  const top = page.getByRole('button', { name: '打开导航', exact: true }), peek = page.locator('.feel-nav-peek');
+  const dialog = page.getByRole('dialog', { name: '导航', exact: true });
+  await top.press('Enter'); await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape'); await expect(dialog).toBeHidden(); await expect(top).toBeFocused();
+  await page.evaluate(() => window.scrollTo({ top: 920, behavior: 'instant' }));
+  const before = await page.evaluate(() => window.scrollY); expect(before).toBeGreaterThan(500);
+  for (const activation of ['click', 'Enter', 'ArrowUp', 'drag'] as const) {
+    if (activation === 'click') await peek.click();
+    else if (activation === 'drag') {
+      const box = (await peek.boundingBox())!, x = box.x + box.width / 2, y = box.y + box.height / 2;
+      await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x, y - 260, { steps: 10 });
+      await page.waitForTimeout(110); await page.mouse.up();
+    } else await peek.press(activation);
+    await expect(dialog).toBeVisible();
+    expect(await page.evaluate(() => window.scrollY)).toBe(before);
+    if (activation === 'Enter') await dialog.getByRole('button', { name: '关闭导航', exact: true }).click();
+    else if (activation === 'drag') await dialog.getByRole('link', { name: '总览', exact: true }).click();
+    else await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden(); await expect(peek).toBeFocused();
+    expect(await page.evaluate(() => window.scrollY)).toBe(before);
+  }
+  await peek.click(); await dialog.locator('a[href="#models"]').click();
+  await expect(dialog).toBeHidden(); await expect(page).toHaveURL(/#models$/); await expect(peek).toBeFocused();
+});
+
+test('closing navigation for workspace settings leaves focus inside the new dialog', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/demo.html#overview');
+  await page.evaluate(() => window.scrollTo({ top: 920, behavior: 'instant' }));
+  const before = await page.evaluate(() => window.scrollY);
+  await page.locator('.feel-nav-peek').click();
+  const navigation = page.getByRole('dialog', { name: '导航', exact: true });
+  await navigation.getByRole('button', { name: '工作区设置', exact: true }).click();
+  await expect(navigation).toBeHidden();
+  const settings = page.getByRole('dialog', { name: '演示工作区', exact: true });
+  await expect(settings).toBeVisible();
+  await expect.poll(() => settings.evaluate(el => el.contains(document.activeElement))).toBeTruthy();
+  await page.waitForTimeout(150);
+  expect(await settings.evaluate(el => el.contains(document.activeElement))).toBeTruthy();
+  expect(await page.evaluate(() => window.scrollY)).toBe(before);
+});
+
+test('navigation focus falls back when its opener disappears or the layout changes to desktop', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/demo.html#overview');
+  const top = page.getByRole('button', { name: '打开导航', exact: true });
+  await page.locator('.feel-nav-peek').click();
+  await expect(page.getByRole('dialog', { name: '导航', exact: true })).toBeVisible();
+  await page.locator('.feel-nav-peek').evaluate(el => el.remove());
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0); await expect(top).toBeFocused();
+  await page.reload(); await page.locator('.feel-nav-peek').click();
+  await expect(page.getByRole('dialog', { name: '导航', exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '移动导航菜单', exact: true })).toBeFocused();
 });

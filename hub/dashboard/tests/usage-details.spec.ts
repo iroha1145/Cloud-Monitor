@@ -54,6 +54,10 @@ for (const width of [320, 390, 1440]) {
     await expect(dialog.locator(".model-speed-detail")).toContainText("60.0");
     await dialog.locator(".session-usage-card > summary").click();
     const session = dialog.locator(".session-usage-card");
+    const acceptedTitle = Array.from(detailedOverview().sessions_by_period.today[0].title).slice(0, 160).join("");
+    await expect(session.locator(".session-card-title")).toContainText("多模型会话");
+    await expect(session.locator(".session-card-title")).not.toContainText("已同意同步的会话标题");
+    await expect(session.getByText(acceptedTitle, { exact: true })).toBeHidden();
     await expect(session.locator(".session-card-amount")).toContainText("8,000");
     await expect(session.locator(".session-scope-note")).toContainText("整个会话");
     const cells = session.locator(".session-token-grid");
@@ -70,7 +74,8 @@ for (const width of [320, 390, 1440]) {
     const origin = session.locator(".session-origin-disclosure");
     await origin.locator("summary").click();
     const title = origin.locator("dt").filter({ hasText: /^会话标题$/ }).locator("..").locator("dd");
-    await expect(title).toHaveText(Array.from(detailedOverview().sessions_by_period.today[0].title).slice(0, 160).join(""));
+    await expect(title).toHaveText(acceptedTitle);
+    await expect(title).toBeVisible();
     expect(await title.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBeTruthy();
     await expect(origin).toContainText("11111111-2222-3333-4444-555555555555");
     await expect(origin).toContainText("t3-linked-thread");
@@ -79,6 +84,7 @@ for (const width of [320, 390, 1440]) {
     expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBeTruthy();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
     await origin.locator("summary").click();
+    await expect(title).toBeHidden();
     await session.locator(".session-token-breakdown").scrollIntoViewIfNeeded();
     const close = dialog.getByRole("button", { name: "关闭", exact: true });
     const closeBox = await close.boundingBox();
@@ -92,6 +98,38 @@ for (const width of [320, 390, 1440]) {
     expect(errors).toEqual([]);
   });
 }
+
+test("accepted session titles stay out of history names, search and CSV until source details are expanded", async ({ page }) => {
+  await connect(page);
+  await page.getByRole("link", { name: "历史记录", exact: true }).first().click();
+  const table = page.locator(".sv-session-table");
+  const toggle = table.locator(".sv-session-toggle");
+  await expect(toggle).toContainText("多模型会话");
+  await expect(toggle).not.toContainText("已同意同步的会话标题");
+  const search = page.getByLabel("搜索会话", { exact: true });
+  await search.fill("已同意同步的会话标题");
+  await expect(page.locator(".sv-session-toggle")).toHaveCount(0);
+  await expect(page.getByText("没有匹配的会话", { exact: true })).toBeVisible();
+  await search.fill("");
+  await expect(toggle).toBeVisible();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "导出会话", exact: true }).click();
+  const download = await downloadPromise;
+  const stream = await download.createReadStream();
+  expect(stream).not.toBeNull();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream!) chunks.push(Buffer.from(chunk));
+  const csv = Buffer.concat(chunks).toString("utf8");
+  expect(csv).toContain("多模型会话");
+  expect(csv).not.toContain("已同意同步的会话标题");
+  await toggle.click();
+  const origin = table.locator(".session-origin-disclosure");
+  const title = origin.locator("dt").filter({ hasText: /^会话标题$/ }).locator("..").locator("dd");
+  await expect(title).toBeHidden();
+  await origin.locator("summary").click();
+  await expect(title).toBeVisible();
+  await expect(title).toHaveText(Array.from(detailedOverview().sessions_by_period.today[0].title).slice(0, 160).join(""));
+});
 
 test("today, month and all-time retain their own scope in model details", async ({ page }) => {
   await connect(page);

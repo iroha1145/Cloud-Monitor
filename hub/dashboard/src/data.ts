@@ -1420,7 +1420,6 @@ export function normalizeOverview(
       reasoningTokens: sessionCounter(item.reasoningTokens),
       messageCount: sessionCounter(item.messageCount),
       name:
-        title ||
         text(item.project) ||
         text(item.sessionId, "未命名会话"),
       project: text(item.project, "未归属项目"),

@@ -432,7 +432,9 @@ ACCESS_TOKEN 鉴权；服务端持 `TOKEN_MONITOR_SECRET` 向 tm-core 取数。
 - `availability` 只说明同步会话列表的可用性，不担保每个字段、每个客户端都完整。全历史始终为 `unavailable` / `not-synced`。存在已同步空映射时可为 `available` / `no-session-records`；它不证明本机没有会话。
 - 各期 `call_details_available`、`message_content_available`、`tool_events_available` 当前固定为 `false`。不建立单次回复、用户提问或工具事件数组，不以快照差值伪造这些记录。
 
-会话增加按上游记录实际存在时传递的 `inputTokens`、`outputTokens`、`cacheReadTokens`、`cacheWriteTokens`、`reasoningTokens`、`messageCount`、`modelCosts`、`providers`、`projectId`，保留现有上下文、计时、父会话、来源及未定价字段。`models` 仍是模型到词元数的映射；前端另保留实际 `sessionId` 与 `modelTokens`，不能把混用多个模型的会话全部计数归入某一模型。会话费用缺失时为 `null`，不补免费费用。仅已通过官方同意校验的规范 `title` 可作为会话标题，在二级“来源与模型”展开区展示；提示正文、助手正文、工具参数、工具结果及兼容文本不进入接口。
+今日、本月明细与官方汇总使用相同的周期过期规则：有有效 `periodWindows[period].endsAt` 时，到达该时刻即过期；旧客户端按 `updatedAt || receivedAt` 的 UTC 日／月判断。设备保留的过期原始周期不会进入当前会话列表或可用性统计。判断基于本次官方聚合的时间（优先由设备时间与 `ageMs` 还原，其次使用总览时间），不使用较晚的网页读取时间，避免缓存恰好跨日／月时明细与汇总不一致。
+
+会话增加按上游记录实际存在时传递的 `inputTokens`、`outputTokens`、`cacheReadTokens`、`cacheWriteTokens`、`reasoningTokens`、`messageCount`、`modelCosts`、`providers`、`projectId`，保留现有上下文、计时、父会话、来源及未定价字段。`models` 仍是模型到词元数的映射；前端另保留实际 `sessionId` 与 `modelTokens`，不能把混用多个模型的会话全部计数归入某一模型。会话费用缺失时为 `null`，不补免费费用。仅已通过官方同意校验的规范 `title` 可作为会话标题，在二级“来源与模型”展开区展示；主名称继续使用项目／会话标识回退，标题不进入主列表、搜索或导出。提示正文、助手正文、工具参数、工具结果及兼容文本不进入接口。
 
 `reasoningTokens` 是 `outputTokens` 的子集，只作补充说明，不能再次加入合计。计时速度为 `1000 × timedOutputTokens / timedDurationMs`；分子和分母必须都存在且时长大于零，缺少时显示未知。时长是消息耗时的累计，不是精确墙钟跨度，也不能分解为等待、思考、回复和工具执行时段。上下文须有有效使用量及正容量才计算占比；无正文类别组成或当前上下文账单。
 

@@ -580,7 +580,55 @@ def _collect_limits(stats: dict) -> list[dict]:
     return out
 
 
-def _collect_sessions(stats: dict, period: str = "today") -> tuple[dict, list[dict]]:
+def _session_aggregate_time(stats: dict, now: Any = None) -> datetime:
+    """Use the upstream aggregation clock, not a later Cloud response time.
+
+    aggregateDevices stamps updatedAt separately from its nowMs argument. Its
+    device ageMs preserves that exact argument, including at a window boundary.
+    """
+    for device in stats.get("devices") or []:
+        age = device.get("ageMs")
+        received = _parse_bucket_dt(device.get("receivedAt") or device.get("updatedAt"))
+        if received is not None and isinstance(age, (int, float)) and not isinstance(age, bool) and math.isfinite(age):
+            try:
+                return (received + timedelta(milliseconds=age)).astimezone(timezone.utc)
+            except OverflowError:
+                pass
+    for field in ("updatedAt", "generatedAt"):
+        stamp = _parse_bucket_dt(stats.get(field))
+        if stamp is not None:
+            return stamp.astimezone(timezone.utc)
+    return _now_for_dashboard("UTC", now)[0]
+
+
+def _session_period_expired(device: dict, period: str, now: datetime) -> bool:
+    """Mirror vendored usage.js isPeriodExpired on normalized stats devices."""
+    if period == "allTime":
+        return False
+    window = (device.get("periodWindows") or {}).get(period) or {}
+    end = _parse_bucket_dt(window.get("endsAt"))
+    if end is not None and end.timestamp() > 0:
+        return now >= end
+    # Upstream recordDate uses updatedAt || receivedAt, not the receipt date
+    # preferentially: a fresh delivery must not revive yesterday's snapshot.
+    recorded = _parse_bucket_dt(device.get("updatedAt") or device.get("receivedAt"))
+    if recorded is None:
+        return False
+    recorded = recorded.astimezone(timezone.utc)
+    if period == "today":
+        return recorded.date() != now.date()
+    if period == "month":
+        return (recorded.year, recorded.month) != (now.year, now.month)
+    return False
+
+
+def _current_session_devices(stats: dict, period: str, now: Any = None) -> list[dict]:
+    reference = _session_aggregate_time(stats, now)
+    return [device for device in stats.get("devices") or []
+            if not _session_period_expired(device, period, reference)]
+
+
+def _collect_sessions(stats: dict, period: str = "today", *, now: Any = None) -> tuple[dict, list[dict]]:
     """各设备指定周期 sessions 拍平；缺失观察不填零。
 
     跨设备主键 deviceId:client:sessionId——不同设备出现相同 client:sessionId
@@ -588,7 +636,7 @@ def _collect_sessions(stats: dict, period: str = "today") -> tuple[dict, list[di
     会附 duplicate_group（当前官方无此标识，恒不附）。
     """
     by_key: dict[str, dict] = {}
-    for device in stats.get("devices") or []:
+    for device in _current_session_devices(stats, period, now):
         periods = device.get("periods") or {}
         source_period = periods.get(period) or {}
         sessions = source_period.get("sessions")
@@ -658,7 +706,7 @@ def _collect_sessions(stats: dict, period: str = "today") -> tuple[dict, list[di
     return meta, all_sessions[:SESSIONS_LIMIT]
 
 
-def _session_period_details(stats: dict, period: str) -> tuple[dict, list[dict]]:
+def _session_period_details(stats: dict, period: str, *, now: Any = None) -> tuple[dict, list[dict]]:
     """Describe only synchronized session accounting, never local transcript detail."""
     if period == "allTime":
         return {
@@ -668,12 +716,13 @@ def _session_period_details(stats: dict, period: str) -> tuple[dict, list[dict]]
             "call_details_available": False, "message_content_available": False,
             "tool_events_available": False,
         }, []
-    meta, sessions = _collect_sessions(stats, period)
+    reference = _session_aggregate_time(stats, now)
+    meta, sessions = _collect_sessions(stats, period, now=reference)
     dashboard_omitted = max(0, meta["sessions_total"] - meta["sessions_returned"])
     incomplete = meta["session_details_incomplete"] or dashboard_omitted > 0
     available = bool(sessions) or any(
         isinstance(((device.get("periods") or {}).get(period) or {}).get("sessions"), dict)
-        for device in stats.get("devices") or []
+        for device in _current_session_devices(stats, period, reference)
     )
     return {
         **meta, "period": period,
@@ -801,8 +850,9 @@ def build_overview(
         item.update(badges.get(str(device.get("deviceId")), {}))
         devices.append(item)
 
-    sessions_meta, sessions = _collect_sessions(stats)
-    period_details = {period: _session_period_details(stats, period) for period in ("today", "month", "allTime")}
+    session_now = _session_aggregate_time(stats, now)
+    sessions_meta, sessions = _collect_sessions(stats, now=session_now)
+    period_details = {period: _session_period_details(stats, period, now=session_now) for period in ("today", "month", "allTime")}
 
     # v2 扩展：活动口径 / 每设备窗口 / 降级信息（P0-3 / P1-4）
     partial_errors: list[dict] = []

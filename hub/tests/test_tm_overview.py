@@ -11,6 +11,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from conftest import (
     READ_KEY,
     TM_SECRET,
@@ -21,6 +23,112 @@ from conftest import (
 
 HEADERS = {"X-Token-Monitor-Secret": TM_SECRET}
 READ = {"Authorization": f"Bearer {READ_KEY}"}
+
+
+@requires_node
+@pytest.mark.parametrize("moment, expected_today, expected_month", [
+    ("2026-10-31T14:59:59.999Z", {"tokyo", "los-angeles", "legacy", "invalid-date"}, {"tokyo", "los-angeles", "legacy", "invalid-date"}),
+    ("2026-10-31T15:00:00Z", {"los-angeles", "legacy", "invalid-date"}, {"los-angeles", "legacy", "invalid-date"}),
+    ("2026-11-01T00:00:00Z", {"los-angeles", "invalid-date"}, {"los-angeles", "invalid-date"}),
+    ("2026-11-01T07:00:00Z", {"invalid-date"}, {"invalid-date"}),
+    ("2026-10-18T15:00:00Z", {"tokyo", "los-angeles", "invalid-date"}, {"tokyo", "los-angeles", "legacy", "invalid-date"}),
+    ("2026-11-02T00:00:00Z", set(), set()),
+])
+def test_session_period_expiry_matches_real_upstream_aggregate(tmp_path, moment, expected_today, expected_month):
+    """Raw device periods survive upstream expiry; Cloud must not revive them."""
+    import json
+    import subprocess
+    from conftest import VENDOR
+    from hub.db import Database
+    from hub.tm_outbox import ensure_schema as ensure_outbox_schema
+    from hub.tm_snapshots import ensure_schema
+    from hub.tm_overview import build_overview
+
+    def device(device_id, tokens, updated, windows=None):
+        session = {"client": "codex", "sessionId": device_id, "totalTokens": tokens,
+                   "models": {"model-a": tokens}}
+        period = {"totalTokens": tokens, "models": {"model-a": tokens},
+                  "sessions": {f"codex:{device_id}": session}}
+        return {"deviceId": device_id, "updatedAt": updated,
+                # Future receipts yield negative ageMs and still encode nowMs.
+                "receivedAt": "2026-11-02T12:00:00Z", "periodWindows": windows,
+                "today": period, "month": period, "allTime": period,
+                "sessionDetailsOmitted": {"today": 2, "month": 3}}
+
+    records = [
+        device("tokyo", 11, "2026-10-01T00:00:00Z", {"timeZone": "Asia/Tokyo",
+               "today": {"endsAt": "2026-11-01T00:00:00+09:00"},
+               "month": {"endsAt": "2026-11-01T00:00:00+09:00"}}),
+        device("los-angeles", 13, "2026-09-30T00:00:00Z", {"timeZone": "America/Los_Angeles",
+               "today": {"endsAt": "2026-11-01T00:00:00-07:00"},
+               "month": {"endsAt": "2026-11-01T00:00:00-07:00"}}),
+        # Fresh receipt does not make an old updatedAt current. UTC date, not
+        # the timestamp's textual local date or the dashboard zone, is used.
+        device("legacy", 17, "2026-11-01T01:00:00+09:00"),
+        device("invalid-date", 19, "invalid-date"),
+    ]
+    if not expected_today and not expected_month:
+        records = [record for record in records if record["deviceId"] != "invalid-date"]
+    result = subprocess.run([
+        "node", "-e", "const {aggregateDevices}=require('./src/shared/usage');"
+        "const input=JSON.parse(require('fs').readFileSync(0,'utf8'));"
+        "console.log(JSON.stringify(aggregateDevices(input.devices,1,Date.parse(input.now))));",
+    ], cwd=VENDOR, input=json.dumps({"devices": records, "now": moment}),
+        check=True, capture_output=True, text=True)
+    stats = json.loads(result.stdout)
+    assert all(device["periods"]["today"]["sessions"] for device in stats["devices"])
+    assert all(device["ageMs"] < 0 for device in stats["devices"])
+    db = Database(tmp_path / "expiry.sqlite3")
+    ensure_schema(db)
+    ensure_outbox_schema(db)
+    try:
+        # Cloud's clock deliberately differs from the official aggregation.
+        data = build_overview(db, stats, now=datetime(2030, 1, 1, tzinfo=timezone.utc))
+        for period, expected in (("today", expected_today), ("month", expected_month)):
+            rows = data["sessions_by_period"][period]
+            assert {row["deviceId"] for row in rows} == expected
+            assert sum(row["tokens"] for row in rows) == stats["periods"][period]["totalTokens"]
+            meta = data["sessions_meta_by_period"][period]
+            assert meta["sessions_total"] == len(expected)
+            assert meta["sessions_omitted_count"] == len(expected) * (2 if period == "today" else 3)
+            assert meta["availability"] == ("partial" if expected else "unavailable")
+        assert data["sessions"] == data["sessions_by_period"]["today"]
+        assert data["sessions_by_period"]["allTime"] == []
+        assert data["totals"]["allTime"]["totalTokens"] == sum(record["allTime"]["totalTokens"] for record in records)
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize("stamp_field", ["updatedAt", "generatedAt"])
+def test_session_expiry_uses_stats_timestamp_when_age_is_unavailable(stamp_field):
+    from hub.tm_overview import _session_period_details
+
+    record = {"deviceId": "expired", "updatedAt": "2026-10-31T12:00:00Z",
+              "receivedAt": "2026-11-01T00:01:00Z",
+              "periods": {period: {"sessions": {"codex:old": {"tokens": 10}}}
+                          for period in ("today", "month")}}
+    stats = {stamp_field: "2026-11-01T00:00:00Z", "devices": [record]}
+    for period in ("today", "month"):
+        meta, rows = _session_period_details(stats, period)
+        assert rows == []
+        assert meta["availability"] == "unavailable"
+        assert meta["sessions_total"] == 0
+    # The same retained snapshot was valid immediately before its UTC boundary.
+    stats[stamp_field] = "2026-10-31T23:59:59.999Z"
+    assert len(_session_period_details(stats, "today")[1]) == 1
+
+
+def test_session_expiry_fallback_matches_upstream_missing_and_invalid_dates():
+    from hub.tm_overview import _session_period_expired
+
+    now = datetime(2026, 11, 1, tzinfo=timezone.utc)
+    assert _session_period_expired({"receivedAt": "2026-10-31T23:59:59Z"}, "today", now)
+    assert not _session_period_expired({"updatedAt": "invalid", "receivedAt": "2026-10-31T23:59:59Z"}, "today", now)
+    assert not _session_period_expired({}, "today", now)
+    assert not _session_period_expired({"updatedAt": "2025-01-01"}, "allTime", now)
+    for end in ("invalid", "1970-01-01T00:00:00Z"):
+        assert _session_period_expired({"updatedAt": "2026-10-31T23:59:59Z",
+            "periodWindows": {"today": {"endsAt": end}}}, "today", now)
 
 
 def ingest(cloud, payload):

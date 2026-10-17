@@ -130,8 +130,14 @@ test("only the accepted canonical title is retained with a Unicode-safe limit an
   const title = "已批准的会话标题" + "🙂".repeat(180);
   const accepted = normalizeOverview({totals: {}, sessions: [{...row, title}]}).sessions[0];
   assert.equal(accepted.title, Array.from(title).slice(0, 160).join(""));
-  assert.equal(accepted.name, accepted.title);
+  assert.equal(accepted.name, row.sessionId);
   assert.equal(Array.from(accepted.title!).length, 160);
+  const projectNamed = normalizeOverview({totals: {}, sessions: [{...row, title, project: "stable project fallback"}]}).sessions[0];
+  assert.equal(projectNamed.name, "stable project fallback");
+  assert.equal(projectNamed.title, accepted.title);
+  const idOnly = normalizeOverview({totals: {}, sessions: [{...row}]}).sessions[0];
+  assert.equal(idOnly.name, row.sessionId);
+  assert.equal(idOnly.title, null);
   for (const invalid of [undefined, null, 42, {}, "   "]) {
     const unknown = normalizeOverview({totals: {}, sessions: [{...row, title: invalid, project: "stable fallback", preview: "private preview", sessionTitle: "compatibility title", messages: ["private message"]}]}).sessions[0];
     assert.equal(unknown.title, null);
