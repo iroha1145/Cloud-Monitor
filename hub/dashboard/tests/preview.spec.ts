@@ -157,8 +157,10 @@ test("desktop and dark appearances have no serious accessibility errors", async 
     animations: "disabled",
   });
   const light = await audit();
-  await page.getByRole("button", { name: "切换深色模式" }).click();
+  await page.getByRole("combobox", { name: "外观设置" }).click();
+  await page.getByRole("option", { name: "深色", exact: true }).click();
   await expect(page.locator("html")).toHaveClass("dark");
+  await expect(page.locator("html")).not.toHaveAttribute("data-theme-switching");
   await page.screenshot({
     path: "evidence/overview-dark.png",
     fullPage: true,

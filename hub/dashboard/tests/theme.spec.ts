@@ -15,48 +15,69 @@ async function openDashboard(page: Page) {
 async function expectTheme(page: Page, theme: "light" | "dark") {
   await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
   await expect.poll(() => page.evaluate(() => localStorage.getItem("cm_theme"))).toBe(theme);
-  await expect(page.getByRole("button", {
-    name: theme === "light" ? "切换深色模式" : "切换浅色模式",
-  })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "外观设置" })).toBeVisible();
 }
 
-test("theme switching keeps both rapid pointer clicks", async ({ page }) => {
-  const errors = await openDashboard(page);
-  await page.getByRole("button", { name: "切换深色模式" }).dblclick({ delay: 80 });
-  await expectTheme(page, "light");
-  expect(errors).toEqual([]);
-});
+async function chooseTheme(page: Page, name: string) {
+  await page.getByRole("combobox", { name: "外观设置" }).click();
+  await page.getByRole("option", { name, exact: true }).click();
+}
 
-test("theme changes queued before the next render preserve every activation", async ({ page }) => {
+async function expectSelection(page: Page, name: string) {
+  await page.getByRole("combobox", { name: "外观设置" }).click();
+  await expect(page.getByRole("option", { name, exact: true })).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Escape");
+}
+
+test("theme reveal starts at the menu trigger and settles in both directions", async ({ page }) => {
   const errors = await openDashboard(page);
-  await page.getByRole("button", { name: "切换深色模式" }).evaluate(button => {
-    (button as HTMLButtonElement).click();
-    (button as HTMLButtonElement).click();
+  await page.evaluate(() => {
+    const start = document.startViewTransition.bind(document);
+    document.startViewTransition = ((update: () => void) => {
+      document.documentElement.dataset.snapshotMenuCount = String(document.querySelectorAll('[role="listbox"]').length);
+      return start(update);
+    }) as typeof document.startViewTransition;
   });
-  await expectTheme(page, "light");
+  const box = await page.getByRole("combobox", { name: "外观设置" }).boundingBox();
+  for (const [label, appearance] of [["深色", "dark"], ["浅色", "light"]] as const) {
+    await chooseTheme(page, label);
+    await expectTheme(page, appearance);
+    await expect(page.locator("html")).toHaveAttribute("data-snapshot-menu-count", "0");
+    await expect(page.locator("html")).toHaveAttribute("data-theme-switching", "");
+    const origin = await page.locator("html").evaluate(root => ({
+      x: (root as HTMLElement).style.getPropertyValue("--theme-x"),
+      y: (root as HTMLElement).style.getPropertyValue("--theme-y"),
+      animation: getComputedStyle(root, "::view-transition-new(root)").animationName,
+    }));
+    expect(origin).toEqual({ x: `${box!.x + box!.width / 2}px`, y: `${box!.y + box!.height / 2}px`, animation: "theme-reveal" });
+    await expect(page.getByRole("listbox")).toHaveCount(0);
+    await expect(page.locator("html")).not.toHaveAttribute("data-theme-switching");
+  }
   expect(errors).toEqual([]);
 });
 
-// A document view transition blocks pointer input while its snapshot animates,
-// so the toggle swaps only the button's icons (App.tsx). Guard against a
-// transition coming back, with and without reduced motion.
-for (const reducedMotion of ["no-preference", "reduce"] as const) {
-  test(`theme switching never starts a document view transition (${reducedMotion})`, async ({ page }) => {
-    await page.emulateMedia({ reducedMotion });
-    await page.addInitScript(() => {
-      (window as unknown as { viewTransitions: number }).viewTransitions = 0;
-      document.startViewTransition = ((update?: () => void) => {
-        (window as unknown as { viewTransitions: number }).viewTransitions += 1;
-        update?.();
-        return undefined as unknown as ViewTransition;
-      }) as typeof document.startViewTransition;
-    });
+test("successive menu choices keep the latest appearance and keyboard focus", async ({ page }) => {
+  const errors = await openDashboard(page);
+  await chooseTheme(page, "深色");
+  await chooseTheme(page, "浅色");
+  await expectTheme(page, "light");
+  await expect(page.locator("html")).not.toHaveAttribute("data-theme-switching");
+  await expect(page.getByRole("combobox", { name: "外观设置" })).toBeFocused();
+  expect(errors).toEqual([]);
+});
+
+for (const fallback of ["reduce", "unsupported"] as const) {
+  test(`theme changes immediately with ${fallback}`, async ({ page }) => {
+    if (fallback === "reduce") await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.addInitScript(mode => {
+      Object.defineProperty(document, "startViewTransition", { configurable: true, value: mode === "unsupported" ? undefined : () => { throw new Error("Reduced motion must not animate"); } });
+    }, fallback);
     const errors = await openDashboard(page);
-    await page.getByRole("button", { name: "切换深色模式" }).click();
+    await chooseTheme(page, "深色");
     await expectTheme(page, "dark");
-    await page.getByRole("button", { name: "切换浅色模式" }).click();
+    await chooseTheme(page, "浅色");
     await expectTheme(page, "light");
-    expect(await page.evaluate(() => (window as unknown as { viewTransitions: number }).viewTransitions)).toBe(0);
+    await expect(page.locator("html")).not.toHaveAttribute("data-theme-switching");
     expect(errors).toEqual([]);
   });
 }
@@ -65,7 +86,7 @@ test("theme toggle follows a changed system preference until the user chooses", 
   const errors = await openDashboard(page);
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await page.getByRole("button", { name: "切换浅色模式" }).click();
+  await chooseTheme(page, "浅色");
   await expectTheme(page, "light");
   await page.emulateMedia({ colorScheme: "light" });
   await page.emulateMedia({ colorScheme: "dark" });
@@ -86,16 +107,16 @@ for (const colorScheme of ["light", "dark"] as const) {
 
 test("manual mode can return to system and stays automatic after refresh", async ({ page }) => {
   const errors = await openDashboard(page);
-  await page.getByRole("button", { name: "切换深色模式" }).click();
+  await chooseTheme(page, "深色");
   await expectTheme(page, "dark");
   await page.reload();
   await expectTheme(page, "dark");
-  await page.getByRole("button", { name: "跟随系统", exact: true }).click();
-  await expect(page.getByRole("button", { name: "跟随系统", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await chooseTheme(page, "跟随系统");
+  await expectSelection(page, "跟随系统");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await expect.poll(() => page.evaluate(() => localStorage.getItem("cm_theme"))).toBe("system");
   await page.reload();
-  await expect(page.getByRole("button", { name: "跟随系统", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expectSelection(page, "跟随系统");
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#111111");
@@ -108,11 +129,11 @@ test("legacy manual preference can be replaced with persistent system mode", asy
   await page.addInitScript(() => localStorage.setItem("cm-preview-theme", "dark"));
   await openDashboard(page);
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await expect(page.getByRole("button", { name: "跟随系统", exact: true })).toHaveAttribute("aria-pressed", "false");
-  await page.getByRole("button", { name: "跟随系统", exact: true }).click();
+  await expectSelection(page, "深色");
+  await chooseTheme(page, "跟随系统");
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await expect(page.getByRole("button", { name: "跟随系统", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expectSelection(page, "跟随系统");
 });
 
 test("unavailable storage preserves manual override in memory and allows automatic mode", async ({ page }) => {
@@ -122,11 +143,11 @@ test("unavailable storage preserves manual override in memory and allows automat
   const errors = await openDashboard(page);
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await page.getByRole("button", { name: "切换浅色模式" }).click();
+  await chooseTheme(page, "浅色");
   await page.emulateMedia({ colorScheme: "light" });
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await page.getByRole("button", { name: "跟随系统", exact: true }).click();
+  await chooseTheme(page, "跟随系统");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.emulateMedia({ colorScheme: "light" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
@@ -136,9 +157,8 @@ test("unavailable storage preserves manual override in memory and allows automat
 test("system mode remains available in a 320px topbar without overflow", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await openDashboard(page);
-  const follow = page.getByRole("button", { name: "跟随系统", exact: true });
-  await expect(follow).toBeVisible();
-  await follow.click();
-  await expect(follow).toHaveAttribute("aria-pressed", "true");
+  await expectSelection(page, "跟随系统");
+  await chooseTheme(page, "深色");
+  await expectTheme(page, "dark");
   expect(await page.locator(".app-topbar").evaluate(bar => bar.scrollWidth <= bar.clientWidth)).toBe(true);
 });
