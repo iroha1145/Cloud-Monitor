@@ -16,12 +16,10 @@ import {
   Cloud,
   Download,
   Menu,
-  Moon,
   Palette,
   RefreshCw,
   Search,
   Settings2,
-  Sun,
   UserRound,
   X,
 } from "lucide-react";
@@ -32,7 +30,6 @@ import {
   DialogTitle,
 } from "./components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
-import { MetricTooltip } from "./MetricTooltip";
 import {
   StatefulButton,
   type ButtonState,
@@ -43,6 +40,7 @@ import GlideMenu from "./components/primitives/GlideMenu";
 import { downloadCsv, rowsToCsv } from "./lib/csv";
 import { scrollToTop } from "./lib/scroll";
 import { useTheme } from "./lib/theme";
+import { ThemeMenu } from "./ThemeMenu";
 import { formatZoned } from "./lib/datetime";
 import {
   createDemoData,
@@ -96,7 +94,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
   const [data, setData] = useState<DashboardData>(() => initialData || createDemoData());
   const [page, setPage] = useState<PageId>(getPage),
     [period, setPeriod] = useState<PeriodKey>("today");
-  const { dark, followsSystem, followSystem, toggleTheme } = useTheme();
+  const { preference, chooseTheme } = useTheme();
   const [mobile, setMobile] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false),
     [settings, setSettings] = useState(false),
@@ -469,37 +467,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                 <kbd>{SEARCH_SHORTCUT}</kbd>
               </button>
               <span className="topbar-divider" />
-              <MetricTooltip
-                title="外观模式"
-                preserveAction
-                rows={[
-                  { label: "当前", value: `${dark ? "深色模式" : "浅色模式"}${followsSystem ? " · 跟随系统" : " · 手动"}` },
-                  {
-                    label: "点击切换",
-                    value: dark ? "浅色模式" : "深色模式",
-                  },
-                ]}
-              >
-                <button
-                  className="icon-button"
-                  aria-label={dark ? "切换浅色模式" : "切换深色模式"}
-                  onClick={toggleTheme}
-                >
-                  <span className="icon-swap" aria-hidden="true">
-                    <Sun size={17} data-active={dark} />
-                    <Moon size={17} data-active={!dark} />
-                  </span>
-                </button>
-              </MetricTooltip>
-              <button
-                className="plain-button"
-                style={{ paddingInline: 8, fontSize: 12, background: followsSystem ? "var(--hover)" : undefined }}
-                aria-pressed={followsSystem}
-                title={followsSystem ? "已跟随系统外观" : "恢复跟随系统外观"}
-                onClick={followSystem}
-              >
-                跟随系统
-              </button>
+              <ThemeMenu preference={preference} onChoose={chooseTheme} />
               {SHOWCASE_UI && (
                 <NotificationBell
                   className="topbar-bell"

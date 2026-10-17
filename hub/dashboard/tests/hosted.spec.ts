@@ -335,7 +335,8 @@ test("320px hosted interface supports bottom navigation, theme and accessible au
   await page.getByRole("navigation", { name: "移动端主导航" }).getByRole("link", { name: "历史记录", exact: true }).click();
   await expect(page.getByRole("heading", { name: "历史记录", exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.getByRole("button", { name: "切换深色模式" }).click();
+  await page.getByRole("combobox", { name: "外观设置" }).click();
+  await page.getByRole("option", { name: "深色", exact: true }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
   await page.reload();
   await expect(page.getByText("当前展示真实数据")).toBeAttached();

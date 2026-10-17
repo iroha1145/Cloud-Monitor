@@ -7,6 +7,32 @@
  * action or a data change; an unchanged refresh replays nothing.
  */
 
+/* Reveal settled theme colours from the appearance menu's trigger. */
+:root[data-theme-switching]::view-transition { pointer-events: none; }
+:root[data-theme-switching]::view-transition-group(root),
+:root[data-theme-switching]::view-transition-old(root),
+:root[data-theme-switching]::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+:root[data-theme-switching]::view-transition-old(root) { z-index: 1; }
+:root[data-theme-switching]::view-transition-new(root) {
+  z-index: 2;
+  animation: theme-reveal 500ms var(--ease-smooth-out) both;
+}
+@keyframes theme-reveal {
+  from { clip-path: circle(0 at var(--theme-x) var(--theme-y)); }
+  to { clip-path: circle(var(--theme-r) at var(--theme-x) var(--theme-y)); }
+}
+:root[data-theme-switching],
+:root[data-theme-switching] *,
+:root[data-theme-switching] *::before,
+:root[data-theme-switching] *::after { transition: none !important; }
+
+.theme-menu { min-width: 180px; }
+.theme-menu [data-slot="select-item"][data-state="checked"],
+.theme-menu [data-slot="select-item"][data-state="checked"] svg { color: var(--accent); }
+
 /* Page entry: sections rise in order after navigation (texts reveal rhythm). */
 .page-stage > * {
   animation: t-rise var(--duration-fast) var(--ease-smooth-out) backwards;

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 
-type ThemePreference = "system" | "light" | "dark";
+export type ThemePreference = "system" | "light" | "dark";
 type Appearance = "light" | "dark";
 const MEDIA_QUERY = "(prefers-color-scheme: dark)";
 
@@ -37,15 +38,51 @@ export function useTheme() {
   });
   // Activations in the same render frame must each see the preceding choice.
   const current = useRef(theme);
-  const update = (preference: ThemePreference) => {
+  const transition = useRef<ViewTransition | null>(null);
+  const revision = useRef(0);
+  const update = (preference: ThemePreference, origin?: HTMLElement | null) => {
     const next = { preference, appearance: resolveTheme(preference) };
+    const changed = next.appearance !== current.current.appearance;
     current.current = next;
-    applyTheme(next.appearance);
-    setTheme(next);
+    const id = ++revision.current;
+    transition.current?.skipTransition();
+    transition.current = null;
+    const root = document.documentElement;
+    const settle = () => {
+      if (id !== revision.current) return;
+      delete root.dataset.themeSwitching;
+      transition.current = null;
+    };
+    const apply = () => {
+      if (id !== revision.current) return;
+      applyTheme(next.appearance);
+      setTheme(next);
+    };
+    if (!changed || !origin || !document.startViewTransition || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      settle();
+      apply();
+      return;
+    }
+    const box = origin.getBoundingClientRect();
+    const x = box.left + box.width / 2;
+    const y = box.top + box.height / 2;
+    root.style.setProperty("--theme-x", `${x}px`);
+    root.style.setProperty("--theme-y", `${y}px`);
+    root.style.setProperty("--theme-r", `${Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y))}px`);
+    root.dataset.themeSwitching = "";
+    try {
+      const wipe = document.startViewTransition(() => flushSync(apply));
+      transition.current = wipe;
+      wipe.ready.catch(() => {});
+      wipe.finished.then(settle, settle);
+    } catch {
+      apply();
+      settle();
+    }
   };
-  const choose = (preference: ThemePreference) => {
+  const choose = (preference: ThemePreference, origin: HTMLElement | null) => {
     try { localStorage.setItem("cm_theme", preference); } catch { /* Keep the choice for this session. */ }
-    update(preference);
+    update(preference, origin);
   };
 
   useEffect(() => {
@@ -62,6 +99,9 @@ export function useTheme() {
     media.addEventListener("change", changed);
     window.addEventListener("storage", stored);
     return () => {
+      revision.current += 1;
+      transition.current?.skipTransition();
+      delete document.documentElement.dataset.themeSwitching;
       media.removeEventListener("change", changed);
       window.removeEventListener("storage", stored);
     };
@@ -69,8 +109,7 @@ export function useTheme() {
 
   return {
     dark: theme.appearance === "dark",
-    followsSystem: theme.preference === "system",
-    followSystem: () => choose("system"),
-    toggleTheme: () => choose(current.current.appearance === "dark" ? "light" : "dark"),
+    preference: theme.preference,
+    chooseTheme: choose,
   };
 }
