@@ -82,7 +82,7 @@ test("session history shows uploaded context and avoids claiming live status wit
   await rows.nth(0).getByRole("button", { name: /Running work/ }).click();
   const detail = page.locator(".sv-session-detail");
   await expect(detail).toContainText("上次上报的上下文");
-  await expect(detail).toContainText("剩余 10%");
+  await expect(detail).toContainText("剩余 10.0%");
   await expect(detail.getByRole("progressbar", { name: "上次上报的上下文已用比例" })).toHaveAttribute("value", "90");
   await page.clock.fastForward(11 * 60_000);
   await expect(rows.nth(0)).toContainText("闲置");

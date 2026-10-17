@@ -413,3 +413,182 @@ def test_overview_502_when_core_down(tmp_path):
     with cloud:
         assert cloud.get("/api/v1/tm/overview", headers=READ).status_code == 502
         assert cloud.get("/api/v1/tm/subscriptions", headers=READ).status_code == 502
+
+
+def test_session_period_details_keep_periods_unknowns_and_privacy():
+    from hub.tm_overview import _collect_sessions, _session_period_details
+
+    today = {"client": "codex", "sessionId": "same", "totalTokens": 17,
+             "inputTokens": 10, "outputTokens": 5, "cacheReadTokens": 2,
+             "cacheWriteTokens": 0, "reasoningTokens": 3, "messageCount": 2,
+             "models": {"model-a": 17}, "modelCosts": {"model-a": 0.2},
+             "providers": {"openai": 17}, "contextTokens": 12, "contextWindow": 200,
+             "timedOutputTokens": 5, "timedDurationMs": 1000,
+             "title": "accepted canonical title", "messages": ["private prompt"], "toolEvents": ["private tool"]}
+    stats = {"devices": [{"deviceId": "a", "periods": {
+        "today": {"sessions": {"codex:same": today}},
+        "month": {"sessions": {"codex:same": {**today, "totalTokens": 170}}},
+        "allTime": {"sessions": {"codex:same": today}},
+    }}]}
+    meta, rows = _session_period_details(stats, "today")
+    assert meta["availability"] == "available"
+    assert rows[0]["inputTokens"] == 10
+    assert rows[0]["reasoningTokens"] == 3
+    assert rows[0]["modelCosts"] == {"model-a": 0.2}
+    assert rows[0]["providers"] == {"openai": 17}
+    assert rows[0]["costUsd"] is None
+    assert rows[0]["title"] == "accepted canonical title"
+    assert not any(field in rows[0] for field in ("messages", "toolEvents"))
+    assert _session_period_details(stats, "month")[1][0]["tokens"] == 170
+    all_meta, all_rows = _session_period_details(stats, "allTime")
+    assert all_meta["reason"] == "not-synced" and all_rows == []
+    assert all_meta["call_details_available"] is False
+    _, missing = _collect_sessions({"devices": [{"deviceId": "x", "periods": {
+        "today": {"sessions": {"codex:missing": {"client": "codex", "sessionId": "missing"}}}
+    }}]})
+    assert "inputTokens" not in missing[0]
+    assert "reasoningTokens" not in missing[0]
+    assert missing[0]["costUsd"] is None
+
+
+def test_session_period_details_reports_both_upstream_and_dashboard_omission():
+    from hub.tm_overview import _session_period_details
+
+    stats = {"sessionDetailsOmitted": {"month": 7}, "devices": [{"deviceId": "a", "periods": {
+        "month": {"sessions": {f"codex:{i}": {"client": "codex", "sessionId": str(i), "totalTokens": i} for i in range(105)}}
+    }}]}
+    meta, rows = _session_period_details(stats, "month")
+    assert len(rows) == 100
+    assert meta["availability"] == "partial"
+    assert meta["sessions_total"] == 105 and meta["sessions_omitted_count"] == 7
+    assert meta["dashboard_omitted_count"] == 5
+    assert _session_period_details(stats, "today")[0]["availability"] == "unavailable"
+
+
+@requires_node
+def test_overview_exposes_synced_session_details_in_their_actual_period(cloud):
+    payload = widget_style_payload("period-detail")
+    row = _session("codex", "one", 170)
+    row.update(inputTokens=100, outputTokens=50, cacheReadTokens=20, cacheWriteTokens=0,
+               reasoningTokens=15, messageCount=3, modelCosts={"gpt-5.2": 0.02},
+               contextTokens=120, contextWindow=200000, timedOutputTokens=50, timedDurationMs=2500)
+    payload["today"]["sessions"] = {"codex:one": row}
+    payload["month"]["sessions"] = {"codex:one": {**row, "totalTokens": 340, "inputTokens": 200, "outputTokens": 100, "cacheReadTokens": 40}}
+    ingest(cloud, payload)
+    data = overview(cloud)
+    today = data["sessions_by_period"]["today"][0]
+    month = data["sessions_by_period"]["month"][0]
+    assert today == data["sessions"][0]
+    assert today["tokens"] == 170 and month["tokens"] == 340
+    assert today["inputTokens"] == 100 and month["inputTokens"] == 200
+    assert today["reasoningTokens"] == 15 and today["messageCount"] == 3
+    assert today["contextWindow"] == 200000 and today["timedDurationMs"] == 2500
+    assert today["modelCosts"] == {"gpt-5.2": 0.02}
+    assert data["sessions_by_period"]["allTime"] == []
+    assert data["sessions_meta_by_period"]["allTime"]["reason"] == "not-synced"
+
+
+@requires_node
+def test_overview_marks_zeros_inserted_by_real_upstream_normalization(cloud):
+    import json
+    import subprocess
+    from conftest import VENDOR
+
+    # This source deliberately lacks output/cache/reasoning/count/cost fields.
+    result = subprocess.run([
+        "node", "-e", "const {normalizePeriod}=require('./src/shared/usage');"
+        "console.log(JSON.stringify(normalizePeriod({sessions:{x:{client:'codex',"
+        "sessionId:'x',totalTokens:10,inputTokens:10,models:{m:10}}}})));",
+    ], cwd=VENDOR, check=True, capture_output=True, text=True)
+    normalized = json.loads(result.stdout)
+    source = normalized["sessions"]["codex:x"]
+    assert source["outputTokens"] == source["cacheReadTokens"] == source["reasoningTokens"] == 0
+    assert source["messageCount"] == source["costUsd"] == 0
+    payload = widget_style_payload("normalized-zero-source")
+    payload["today"] = normalized
+    ingest(cloud, payload)
+    data = overview(cloud)
+    row = data["sessions"][0]
+    assert row["zeroValuesUnconfirmed"] is True
+    assert row["inputTokens"] == 10
+    assert row["outputTokens"] == row["cacheReadTokens"] == row["reasoningTokens"] == 0
+    assert row["messageCount"] == row["costUsd"] == 0
+    assert data["sessions_by_period"]["today"][0]["zeroValuesUnconfirmed"] is True
+
+
+@requires_node
+def test_canonical_session_titles_follow_real_consent_and_revocation(tmp_path, monkeypatch):
+    import copy
+    import json
+    from conftest import NodeHub
+
+    canonical = "已同意上报的会话标题" + "题" * 180
+    private_text = "PRIVATE-MESSAGE-TOOL-OR-COMPAT-TEXT"
+    payload = widget_style_payload("consented-title-device")
+    payload["sessionTitleSyncGeneration"] = 1
+    row = _session("codex", "consented-title", 10)
+    row.update(title=canonical, preview=private_text, firstUserMessage=private_text,
+               sessionTitle=private_text, session_title=private_text, customTitle=private_text,
+               name=private_text, aiTitle=private_text, messages=[private_text],
+               toolEvents=[private_text], toolResults=[private_text])
+    payload["today"]["sessions"] = {"codex:consented-title": row}
+    payload["month"]["sessions"] = {"codex:consented-title": row}
+    policy_path = "/api/sync/titles/consented-title-device"
+
+    def read_session(client):
+        data = overview(client)
+        assert private_text not in json.dumps(data, ensure_ascii=False)
+        return data, data["sessions"][0]
+
+    monkeypatch.delenv("TOKEN_MONITOR_SYNC_SESSION_TITLES", raising=False)
+    disabled = NodeHub(tmp_path / "disabled-node.json")
+    try:
+        with make_cloud_app(tmp_path / "disabled-cloud", disabled.url) as client:
+            ingest(client, payload)
+            assert "title" not in read_session(client)[1]
+            denied = client.put(policy_path, headers=HEADERS, json={"enabled": True})
+            assert denied.status_code == 403
+    finally:
+        disabled.stop()
+
+    # Only this isolated child process receives the opt-in environment. Neither
+    # the user's settings nor the normal test/server configuration is changed.
+    monkeypatch.setenv("TOKEN_MONITOR_SYNC_SESSION_TITLES", "true")
+    enabled = NodeHub(tmp_path / "enabled-node.json")
+    try:
+        with make_cloud_app(tmp_path / "enabled-cloud", enabled.url) as client:
+            # Keep the real default 30-second overview cache. Revocation below
+            # must invalidate it through the Cloud proxy, with no sleeps or clears.
+            assert client.app.state.settings.overview_cache_seconds == 30
+            ingest(client, payload)
+            assert "title" not in read_session(client)[1]  # Server opt-in alone is insufficient.
+            consent = client.put(policy_path, headers=HEADERS, json={"enabled": True})
+            assert consent.status_code == 200, consent.text
+            generation = consent.json()["generation"]
+            wrong_generation = copy.deepcopy(payload)
+            wrong_generation["sessionTitleSyncGeneration"] = generation + 1
+            ingest(client, wrong_generation)
+            assert "title" not in read_session(client)[1]
+            agreed = copy.deepcopy(payload)
+            agreed["sessionTitleSyncGeneration"] = generation
+            agreed["updatedAt"] = (datetime.now(timezone.utc) + timedelta(seconds=1)).isoformat(timespec="milliseconds")
+            ingest(client, agreed)
+            accepted, accepted_row = read_session(client)
+            assert accepted_row["title"] == canonical[:160]
+            assert accepted["sessions_by_period"]["month"][0]["title"] == canonical[:160]
+            # Prime the retained overview again, then revoke via its real route.
+            assert read_session(client)[1]["title"] == canonical[:160]
+            assert client.get("/api/v1/tm/overview", headers=HEADERS).status_code == 401
+            assert client.put(policy_path, headers=READ, json={"enabled": False}).status_code == 401
+            revoked = client.put(policy_path, headers=HEADERS, json={"enabled": False})
+            assert revoked.status_code == 200, revoked.text
+            revoked_overview, revoked_row = read_session(client)
+            assert "title" not in revoked_row
+            assert "title" not in revoked_overview["sessions_by_period"]["month"][0]
+            # A late upload with the revoked generation cannot resurrect text.
+            late_upload = copy.deepcopy(agreed)
+            late_upload["updatedAt"] = (datetime.now(timezone.utc) + timedelta(seconds=2)).isoformat(timespec="milliseconds")
+            ingest(client, late_upload)
+            assert "title" not in read_session(client)[1]
+    finally:
+        enabled.stop()

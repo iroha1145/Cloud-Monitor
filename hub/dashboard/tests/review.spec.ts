@@ -17,14 +17,19 @@ for (const viewport of [
     overview.trend.push({ day: "not-a-date", total: 42 }, { day: "2026-02-30", total: 3 });
     await page.route("**/api/**", route => route.fulfill({ json: route.request().url().endsWith("/overview") ? overview : {} }));
     await page.goto("/");
-    if (viewport.width < 760 || viewport.height < 500) {
-      await page.getByRole("button", { name: "打开导航" }).click();
-      await page.locator(".mobile-nav-dialog").getByRole("button", { name: "工作区设置", exact: true }).click();
+    if (process.env.CM_E2E_HOSTED === "1") {
+      await page.getByLabel("访问密钥", { exact: true }).fill("review-fixture-only");
+      await page.getByRole("button", { name: "进入工作台", exact: true }).click();
     } else {
-      await page.getByRole("button", { name: "连接我的数据" }).click();
+      if (viewport.width < 760 || viewport.height < 500) {
+        await page.getByRole("button", { name: "打开导航", exact: true }).click();
+        await page.locator(".feel-nav-drawer").getByRole("button", { name: "工作区设置", exact: true }).click();
+      } else {
+        await page.getByRole("button", { name: "连接我的数据" }).click();
+      }
+      await page.getByLabel("访问密钥", { exact: true }).fill("review-fixture-only");
+      await page.getByRole("button", { name: "连接并查看真实用量" }).click();
     }
-    await page.getByLabel("访问密钥", { exact: true }).fill("review-fixture-only");
-    await page.getByRole("button", { name: "连接并查看真实用量" }).click();
     await expect(page.getByRole("button", { name: `查看 ${longName} 详情`, exact: true })).toBeVisible();
     await page.getByRole("button", { name: `查看 ${longName} 详情`, exact: true }).click();
     const dialog = page.locator(".model-dialog");

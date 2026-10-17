@@ -10,7 +10,7 @@ const destinations = [
 
 async function openDemo(page: Page, view = "overview") {
   await page.goto(`/demo.html#${view}`);
-  await expect(page.locator(".mobile-bottom-nav")).toBeVisible();
+  await expect(page.locator(".feel-nav-peek")).toBeVisible();
 }
 
 for (const viewport of [
@@ -27,20 +27,31 @@ for (const viewport of [
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
       await openDemo(page);
-      const nav = page.getByRole("navigation", { name: "移动端主导航" });
       for (const [name, id] of destinations) {
-        await nav.getByRole("link", { name, exact: true }).tap();
+        await page.locator(".feel-nav-peek").tap();
+        const nav = page.locator(".feel-nav-drawer").getByRole("navigation", { name: "页面导航" });
+        await expect(nav.locator(`a.nav-item[href="#${id}"]`)).toHaveAccessibleName(new RegExp(`^${name}(?:\\s+\\d+)?$`));
+        await nav.locator(`a.nav-item[href="#${id}"]`).tap();
         await expect(page).toHaveURL(new RegExp(`#${id}$`));
+        await expect(page.locator(".feel-nav-drawer")).toBeHidden();
+        await page.locator(".feel-nav-peek").tap();
         await expect(
-          nav.getByRole("link", { name, exact: true }),
+          nav.locator(`a.nav-item[href="#${id}"]`),
         ).toHaveAttribute("aria-current", "page");
+        const controls = await nav.locator("a.nav-item").evaluateAll(nodes => nodes.map(node => {
+          const rect = node.getBoundingClientRect(); return { width: rect.width, height: rect.height };
+        }));
+        expect(controls).toHaveLength(5);
+        expect(controls.every(item => item.width >= 44 && item.height >= 44)).toBe(true);
+        await page.keyboard.press("Escape");
+        await expect(page.locator(".feel-nav-drawer")).toBeHidden();
         // Measure the lazily loaded charts only once they are on the page.
         if (id === "models") await expect(page.locator(".matrix-cell").first()).toBeVisible();
         if (id === "history") await expect(page.locator(".cm-activity-cell").first()).toBeVisible();
         const dimensions = await page.evaluate(() => ({
           viewport: innerWidth,
           document: document.documentElement.scrollWidth,
-          controls: [...document.querySelectorAll(".mobile-bottom-nav a")].map(
+          controls: [...document.querySelectorAll(".feel-nav-peek")].map(
             (node) => {
               const rect = node.getBoundingClientRect();
               return { width: rect.width, height: rect.height };
@@ -100,7 +111,23 @@ test.describe("mobile reading and actions", () => {
       .fill("unmatched-model");
     await expect(page.getByText("没有找到匹配的模型")).toBeVisible();
     await page.getByRole("textbox", { name: "搜索模型", exact: true }).fill("");
-    await first.locator(".cache-track").tap();
+    const cacheBar = first.locator(".cache-track");
+    await cacheBar.scrollIntoViewIfNeeded();
+    // Filtering moves this row below the viewport. Finish the browser's smooth
+    // scroll before tapping: real scrolling intentionally dismisses the tooltip.
+    const settledFrames = await cacheBar.evaluate(async element => {
+      let previous = [scrollX, scrollY, element.getBoundingClientRect().top];
+      let settled = 0;
+      for (let frame = 0; frame < 120 && settled < 4; frame += 1) {
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+        const current = [scrollX, scrollY, element.getBoundingClientRect().top];
+        settled = current.every((value, index) => Math.abs(value - previous[index]) < .1) ? settled + 1 : 0;
+        previous = current;
+      }
+      return settled;
+    });
+    expect(settledFrames).toBe(4);
+    await cacheBar.tap();
     const tooltip = page.locator(".metric-tooltip-card");
     await expect(tooltip).toContainText("32,856,386");
     const popup = await tooltip.boundingBox();
@@ -114,7 +141,7 @@ test.describe("mobile reading and actions", () => {
           .zIndex,
       ),
       navigation: Number(
-        getComputedStyle(document.querySelector(".mobile-bottom-nav")!).zIndex,
+        getComputedStyle(document.querySelector(".feel-nav-peek")!).zIndex,
       ),
     }));
     expect(layers.tooltip).toBeGreaterThan(layers.navigation);
@@ -125,7 +152,7 @@ test.describe("mobile reading and actions", () => {
     await expect(
       dialog.getByRole("heading", { name: "gpt-6-astra", exact: true }),
     ).toBeVisible();
-    await expect(dialog.getByText("缓存读取", { exact: true })).toBeVisible();
+    await expect(dialog.locator(".composition-panel").getByText("缓存读取", { exact: true })).toBeVisible();
     await expect
       .poll(async () => {
         const rect = await dialog.boundingBox();
@@ -183,7 +210,7 @@ test.describe("mobile reading and actions", () => {
   }) => {
     await openDemo(page);
     await page.getByRole("button", { name: "打开导航", exact: true }).tap();
-    const drawer = page.locator(".mobile-nav-dialog");
+    const drawer = page.locator(".feel-nav-drawer");
     await expect(drawer).toBeVisible();
     await drawer.getByRole("button", { name: "工作区设置", exact: true }).tap();
     await expect(page.locator(".settings-dialog")).toBeVisible();
@@ -191,7 +218,7 @@ test.describe("mobile reading and actions", () => {
     await page.getByRole("button", { name: "刷新数据", exact: true }).tap();
     await expect(page.locator(".app-toast")).toBeVisible();
     const toast = await page.locator(".app-toast").boundingBox();
-    const nav = await page.locator(".mobile-bottom-nav").boundingBox();
+    const nav = await page.locator(".feel-nav-peek").boundingBox();
     expect(toast!.y + toast!.height).toBeLessThanOrEqual(nav!.y);
   });
 });

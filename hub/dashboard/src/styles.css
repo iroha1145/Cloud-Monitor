@@ -1497,9 +1497,9 @@ input[type="search"]::-webkit-search-decoration {
 
 /* ── Dialogs, tooltips, menus ─────────────────────────────────────── */
 [data-slot="dialog-overlay"] {
-  background: rgb(10 10 10 / 0.32);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
+  background: rgb(18 22 28 / .22);
+  -webkit-backdrop-filter: blur(8px) saturate(.95);
+  backdrop-filter: blur(8px) saturate(.95);
 }
 [data-slot="dialog-content"] {
   /* Long user-defined model names must not enlarge the grid track. */
@@ -1507,11 +1507,11 @@ input[type="search"]::-webkit-search-decoration {
   max-height: 90dvh;
   overflow-y: auto;
   border: 1px solid var(--line);
-  border-radius: 16px !important;
+  border-radius: 26px !important;
   background: var(--surface);
   color: var(--ink);
   font-family: var(--font-sans);
-  box-shadow: var(--shadow-float);
+  box-shadow: 0 28px 80px -22px rgb(13 20 31 / .24), 0 8px 24px -10px rgb(13 20 31 / .12), inset 0 1px 0 rgb(255 255 255 / .45);
 }
 [data-slot="dialog-content"] > * {
   min-width: 0;

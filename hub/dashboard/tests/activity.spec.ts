@@ -24,7 +24,8 @@ async function loadActivity(page: Page, mobile = false, mismatch = false) {
   await page.getByLabel("访问密钥", { exact: true }).fill("activity-local-fixture");
   await page.getByRole("button", { name: "连接并查看真实用量" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.locator(mobile ? ".mobile-bottom-nav" : ".sidebar").getByRole("link", { name: "历史记录", exact: true }).click();
+  if (mobile) await page.locator(".feel-nav-peek").click();
+  await page.locator(mobile ? ".feel-nav-drawer" : ".feel-navigation").getByRole("link", { name: "历史记录", exact: true }).click();
   await expect(page.getByRole("heading", { name: "活动一览", exact: true })).toBeVisible();
 }
 
@@ -89,7 +90,7 @@ test("stale hourly data stays undisplayed with an explicit explanation", async (
 
 for (const width of [320, 390]) {
   test(`mobile activity is square, readable, keyboard accessible and contained at ${width}px`, async ({ browser }) => {
-    const context = await browser.newContext({ viewport: { width, height: 844 }, isMobile: true, hasTouch: true, colorScheme: width === 390 ? "dark" : "light" });
+    const context = await browser.newContext({ baseURL: String(test.info().project.use.baseURL), viewport: { width, height: 844 }, isMobile: true, hasTouch: true, colorScheme: width === 390 ? "dark" : "light" });
     const page = await context.newPage();
     await loadActivity(page, true);
     const panel = page.locator(".cm-activity-panel");

@@ -15,9 +15,10 @@
   /api/history 的 daily 回填（同一天快照优先）。
 - limits: 官方聚合 limits.providers 透传，每条附 device 显示名
   （sourceDeviceId → hostname）。
-- sessions / sessions_omitted: 各设备 today 周期 sessions 拍平（键
-  client:sessionId 跨设备去重留大者），按 tokens 降序截 100；
-  sessions_omitted 取自官方聚合 sessionDetailsOmitted.today。
+- sessions / sessions_omitted: 各设备 today 周期 sessions 拍平，按 tokens
+  降序截 100；sessions_omitted 保留原上游省略标记以兼容旧界面。
+- sessions_by_period / sessions_meta_by_period: 独立今日、本月明细及缺失说明；
+  allTime 不同步会话明细，始终空列表并标注 not-synced。
 - projects: 官方聚合 periods.allTime.projects 规范化输出，附 devices 归属。
 - diagnostics: 每设备 clientHealth/clientStatus/wslStatus 透传（官方 stats
   devices 原生携带，缺失为 None，前端自动隐藏对应行）。
@@ -579,8 +580,8 @@ def _collect_limits(stats: dict) -> list[dict]:
     return out
 
 
-def _collect_sessions(stats: dict) -> tuple[dict, list[dict]]:
-    """各设备 today 周期 sessions 拍平。
+def _collect_sessions(stats: dict, period: str = "today") -> tuple[dict, list[dict]]:
+    """各设备指定周期 sessions 拍平；缺失观察不填零。
 
     跨设备主键 deviceId:client:sessionId——不同设备出现相同 client:sessionId
     时两条都保留（不互相删除）；仅在存在官方稳定跨设备标识且内容一致时才
@@ -589,8 +590,8 @@ def _collect_sessions(stats: dict) -> tuple[dict, list[dict]]:
     by_key: dict[str, dict] = {}
     for device in stats.get("devices") or []:
         periods = device.get("periods") or {}
-        today = periods.get("today") or {}
-        sessions = today.get("sessions")
+        source_period = periods.get(period) or {}
+        sessions = source_period.get("sessions")
         if not isinstance(sessions, dict):
             continue
         display = _device_display(device)
@@ -603,15 +604,24 @@ def _collect_sessions(stats: dict) -> tuple[dict, list[dict]]:
             models = value.get("models")
             item = {
                 "client": client,
+                # Upstream normalization loses original field-presence evidence.
+                # Never attest that a normalized zero was actually measured.
+                "zeroValuesUnconfirmed": True,
                 "sessionId": session_id,
                 "tokens": tokens,
-                "costUsd": _float(value.get("costUsd") or value.get("cost")),
+                "costUsd": value.get("costUsd", value.get("cost")),
                 "models": models if isinstance(models, dict) else {},
                 "project": value.get("projectLabel") or value.get("project"),
                 "startedAt": value.get("startedAt"),
                 "lastUsedAt": value.get("lastUsedAt"),
                 "device": display,
             }
+            # Canonical titles here have already passed the official server's
+            # device-consent and generation checks. Never fall back to previews
+            # or compatibility message/title fields.
+            title = value.get("title")
+            if isinstance(title, str) and title.strip():
+                item["title"] = title.strip()[:160]
             # Keep absent observations absent: an older client has no evidence
             # that a turn is still running or that its context is empty.
             for field in (
@@ -619,6 +629,8 @@ def _collect_sessions(stats: dict) -> tuple[dict, list[dict]]:
                 "waitingForInput", "liveActivity", "promptCache", "unpricedTokens",
                 "timedOutputTokens", "timedDurationMs", "parentSessionId", "parentClient",
                 "nativeSessionId", "t3ThreadId", "usageSource", "usageCoverage",
+                "inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens",
+                "reasoningTokens", "messageCount", "modelCosts", "providers", "projectId",
             ):
                 if field in value:
                     item[field] = value[field]
@@ -633,7 +645,7 @@ def _collect_sessions(stats: dict) -> tuple[dict, list[dict]]:
     all_sessions = sorted(by_key.values(), key=lambda s: s["tokens"], reverse=True)
     omitted_counts = stats.get("sessionDetailsOmitted")
     omitted_count = (
-        int(omitted_counts.get("today") or 0)
+        int(omitted_counts.get(period) or 0)
         if isinstance(omitted_counts, dict)
         else 0
     )
@@ -644,6 +656,34 @@ def _collect_sessions(stats: dict) -> tuple[dict, list[dict]]:
         "session_details_incomplete": omitted_count > 0,
     }
     return meta, all_sessions[:SESSIONS_LIMIT]
+
+
+def _session_period_details(stats: dict, period: str) -> tuple[dict, list[dict]]:
+    """Describe only synchronized session accounting, never local transcript detail."""
+    if period == "allTime":
+        return {
+            "period": period, "availability": "unavailable", "reason": "not-synced",
+            "sessions_total": 0, "sessions_returned": 0, "sessions_omitted_count": 0,
+            "dashboard_omitted_count": 0, "session_details_incomplete": False,
+            "call_details_available": False, "message_content_available": False,
+            "tool_events_available": False,
+        }, []
+    meta, sessions = _collect_sessions(stats, period)
+    dashboard_omitted = max(0, meta["sessions_total"] - meta["sessions_returned"])
+    incomplete = meta["session_details_incomplete"] or dashboard_omitted > 0
+    available = bool(sessions) or any(
+        isinstance(((device.get("periods") or {}).get(period) or {}).get("sessions"), dict)
+        for device in stats.get("devices") or []
+    )
+    return {
+        **meta, "period": period,
+        "availability": "partial" if incomplete else ("available" if available else "unavailable"),
+        "reason": "omitted" if incomplete else ("no-session-records" if not sessions else None),
+        "dashboard_omitted_count": dashboard_omitted,
+        "session_details_incomplete": incomplete,
+        "call_details_available": False, "message_content_available": False,
+        "tool_events_available": False,
+    }, sessions
 
 
 def _collect_projects(stats: dict) -> list[dict]:
@@ -762,6 +802,7 @@ def build_overview(
         devices.append(item)
 
     sessions_meta, sessions = _collect_sessions(stats)
+    period_details = {period: _session_period_details(stats, period) for period in ("today", "month", "allTime")}
 
     # v2 扩展：活动口径 / 每设备窗口 / 降级信息（P0-3 / P1-4）
     partial_errors: list[dict] = []
@@ -841,6 +882,8 @@ def build_overview(
         "sessions": sessions,
         "sessions_omitted": sessions_meta["session_details_incomplete"],  # deprecated
         "sessions_meta": sessions_meta,
+        "sessions_by_period": {period: detail[1] for period, detail in period_details.items()},
+        "sessions_meta_by_period": {period: detail[0] for period, detail in period_details.items()},
         "projects": _collect_projects(stats),
         "diagnostics": _collect_diagnostics(stats),
     }

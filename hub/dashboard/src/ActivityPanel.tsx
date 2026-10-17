@@ -59,13 +59,13 @@ function CoverageDetails({ coverage, metadata, data }: {
           <span>采样说明 <ChevronDown size={13} aria-hidden="true" /></span>
         </summary>
         <dl className="cm-activity-sampling-grid">
-          <div><dt>实际 / 期望采样</dt><dd>{full(coverage.observedBuckets)} / {full(coverage.expectedBuckets)}</dd></div>
-          <div><dt>归属方式</dt><dd>{samplingMode(coverage.attributionMode)}</dd></div>
-          <div><dt>首次采样</dt><dd>{stamp(coverage.firstSampleAt, metadata.timeZone)}</dd></div>
-          <div><dt>最近采样</dt><dd>{stamp(coverage.lastSampleAt, metadata.timeZone)}</dd></div>
+          <div data-feel-item="row"><dt>实际 / 期望采样</dt><dd>{full(coverage.observedBuckets)} / {full(coverage.expectedBuckets)}</dd></div>
+          <div data-feel-item="row"><dt>归属方式</dt><dd>{samplingMode(coverage.attributionMode)}</dd></div>
+          <div data-feel-item="row"><dt>首次采样</dt><dd>{stamp(coverage.firstSampleAt, metadata.timeZone)}</dd></div>
+          <div data-feel-item="row"><dt>最近采样</dt><dd>{stamp(coverage.lastSampleAt, metadata.timeZone)}</dd></div>
           {(coverage.gapCount !== null || coverage.resetCount !== null) && <>
-            <div><dt>采样缺口</dt><dd>{full(coverage.gapCount)}</dd></div>
-            <div><dt>计数重置</dt><dd>{full(coverage.resetCount)}</dd></div>
+            <div data-feel-item="row"><dt>采样缺口</dt><dd>{full(coverage.gapCount)}</dd></div>
+            <div data-feel-item="row"><dt>计数重置</dt><dd>{full(coverage.resetCount)}</dd></div>
           </>}
         </dl>
         {coverage.devices.length > 0 && <ul className="cm-activity-device-coverage">
@@ -164,7 +164,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
     if (next >= 0 && next <= lastPast) buttons.current[next]?.focus();
   }
 
-  return <section className="sv-card sv-history-activity cm-activity-panel" aria-labelledby="sv-activity-title">
+  return <section className="sv-card sv-history-activity cm-activity-panel" data-feel-card aria-labelledby="sv-activity-title">
     <header className="cm-activity-head">
       <div><h2 id="sv-activity-title">活动一览</h2><p>{subtitle}</p></div>
       <div className="cm-activity-tabs" role="tablist" aria-label="活动时间范围" ref={tabList}>
@@ -184,7 +184,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
         {view === "month" && <div className="cm-activity-weekdays" aria-hidden="true">{WEEKDAYS.map((day) => <span key={day}>{day}</span>)}</div>}
         <div className={`cm-activity-grid cm-activity-grid-${view}`} key={view} role="group"
           aria-label={view === "day" ? "小时用量；方向键移动，回车打开说明" : "每日活动；方向键移动，回车筛选日期"}>
-          {view === "month" && Array.from({ length: leading }, (_, index) => <span key={`space-${index}`} aria-hidden="true" />)}
+          {view === "month" && Array.from({ length: leading }, (_, index) => <span key={`space-${index}`} aria-hidden="true" data-feel-item="cell" />)}
           {cells.map((cell, index) => {
             const at = view === "month" ? index + leading : index;
             const [column, row] = view === "week" ? [Math.floor(at / 7), at % 7]
@@ -194,7 +194,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
               : String(Math.min(4, Math.max(1, Math.ceil(cell.total / maximum * 4))));
             const label = cell.hour === undefined ? cell.day
               : `${cell.day} ${cell.label}:00–${String((cell.hour + 1) % 24).padStart(2, "0")}:00`;
-            if (cell.future) return <span className="cm-activity-cell is-future" key={cell.day} style={entrance}
+            if (cell.future) return <span className="cm-activity-cell is-future" data-feel-item="cell" key={cell.day} style={entrance}
               aria-label={`${cell.day}，尚未到来`}>{cell.label}</span>;
             return <MetricTooltip key={cell.hour ?? cell.day} title={label}
               preserveAction={cell.hour === undefined}
@@ -202,6 +202,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
               rows={[{ label: "词元用量", value: cell.total === null ? "未上报" : full(cell.total) }]}
               note={cell.hour === undefined ? "点击日期筛选会话" : `活动时区：${metadata.timeZone}`}>
               <button type="button" className={`cm-activity-cell${selected === cell.day && view !== "day" ? " is-selected" : ""}`}
+                data-feel-item="cell"
                 data-level={level} data-day={cell.day} data-hour={cell.hour} style={entrance}
                 aria-pressed={cell.hour === undefined ? selected === cell.day : undefined}
                 tabIndex={index === tabIndexAt ? 0 : -1}
@@ -216,10 +217,10 @@ export function ActivityPanel({ data, selected, onSelect }: {
         <div className="cm-activity-range"><span>{metadata.timeZone}</span><span className="cm-activity-legend" aria-label="颜色越浓，用量越多">少{[0, 1, 2, 3, 4].map((level) => <i key={level} data-level={level} />)}多</span></div>
         <div className="cm-activity-summary">
           <MetricTooltip title="已上报用量合计" rows={[{ label: "词元用量", value: reported.length ? full(total) : "未上报" }]} note="仅合计已上报的时段，未知记录不计为零。">
-            <span><small>已上报合计</small><strong>{reported.length ? compact(total) : "未提供"}</strong></span>
+            <span data-feel-item="row"><small>已上报合计</small><strong>{reported.length ? compact(total) : "未提供"}</strong></span>
           </MetricTooltip>
-          <span><small>有活动{view === "day" ? "时段" : "日期"}</small><strong>{reported.length ? `${active} ${view === "day" ? "小时" : "天"}` : "未提供"}</strong></span>
-          <span><small>已上报{view === "day" ? "时段" : "日期"}</small><strong>{reported.length} / {cells.filter((cell) => !cell.future).length}</strong></span>
+          <span data-feel-item="row"><small>有活动{view === "day" ? "时段" : "日期"}</small><strong>{reported.length ? `${active} ${view === "day" ? "小时" : "天"}` : "未提供"}</strong></span>
+          <span data-feel-item="row"><small>已上报{view === "day" ? "时段" : "日期"}</small><strong>{reported.length} / {cells.filter((cell) => !cell.future).length}</strong></span>
         </div>
         {missing > 0 && <p className="cm-activity-missing">斜线格表示未上报，与零用量分开显示。</p>}
       </>}
