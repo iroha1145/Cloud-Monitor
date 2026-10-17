@@ -81,6 +81,106 @@ test("queued upload recovers into real history and visible model data after the 
   }
 });
 
+test("real ingest supplies period-specific session and model detail while legacy zeros remain unknown", async ({ browser, request }) => {
+  const readHeaders = { Authorization: `Bearer ${READ_TOKEN}` };
+  const ingestHeaders = { "X-Token-Monitor-Secret": "unit-tm-secret-0123456789abcdef0000" };
+  const fixtureResponse = await request.get("/__test/session-details", { headers: readHeaders });
+  expect(fixtureResponse.status()).toBe(200);
+  const fixture = await fixtureResponse.json();
+  const context = await browser.newContext({ baseURL: "http://127.0.0.1:18888", timezoneId: "UTC" });
+  const page = await context.newPage();
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  const value = (scope: import("@playwright/test").Locator, label: string) =>
+    scope.locator("dt").filter({ hasText: new RegExp(`^${label}$`) }).locator("..").locator("dd");
+  try {
+    for (const payload of fixture.payloads) {
+      const response = await request.post("/api/ingest", { headers: ingestHeaders, data: payload });
+      expect(response.status()).toBe(200);
+    }
+    // Inspect the real overview before opening the built UI: this proves that
+    // normalization and the Python boundary carried independent period values.
+    const overviewResponse = await request.get("/api/v1/tm/overview", { headers: readHeaders });
+    expect(overviewResponse.status()).toBe(200);
+    const overview = await overviewResponse.json();
+    const today = overview.sessions_by_period.today.find((row: { sessionId: string }) => row.sessionId === "detailed-mixed");
+    const month = overview.sessions_by_period.month.find((row: { sessionId: string }) => row.sessionId === "detailed-mixed");
+    expect(today).toMatchObject({ tokens: 16000, inputTokens: 3600, outputTokens: 2400, cacheReadTokens: 9000, cacheWriteTokens: 1000, reasoningTokens: 800, messageCount: 12 });
+    expect(month).toMatchObject({ tokens: 48000, inputTokens: 10800, outputTokens: 7200, cacheReadTokens: 27000, cacheWriteTokens: 3000, reasoningTokens: 2400, messageCount: 36 });
+    const legacyRow = overview.sessions_by_period.today.find((row: { sessionId: string }) => row.sessionId === "legacy-missing");
+    expect(legacyRow).toMatchObject({ zeroValuesUnconfirmed: true, inputTokens: 1000, outputTokens: 0, cacheReadTokens: 0, reasoningTokens: 0, messageCount: 0, costUsd: 0, contextTokens: 0 });
+    expect(overview.sessions_by_period.allTime).toEqual([]);
+    expect(overview.sessions_meta_by_period.allTime.reason).toBe("not-synced");
+    const detailDevice = overview.devices.find((device: { deviceId: string }) => device.deviceId === "session-details-real-device");
+    expect(detailDevice.today.modelThroughput["detail-model-primary"]).toMatchObject({ timedOutputTokens: 1500, timedDurationMs: 37500 });
+    // A legacy device has unknown model timing. Upstream deliberately withholds
+    // the combined map rather than turn partial device timing into a global rate.
+    expect(overview.totals.today.modelThroughput).toBeUndefined();
+    await login(page);
+    await page.getByRole("button", { name: "查看 detail-model-primary 详情", exact: true }).click();
+    let dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("今日用量详情");
+    await expect(dialog.getByRole("region", { name: "模型输出速度" })).toHaveCount(0);
+    await expect(dialog.getByRole("region", { name: "模型的客户端来源" })).toContainText("Codex");
+    const mixed = dialog.locator(".session-usage-card").filter({ hasText: "detail-fixture-project" });
+    await mixed.locator(":scope > summary").click();
+    await expect(mixed.locator(".session-card-amount")).toContainText("1.0 万");
+    await expect(mixed.locator(".session-scope-note")).toContainText("整个会话的统计");
+    await expect(mixed.locator(".session-current-line")).toContainText("本模型费用 $0.30");
+    for (const [label, expected] of [["非缓存输入", "3,600"], ["输出", "2,400"], ["缓存读取", "9,000"], ["缓存写入", "1,000"], ["其中推理", "800"]]) {
+      await expect(value(mixed, label)).toHaveText(expected);
+    }
+    await expect(value(mixed, "已记录消息")).toHaveText("12 条");
+    await expect(value(mixed, "输出速率")).toHaveText("40.0 词元/秒");
+    await expect(value(mixed, "完整用量")).toHaveText("16,000 词元");
+    await expect(mixed.getByRole("region", { name: "上次上报的上下文", exact: true })).toContainText("104.0%");
+    await expect(mixed.locator(`time[datetime="${fixture.expected.startedAt}"]`)).toBeVisible();
+    await expect(mixed.locator(`time[datetime="${fixture.expected.lastUsedAt}"]`)).toBeVisible();
+    await mixed.getByText("来源与模型", { exact: true }).click();
+    await expect(value(mixed, "会话标识")).toHaveText("detailed-mixed");
+    await expect(value(mixed, "项目标识")).toHaveText("detail-fixture-project");
+    await expect(value(mixed, "原生会话标识")).toHaveText("11223344-1234-4abc-8abc-1234567890ab");
+    await expect(value(mixed, "关联会话标识（T3）")).toHaveText("fixture-thread");
+    await expect(value(mixed, "提供商 · OpenAI")).toHaveText("16,000 词元");
+    await expect(value(mixed, "父级会话")).toContainText("fixture-parent");
+    await expect(mixed.locator(".session-model-ledger")).toContainText("detail-model-secondary");
+
+    const legacy = dialog.locator(".session-usage-card").filter({ hasText: "legacy-fixture-project" });
+    await legacy.locator(":scope > summary").click();
+    await expect(value(legacy, "非缓存输入")).toHaveText("1,000");
+    for (const label of ["输出", "缓存读取", "缓存写入", "其中推理", "已记录消息", "估算费用"]) {
+      await expect(value(legacy, label)).toHaveText("未提供");
+    }
+    await expect(legacy).toContainText("部分零值无法确认，显示为未提供");
+    await expect(legacy.locator(".session-context-block")).toHaveCount(0);
+    await expect(legacy).not.toContainText("$0.00");
+    await expect(dialog.locator(".local-detail-note")).toHaveCount(1);
+    await page.keyboard.press("Escape");
+
+    await page.getByRole("tablist", { name: "统计周期" }).getByRole("tab", { name: "本月", exact: true }).click();
+    await page.getByRole("button", { name: "查看 detail-model-primary 详情", exact: true }).click();
+    dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("本月用量详情");
+    const monthCard = dialog.locator(".session-usage-card").filter({ hasText: "detail-fixture-project" });
+    await monthCard.locator(":scope > summary").click();
+    for (const [label, expected] of [["非缓存输入", "10,800"], ["输出", "7,200"], ["缓存读取", "27,000"], ["缓存写入", "3,000"], ["其中推理", "2,400"], ["已记录消息", "36 条"], ["完整用量", "48,000 词元"]]) {
+      await expect(value(monthCard, label)).toHaveText(expected);
+    }
+    await expect(monthCard.locator(".session-current-line")).toContainText("本模型费用 $0.90");
+    await page.keyboard.press("Escape");
+    await page.getByRole("tablist", { name: "统计周期" }).getByRole("tab", { name: "累计", exact: true }).click();
+    await page.getByRole("button", { name: "查看 detail-model-primary 详情", exact: true }).click();
+    await expect(page.getByRole("dialog")).toContainText("未同步全部历史会话");
+    await expect(page.getByRole("dialog").locator(".session-usage-card")).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await context.close();
+    for (const payload of fixture.payloads) {
+      await request.delete(`/api/devices/${payload.deviceId}`, { headers: ingestHeaders });
+    }
+  }
+});
+
 for (const authentication of ["manual", "restored"] as const) {
   test(`hosted ${authentication} login loads one complete batch and keeps scheduled refreshes`, async ({ page }) => {
     const counts = { overview: 0, subscriptions: 0, "provider-status": 0, daily: 0 };
@@ -236,7 +336,7 @@ test("built 30-day cache skips missing days, weights participating usage and kee
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(await metric.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
-  await trend.screenshot({ path: "evidence/cache-skipped-days-320.png", animations: "disabled" });
+  await trend.screenshot({ path: test.info().outputPath("cache-skipped-days-320.png"), animations: "disabled" });
   await page.setViewportSize({ width: 390, height: 844 });
   payload.trend[0].total = 0;
   payload.trend[0].unclassifiedTokens = 0;
@@ -244,7 +344,7 @@ test("built 30-day cache skips missing days, weights participating usage and kee
   await expect(metric).toContainText("仅统计 16/30 天");
   await expect(metric.locator("strong")).toHaveText("28.1%");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await trend.screenshot({ path: "evidence/cache-skipped-days-mobile.png", animations: "disabled" });
+  await trend.screenshot({ path: test.info().outputPath("cache-skipped-days-mobile.png"), animations: "disabled" });
   payload.trend = payload.trend.slice(1, 15);
   await page.getByRole("button", { name: "刷新数据", exact: true }).click();
   await expect(metric.locator("strong")).toHaveText("未提供");
@@ -262,15 +362,33 @@ test("built production and Pages menus stay at the viewport edge without changin
       await expect(drawer).toBeVisible();
       // The production CSS compiler can lower individual transforms into
       // transform, so this must run against built assets as well as Vite dev.
-      for (const viewport of [{ width: 844, height: 390 }, { width: 390, height: 844 }]) {
+      for (const viewport of [{ width: 320, height: 740 }, { width: 390, height: 844 }, { width: 430, height: 932 }, { width: 844, height: 390 }]) {
         await page.setViewportSize(viewport);
         await expect.poll(async () => {
           const box = await drawer.boundingBox();
-          return Boolean(box && Math.abs(box.x) < 1 && Math.abs(box.y) < 1 && Math.abs(box.height - viewport.height) < 1);
+          return Boolean(box && Math.abs(box.x - (viewport.width - box.width) / 2) < 1
+            && Math.abs(box.y + box.height - viewport.height) < 1
+            && box.y >= 15 && box.height <= viewport.height - 15
+            && box.width > 240 && box.width <= Math.min(520, viewport.width)
+            && box.x >= 0 && box.x + box.width <= viewport.width);
         }).toBe(true);
-        await expect(drawer.getByRole("button", { name: "关闭", exact: true })).toBeInViewport();
+        const close = drawer.getByRole("button", { name: "关闭导航", exact: true });
+        await expect(close).toBeInViewport();
+        const before = await close.boundingBox();
+        expect(before!.width).toBeGreaterThanOrEqual(44);
+        expect(before!.height).toBeGreaterThanOrEqual(44);
+        expect(before!.x).toBeGreaterThanOrEqual(0);
+        expect(before!.y).toBeGreaterThanOrEqual(0);
+        expect(before!.x + before!.width).toBeLessThanOrEqual(viewport.width);
+        expect(before!.y + before!.height).toBeLessThanOrEqual(viewport.height);
+        const navigation = drawer.getByRole("navigation", { name: "页面导航", exact: true });
+        await navigation.evaluate(node => { node.scrollTop = node.scrollHeight; });
+        if (viewport.height < 500) expect(await navigation.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+        await expect(close).toBeInViewport();
+        expect(Math.abs((await close.boundingBox())!.y - before!.y)).toBeLessThan(1);
+        await expect(drawer.getByRole("button", { name: "工作区设置", exact: true })).toBeInViewport();
       }
-      await drawer.getByRole("button", { name: "关闭", exact: true }).tap();
+      await drawer.getByRole("button", { name: "关闭导航", exact: true }).tap();
       await expect(drawer).toBeHidden();
       await page.setViewportSize({ width: 1512, height: 1080 });
       await page.getByRole("button", { name: "打开工作区设置", exact: true }).click();
@@ -325,14 +443,24 @@ test("server demo and relative Pages build remain isolated from APIs and saved k
   }
 });
 
-test("320px hosted interface supports bottom navigation, theme and accessible authentication", async ({ page }) => {
+test("320px hosted interface supports bottom drawer navigation, theme and accessible authentication", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto("/");
   await injectAxe(page);
   let violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: "tag", values: ["wcag2a","wcag2aa","wcag21aa"] } })).violations);
   expect(violations).toEqual([]);
   await login(page);
-  await page.getByRole("navigation", { name: "移动端主导航" }).getByRole("link", { name: "历史记录", exact: true }).click();
+  const openNavigation = page.getByRole("button", { name: "打开导航", exact: true });
+  const triggerBox = await openNavigation.boundingBox();
+  expect(triggerBox!.width).toBeGreaterThanOrEqual(44);
+  expect(triggerBox!.height).toBeGreaterThanOrEqual(44);
+  await openNavigation.click();
+  const drawer = page.getByRole("dialog", { name: "导航", exact: true });
+  const historyLink = drawer.getByRole("navigation", { name: "页面导航", exact: true }).getByRole("link", { name: "历史记录", exact: true });
+  const historyBox = await historyLink.boundingBox();
+  expect(historyBox!.height).toBeGreaterThanOrEqual(44);
+  await historyLink.click();
+  await expect(drawer).toBeHidden();
   await expect(page.getByRole("heading", { name: "历史记录", exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole("combobox", { name: "外观设置" }).click();
@@ -348,7 +476,7 @@ test("320px hosted interface supports bottom navigation, theme and accessible au
   await injectAxe(page);
   violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: "tag", values: ["wcag2a","wcag2aa","wcag21aa"] } })).violations);
   expect(violations).toEqual([]);
-  await page.screenshot({ path: "evidence/hosted-mobile-history.png", fullPage: true });
+  await page.screenshot({ path: test.info().outputPath("hosted-mobile-history.png"), fullPage: true });
 });
 
 

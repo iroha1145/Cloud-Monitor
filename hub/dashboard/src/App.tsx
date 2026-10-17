@@ -23,12 +23,6 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "./components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
 import {
   StatefulButton,
@@ -50,7 +44,7 @@ import {
   type UsageEntity,
 } from "./data";
 import { loadDashboard, isAuthFailure } from "./api";
-import { MobileNavigation } from "./MobileNavigation";
+import { FloatingNavigation } from "./FloatingNavigation";
 import { PAGES, type PageId } from "./pages";
 import { PageSkeleton } from "./PageSkeleton";
 import { DURATION, EASE_SMOOTH_OUT } from "./lib/motion";
@@ -61,6 +55,7 @@ import {
 } from "./Overview";
 import { pct } from "./lib/format";
 import "./mobile.css";
+import "./workspace-refresh.css";
 
 const DevicesView = lazyWithReload("secondary", async () => ({
   default: (await import("./SecondaryViews")).DevicesView,
@@ -113,7 +108,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
   const searchButton = useRef<HTMLButtonElement | null>(null);
   const rememberDialogOpener = (opener: HTMLElement | null) => {
     // Buttons inside the closing navigation drawer will be unmounted.
-    dialogReturnFocus.current = opener?.closest(".mobile-nav-dialog")
+    dialogReturnFocus.current = opener?.closest(".feel-nav-drawer")
       ? mobileReturnFocus.current
       : opener;
     setDialogError(false);
@@ -423,24 +418,13 @@ export default function App({ initialData, initialToken = "", hosted = false, is
         跳到主内容
       </a>
       <div
-        className={`app-shell ${SHOWCASE_UI ? "showcase-shell" : "dashboard-shell"}`}
+        className={`app-shell feel-shell ${SHOWCASE_UI ? "showcase-shell" : "dashboard-shell"}`}
       >
-        <aside className="sidebar" aria-label="主导航">
+        <FloatingNavigation open={mobile} onOpenChange={setMobile} triggerRef={mobileReturnFocus} pageName={current.name}>
           {nav}
-        </aside>
-        <Dialog open={mobile} onOpenChange={setMobile}>
-          <DialogContent className="mobile-nav-dialog" placement="left" returnFocusRef={mobileReturnFocus}>
-            <DialogTitle className="sr-only">导航</DialogTitle>
-            <DialogDescription className="sr-only">
-              切换页面和工作区设置
-            </DialogDescription>
-            <nav className="mobile-nav-content" aria-label="侧边导航">
-              {nav}
-            </nav>
-          </DialogContent>
-        </Dialog>
+        </FloatingNavigation>
         <div className="workspace-main">
-          <header className="app-topbar">
+          <header className="app-topbar" data-feel-card>
             <div className="breadcrumb">
               <button
                 className="icon-button mobile-menu"
@@ -488,7 +472,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
             </div>
           </header>
           <main id="main-content" className="main-content">
-            <section className="page-heading">
+            <section className="page-heading" data-feel-card>
               <div className="heading-copy" key={page}>
                 <p className="heading-kicker">
                   {date}
@@ -637,7 +621,6 @@ export default function App({ initialData, initialToken = "", hosted = false, is
             </footer>
           </main>
         </div>
-        <MobileNavigation page={page} onNavigate={go} />
       </div>
       {dialogsLoaded && (
         <AppErrorBoundary

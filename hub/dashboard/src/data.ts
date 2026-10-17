@@ -37,6 +37,25 @@ export interface UsageComponents {
   cacheRate: number | null;
 }
 
+export interface ThroughputCounters {
+  timedTokens: number | null;
+  timedOutputTokens: number | null;
+  timedDurationMs: number | null;
+}
+
+export interface SessionPeriodDetails {
+  period: PeriodKey;
+  availability: "available" | "partial" | "unavailable";
+  reason: string | null;
+  total: number | null;
+  returned: number;
+  omitted: number | null;
+  dashboardOmitted: number | null;
+  callDetailsAvailable: false;
+  messageContentAvailable: false;
+  toolEventsAvailable: false;
+}
+
 export interface UsageEntity {
   id: string;
   name: string;
@@ -44,9 +63,12 @@ export interface UsageEntity {
   totalTokens: number;
   costUsd: number | null;
   components: UsageComponents;
+  unpricedTokens?: number | null;
 }
 
 export interface PeriodUsage {
+  throughput?: ThroughputCounters;
+  modelThroughput?: Record<string, ThroughputCounters>;
   totalTokens: number;
   costUsd: number | null;
   components: UsageComponents;
@@ -215,6 +237,25 @@ export interface Subscription {
 
 export interface Session {
   id: string;
+  /** Canonical title accepted by the official hub's existing consent policy. */
+  title?: string | null;
+  /** Upstream-normalized zeros have no original field-presence evidence. */
+  zeroValuesUnconfirmed?: boolean;
+  hasUnconfirmedZeros?: boolean;
+  sessionId?: string;
+  nativeSessionId?: string | null;
+  t3ThreadId?: string | null;
+  modelTokens?: Record<string, number>;
+  modelCosts?: Record<string, number>;
+  providers?: Record<string, number>;
+  projectId?: string | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  cacheReadTokens?: number | null;
+  cacheWriteTokens?: number | null;
+  /** Informational subset of outputTokens, never an additive component. */
+  reasoningTokens?: number | null;
+  messageCount?: number | null;
   name: string;
   project: string;
   client: string;
@@ -319,6 +360,8 @@ export interface DashboardData {
   subscriptions: Subscription[];
   subscriptionsUpdatedAt?: string | null;
   sessions: Session[];
+  sessionsByPeriod?: Record<PeriodKey, Session[]>;
+  sessionDetailsByPeriod?: Record<PeriodKey, SessionPeriodDetails>;
   providers: Provider[];
   notices: string[];
 }
@@ -333,6 +376,18 @@ const text = (value: unknown, fallback = ""): string =>
 const validCounter = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0;
 const count = (value: unknown): number => (validCounter(value) ? value : 0);
+const counterMap = (value: unknown): Record<string, number> | undefined =>
+  isRecord(value) ? Object.fromEntries(Object.entries(value).filter(([, amount]) => validCounter(amount))) as Record<string, number> : undefined;
+const moneyMap = (value: unknown): Record<string, number> | undefined =>
+  isRecord(value) ? Object.fromEntries(Object.entries(value).filter(([, amount]) => typeof amount === "number" && Number.isFinite(amount))) as Record<string, number> : undefined;
+const throughputCounters = (value: unknown): ThroughputCounters => {
+  const source = record(value);
+  return {
+    timedTokens: validCounter(source.timedTokens) ? source.timedTokens : null,
+    timedOutputTokens: validCounter(source.timedOutputTokens) ? source.timedOutputTokens : null,
+    timedDurationMs: validCounter(source.timedDurationMs) ? source.timedDurationMs : null,
+  };
+};
 // Amounts and balances may legitimately be negative; token counters may not.
 const optionalNumber = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -743,6 +798,7 @@ export function normalizePeriod(source: unknown): PeriodUsage {
         totalTokens: count(value),
         costUsd: optionalNumber(record(period[kind + "Costs"])[id]),
         components: normalizeComponents(period, kind, id),
+        unpricedTokens: validCounter(record(period[kind + "UnpricedTokens"])[id]) ? record(period[kind + "UnpricedTokens"])[id] as number : null,
       }))
       .sort((a, b) => b.totalTokens - a.totalTokens);
   return {
@@ -751,6 +807,8 @@ export function normalizePeriod(source: unknown): PeriodUsage {
     components: normalizeComponents(period),
     models: entities("model"),
     clients: entities("client"),
+    throughput: throughputCounters(period),
+    modelThroughput: isRecord(period.modelThroughput) ? Object.fromEntries(Object.entries(period.modelThroughput).filter(([, value]) => isRecord(value)).map(([id, value]) => [id, throughputCounters(value)])) : undefined,
     clientModels: matrix(period.clientModels),
     clientModelCosts: matrix(period.clientModelCosts, true),
   };
@@ -1303,7 +1361,7 @@ export function normalizeOverview(
       note: text(item.note),
     };
   });
-  const sessions: Session[] = list(root.sessions).map((value, index) => {
+  const normalizeSessions = (source: unknown): Session[] => list(source).map((value, index) => {
     const item = record(value);
     const deviceId = text(item.deviceId);
     const client = text(item.client);
@@ -1330,10 +1388,38 @@ export function normalizeOverview(
       [300, 1800, 3600].includes(cacheTtl)
         ? { observedAt: cacheObservedAt, ttlSeconds: cacheTtl }
         : null;
+    const zeroValuesUnconfirmed = item.zeroValuesUnconfirmed !== false;
+    const title = typeof item.title === "string" && item.title.trim()
+      ? Array.from(item.title.trim()).slice(0, 160).join("") : null;
+    const sessionCounter = (value: unknown) => zeroValuesUnconfirmed && value === 0 ? null : sourceCounter(value);
+    const sessionMoney = (value: unknown) => zeroValuesUnconfirmed && value === 0 ? null : optionalNumber(value);
+    const reportedModelCosts = moneyMap(item.modelCosts);
+    const modelCosts = reportedModelCosts && Object.fromEntries(Object.entries(reportedModelCosts).filter(([, value]) => !zeroValuesUnconfirmed || value !== 0));
+    const hasUnconfirmedZeros = zeroValuesUnconfirmed && ([
+      item.inputTokens, item.outputTokens, item.cacheReadTokens, item.cacheWriteTokens,
+      item.reasoningTokens, item.messageCount, item.costUsd, item.contextTokens,
+      item.contextWindow, item.timedOutputTokens, item.timedDurationMs, item.unpricedTokens,
+      ...Object.values(reportedModelCosts ?? {}),
+    ].some(value => value === 0));
     return {
       id: stableId,
+      title,
+      zeroValuesUnconfirmed,
+      hasUnconfirmedZeros,
+      sessionId: text(item.sessionId),
+      nativeSessionId: optionalText(item.nativeSessionId),
+      t3ThreadId: optionalText(item.t3ThreadId),
+      modelTokens: counterMap(item.models),
+      modelCosts,
+      providers: counterMap(item.providers),
+      projectId: optionalText(item.projectId),
+      inputTokens: sessionCounter(item.inputTokens),
+      outputTokens: sessionCounter(item.outputTokens),
+      cacheReadTokens: sessionCounter(item.cacheReadTokens),
+      cacheWriteTokens: sessionCounter(item.cacheWriteTokens),
+      reasoningTokens: sessionCounter(item.reasoningTokens),
+      messageCount: sessionCounter(item.messageCount),
       name:
-        text(item.title) ||
         text(item.project) ||
         text(item.sessionId, "未命名会话"),
       project: text(item.project, "未归属项目"),
@@ -1345,18 +1431,18 @@ export function normalizeOverview(
         "未知设备",
       models: Object.keys(record(item.models)),
       totalTokens: count(item.tokens),
-      costUsd: optionalNumber(item.costUsd),
+      costUsd: sessionMoney(item.costUsd),
       startedAt: optionalText(item.startedAt),
       lastUsedAt: optionalText(item.lastUsedAt),
-      contextTokens: optionalNumber(item.contextTokens),
-      contextWindow: optionalNumber(item.contextWindow),
+      contextTokens: sessionCounter(item.contextTokens),
+      contextWindow: sessionCounter(item.contextWindow),
       turnEnded: optionalBoolean(item.turnEnded),
       waitingForInput: optionalBoolean(item.waitingForInput),
       liveActivity,
       promptCache,
-      unpricedTokens: sourceCounter(item.unpricedTokens),
-      timedOutputTokens: sourceCounter(item.timedOutputTokens),
-      timedDurationMs: sourceCounter(item.timedDurationMs),
+      unpricedTokens: sessionCounter(item.unpricedTokens),
+      timedOutputTokens: sessionCounter(item.timedOutputTokens),
+      timedDurationMs: sessionCounter(item.timedDurationMs),
       parentSessionId: optionalText(item.parentSessionId),
       parentClient: optionalText(item.parentClient),
       usageSource: optionalText(item.usageSource),
@@ -1366,6 +1452,28 @@ export function normalizeOverview(
       deviceStale: optionalBoolean(item.deviceStale),
     };
   });
+  const sessions = normalizeSessions(root.sessions);
+  const sessionSource = record(root.sessions_by_period);
+  const detailsSource = record(root.sessions_meta_by_period);
+  const sessionsByPeriod = {
+    today: Array.isArray(sessionSource.today) ? normalizeSessions(sessionSource.today) : sessions,
+    month: Array.isArray(sessionSource.month) ? normalizeSessions(sessionSource.month) : [],
+    allTime: [],
+  };
+  const sessionDetailsByPeriod = Object.fromEntries(periods.map((period) => {
+    const meta = record(detailsSource[period]);
+    const rows = sessionsByPeriod[period];
+    const availability = period === "allTime" ? "unavailable" : ["available", "partial", "unavailable"].includes(text(meta.availability))
+      ? meta.availability : rows.length ? "available" : "unavailable";
+    return [period, {
+      period, availability,
+      reason: period === "allTime" ? "not-synced" : optionalText(meta.reason) || (rows.length ? null : "not-reported"),
+      total: sourceCounter(meta.sessions_total), returned: rows.length,
+      omitted: sourceCounter(meta.sessions_omitted_count),
+      dashboardOmitted: sourceCounter(meta.dashboard_omitted_count),
+      callDetailsAvailable: false, messageContentAvailable: false, toolEventsAvailable: false,
+    }];
+  })) as Record<PeriodKey, SessionPeriodDetails>;
   const providers: Provider[] = list(record(extras.providers).providers).map(
     (value) => {
       const item = record(value);
@@ -1470,6 +1578,8 @@ export function normalizeOverview(
       record(extras.subscriptions).updated_at,
     ),
     sessions,
+    sessionsByPeriod,
+    sessionDetailsByPeriod,
     providers,
     notices,
     features,
@@ -1719,6 +1829,19 @@ export function createDemoData(now = new Date(), refreshes = 0, timeZone = brows
   );
   const allTime = sumDemoPeriods(history.map((item) => item.period));
   const allPeriods = { today: todayPeriod, month, allTime };
+  // Synthetic detail fixtures live exclusively inside createDemoData.
+  for (const period of Object.values(allPeriods)) {
+    period.modelThroughput = Object.fromEntries(period.models.map((model, index) => [model.id, {
+      timedTokens: model.totalTokens,
+      timedOutputTokens: model.components.output,
+      timedDurationMs: Math.round(model.components.output / (42 + index * 9) * 1000),
+    }]));
+    period.throughput = Object.values(period.modelThroughput).reduce<ThroughputCounters>((sum, value) => ({
+      timedTokens: (sum.timedTokens ?? 0) + (value.timedTokens ?? 0),
+      timedOutputTokens: (sum.timedOutputTokens ?? 0) + (value.timedOutputTokens ?? 0),
+      timedDurationMs: (sum.timedDurationMs ?? 0) + (value.timedDurationMs ?? 0),
+    }), {timedTokens: 0, timedOutputTokens: 0, timedDurationMs: 0});
+  }
   const deviceDefinitions = [
     {
       id: "demo-mac",
@@ -1841,6 +1964,11 @@ export function createDemoData(now = new Date(), refreshes = 0, timeZone = brows
     ][index];
     return {
       id: `demo-session-${index}`,
+      zeroValuesUnconfirmed: false,
+      hasUnconfirmedZeros: false,
+      sessionId: `demo-session-${index}`,
+      modelTokens: { [model.id]: totalTokens },
+      title: name,
       name,
       project: ["Cloud Monitor", "Workspace", "Design system"][index % 3],
       client: model.client,
@@ -1853,6 +1981,44 @@ export function createDemoData(now = new Date(), refreshes = 0, timeZone = brows
       lastUsedAt: relative(-(index * 39 + 3) * 60_000),
     };
   });
+  sessions.forEach((session, index) => {
+    if (index === 2) return; // Deliberately missing components, context and timing.
+    const output = Math.round(session.totalTokens * 0.12);
+    const cacheRead = Math.round(session.totalTokens * 0.61);
+    const cacheWrite = Math.round(session.totalTokens * 0.04);
+    Object.assign(session, {
+      inputTokens: session.totalTokens - output - cacheRead - cacheWrite,
+      outputTokens: output, cacheReadTokens: cacheRead, cacheWriteTokens: cacheWrite,
+      reasoningTokens: index % 3 === 0 ? Math.round(output * 0.45) : 0,
+      messageCount: 8 + index * 3, modelCosts: { [session.models[0]]: session.costUsd ?? 0 },
+      contextTokens: index === 1 ? 208000 : 146000, contextWindow: 200000,
+      timedOutputTokens: output, timedDurationMs: Math.round(output / (48 + index) * 1000),
+      turnEnded: index > 1, deviceStale: false,
+      usageSource: "local-transcript", usageCoverage: "observed-only",
+      unpricedTokens: index === 4 ? 1200 : 0,
+    });
+  });
+  const mixed = sessions[1];
+  const firstShare = Math.round(mixed.totalTokens * 0.65);
+  mixed.models = [DEMO_MODELS[0].id, DEMO_MODELS[1].id];
+  mixed.modelTokens = { [mixed.models[0]]: firstShare, [mixed.models[1]]: mixed.totalTokens - firstShare };
+  mixed.modelCosts = Object.fromEntries(mixed.models.map((id, index) => [id, cents((mixed.modelTokens?.[id] ?? 0) / 1_000_000 * DEMO_MODELS[index].rate)]));
+  mixed.costUsd = cents(Object.values(mixed.modelCosts).reduce((sum, cost) => sum + cost, 0));
+  const monthSessions = sessions.map(session => ({
+    ...session, totalTokens: session.totalTokens * 3,
+    costUsd: session.costUsd === null ? null : cents(session.costUsd * 3),
+    modelTokens: session.modelTokens ? Object.fromEntries(Object.entries(session.modelTokens).map(([id, amount]) => [id, amount * 3])) : undefined,
+    modelCosts: session.modelCosts ? Object.fromEntries(Object.entries(session.modelCosts).map(([id, amount]) => [id, cents(amount * 3)])) : undefined,
+    ...Object.fromEntries((["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "reasoningTokens", "messageCount", "timedOutputTokens", "timedDurationMs", "unpricedTokens"] as const)
+      .filter(field => typeof session[field] === "number").map(field => [field, (session[field] as number) * 3])),
+  }));
+  const sessionsByPeriod = { today: sessions, month: monthSessions, allTime: [] };
+  const sessionDetailsByPeriod = Object.fromEntries(periods.map(period => [period, {
+    period, availability: period === "allTime" ? "unavailable" : "available",
+    reason: period === "allTime" ? "not-synced" : null,
+    total: sessionsByPeriod[period].length, returned: sessionsByPeriod[period].length, omitted: 0, dashboardOmitted: 0,
+    callDetailsAvailable: false, messageContentAvailable: false, toolEventsAvailable: false,
+  }])) as Record<PeriodKey, SessionPeriodDetails>;
   const localHour = Number(
     new Intl.DateTimeFormat("en-GB", {
       timeZone: zone,
@@ -1898,6 +2064,8 @@ export function createDemoData(now = new Date(), refreshes = 0, timeZone = brows
     periods: allPeriods,
     devices,
     sessions,
+    sessionsByPeriod,
+    sessionDetailsByPeriod,
     trend: history.slice(-30).map(({ day, period }) => ({
       day,
       totalTokens: period.totalTokens,

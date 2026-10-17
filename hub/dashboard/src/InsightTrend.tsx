@@ -410,7 +410,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
 
   return (
     <section
-      className="panel trend-panel insight-trend"
+      className="panel trend-panel insight-trend" data-feel-card
       aria-labelledby={`${uid}-title`}
       onPointerLeave={(event) => {
         if (event.pointerType === "mouse" && !pointerDown.current) {
@@ -443,7 +443,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
       {/* While a day is inspected the header reads that day, so the numbers
           sit where the eye already is instead of in a popup over the line. */}
       <div className="insight-trend-metrics" data-day={day?.day}>
-        <div>
+        <div data-feel-item="row">
           <span>
             <i style={{ background: TREND_COLOR.tokens }} aria-hidden="true" />
             {day ? `${shortDay(day.day)} 词元` : "区间词元"}
@@ -455,7 +455,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
             {day ? `${count(day.totalTokens)} 词元` : `${series.length} 天已记录`}
           </small>
         </div>
-        <div>
+        <div data-feel-item="row">
           <span>
             <i style={{ background: TREND_COLOR.cost }} aria-hidden="true" />
             {day ? "当天花费" : allCosts ? "区间花费" : hasCost ? "已知花费" : "区间花费"}
@@ -465,7 +465,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
           </strong>
           <small>美元（USD）</small>
         </div>
-        <div>
+        <div data-feel-item="row">
           <span>
             <i style={{ background: TREND_COLOR.cache }} aria-hidden="true" />
             {(day ? day.components?.partial && day.components.cacheRate !== null : partialCache && cacheRate !== null)

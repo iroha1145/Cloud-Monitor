@@ -28,6 +28,8 @@ import { compact, count, pct } from "./lib/format";
 import { useSlidingIndicator } from "./lib/hooks/use-sliding-indicator";
 import { useScrollEdges } from "./lib/hooks/use-scroll-edges";
 import { sector } from "./lib/donut-sector";
+import { modelUsageDetails } from "./model-details";
+import "./usage-details.css";
 
 
 /** A part the source did not report is unknown, never zero. */
@@ -83,14 +85,14 @@ function compositionNote(per: Pick<PeriodUsage, "totalTokens" | "components">) {
       : "输入、输出与缓存用量分布";
 }
 
-function CompositionLegend({ parts }: { parts: PeriodUsage["components"] }) {
+function CompositionLegend({ parts, feelItems = false }: { parts: PeriodUsage["components"]; feelItems?: boolean }) {
   const sum = COMPOSITION.reduce((total, part) => total + parts[part.key], 0) || 1;
   return (
     <div className="composition-legend">
       {COMPOSITION.map((part) => {
         const unknown = partUnknown(parts, part.key);
         return (
-          <div key={part.key}>
+          <div key={part.key} data-feel-item={feelItems ? "row" : undefined}>
             <span>
               <i className="legend-dot" style={{ background: part.color }} />
               {part.label}
@@ -143,7 +145,7 @@ function UsageSpectrum({ per }: { per: PeriodUsage }) {
             ) : null,
           )}
       </div>
-      <CompositionLegend parts={parts} />
+      <CompositionLegend parts={parts} feelItems />
     </section>
   );
 }
@@ -161,9 +163,9 @@ export function Stats({
     rate = per.components.cacheRate;
   const online = data.devices.filter((d) => d.status === "online").length;
   return (
-    <section className="ledger" aria-label="用量摘要">
+    <section className="ledger" aria-label="用量摘要" data-feel-card>
       <div className="ledger-figures">
-        <article className="ledger-figure ledger-lead">
+        <article className="ledger-figure ledger-lead" data-feel-item="row">
           <span className="ledger-label">
             总用量<small>词元（Tokens）</small>
           </span>
@@ -182,7 +184,7 @@ export function Stats({
             {count(per.totalTokens)} · 所有模型与客户端
           </span>
         </article>
-        <article className="ledger-figure">
+        <article className="ledger-figure" data-feel-item="row">
           <span className="ledger-label">
             使用费用
           </span>
@@ -217,7 +219,7 @@ export function Stats({
           </strong>
           <span className="ledger-note">按上报价格统计</span>
         </article>
-        <article className="ledger-figure">
+        <article className="ledger-figure" data-feel-item="row">
           <span className="ledger-label">
             {per.components.partial ? "已识别缓存占比" : "缓存占比"}
             <MetricTooltip
@@ -253,7 +255,7 @@ export function Stats({
               : "等待来源提供缓存数据"}
           </span>
         </article>
-        <article className="ledger-figure">
+        <article className="ledger-figure" data-feel-item="row">
           <span className="ledger-label">在线设备</span>
           <strong className="ledger-value">
             <NumberTicker value={online} duration={0.4} startOnView={false} digitClassName="ledger-digit" />
@@ -293,7 +295,7 @@ export function CompositionCard({
     return [{ key: part.key, color: part.color, d: sector(c, outer, inner, start, turn, RING.gap, RING.corner) }];
   });
   return (
-    <section className={`panel composition-panel ${small ? "small" : ""}`}>
+    <section className={`panel composition-panel ${small ? "small" : ""}`} data-feel-card={small ? undefined : true}>
       <div className="panel-head">
         <h2>用量组成</h2>
       </div>
@@ -367,13 +369,13 @@ export function ModelTable({
     [per, query, provider, sort],
   );
   return (
-    <section className={`panel models-panel ${full ? "full-models" : ""}`}>
+    <section className={`panel models-panel ${full ? "full-models" : ""}`} data-feel-card>
       <div className="panel-head">
         <div>
           <h2>
             模型用量 <span className="count-badge">{per.models.length}</span>
           </h2>
-          <p>按总用量排序，展开查看每个模型的组成</p>
+          <p>输入、输出与缓存一眼可见，展开查看会话和计时明细</p>
         </div>
         {!full && (
           <a href="#models" className="text-link">
@@ -448,7 +450,7 @@ export function ModelTable({
             </thead>
             <tbody>
               {(full ? models : models.slice(0, 5)).map((m) => (
-                <tr key={m.id}>
+                <tr key={m.id} data-feel-item="row">
                   <td className="model-identity-cell">
                     <button
                       className="model-open"
@@ -470,6 +472,10 @@ export function ModelTable({
                     >
                       <span>{compact(m.totalTokens)}</span>
                     </MetricTooltip>
+                    <div className="model-compact-split">
+                      {m.components.inputKnown && <span><i style={{ background: COMPOSITION[1].color }} aria-hidden="true" />非缓存输入 {compact(m.components.input)}</span>}
+                      {m.components.outputKnown && <span><i style={{ background: COMPOSITION[2].color }} aria-hidden="true" />输出 {compact(m.components.output)}</span>}
+                    </div>
                   </td>
                   <td data-label="缓存读取" className="model-read-cell">
                     <MetricTooltip
@@ -540,6 +546,7 @@ export function ModelTable({
                   </td>
                   <td data-label="使用费用" className="money-cell">
                     {usd(m.costUsd)}
+                    {modelUsageDetails(per, m.id).outputTokensPerSecond !== null && <small className="model-speed-note">输出 {modelUsageDetails(per, m.id).outputTokensPerSecond!.toFixed(1)} 词元/秒</small>}
                   </td>
                   <td className="model-action-cell">
                     {/* Pointer shortcut only: the name button is the keyboard and
@@ -589,7 +596,7 @@ export function ModelTable({
 
 function Clients({ per }: { per: PeriodUsage }) {
   return (
-    <section className="panel clients-panel">
+    <section className="panel clients-panel" data-feel-card>
       <div className="panel-head">
         <div>
           <h2>客户端分布</h2>
@@ -604,7 +611,7 @@ function Clients({ per }: { per: PeriodUsage }) {
       )}
       <div className="client-rows">
         {per.clients.map((c) => (
-          <div className="client-row" key={c.id}>
+          <div className="client-row" key={c.id} data-feel-item="row">
             <div className="client-head">
               <span>
                 <BrandIcon name={c.id} size={27} />
@@ -665,7 +672,7 @@ function Clients({ per }: { per: PeriodUsage }) {
 /** A new server has no devices yet: say how to connect one, not just "0". */
 function FirstReport() {
   return (
-    <section className="panel first-report" aria-labelledby="first-report-title">
+    <section className="panel first-report" aria-labelledby="first-report-title" data-feel-card>
       <div>
         <h2 id="first-report-title">还没有设备上报用量</h2>
         <p>
@@ -757,7 +764,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
   );
   const peak = matrixHeatPeak(source);
   return (
-    <section className="panel matrix-panel">
+    <section className="panel matrix-panel" data-feel-card>
       <div className="panel-head">
         <div>
           <h2>客户端 × 模型</h2>
@@ -837,6 +844,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
                         >
                           <span
                             className={`matrix-cell level-${level}`}
+                            data-feel-item="cell"
                           >
                             {v === undefined ? (
                               <>

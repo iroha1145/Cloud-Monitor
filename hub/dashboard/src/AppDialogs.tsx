@@ -11,10 +11,12 @@ import {
   Link2,
   Palette,
   ShieldCheck,
+  X,
 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
+  DialogClose,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -34,10 +36,8 @@ import {
 import { providerName } from "./vendors";
 import { SystemUpdate } from "./SystemUpdate";
 import { useErrorShake } from "./lib/hooks/use-error-shake";
-import { CompositionCard } from "./Overview";
+import { ModelDetails } from "./ModelDetails";
 import { BrandIcon } from "./BrandIcon";
-import { compact, count } from "./lib/format";
-import { usd } from "./money";
 import { COMPOSITION } from "./palette";
 
 const SHOWCASE_UI = import.meta.env.VITE_SHOWCASE_UI === "true";
@@ -314,6 +314,7 @@ export default function AppDialogs({
         <DialogContent
           returnFocusRef={returnFocusRef}
           className="model-dialog"
+          showCloseButton={false}
           onOpenAutoFocus={(event) => {
             const content = event.target;
             if (content instanceof HTMLElement) {
@@ -329,37 +330,17 @@ export default function AppDialogs({
         >
           {shownModel && (
             <>
-              <DialogHeader>
-                <BrandIcon
-                  name={shownModel.name}
-                  size={45}
-                />
-                <DialogTitle>{shownModel.name}</DialogTitle>
-                <DialogDescription>
-                  {providerName(shownModel.provider)} · {PERIOD_LABELS[period]}
-                  用量详情
-                </DialogDescription>
+              <DialogHeader className="model-detail-heading">
+                <div className="model-detail-heading-identity">
+                  <BrandIcon name={shownModel.name} size={36} />
+                  <div>
+                    <DialogTitle>{shownModel.name}</DialogTitle>
+                    <DialogDescription>{providerName(shownModel.provider)} · {PERIOD_LABELS[period]}用量详情</DialogDescription>
+                  </div>
+                </div>
+                <DialogClose className="model-detail-close" aria-label="关闭"><X size={19} /></DialogClose>
               </DialogHeader>
-              <div className="model-detail-stats">
-                <div>
-                  <span>总用量</span>
-                  <strong>{compact(shownModel.totalTokens)}</strong>
-                  <small>{count(shownModel.totalTokens)} 词元</small>
-                </div>
-                <div>
-                  <span>使用费用</span>
-                  <strong>{usd(shownModel.costUsd)}</strong>
-                  <small>美元 · 已上报费用</small>
-                </div>
-              </div>
-              <CompositionCard
-                small
-                per={{
-                  ...per,
-                  totalTokens: shownModel.totalTokens,
-                  components: shownModel.components,
-                }}
-              />
+              <ModelDetails key={`${shownModel.id}:${period}`} model={shownModel} data={data} per={per} period={period} />
             </>
           )}
         </DialogContent>
@@ -407,6 +388,7 @@ export default function AppDialogs({
                 "https://transitions.dev",
                 "短促的提示、弹层过渡",
               ],
+              ["Feel", "https://diip3sh.github.io/feel/", "拖动惯性、四角吸附与弹性避让"],
               [
                 "shadcn/ui",
                 "https://ui.shadcn.com",

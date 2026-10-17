@@ -9,15 +9,16 @@ async function expectDrawerAtViewportEdge(page: Page) {
       const viewport = page.viewportSize()!;
       return Boolean(
         box &&
-        Math.abs(box.x) < 1 &&
-        Math.abs(box.y) < 1 &&
-        Math.abs(box.height - viewport.height) < 1 &&
+        Math.abs(box.x - (viewport.width - box.width) / 2) < 1 &&
+        Math.abs(box.y + box.height - viewport.height) < 1 &&
+        box.y >= 15 &&
+        box.height <= viewport.height - 15 &&
         box.width > 240 &&
-        box.width <= viewport.width - 44,
+        box.width <= Math.min(520, viewport.width),
       );
     })
     .toBe(true);
-  const close = drawer.getByRole("button", { name: "关闭", exact: true });
+  const close = drawer.getByRole("button", { name: "关闭导航", exact: true });
   const closeBox = await close.boundingBox();
   expect(closeBox!.x).toBeGreaterThanOrEqual(0);
   expect(closeBox!.y).toBeGreaterThanOrEqual(0);
@@ -64,10 +65,10 @@ for (const viewport of [
         const drawer = await expectDrawerAtViewportEdge(page);
         if (scrolled)
           expect(await page.evaluate(() => scrollY)).toBeGreaterThan(500);
-        const close = drawer.getByRole("button", { name: "关闭", exact: true });
+        const close = drawer.getByRole("button", { name: "关闭导航", exact: true });
         const before = await close.boundingBox();
         const content = drawer.getByRole("navigation", {
-          name: "侧边导航",
+          name: "页面导航",
           exact: true,
         });
         await content.evaluate((node) => {
@@ -95,7 +96,7 @@ test.describe("mobile menu rotation", () => {
     hasTouch: true,
     isMobile: true,
   });
-  test("an open drawer stays attached to the left edge when the phone rotates", async ({
+  test("an open drawer stays attached to the bottom edge when the phone rotates", async ({
     page,
   }) => {
     await page.goto("/demo.html#overview");

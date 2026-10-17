@@ -14,7 +14,7 @@ test('real API contract keeps model cache visible and can return to demo', async
   await expect(page.getByText('当前展示真实数据')).toBeVisible();
   await page.getByRole('button',{name:'查看 gpt-5.2 详情'}).click();
   const dialog=page.getByRole('dialog');
-  await expect(dialog.getByText('缓存读取',{exact:true})).toBeVisible();
+  await expect(dialog.locator('.composition-panel').getByText('缓存读取',{exact:true})).toBeVisible();
   await expect(dialog.getByText('28.6 万',{exact:true})).toBeVisible();
   await page.screenshot({path:'evidence/live-contract-model.png',animations:'disabled'});
   await page.keyboard.press('Escape');
@@ -69,7 +69,7 @@ test("overview preserves cache counts, period changes, and model details", async
   await expect(
     dialog.getByRole("heading", { name: "gpt-6-astra" }),
   ).toBeVisible();
-  await expect(dialog.getByText("缓存读取", { exact: true })).toBeVisible();
+  await expect(dialog.locator(".composition-panel").getByText("缓存读取", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(dialog).not.toBeVisible();
   expect(errors).toEqual([]);
@@ -190,7 +190,7 @@ test("mobile navigation, dialogs and reduced motion are usable", async ({
     fullPage: true,
     animations: "disabled",
   });
-  await page.getByRole("button", { name: "打开导航" }).click();
+  await page.getByRole("button", { name: "打开导航", exact: true }).click();
   await page
     .getByRole("dialog")
     .getByRole("link", { name: "模型分析" })
@@ -212,13 +212,13 @@ test("mobile navigation, dialogs and reduced motion are usable", async ({
     animations: "disabled",
   });
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "打开导航" }).click();
+  await page.getByRole("button", { name: "打开导航", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "工作区设置", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "连接你的用量" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).not.toBeVisible();
-  await page.getByRole("button", { name: "打开导航" }).click();
+  await page.getByRole("button", { name: "打开导航", exact: true }).click();
   await page.getByRole("dialog").getByRole("link", { name: "设备 3" }).click();
   await expect(page.getByRole("heading", { name: "设备", exact: true })).toBeVisible();
   await expect(page.getByRole("dialog")).not.toBeVisible();

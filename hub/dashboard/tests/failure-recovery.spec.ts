@@ -18,7 +18,7 @@ async function clickWithoutBrowserFocus(opener: Locator) {
 
 test("secondary views share one recovery reload even when the module remains unavailable", async ({ page }) => {
   const loads = countDocumentLoads(page);
-  await page.route("**/src/SecondaryViews.tsx", (route) => route.fulfill({ status: 404, body: "missing chunk" }));
+  await page.route("**/src/SecondaryViews.tsx*", (route) => route.fulfill({ status: 404, body: "missing chunk" }));
   await page.goto("/demo.html#devices");
   await expect(page.getByRole("alert")).toContainText("页面已更新，请刷新后继续。");
   for (const id of ["quota", "history"]) {
@@ -35,7 +35,7 @@ test("secondary views share one recovery reload even when the module remains una
 test("one stale secondary chunk recovers after one reload", async ({ page }) => {
   const loads = countDocumentLoads(page);
   let requests = 0;
-  await page.route("**/src/SecondaryViews.tsx", (route) => ++requests === 1
+  await page.route("**/src/SecondaryViews.tsx*", (route) => ++requests === 1
     ? route.fulfill({ status: 404, body: "old chunk missing" }) : route.continue());
   await page.goto("/demo.html#devices");
   await expect(page.getByRole("region", { name: "设备概况" })).toBeVisible();
@@ -99,7 +99,7 @@ test("mobile drawer-to-settings handoff retains dialog focus and returns to the 
 });
 
 test("dialog render failure leaves a visible notice and allows a later successful open", async ({ page }) => {
-  await page.route("**/src/AppDialogs.tsx", async (route) => {
+  await page.route("**/src/AppDialogs.tsx*", async (route) => {
     const response = await route.fetch();
     const source = await response.text();
     const declaration = /^export default function AppDialogs\(.*\) \{/m;

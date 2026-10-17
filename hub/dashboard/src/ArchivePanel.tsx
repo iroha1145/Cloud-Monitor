@@ -57,7 +57,7 @@ function ArchiveRow({ row }: { row: ArchiveDay }) {
   const incomplete =
     row.complete === false || (row.coverage !== null && row.coverage < 60);
   return (
-    <details className="archive-day">
+    <details className="archive-day" data-feel-item="row">
       <summary>
         <span className="archive-date">
           <time dateTime={row.day}>{row.day}</time>
@@ -227,7 +227,7 @@ export function ArchivePanel({
         ? `服务报告的日期口径：${metadata.dayBasis}`
         : "日期口径未提供";
   return (
-    <section className="archive-panel" aria-labelledby="archive-title">
+    <section className="archive-panel" aria-labelledby="archive-title" data-feel-card>
       <header className="archive-header">
         <div>
           <span className="archive-eyebrow">

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowDownToLine,
@@ -23,7 +23,7 @@ import {
   type Session,
   type Subscription,
 } from "./data";
-import { clientName, providerName } from "./vendors";
+import { providerName } from "./vendors";
 import "./secondary.css";
 import { BrandIcon } from "./BrandIcon";
 import { MetricTooltip } from "./MetricTooltip";
@@ -40,7 +40,10 @@ import { DAY_MS, dayKeyZoned, formatZoned } from "./lib/datetime";
 import { downloadCsv, rowsToCsv } from "./lib/csv";
 import { formatMoney as money, usd } from "./money";
 import { quotaAmount, quotaBalance, quotaBoundaryLabel, quotaHeadline, quotaPercent } from "./quota-presentation";
-import { sessionActivity, sessionContext, sessionPromptCache, sessionUsageSource } from "./session-presentation";
+import { sessionActivity } from "./session-presentation";
+import { SessionDetails } from "./SessionUsage";
+import { LOCAL_DETAIL_NOTICE } from "./session-details";
+import { useActivityReference } from "./lib/hooks/use-activity-reference";
 // Last import: mobile overrides must win ties within this async chunk.
 import "./secondary-mobile.css";
 
@@ -158,7 +161,7 @@ function SummaryItem({
   foot: string;
 }) {
   return (
-    <div className="sv-summary-item">
+    <div className="sv-summary-item" data-feel-item="row">
       <div className="sv-summary-label">
         <span aria-hidden="true">{icon}</span>
         {label}
@@ -203,7 +206,7 @@ function DeviceCard({
     (device.clientHealth || []).map((client) => client.name.toLowerCase()),
   );
   return (
-    <article className="sv-card sv-device-card">
+    <article className="sv-card sv-device-card" data-feel-card>
       <div className="sv-device-main">
         <div className="sv-device-statusline">
           <span
@@ -362,7 +365,7 @@ function DeviceCard({
                 { label: "设备时区", value: device.timeZone || "未提供" },
               ]}
             >
-              <div className="sv-device-stat sv-detail-trigger">
+              <div className="sv-device-stat sv-detail-trigger" data-feel-item="row">
                 <span className="sv-metric-label">{label}</span>
                 <span className="sv-metric-value">
                   {compact(device.periods[key].totalTokens)}
@@ -378,7 +381,7 @@ function DeviceCard({
               { label: "累计费用", value: usd(device.periods.allTime.costUsd) },
             ]}
           >
-            <div className="sv-device-stat sv-detail-trigger">
+            <div className="sv-device-stat sv-detail-trigger" data-feel-item="row">
               <span className="sv-metric-label">累计估算费用</span>
               <span className="sv-metric-value">
                 {usd(device.periods.allTime.costUsd)}
@@ -449,7 +452,7 @@ export function DevicesView({ data }: SecondaryProps) {
   );
   return (
     <div className="sv-page sv-dense-page">
-      <section className="sv-summary" aria-label="设备概况">
+      <section className="sv-summary" aria-label="设备概况" data-feel-card>
         <SummaryItem
           icon={<Monitor />}
           label="已连接设备"
@@ -791,7 +794,7 @@ function QuotaWindow({ quota, data }: { quota: Quota; data: DashboardData }) {
       rows={detailRows}
       note={detailNote}
     >
-      <div className="sv-quota-window sv-detail-trigger">
+      <div className="sv-quota-window sv-detail-trigger" data-feel-item="row">
         <div className="sv-progress-label">
           <span>{quota.label}</span>
           <strong className="sv-quota-value">
@@ -879,7 +882,7 @@ function SubscriptionRow({ subscription }: { subscription: Subscription }) {
   const isTopUp = subscription.kind === "topup";
   const records = subscription.topUps || [];
   return (
-    <article className="sv-card sv-subscription">
+    <article className="sv-card sv-subscription" data-feel-card>
       <div className="sv-subscription-top">
         <span className="sv-subscription-provider">
           <BrandIcon
@@ -899,7 +902,7 @@ function SubscriptionRow({ subscription }: { subscription: Subscription }) {
         </span>
       </div>
       <h3 className="sv-subscription-plan">{subscription.name}</h3>
-      <div className="sv-subscription-price">
+      <div className="sv-subscription-price" data-feel-item="row">
         {isTopUp && <span className="sv-metric-label">累计充值</span>}
         <strong>
           {money(
@@ -910,7 +913,7 @@ function SubscriptionRow({ subscription }: { subscription: Subscription }) {
         {!isTopUp && <small> / {subscriptionInterval(subscription)}</small>}
       </div>
       <dl className="sv-subscription-dates">
-        <div>
+        <div data-feel-item="row">
           <dt>{isTopUp ? "充值次数" : "开始日期"}</dt>
           <dd>
             {isTopUp
@@ -920,7 +923,7 @@ function SubscriptionRow({ subscription }: { subscription: Subscription }) {
               : fullDate(subscription.startDate)}
           </dd>
         </div>
-        <div>
+        <div data-feel-item="row">
           <dt>{isTopUp ? "最近充值" : "下次续订"}</dt>
           <dd>
             {fullDate(
@@ -929,7 +932,7 @@ function SubscriptionRow({ subscription }: { subscription: Subscription }) {
           </dd>
         </div>
         {subscription.endDate && (
-          <div>
+          <div data-feel-item="row">
             <dt>结束日期</dt>
             <dd>{fullDate(subscription.endDate)}</dd>
           </div>
@@ -957,7 +960,7 @@ function SubscriptionRow({ subscription }: { subscription: Subscription }) {
           </span>
           <ul>
             {records.map((top, index) => (
-              <li key={`${top.id}-${index}`}>
+              <li key={`${top.id}-${index}`} data-feel-item="row">
                 <span>
                   {top.label}
                   <time>{fullDate(top.date)}</time>
@@ -991,7 +994,7 @@ export function QuotaView({ data }: SecondaryProps) {
   ).length;
   return (
     <div className="sv-page sv-dense-page">
-      <section className="sv-summary" aria-label="配额与订阅概况">
+      <section className="sv-summary" aria-label="配额与订阅概况" data-feel-card>
         <SummaryItem
           icon={<Database />}
           label="已连接服务"
@@ -1022,7 +1025,7 @@ export function QuotaView({ data }: SecondaryProps) {
               const status = quotaGroupStatus(group);
               return (
                 <article
-                  className="sv-card sv-card-padding sv-quota-card"
+                  className="sv-card sv-card-padding sv-quota-card" data-feel-card
                   key={first.id}
                 >
                   <div className="sv-quota-identity">
@@ -1186,15 +1189,7 @@ export function HistoryView({ data }: SecondaryProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [exported, setExported] = useState(false);
-  const [clock, setClock] = useState(() => Date.now());
-  useEffect(() => {
-    const update = () => setClock(Date.now());
-    const timer = window.setInterval(update, 30_000);
-    document.addEventListener("visibilitychange", update);
-    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", update); };
-  }, []);
-  const generatedAtMs = Date.parse(data.generatedAt);
-  const activityReference = new Date(Math.max(clock, Number.isFinite(generatedAtMs) ? generatedAtMs : 0)).toISOString();
+  const activityReference = useActivityReference(data.generatedAt);
   const clients = [
     ...new Set(data.sessions.map((session) => session.client)),
   ].sort();
@@ -1261,7 +1256,7 @@ export function HistoryView({ data }: SecondaryProps) {
   }
   return (
     <div className="sv-page sv-history-page">
-      <section className="sv-summary" aria-label="历史活动概况">
+      <section className="sv-summary" aria-label="历史活动概况" data-feel-card>
         <SummaryItem
           icon={<CalendarDays />}
           label="累计活动天数"
@@ -1290,7 +1285,7 @@ export function HistoryView({ data }: SecondaryProps) {
           onSelect={changeDay}
         />
         <section
-          className="sv-card sv-history-sessions"
+          className="sv-card sv-history-sessions" data-feel-card
           aria-labelledby="sv-sessions-title"
         >
           <div className="sv-section-head">
@@ -1373,6 +1368,7 @@ export function HistoryView({ data }: SecondaryProps) {
               </Select>
             </div>
           </div>
+          <p className="history-detail-note">{LOCAL_DETAIL_NOTICE}</p>
           {displayed.length ? (
             <div className="sv-table-wrap">
               <table className="sv-session-table">
@@ -1392,11 +1388,8 @@ export function HistoryView({ data }: SecondaryProps) {
                 <tbody>
                   {displayed.map((session) => {
                     const activity = sessionActivity(session, activityReference);
-                    const context = sessionContext(session);
-                    const promptCache = sessionPromptCache(session, activityReference);
-                    const usageSource = sessionUsageSource(session);
                     return <Fragment key={session.id}>
-                      <tr>
+                      <tr data-feel-item="row">
                         <td data-label="会话">
                           <button
                             className="sv-session-toggle"
@@ -1470,124 +1463,7 @@ export function HistoryView({ data }: SecondaryProps) {
                           id={`session-detail-${session.id}`}
                         >
                           <td colSpan={5}>
-                            <dl className="sv-detail-grid">
-                              <div>
-                                <dt>使用模型</dt>
-                                <dd>
-                                  {session.models.length ? (
-                                    <span className="sv-model-list">
-                                      {session.models.map((model) => (
-                                        <span
-                                          className="sv-model-name"
-                                          key={model}
-                                        >
-                                          <BrandIcon name={model} size={22} />
-                                          <span>{model}</span>
-                                        </span>
-                                      ))}
-                                    </span>
-                                  ) : (
-                                    "未提供"
-                                  )}
-                                </dd>
-                              </div>
-                              <div>
-                                <dt>来源设备</dt>
-                                <dd>{session.device || "未提供"}</dd>
-                              </div>
-                              {session.sessionKind && <div><dt>会话类型</dt><dd>{session.sessionKind}</dd></div>}
-                              <div>
-                                <dt>活动状态</dt>
-                                <dd>
-                                  <span
-                                    className={
-                                      activity === "等待输入"
-                                        ? "sv-session-activity-waiting"
-                                        : undefined
-                                    }
-                                  >
-                                    {activity}
-                                  </span>
-                                </dd>
-                              </div>
-                              {context && (
-                                <div className="sv-session-context">
-                                  <dt>上次上报的上下文</dt>
-                                  <dd>
-                                    <span>{fullNumber(session.contextTokens!)} / {fullNumber(session.contextWindow!)} 词元 · 已用 {context.used}% · 剩余 {context.remaining}%</span>
-                                    <progress max={100} value={context.used} aria-label="上次上报的上下文已用比例" />
-                                  </dd>
-                                </div>
-                              )}
-                              {session.timedOutputTokens != null &&
-                                session.timedDurationMs != null &&
-                                session.timedOutputTokens > 0 &&
-                                session.timedDurationMs > 0 && (
-                                  <div>
-                                    <dt>输出速率</dt>
-                                    <dd>
-                                      {(
-                                        session.timedOutputTokens /
-                                        (session.timedDurationMs / 1000)
-                                      ).toFixed(1)}{" "}
-                                      词元/秒
-                                    </dd>
-                                  </div>
-                                )}
-                              {promptCache && (
-                                <div>
-                                  <dt>提示词缓存</dt>
-                                  <dd>约剩 {promptCache.minutes} 分钟</dd>
-                                </div>
-                              )}
-                              {session.unpricedTokens != null &&
-                                session.unpricedTokens > 0 && (
-                                  <div>
-                                    <dt>未定价词元</dt>
-                                    <dd>
-                                      {fullNumber(session.unpricedTokens)} 词元，未计入估算费用
-                                    </dd>
-                                  </div>
-                                )}
-                              {(session.parentSessionId ||
-                                session.parentClient) && (
-                                <div>
-                                  <dt>父级会话</dt>
-                                  <dd>
-                                    {[
-                                      session.parentClient
-                                        ? clientName(session.parentClient)
-                                        : null,
-                                      session.parentSessionId,
-                                    ]
-                                      .filter(Boolean)
-                                      .join(" · ")}
-                                  </dd>
-                                </div>
-                              )}
-                              {usageSource && (
-                                <div>
-                                  <dt>用量来源</dt>
-                                  <dd>{usageSource}</dd>
-                                </div>
-                              )}
-                              <div>
-                                <dt>开始时间</dt>
-                                <dd>
-                                  {dateLabel(
-                                    session.startedAt,
-                                    data.timeZone,
-                                    true,
-                                  )}
-                                </dd>
-                              </div>
-                              <div>
-                                <dt>完整用量</dt>
-                                <dd>
-                                  {fullNumber(session.totalTokens)} 词元
-                                </dd>
-                              </div>
-                            </dl>
+                            <SessionDetails session={session} generatedAt={activityReference} timeZone={data.timeZone} />
                           </td>
                         </tr>
                       )}
