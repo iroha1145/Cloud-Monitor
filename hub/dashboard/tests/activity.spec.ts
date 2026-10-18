@@ -46,7 +46,7 @@ test("activity restores day/week/month, source coverage, keyboard filtering and 
   await expect(panel).toContainText("32.8%");
   await panel.locator("summary").click();
   await expect(panel).toContainText("33 / 100");
-  await expect(panel).toContainText("缺口 2 · 重置 0");
+  await expect(panel).toContainText("中断 2 · 重置 0");
   await panel.locator("summary").click();
   await panel.locator('[data-day="2026-08-01"]').focus();
   await page.keyboard.press("End");

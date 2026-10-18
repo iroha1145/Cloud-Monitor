@@ -10,14 +10,19 @@
 .app-shell .workspace-main { margin-inline: 0; }
 .app-shell .app-topbar { height: 80px; border-bottom: 0; }
 @media (min-width: 761px) and (min-height: 501px), (min-width: 961px) {
-  /* The bar spans the content column, not the window, so a menu resting in
-     an empty gutter does not move controls it does not touch. */
+  /* As in game-manage, the bar spans the window: search sits at its left
+     edge and the actions at its right. The bar is a card in feel-cards, so a
+     side gives way only while the menu actually covers it. */
   .app-shell .app-topbar {
-    width: calc(100% - 2 * var(--gutter));
-    max-width: calc(var(--content-max) - 2 * var(--gutter));
-    margin-inline: auto;
+    --bar-gutter: 24px;
+    width: calc(100% - 2 * var(--bar-gutter));
+    max-width: none;
+    margin-inline: var(--bar-gutter);
     padding-inline: 0;
   }
+}
+@media (min-width: 761px) and (max-width: 960px) {
+  .app-shell .app-topbar { --bar-gutter: 16px; }
 }
 .app-shell .main-content { padding-top: 4px; }
 
@@ -128,8 +133,10 @@
 .app-shell .ledger-figures { gap: 16px; grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)); }
 .app-shell .ledger-figure { padding: 22px; min-height: 164px; }
 .app-shell .ledger-figure + .ledger-figure { border-left: 1px solid var(--card-border); }
-/* The lead figure is the one tinted card, like game-manage's hero tone. */
-.app-shell .ledger-lead { background: var(--accent-tint); border-color: color-mix(in srgb, var(--primary) 10%, var(--card-border)); }
+/* The lead figure is the one tinted card, like game-manage's hero tone. Its
+   tinted border holds at every width, and it drops the white top highlight,
+   which would read as a pale line on the tint. */
+.app-shell .ledger-lead { --lead-border: color-mix(in srgb, var(--primary) 10%, var(--card-border)); background: var(--accent-tint); border-color: var(--lead-border); box-shadow: var(--shadow-panel-lift); }
 .app-shell .ledger-label { font-size: 13px; color: var(--ink-2); white-space: normal; flex-wrap: wrap; }
 .app-shell .ledger-value { font-weight: 500; letter-spacing: -0.04em; }
 .app-shell .ledger-lead .ledger-value { font-size: var(--fs-lead); font-weight: 500; letter-spacing: -0.05em; }
@@ -192,7 +199,7 @@
 .app-shell .client-row { padding: 14px; }
 .app-shell .client-head strong { font-weight: 600; }
 
-/* ── Tables: model and session rows are rounded wells ─────────────── */
+/* ── Tables: square model rows, rounded session rows ──────────────── */
 .app-shell .model-filters { padding: 14px 22px; gap: 8px; border-block: 1px solid var(--line-soft); background: transparent; }
 .app-shell .model-filters .search-field,
 .app-shell .sv-search input {
@@ -213,7 +220,7 @@
   .app-shell :is(.model-table, .sv-session-table) { border-collapse: separate; border-spacing: 0 8px; }
   .app-shell :is(.model-table th, .model-table td, .sv-session-table th, .sv-session-table td):first-child { padding-left: 14px; }
   .app-shell :is(.model-table th, .model-table td, .sv-session-table th, .sv-session-table td):last-child { padding-right: 14px; }
-  .app-shell .table-glide { left: 16px; right: 16px; border-radius: var(--r-well); }
+  .app-shell .table-glide { left: 16px; right: 16px; border-radius: 0; }
   .app-shell .model-table tbody tr > td,
   .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td {
     background: var(--inset);
@@ -224,14 +231,16 @@
   }
   .app-shell .model-table tbody tr > td:first-child,
   .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td:first-child {
-    border-radius: var(--r-well) 0 0 var(--r-well);
     box-shadow: inset 1px 1px 0 rgb(23 23 23 / 0.035), inset 0 -1px 0 rgb(23 23 23 / 0.035);
   }
   .app-shell .model-table tbody tr > td:last-child,
   .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td:last-child {
-    border-radius: 0 var(--r-well) var(--r-well) 0;
     box-shadow: inset -1px 1px 0 rgb(23 23 23 / 0.035), inset 0 -1px 0 rgb(23 23 23 / 0.035);
   }
+  /* Model rows stay square, as asked for the model usage list; session rows
+     are rounded wells. */
+  .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td:first-child { border-radius: var(--r-well) 0 0 var(--r-well); }
+  .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td:last-child { border-radius: 0 var(--r-well) var(--r-well) 0; }
   .app-shell .sv-session-table tbody tr.sv-session-detail > td {
     border-bottom: 0;
     border-radius: var(--r-well);
@@ -302,8 +311,9 @@
 /* ── Mid widths and phones ────────────────────────────────────────── */
 @media (min-width: 761px) and (max-width: 1180px) {
   .app-shell .ledger-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .app-shell .ledger-lead { grid-column: auto; border-bottom: 0; }
+  .app-shell .ledger-lead { grid-column: auto; }
   .app-shell .ledger-figure:nth-child(n) { border: 1px solid var(--card-border); }
+  .app-shell .ledger-lead:nth-child(n) { border-color: var(--lead-border); }
   .app-shell .ledger-composition .composition-legend { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 }
 @media (min-width: 761px) and (max-width: 1100px) {
@@ -325,6 +335,7 @@
   .app-shell .ledger-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .app-shell .ledger-figure,
   .app-shell .ledger-figure:nth-child(n) { padding: 18px 16px; border: 1px solid var(--card-border); min-height: 148px; }
+  .app-shell .ledger-lead:nth-child(n) { border-color: var(--lead-border); }
   .app-shell .ledger-value { font-size: clamp(23px, 6vw, 28px); flex-wrap: wrap; line-height: 1.15; }
   .app-shell .ledger-lead .ledger-value { font-size: clamp(26px, 7vw, 32px); }
   .app-shell .ledger-composition { padding: 18px 16px; }
@@ -337,7 +348,8 @@
   .app-shell .model-table tbody,
   .app-shell .sv-session-table tbody { display: grid; gap: 8px; padding: 12px 16px 16px; }
   .app-shell .model-table tbody tr,
-  .app-shell .sv-session-table tbody tr:not(.sv-session-detail) { padding: 14px; border: 0; border-radius: var(--r-well); background: var(--inset); box-shadow: inset 0 0 0 1px rgb(23 23 23 / 0.035); }
+  .app-shell .sv-session-table tbody tr:not(.sv-session-detail) { padding: 14px; border: 0; border-radius: 0; background: var(--inset); box-shadow: inset 0 0 0 1px rgb(23 23 23 / 0.035); }
+  .app-shell .sv-session-table tbody tr:not(.sv-session-detail) { border-radius: var(--r-well); }
   .app-shell .sv-session-table tbody tr.sv-session-detail > td { border-radius: var(--r-well); box-shadow: inset 0 0 0 1px rgb(23 23 23 / 0.035); }
   .dark .app-shell .model-table tbody tr,
   .dark .app-shell .sv-session-table tbody tr:not(.sv-session-detail),

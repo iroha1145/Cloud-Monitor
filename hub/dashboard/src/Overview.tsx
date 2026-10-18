@@ -675,7 +675,7 @@ function FirstReport() {
       <div>
         <h2 id="first-report-title">等待设备接入</h2>
         <p>
-          在客户端打开「设置 → 多设备同步」，填入以下服务地址与密钥即可开始同步。
+          在本机的 token-monitor 里打开「设置 → 多设备同步」，填入以下服务地址与密钥即可开始同步。
         </p>
       </div>
       <dl>
@@ -846,7 +846,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
                             {v === undefined ? (
                               <>
                                 <span aria-hidden="true">—</span>
-                                <span className="sr-only">未提供</span>
+                                <span className="sr-only">无记录</span>
                               </>
                             ) : metric === "tokens" ? (
                               compact(v)

@@ -27,9 +27,9 @@ async function expectMatrixCellsColored(page: Page) {
   );
   expect(cells.length).toBeGreaterThan(0);
   expect(cells.every((cell) => cell.squareDiff < 0.5)).toBe(true);
-  // An unreported pair shows a dash and tells screen readers "未提供".
-  const empty = cells.filter((cell) => cell.text === "—未提供");
-  const used = cells.filter((cell) => cell.text !== "—未提供");
+  // An unreported pair shows a dash and tells screen readers "无记录".
+  const empty = cells.filter((cell) => cell.text === "—无记录");
+  const used = cells.filter((cell) => cell.text !== "—无记录");
   expect(used.length).toBeGreaterThan(0);
   for (const cell of used) {
     expect(cell.level, cell.text).toBeGreaterThanOrEqual(1);

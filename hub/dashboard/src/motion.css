@@ -92,21 +92,6 @@
 [data-slot="dialog-content"][data-state="closed"] {
   animation: t-modal-out var(--duration-quick) var(--ease-smooth-out) forwards;
 }
-/* A side sheet slides in from the right edge instead (game-manage .t-dialog). */
-[data-slot="dialog-content"].model-dialog[data-state="open"] {
-  animation: t-sheet-in var(--duration-spring-smooth) var(--ease-spring-smooth);
-}
-[data-slot="dialog-content"].model-dialog[data-state="closed"] {
-  animation: t-sheet-out var(--duration-quick) var(--ease-out, ease-out) forwards;
-}
-@keyframes t-sheet-in {
-  from { opacity: 0.6; translate: 30px 0; }
-  to { opacity: 1; translate: 0 0; }
-}
-@keyframes t-sheet-out {
-  from { opacity: 1; translate: 0 0; }
-  to { opacity: 0; translate: 30px 0; }
-}
 @keyframes t-fade-in {
   from {
     opacity: 0;

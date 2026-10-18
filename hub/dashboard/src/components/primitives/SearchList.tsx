@@ -101,7 +101,7 @@ export default function SearchList({
           </div>
         ) : (
           <div className="p-1">
-            <GlideMenu className="flex flex-col gap-px" highlightClassName="inset-x-0 rounded-segment bg-hover">
+            <GlideMenu className="flex flex-col gap-px" highlightClassName="inset-x-0 rounded-[var(--r-segment)] bg-hover">
               {results.map((item, index) => (
                 <button
                   key={item}
@@ -113,7 +113,7 @@ export default function SearchList({
                     setActiveIndex(0);
                     onSelect?.(item);
                   }}
-                  className={`relative z-10 flex h-8 w-full items-center rounded-segment px-2 text-left text-[13px] text-ink ${
+                  className={`relative z-10 flex h-8 w-full items-center rounded-[var(--r-segment)] px-2 text-left text-[13px] text-ink ${
                     index === currentIndex ? "bg-hover/60" : ""
                   }`}
                   // Rows cascade by 20ms (capped) instead of appearing all at once.

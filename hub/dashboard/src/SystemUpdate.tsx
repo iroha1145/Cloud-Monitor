@@ -77,7 +77,7 @@ function JobStatus({ job, timeZone }: { job: UpdateJob; timeZone?: string }) {
         </small>
       )}
       {job.state === "queued" && (
-        <p>升级请求已提交，等待服务端后台执行。</p>
+        <p>服务器上的更新服务接手后才会开始升级。</p>
       )}
       {job.state === "running" && (
         <p>页面会继续检查进度，服务重启时可能短暂断开。</p>
@@ -364,7 +364,7 @@ export function SystemUpdate({
                         <span
                           className={`system-update-tag ${status.releaseAhead ? "is-new" : ""}`}
                         >
-                          {status.releaseAhead ? "有新版本" : "已是最新"}
+                          {status.releaseAhead ? "有新版本" : "已是最新正式版"}
                         </span>
                         {status.latestRelease.prerelease && (
                           <span className="system-update-tag">预发布</span>
@@ -410,7 +410,7 @@ export function SystemUpdate({
               )}
               {!status.applyEnabled && (
                 <p className="system-update-hint">
-                  在线升级未启用。请在服务端配置更新目录并启用后台更新服务。
+                  在线升级未启用：需要挂载可写的更新目录，并用安装脚本（install.sh）配置服务器上的更新服务。
                 </p>
               )}
               <JobStatus job={status.job} timeZone={timeZone} />

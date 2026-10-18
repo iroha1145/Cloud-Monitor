@@ -116,7 +116,7 @@ function relativeTime(value: string | null, reference: string): string {
   const seconds =
     (new Date(reference).getTime() - new Date(value).getTime()) / 1000;
   if (!Number.isFinite(seconds)) return "同步时间未知";
-  if (seconds < -60) return "设备时间快于当前时间";
+  if (seconds < -60) return "同步时间晚于页面数据";
   if (seconds < 60) return "刚刚同步";
   if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟前同步`;
   if (seconds < DAY / 1000) return `${Math.floor(seconds / 3600)} 小时前同步`;
@@ -253,7 +253,7 @@ function DeviceCard({
         </div>
         <div className="sv-device-meta">
           <span>
-            客户端同步 v{device.version.replace(/^v/, "")}
+            同步程序 {/^v?\d/.test(device.version) ? `v${device.version.replace(/^v/, "")}` : device.version || "未知版本"}
             {device.runtime
               ? ` · ${({ desktop: "桌面程序", widget: "桌面小组件", service: "后台服务", daemon: "后台进程", cli: "命令行" } as Record<string, string>)[device.runtime] || device.runtime}`
               : ""}
@@ -551,7 +551,7 @@ function quotaGroupStatus(group: Quota[]) {
     unauthorized: "授权失效",
     error: "读取失败",
     rateLimited: "已达速率限制",
-    sourceRateLimited: "接口限流",
+    sourceRateLimited: "查询被限流",
     unavailable: "暂不可用",
   };
   const unavailable = group.find(
@@ -763,7 +763,7 @@ function QuotaWindow({ quota, data }: { quota: Quota; data: DashboardData }) {
               unauthorized: "授权失效",
               error: "读取失败",
               rateLimited: "已达速率限制",
-              sourceRateLimited: "接口限流",
+              sourceRateLimited: "查询被限流",
               unavailable: "暂不可用",
               disabled: "已禁用",
               notConfigured: "未配置",

@@ -115,7 +115,7 @@ export function SessionUsageCard({ session, modelId, generatedAt, timeZone }: { 
       <ChevronDown size={17} className="disclosure-chevron" aria-hidden="true" />
     </summary>
     <div className="session-card-body">
-      {!model.wholeSession && <p className="session-scope-note"><Layers3 size={14} />此会话使用了多个模型，下方为整个会话的统计。</p>}
+      {!model.wholeSession && <p className="session-scope-note"><Layers3 size={14} />此会话还用了其他模型，或无法按模型拆分用量；下方为整个会话的统计。</p>}
       <p className="session-current-line"><Clock3 size={14} />{sessionActivity(session, generatedAt)}<span>·</span>{clientName(session.client)}<span>·</span>本模型费用 {usd(model.costUsd)}</p>
       <SessionDetails session={session} generatedAt={generatedAt} timeZone={timeZone} />
     </div>

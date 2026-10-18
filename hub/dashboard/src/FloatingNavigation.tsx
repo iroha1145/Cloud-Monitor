@@ -169,7 +169,7 @@ function MobileDrawer({ children, open, onOpenChange, currentPage, onNavigate }:
     let height = openHeight();
     const travel = () => Math.max(1, height - BAR_HEIGHT);
     const stretchLimit = () => Math.max(8, Math.min(40, win.innerHeight - height - 24));
-    let frame = 0, last = 0, disposed = false, logicalOpen = latest.current.open, suppressed = 0;
+    let frame = 0, last = 0, disposed = false, logicalOpen = latest.current.open, suppressed = 0, springing = false;
     let progress = 0, velocity = 0, stop: DrawerStop = 'closed';
     let gesture: { id: number; startY: number; lastY: number; time: number; raw: number; moved: boolean; stop: DrawerStop } | null = null;
     function announce(value: boolean) { if (logicalOpen !== value) { logicalOpen = value; latest.current.onOpenChange(value); } }
@@ -182,16 +182,18 @@ function MobileDrawer({ children, open, onOpenChange, currentPage, onNavigate }:
       el.style.setProperty('--drawer-stretch', `${clamp((progress - 1) * travel(), 0, stretchLimit()).toFixed(2)}px`);
       el.style.setProperty('--drawer-shift', `${clamp(-progress * travel(), 0, 8).toFixed(2)}px`);
       const rect = el.getBoundingClientRect();
-      cards.update(shown > .001 ? { left: rect.left, right: rect.right, top: Math.max(0, rect.top), bottom: Math.min(win.innerHeight, rect.bottom), width: rect.width, height: Math.min(win.innerHeight, rect.bottom) - Math.max(0, rect.top) } : null, 'mobile', Boolean(gesture?.moved) || frame !== 0);
+      cards.update(shown > .001 ? { left: rect.left, right: rect.right, top: Math.max(0, rect.top), bottom: Math.min(win.innerHeight, rect.bottom), width: rect.width, height: Math.min(win.innerHeight, rect.bottom) - Math.max(0, rect.top) } : null, 'mobile', Boolean(gesture?.moved) || springing);
     }
     function settle() {
-      win.cancelAnimationFrame(frame); frame = 0; last = 0;
+      win.cancelAnimationFrame(frame); frame = 0; last = 0; springing = false;
       progress = DRAWER_STOPS[stop]; velocity = 0;
       el.dataset.drawerStop = stop; delete el.dataset.drawerMoving;
       paint(); announce(stop !== 'closed');
     }
     function tick(now: number) {
-      frame = 0; const dt = last ? Math.min(.032, (now - last) / 1000) : 1 / 60; last = now;
+      // Records answer the drawer for as long as the spring runs, not only
+      // under a finger; settle() and a catching press end that.
+      frame = 0; springing = true; const dt = last ? Math.min(.032, (now - last) / 1000) : 1 / 60; last = now;
       [progress, velocity] = stepDrawerSpring(progress, velocity, DRAWER_STOPS[stop], dt);
       paint();
       if (Math.abs(DRAWER_STOPS[stop] - progress) < .001 && Math.abs(velocity) < .01) settle();
@@ -240,7 +242,7 @@ function MobileDrawer({ children, open, onOpenChange, currentPage, onNavigate }:
       down(event) {
         if (event.button !== 0 || event.isPrimary === false || gesture) return;
         remember(); suppressed = 0;
-        win.cancelAnimationFrame(frame); frame = 0; last = 0;
+        win.cancelAnimationFrame(frame); frame = 0; last = 0; springing = false;
         // Catch a moving surface where it is, keeping its resisted position.
         gesture = { id: event.pointerId, startY: event.clientY, lastY: event.clientY, time: performance.now(), raw: unresistDrawerProgress(progress, travel(), stretchLimit()), moved: false, stop };
         try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* Global listeners retain gesture. */ }

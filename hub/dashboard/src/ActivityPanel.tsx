@@ -72,7 +72,7 @@ function CoverageDetails({ coverage, metadata, data }: {
           {coverage.devices.map((device, index) => <li key={`${device.deviceId}-${index}`} data-feel-item="row">
             <strong>{names.get(device.deviceId) || device.deviceId || "未知设备"}</strong>
             <span>时段 {full(device.observedBuckets)} / {full(device.expectedBuckets)}</span>
-            <span>缺口 {full(device.gapCount)} · 重置 {full(device.resetCount)}</span>
+            <span>中断 {full(device.gapCount)} · 重置 {full(device.resetCount)}</span>
             {(device.firstSampleAt || device.lastSampleAt) && <small>
               {stamp(device.firstSampleAt, metadata.timeZone)} — {stamp(device.lastSampleAt, metadata.timeZone)}
             </small>}
@@ -141,7 +141,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
     ready: "",
   }[metadata.hourlyStatus];
   const dailyBasis = metadata.dailyMixedBasis === true || metadata.dailyBasis === "hybrid-dashboard-and-device-local"
-    ? "历史活动按各设备本地日期统计，跨时区设备不可视为同一日期。"
+    ? `${metadata.archiveCutoverDay ? `${metadata.archiveCutoverDay} 及之前的` : "部分"}历史活动按各设备本地日期统计，跨时区设备不可视为同一日期。`
     : metadata.dailyBasis === "device-local" ? "按各设备本地日期统计。" : "";
 
   function switchByKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {

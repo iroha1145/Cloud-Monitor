@@ -222,7 +222,7 @@ export default function AppDialogs({
             />
             <p className="field-help">
               <ShieldCheck size={13} />
-              密钥仅保存在当前标签页，关闭后自动清除。
+              密钥只保存在当前页面，刷新或关闭后清除。
             </p>
             {connectError && (
               <p role="alert" className="error-message" id="access-key-error">
@@ -308,7 +308,6 @@ export default function AppDialogs({
         <DialogContent
           returnFocusRef={returnFocusRef}
           className="model-dialog"
-          placement="right"
           showCloseButton={false}
           onOpenAutoFocus={(event) => {
             const content = event.target;

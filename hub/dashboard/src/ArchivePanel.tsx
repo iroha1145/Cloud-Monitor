@@ -263,35 +263,33 @@ export function ArchivePanel({
           </button>
         )}
       </header>
-      <div className="archive-context">
-        {!fallback && metadata ? (
-          <>
-            <p>
-              {basis}。
-              {metadata.deviceTimeZone
-                ? `设备时区：${metadata.deviceTimeZone}。`
-                : ""}
-              {metadata.dashboardTimeZone
-                ? `当前时区：${metadata.dashboardTimeZone}。`
-                : ""}
+      {!fallback && metadata && (
+        <div className="archive-context">
+          <p>
+            {basis}。
+            {metadata.deviceTimeZone
+              ? `设备时区：${metadata.deviceTimeZone}。`
+              : ""}
+            {metadata.dashboardTimeZone
+              ? `当前时区：${metadata.dashboardTimeZone}。`
+              : ""}
+          </p>
+          {metadata.mixedTimeZones && (
+            <p className="archive-warning">
+              包含多个设备时区；同一日期对应各设备本地日。
             </p>
-            {metadata.mixedTimeZones && (
-              <p className="archive-warning">
-                包含多个设备时区；同一日期对应各设备本地日。
-              </p>
-            )}
-            {metadata.partial && (
-              <p className="archive-warning">
-                部分归档数据未能完整读取
-                {metadata.partialErrorCount
-                  ? `（${metadata.partialErrorCount} 处）`
-                  : ""}
-                ，请参考每日完整性标记。
-              </p>
-            )}
-          </>
-        ) : null}
-      </div>
+          )}
+          {metadata.partial && (
+            <p className="archive-warning">
+              部分归档数据未能完整读取
+              {metadata.partialErrorCount
+                ? `（${metadata.partialErrorCount} 处）`
+                : ""}
+              ，请参考每日完整性标记。
+            </p>
+          )}
+        </div>
+      )}
       {error && (
         <div className="archive-feedback" role="alert">
           <p>{error}</p>

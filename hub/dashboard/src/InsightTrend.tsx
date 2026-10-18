@@ -451,7 +451,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
             <PopValue value={compact(day ? day.totalTokens : tokenTotal)} />
           </strong>
           <small>
-            {day ? `${count(day.totalTokens)} 词元` : `共 ${series.length} 天`}
+            {day ? `${count(day.totalTokens)} 词元` : `已记录 ${series.length} 天`}
           </small>
         </div>
         <div data-feel-item="row">

@@ -108,7 +108,8 @@
   /* Depth stays faint: cards sit on a hairline with a near contact shadow
      and a soft far one; only floating layers cast a real shadow. */
   --card-border: #ebebeb;
-  --shadow-panel: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 1px 2px rgb(23 23 23 / 0.025), 0 8px 24px -16px rgb(23 23 23 / 0.16);
+  --shadow-panel-lift: 0 1px 2px rgb(23 23 23 / 0.025), 0 8px 24px -16px rgb(23 23 23 / 0.16);
+  --shadow-panel: inset 0 1px 0 rgb(255 255 255 / 0.9), var(--shadow-panel-lift);
   /* menus, dialogs, tooltips and the menu while it is dragged */
   --shadow-float: inset 0 1px 0 rgb(255 255 255 / 0.92), 0 3px 8px rgb(23 23 23 / 0.045), 0 24px 64px -14px rgb(23 23 23 / 0.2);
   --shadow-overlay: var(--shadow-float);
@@ -205,7 +206,8 @@
 
 
   --card-border: rgb(255 255 255 / 0.06);
-  --shadow-panel: inset 0 1px 0 rgb(255 255 255 / 0.025), 0 1px 2px rgb(0 0 0 / 0.12), 0 8px 24px -16px rgb(0 0 0 / 0.45);
+  --shadow-panel-lift: 0 1px 2px rgb(0 0 0 / 0.12), 0 8px 24px -16px rgb(0 0 0 / 0.45);
+  --shadow-panel: inset 0 1px 0 rgb(255 255 255 / 0.025), var(--shadow-panel-lift);
   --shadow-float: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 4px 12px rgb(0 0 0 / 0.2), 0 24px 64px -12px rgb(0 0 0 / 0.55);
   --shadow-sidebar: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 2px 6px rgb(0 0 0 / 0.12), 0 16px 42px -14px rgb(0 0 0 / 0.5);
   --shadow-bar: 0 4px 18px rgb(0 0 0 / 0.3);

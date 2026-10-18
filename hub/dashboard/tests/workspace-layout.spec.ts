@@ -25,7 +25,8 @@ for (const width of [800, 1024, 1280, 1920]) {
     const frame = (await main.boundingBox())!;
     expect(Math.abs(frame.x - (width - frame.x - frame.width))).toBeLessThan(1);
     const topbar = page.locator('.app-topbar');
-    await expect.poll(async () => (await topbar.boundingBox())!.x - (await page.locator('.page-heading').boundingBox())!.x).toBeCloseTo(0, 1);
+    // The bar spans the window, so the menu at the top left covers its search side, which gives way.
+    await expect.poll(async () => (await topbar.boundingBox())!.x - ((await nav.boundingBox())!.x + (await nav.boundingBox())!.width)).toBeGreaterThanOrEqual(15.5);
     const lowerBefore = (await below.boundingBox())!;
     expect(Math.abs(lowerBefore.x - (width - lowerBefore.x - lowerBefore.width))).toBeLessThan(1);
     expect(lowerBefore.y).toBeGreaterThan((await nav.boundingBox())!.y + (await nav.boundingBox())!.height + 64);
@@ -36,7 +37,10 @@ for (const width of [800, 1024, 1280, 1920]) {
     }
     await handle.press('ArrowRight');
     await expect.poll(async () => Math.round((await nav.boundingBox())!.x)).toBe(width - navWidth - 16);
-    await expect.poll(async () => (await topbar.boundingBox())!.x - (await page.locator('.page-heading').boundingBox())!.x).toBeCloseTo(0, 1);
+    // As in game-manage, the bar spans the window: with the menu on the right
+    // its search returns to the window's left edge and only its right side gives way.
+    await expect.poll(async () => (await topbar.boundingBox())!.x).toBeCloseTo(width <= 960 ? 16 : 24, 1);
+    await expect.poll(async () => (await nav.boundingBox())!.x - ((await topbar.boundingBox())!.x + (await topbar.boundingBox())!.width)).toBeGreaterThanOrEqual(15.5);
     for (const selector of ['.workspace-notices', '.page-controls']) {
       const block = page.locator(selector);
       await expect.poll(async () => (await nav.boundingBox())!.x - ((await block.boundingBox())!.x + (await block.boundingBox())!.width)).toBeGreaterThanOrEqual(15.5);
@@ -55,7 +59,7 @@ for (const width of [800, 1024, 1280, 1920]) {
 }
 
 for (const width of [320, 390, 1280]) {
-  test(`model records retain rounded well corners and independent movement at ${width}px`, async ({ page }) => {
+  test(`model records retain square corners and independent movement at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/demo.html#models');
     await page.getByRole('tab', { name: '本月', exact: true }).click();
@@ -69,7 +73,7 @@ for (const width of [320, 390, 1280]) {
       const style = getComputedStyle(node);
       return [style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomLeftRadius, style.borderBottomRightRadius];
     }));
-    expect(Math.max(...radii.flat().map(radius => parseFloat(radius)))).toBe(14);
+    expect(radii.flat().every(radius => parseFloat(radius) === 0)).toBe(true);
     await expect(page.locator('.app-topbar .mobile-menu')).toHaveCount(0);
     await record.getByRole('button').first().click();
     await expect(page.getByRole('dialog')).toBeVisible();

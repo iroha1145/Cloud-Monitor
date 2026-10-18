@@ -950,8 +950,8 @@ const LIMIT_STATUS_NOTICE: Record<string, string | null> = {
   notConfigured: null,
   unauthorized: "额度来源授权失效",
   rateLimited: "已达速率限制",
-  sourceRateLimited: "状态源限流",
-  unavailable: "来源暂不可用",
+  sourceRateLimited: "额度查询被限流",
+  unavailable: "额度来源暂不可用",
   error: "额度来源读取失败",
 };
 
