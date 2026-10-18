@@ -109,7 +109,7 @@ test('narrow docked cards keep readable width and siblings retain their own slot
 // card later makes room from a slot 2% too narrow, so beside the menu it stops
 // about 11px short of the 16px line the other cards keep, until some unrelated
 // element insertion re-measures it.
-test.fixme('a card that rises into view after load makes room from its full slot', async ({ page }) => {
+test('a card that rises into view after load makes room from its full slot', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 }); await page.goto('/demo.html');
   const handle = page.getByRole('button', { name: '移动导航菜单', exact: true });
   await handle.press('Home'); await handle.press('ArrowRight');

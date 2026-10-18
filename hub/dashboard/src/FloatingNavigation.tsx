@@ -160,9 +160,11 @@ function MobileDrawer({ children, open, onOpenChange, currentPage, onNavigate }:
     // The open stop fits the whole menu when the screen allows; the scroll box
     // between the grip and the bar shows what a lower stop leaves room for.
     const openHeight = () => {
-      const style = win.getComputedStyle(menu);
+      const style = win.getComputedStyle(menu), edge = win.getComputedStyle(el);
       const natural = list.offsetHeight + (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
-      return Math.max(BAR_HEIGHT, Math.min(win.innerHeight - 24, natural + GRIP_HEIGHT + BAR_HEIGHT));
+      // The surface's own border sits inside its height.
+      const borders = (parseFloat(edge.borderTopWidth) || 0) + (parseFloat(edge.borderBottomWidth) || 0);
+      return Math.max(BAR_HEIGHT, Math.min(win.innerHeight - 24, natural + GRIP_HEIGHT + BAR_HEIGHT + borders));
     };
     let height = openHeight();
     const travel = () => Math.max(1, height - BAR_HEIGHT);
