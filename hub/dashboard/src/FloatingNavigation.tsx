@@ -112,8 +112,10 @@ function DesktopNavigation({ children }: { children: ReactNode }) {
       click(event) { if (event.detail !== 0 && performance.now() < suppressed) { event.preventDefault(); event.stopPropagation(); } },
     };
     const resize = () => { if (gesture) end(undefined, true); stop(); ({ x: tx, y: ty } = cornerPosition(corner, bounds())); settle(); };
+    // A taller or shorter menu moves its corner target; it glides there.
+    const refit = () => { ({ x: tx, y: ty } = cornerPosition(corner, bounds())); start(); };
     const cancel = (event: PointerEvent) => end(event, true), up = (event: PointerEvent) => end(event), blur = () => end(undefined, true);
-    const reducedChanged = () => { if (reduced.matches) settle(); }, sizes = new ResizeObserver(resize);
+    const reducedChanged = () => { if (reduced.matches) settle(); }, sizes = new ResizeObserver(refit);
     if (surface.current) sizes.observe(surface.current);
     const freshPress = () => { if (!gesture) suppressed = 0; }, suppressClick = (event: MouseEvent) => {
       if (event.detail !== 0 && performance.now() < suppressed) { event.preventDefault(); event.stopImmediatePropagation(); }
@@ -252,13 +254,16 @@ function MobileDrawer({ children, open, onOpenChange, currentPage, onNavigate }:
       close() { go('closed'); },
       toggle() { if (!logicalOpen) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : handle.current; go(stop === 'open' ? 'closed' : 'open'); },
     };
+    // The menu's own size (a scrollbar appearing while it opens, a wrapped
+    // label) only refits the open stop; a drag in progress keeps going.
+    const refit = () => { height = openHeight(); paint(); };
     const resize = () => {
       // A new viewport invalidates the pointer's starting coordinate.
       if (gesture) end(undefined, true);
-      height = openHeight(); paint();
+      refit();
       if (!frame) settle();
     };
-    const sizes = new ResizeObserver(resize); sizes.observe(list);
+    const sizes = new ResizeObserver(refit); sizes.observe(list);
     const freshPress = () => { if (!gesture) suppressed = 0; }, suppressClick = (event: MouseEvent) => {
       if (event.detail !== 0 && performance.now() < suppressed) { event.preventDefault(); event.stopImmediatePropagation(); }
     };

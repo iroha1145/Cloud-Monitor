@@ -148,7 +148,6 @@
   transition: none;
 }
 .feel-nav-drawer[data-state="open"] { z-index: 51; box-shadow: var(--shadow-float); }
-.feel-sheet-handle { height: 24px; }
 .feel-sheet-close {
   position: absolute;
   top: 12px;
@@ -175,6 +174,7 @@
   right: 0;
   bottom: var(--bar-height);
   padding: 4px max(18px, env(safe-area-inset-right, 0px)) 12px max(18px, env(safe-area-inset-left, 0px));
+  scrollbar-gutter: stable;
   opacity: clamp(0, calc(var(--drawer-progress) * 2.4 - 0.2), 1);
   transform: translateY(calc(12px * (1 - var(--drawer-progress))));
   pointer-events: none;

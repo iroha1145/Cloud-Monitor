@@ -12,7 +12,6 @@ import {
   CalendarDays,
   Check,
   ChevronDown,
-  ChevronRight,
   Cloud,
   Palette,
   UserRound,
@@ -433,13 +432,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
         </FloatingNavigation>
         <div className="workspace-main" ref={workspace}>
           <header className="app-topbar" data-feel-card>
-            <div className="breadcrumb">
-              <span className="breadcrumb-workspace">工作空间</span>
-              <ChevronRight size={13} />
-              <strong>{current.name}</strong>
-              {!hosted && <span className="preview-badge">{isolatedDemo ? "演示" : "本地预览"}</span>}
-            </div>
-            <div className="topbar-actions">
+            <div className="topbar-left">
               <button
                 className="command-search"
                 ref={searchButton}
@@ -450,7 +443,9 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                 <span>搜索或快速跳转</span>
                 <kbd>{SEARCH_SHORTCUT}</kbd>
               </button>
-              <span className="topbar-divider" />
+            </div>
+            <div className="topbar-actions">
+              {!hosted && <span className="preview-badge">{isolatedDemo ? "演示" : "本地预览"}</span>}
               <ThemeMenu preference={preference} onChoose={chooseTheme} />
               {SHOWCASE_UI && (
                 <NotificationBell

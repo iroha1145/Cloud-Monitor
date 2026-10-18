@@ -52,6 +52,9 @@
     border-color: var(--line-strong) !important;
   }
 }
+/* Top bar after game-manage: the search field on the left, the mode chip and
+   actions on the right; the page title below names the page. */
+.app-shell .topbar-left { display: flex; flex: 1 1 auto; align-items: center; min-width: 0; }
 .app-shell .command-search {
   width: min(340px, 100%);
   height: 40px;
@@ -60,6 +63,7 @@
   border-radius: var(--r-control);
   background: var(--surface);
 }
+.app-shell .command-search > span { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell .command-search kbd { border: 1px solid var(--line); border-radius: 5px; background: var(--surface); }
 @media (hover: hover) and (pointer: fine) {
   .app-shell .command-search:hover { border-color: var(--line-strong); background: var(--surface); }
@@ -285,7 +289,8 @@
   .app-shell .workspace-main { padding-bottom: calc(116px + env(safe-area-inset-bottom, 0px)); }
   .app-toast { bottom: calc(116px + env(safe-area-inset-bottom, 0px)); }
   .app-shell .app-topbar { height: auto; min-height: 68px; }
-  .app-shell .command-search { width: 44px; min-width: 44px; height: 44px; padding: 0; justify-content: center; }
+  .app-shell .command-search { flex: 1 1 auto; width: auto; min-width: 0; height: 44px; padding: 0 13px; justify-content: flex-start; }
+  .app-shell .command-search kbd { display: none; }
   .app-shell .page-heading { padding-block: 12px 16px; gap: 12px; }
   .app-shell h1 { font-size: 26px; line-height: 34px; }
   .app-shell .heading-actions { align-items: center; }
