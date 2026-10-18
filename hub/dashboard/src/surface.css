@@ -6,7 +6,7 @@
 
 /* ── Shell ────────────────────────────────────────────────────────── */
 /* The menu floats over the page; the page itself is centred in the window and
-   each card makes its own room (lib/card-avoidance.ts). */
+   each card makes its own room (lib/feel-cards.ts). */
 .app-shell .workspace-main { margin-inline: 0; }
 .app-shell .app-topbar { height: 80px; border-bottom: 0; }
 @media (min-width: 761px) and (min-height: 501px), (min-width: 961px) {
