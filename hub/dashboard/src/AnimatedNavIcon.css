@@ -1,0 +1,3 @@
+.animated-nav-icon { display: block; flex-shrink: 0; overflow: visible; pointer-events: none; }
+.animated-nav-icon [data-animated-part] { transform-box: fill-box; transform-origin: center; }
+.animated-nav-icon .animated-nav-icon-pivot { transform-box: view-box; transform-origin: 12px 12px; }

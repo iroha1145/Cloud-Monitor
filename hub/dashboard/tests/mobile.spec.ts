@@ -29,11 +29,11 @@ for (const viewport of [
       await openDemo(page);
       for (const [name, id] of destinations) {
         await page.locator(".feel-nav-peek").tap();
-        const nav = page.locator(".feel-nav-drawer").getByRole("navigation", { name: "页面导航" });
+        const nav = page.getByRole("dialog", { name: "导航", exact: true }).getByRole("navigation", { name: "页面导航" });
         await expect(nav.locator(`a.nav-item[href="#${id}"]`)).toHaveAccessibleName(new RegExp(`^${name}(?:\\s+\\d+)?$`));
         await nav.locator(`a.nav-item[href="#${id}"]`).tap();
         await expect(page).toHaveURL(new RegExp(`#${id}$`));
-        await expect(page.locator(".feel-nav-drawer")).toBeHidden();
+        await expect(page.getByRole("dialog", { name: "导航", exact: true })).toBeHidden();
         await page.locator(".feel-nav-peek").tap();
         await expect(
           nav.locator(`a.nav-item[href="#${id}"]`),
@@ -44,7 +44,8 @@ for (const viewport of [
         expect(controls).toHaveLength(5);
         expect(controls.every(item => item.width >= 44 && item.height >= 44)).toBe(true);
         await page.keyboard.press("Escape");
-        await expect(page.locator(".feel-nav-drawer")).toBeHidden();
+        await expect(page.getByRole("dialog", { name: "导航", exact: true })).toBeHidden();
+        await expect(page.locator(".feel-nav-drawer")).toHaveAttribute("data-drawer-stop", "closed");
         // Measure the lazily loaded charts only once they are on the page.
         if (id === "models") await expect(page.locator(".matrix-cell").first()).toBeVisible();
         if (id === "history") await expect(page.locator(".cm-activity-cell").first()).toBeVisible();
@@ -141,7 +142,7 @@ test.describe("mobile reading and actions", () => {
           .zIndex,
       ),
       navigation: Number(
-        getComputedStyle(document.querySelector(".feel-nav-peek")!).zIndex,
+        getComputedStyle(document.querySelector(".feel-nav-drawer")!).zIndex,
       ),
     }));
     expect(layers.tooltip).toBeGreaterThan(layers.navigation);
@@ -152,6 +153,11 @@ test.describe("mobile reading and actions", () => {
     await expect(
       dialog.getByRole("heading", { name: "gpt-6-astra", exact: true }),
     ).toBeVisible();
+    const modalLayers = await page.evaluate(() => ({
+      dialog: Number(getComputedStyle(document.querySelector(".model-dialog")!).zIndex),
+      navigation: Number(getComputedStyle(document.querySelector(".feel-nav-drawer")!).zIndex),
+    }));
+    expect(modalLayers.dialog).toBeGreaterThan(modalLayers.navigation);
     await expect(dialog.locator(".composition-panel").getByText("缓存读取", { exact: true })).toBeVisible();
     await expect
       .poll(async () => {
@@ -210,7 +216,7 @@ test.describe("mobile reading and actions", () => {
   }) => {
     await openDemo(page);
     await page.getByRole("button", { name: "打开导航", exact: true }).tap();
-    const drawer = page.locator(".feel-nav-drawer");
+    const drawer = page.getByRole("dialog", { name: "导航", exact: true });
     await expect(drawer).toBeVisible();
     await drawer.getByRole("button", { name: "工作区设置", exact: true }).tap();
     await expect(page.locator(".settings-dialog")).toBeVisible();

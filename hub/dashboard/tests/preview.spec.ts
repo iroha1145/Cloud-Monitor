@@ -193,7 +193,8 @@ test("mobile navigation, dialogs and reduced motion are usable", async ({
   await page.getByRole("button", { name: "打开导航", exact: true }).click();
   await page
     .getByRole("dialog")
-    .getByRole("link", { name: "模型分析" })
+    .getByRole("navigation", { name: "页面导航", exact: true })
+    .getByRole("link", { name: "模型分析", exact: true })
     .click();
   await expect(
     page.getByRole("heading", { name: "模型分析", exact: true }),

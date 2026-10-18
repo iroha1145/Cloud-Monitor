@@ -25,7 +25,7 @@ async function loadActivity(page: Page, mobile = false, mismatch = false) {
   await page.getByRole("button", { name: "连接并查看真实用量" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   if (mobile) await page.locator(".feel-nav-peek").click();
-  await page.locator(mobile ? ".feel-nav-drawer" : ".feel-navigation").getByRole("link", { name: "历史记录", exact: true }).click();
+  await (mobile ? page.getByRole("dialog", { name: "导航", exact: true }) : page.locator(".feel-navigation")).getByRole("link", { name: "历史记录", exact: true }).click();
   await expect(page.getByRole("heading", { name: "活动一览", exact: true })).toBeVisible();
 }
 

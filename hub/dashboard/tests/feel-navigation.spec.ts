@@ -5,10 +5,12 @@ test('floating navigation supports throwing, corner keys and persistent card avo
   await page.goto('/demo.html');
   const handle = page.getByRole('button', { name: '移动导航菜单', exact: true });
   const nav = page.locator('.feel-navigation');
-  await handle.press('Home');
-  await expect.poll(async () => Math.round((await nav.boundingBox())!.x)).toBe(12);
+  await handle.press('End');
+  await expect.poll(async () => Math.round((await nav.boundingBox())!.x)).toBe(1044);
   const wide = page.locator('.page-heading');
+  await expect(wide).not.toHaveAttribute('data-menu-avoidance');
   const originalWide = await wide.evaluate(el => ({ width: el.getBoundingClientRect().width, styleWidth: el.style.width, left: el.style.marginLeft, right: el.style.marginRight }));
+  await handle.press('Home');
   await handle.press('ArrowRight');
   await expect.poll(async () => Math.round((await nav.boundingBox())!.x)).toBe(1044);
   await expect.poll(async () => (await wide.boundingBox())!.x + (await wide.boundingBox())!.width - (await nav.boundingBox())!.x).toBeLessThanOrEqual(-15.5);
@@ -26,20 +28,22 @@ test('floating navigation supports throwing, corner keys and persistent card avo
   await page.mouse.move(120, 740, { steps: 16 }); await page.mouse.up();
   await expect.poll(async () => Math.round((await nav.boundingBox())!.x)).toBe(12);
   await expect.poll(async () => Math.abs((await nav.boundingBox())!.y + (await nav.boundingBox())!.height - 888)).toBeLessThan(2);
-  await handle.press('Home');
-  await expect.poll(() => page.locator('[data-feel-card][data-feel-moving="true"]').count()).toBe(0);
+  await handle.press('End');
+  await expect(wide).not.toHaveAttribute('data-menu-avoidance');
   expect(await wide.evaluate(el => ({ width: el.getBoundingClientRect().width, styleWidth: el.style.width, left: el.style.marginLeft, right: el.style.marginRight }))).toEqual(originalWide);
 });
 
 test('narrow docked cards keep readable width and siblings retain their own slots', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 900 }); await page.goto('/demo.html');
+  await page.setViewportSize({ width: 1280, height: 1200 }); await page.goto('/demo.html');
   const handle = page.getByRole('button', { name: '移动导航菜单', exact: true });
-  await handle.press('Home');
+  await handle.press('End');
   const narrow = page.locator('.clients-panel'), sibling = page.locator('.trend-panel');
-  await narrow.scrollIntoViewIfNeeded();
+  await narrow.evaluate(el => window.scrollBy(0, el.getBoundingClientRect().top - 32));
+  await expect(narrow).not.toHaveAttribute('data-menu-avoidance');
+  await expect(sibling).not.toHaveAttribute('data-menu-avoidance');
   const before = await narrow.evaluate(el => ({ width: el.getBoundingClientRect().width, styleWidth: el.style.width, left: el.style.marginLeft, right: el.style.marginRight }));
   const siblingBox = (await sibling.boundingBox())!;
-  await handle.press('ArrowRight');
+  await handle.press('Home'); await handle.press('ArrowRight');
   await expect(narrow).toHaveAttribute('data-menu-avoidance', 'overlap');
   await expect.poll(async () => (await narrow.boundingBox())!.width).toBeLessThan(before.width - 20);
   await expect.poll(async () => Math.round((await page.locator('.feel-navigation').boundingBox())!.x)).toBe(1044);
@@ -49,7 +53,7 @@ test('narrow docked cards keep readable width and siblings retain their own slot
   expect(after.width).toBeGreaterThanOrEqual(before.width * 2 / 3 - .1);
   expect((await sibling.boundingBox())!.x).toBeCloseTo(siblingBox.x, 1);
   expect((await sibling.boundingBox())!.width).toBeCloseTo(siblingBox.width, 1);
-  await handle.press('Home');
+  await handle.press('End');
   await expect(narrow).not.toHaveAttribute('data-menu-avoidance');
   expect(await narrow.evaluate(el => ({ width: el.getBoundingClientRect().width, styleWidth: el.style.width, left: el.style.marginLeft, right: el.style.marginRight }))).toEqual(before);
 });
@@ -62,11 +66,11 @@ test('mobile sheet has three keyboard stops, traps focus, restores scroll and cl
   const dialog = page.getByRole('dialog');
   await expect(handle).toBeFocused();
   await expect.poll(() => page.locator('body').evaluate(el => getComputedStyle(el).overflow)).toBe('hidden');
-  await expect.poll(async () => Math.round((await dialog.boundingBox())!.y)).toBe(224);
-  await handle.press('ArrowDown');
-  await expect.poll(async () => Math.round((await dialog.boundingBox())!.y)).toBe(502);
+  await expect(page.locator('.feel-nav-drawer')).toHaveAttribute('data-drawer-stop', 'half');
   await handle.press('ArrowUp');
   await expect.poll(async () => Math.round((await dialog.boundingBox())!.y)).toBe(224);
+  await handle.press('ArrowDown');
+  await expect(page.locator('.feel-nav-drawer')).toHaveAttribute('data-drawer-stop', 'half');
   await page.keyboard.press('Shift+Tab');
   await expect.poll(() => dialog.evaluate(el => el.contains(document.activeElement))).toBeTruthy();
   await page.keyboard.press('Escape');
@@ -74,7 +78,7 @@ test('mobile sheet has three keyboard stops, traps focus, restores scroll and cl
   await expect(page.locator('.feel-nav-peek')).toBeFocused();
   await expect.poll(() => page.locator('body').evaluate(el => getComputedStyle(el).overflow)).not.toBe('hidden');
   await page.locator('.feel-nav-peek').click();
-  await dialog.getByRole('link', { name: '模型分析', exact: false }).click();
+  await dialog.getByRole('navigation', { name: '常用页面', exact: true }).getByRole('link', { name: '模型分析', exact: true }).click();
   await expect(dialog).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 });
@@ -127,7 +131,8 @@ test('dragging only the mobile sheet actively repels cards, preserves control ga
   await expect(card).toBeVisible();
   // A natural page position with seven pixels before the half-height sheet.
   // The existing 18px inter-card gap permits a 10px move while retaining 8px.
-  await card.evaluate(el => window.scrollBy(0, el.getBoundingClientRect().bottom - 495));
+  const halfTop = await page.locator('.feel-nav-drawer').evaluate(el => innerHeight - (el as HTMLElement).offsetHeight + ((el as HTMLElement).offsetHeight - el.querySelector<HTMLElement>('.feel-mobile-bar')!.offsetHeight) / 2);
+  await card.evaluate((el, bottom) => window.scrollBy(0, el.getBoundingClientRect().bottom - bottom), halfTop - 7);
   await expect.poll(() => card.evaluate(el => parseFloat(el.style.getPropertyValue('--feel-avoid-y')))).toBe(0);
   const before = await card.evaluate(el => ({ rect: el.getBoundingClientRect().toJSON(), width: el.style.width, ml: el.style.marginLeft, mr: el.style.marginRight }));
   const beforeScroll = await page.evaluate(() => window.scrollY);
@@ -142,7 +147,7 @@ test('dragging only the mobile sheet actively repels cards, preserves control ga
   await page.waitForTimeout(110);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   const dialog = page.getByRole('dialog');
-  await expect.poll(async () => Math.round((await dialog.boundingBox())!.y)).toBe(502);
+  await expect(page.locator('.feel-nav-drawer')).toHaveAttribute('data-drawer-stop', 'half');
   await expect.poll(() => card.evaluate(el => parseFloat(el.style.getPropertyValue('--feel-avoid-y')))).toBeLessThan(-9.9);
   const after = await card.evaluate(el => ({ rect: el.getBoundingClientRect().toJSON(), width: el.style.width, ml: el.style.marginLeft, mr: el.style.marginRight, pressX: el.style.getPropertyValue('--feel-press-x'), pressY: el.style.getPropertyValue('--feel-press-y') }));
   expect(after.pressX).toBe(''); expect(after.pressY).toBe('');
@@ -172,7 +177,8 @@ test('dragging only the mobile sheet actively repels cards, preserves control ga
 test('reduced motion applies mobile sheet avoidance immediately and releases it on close', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' }); await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/demo.html'); const card = page.locator('.clients-panel');
-  await card.evaluate(el => window.scrollBy(0, el.getBoundingClientRect().bottom - 495));
+  const halfTop = await page.locator('.feel-nav-drawer').evaluate(el => innerHeight - (el as HTMLElement).offsetHeight + ((el as HTMLElement).offsetHeight - el.querySelector<HTMLElement>('.feel-mobile-bar')!.offsetHeight) / 2);
+  await card.evaluate((el, bottom) => window.scrollBy(0, el.getBoundingClientRect().bottom - bottom), halfTop - 7);
   const before = (await card.boundingBox())!;
   await page.locator('.feel-nav-peek').click();
   await page.evaluate(() => new Promise(requestAnimationFrame));
@@ -214,6 +220,12 @@ test('nearby heatmap cells keep a bounded separate response and preserve pointer
   await page.getByRole('button', { name: '移动导航菜单', exact: true }).press('End');
   const panel = page.locator('.matrix-panel');
   await panel.evaluate(el => window.scrollBy(0, el.getBoundingClientRect().top - 260));
+  // The centred layout leaves deliberate whitespace after the fixed-width
+  // matrix. Bring the held menu beside the actual final cell to test its field.
+  const lastCell = (await panel.locator('.matrix-cell').last().boundingBox())!, navHandle = (await page.getByRole('button', { name: '移动导航菜单', exact: true }).boundingBox())!, nav = (await page.locator('.feel-navigation').boundingBox())!;
+  const grabX = navHandle.x + 15, grabY = navHandle.y + 20;
+  await page.mouse.move(grabX, grabY); await page.mouse.down();
+  await page.mouse.move(lastCell.x + lastCell.width + 24 + grabX - nav.x, grabY, { steps: 12 });
   const active = panel.locator('.matrix-cell[data-feel-item-active="true"]');
   await expect.poll(() => active.count()).toBeGreaterThan(0);
   const cells = await active.evaluateAll(elements => elements.map(el => ({ x: parseFloat((el as HTMLElement).style.getPropertyValue('--feel-item-x')), y: parseFloat((el as HTMLElement).style.getPropertyValue('--feel-item-y')), scale: parseFloat((el as HTMLElement).style.getPropertyValue('--feel-item-scale')) })));
@@ -221,10 +233,10 @@ test('nearby heatmap cells keep a bounded separate response and preserve pointer
   const far = panel.locator('.matrix-cell').first();
   await expect(far).not.toHaveAttribute('data-feel-item-active');
   await page.waitForTimeout(700); await page.screenshot({ path: 'evidence/feel-nested-heatmap-1440.png' });
-  const cell = active.first();
-  await cell.hover(); await expect(page.locator('.metric-tooltip-card')).toBeVisible();
+  const cell = await active.first().elementHandle(); await page.mouse.up();
+  await cell!.hover(); await expect(page.locator('.metric-tooltip-card')).toBeVisible();
   await page.keyboard.press('Escape'); await expect(page.locator('.metric-tooltip-card')).toHaveCount(0);
-  await page.mouse.move(0, 0); await cell.click(); await expect(page.locator('.metric-tooltip-card')).toBeVisible();
+  await page.mouse.move(0, 0); await cell!.click(); await expect(page.locator('.metric-tooltip-card')).toBeVisible();
   await page.keyboard.press('Escape'); await expect(page.locator('.metric-tooltip-card')).toHaveCount(0);
 });
 
@@ -278,12 +290,10 @@ test('reduced motion clears inner row and cell decoration', async ({ page }) => 
   expect(await page.locator('[data-feel-item-active]').count()).toBe(0);
 });
 
-test('mobile navigation returns to its actual opener without scrolling the background', async ({ page }) => {
+test('mobile navigation returns to its actual handle without scrolling the background', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/demo.html#overview');
-  const top = page.getByRole('button', { name: '打开导航', exact: true }), peek = page.locator('.feel-nav-peek');
+  const peek = page.locator('[data-mobile-navigation-trigger]');
   const dialog = page.getByRole('dialog', { name: '导航', exact: true });
-  await top.press('Enter'); await expect(dialog).toBeVisible();
-  await page.keyboard.press('Escape'); await expect(dialog).toBeHidden(); await expect(top).toBeFocused();
   await page.evaluate(() => window.scrollTo({ top: 920, behavior: 'instant' }));
   const before = await page.evaluate(() => window.scrollY); expect(before).toBeGreaterThan(500);
   for (const activation of ['click', 'Enter', 'ArrowUp', 'drag'] as const) {
@@ -296,12 +306,13 @@ test('mobile navigation returns to its actual opener without scrolling the backg
     await expect(dialog).toBeVisible();
     expect(await page.evaluate(() => window.scrollY)).toBe(before);
     if (activation === 'Enter') await dialog.getByRole('button', { name: '关闭导航', exact: true }).click();
-    else if (activation === 'drag') await dialog.getByRole('link', { name: '总览', exact: true }).click();
+    else if (activation === 'drag') await dialog.getByRole('navigation', { name: '常用页面', exact: true }).getByRole('link', { name: '总览', exact: true }).click();
     else await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden(); await expect(peek).toBeFocused();
     expect(await page.evaluate(() => window.scrollY)).toBe(before);
+    await expect(page.locator('.feel-nav-drawer')).toHaveAttribute('data-drawer-stop', 'closed');
   }
-  await peek.click(); await dialog.locator('a[href="#models"]').click();
+  await peek.click(); await dialog.getByRole('navigation', { name: '常用页面', exact: true }).getByRole('link', { name: '模型分析', exact: true }).click();
   await expect(dialog).toBeHidden(); await expect(page).toHaveURL(/#models$/); await expect(peek).toBeFocused();
 });
 
@@ -321,17 +332,130 @@ test('closing navigation for workspace settings leaves focus inside the new dial
   expect(await page.evaluate(() => window.scrollY)).toBe(before);
 });
 
-test('navigation focus falls back when its opener disappears or the layout changes to desktop', async ({ page }) => {
+test('navigation releases modal state and returns focus when the layout changes to desktop', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/demo.html#overview');
-  const top = page.getByRole('button', { name: '打开导航', exact: true });
   await page.locator('.feel-nav-peek').click();
-  await expect(page.getByRole('dialog', { name: '导航', exact: true })).toBeVisible();
-  await page.locator('.feel-nav-peek').evaluate(el => el.remove());
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog')).toHaveCount(0); await expect(top).toBeFocused();
-  await page.reload(); await page.locator('.feel-nav-peek').click();
   await expect(page.getByRole('dialog', { name: '导航', exact: true })).toBeVisible();
   await page.setViewportSize({ width: 1280, height: 900 });
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '移动导航菜单', exact: true })).toBeFocused();
+  expect(await page.locator('.workspace-main').evaluate(el => (el as HTMLElement).inert)).toBe(false);
+  expect(await page.locator('body').evaluate(el => el.style.overflow)).not.toBe('hidden');
+});
+
+for (const viewport of [{ width: 320, height: 740 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
+  test(`magnetic surface stays continuous with three direct links and three stops at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport); await page.goto('/demo.html#overview');
+    const surface = page.locator('.feel-nav-drawer'), trigger = page.locator('[data-mobile-navigation-trigger]');
+    const quick = page.getByRole('navigation', { name: '常用页面', exact: true });
+    await expect(page.locator('.mobile-menu')).toHaveCount(0);
+    await expect(surface).toHaveAttribute('data-drawer-stop', 'closed');
+    await expect(quick.getByRole('link')).toHaveCount(3);
+    for (const name of ['总览', '模型分析', '配额与订阅']) {
+      const link = quick.getByRole('link', { name, exact: true });
+      await expect(link).toBeInViewport(); const box = (await link.boundingBox())!;
+      expect(box.height).toBeGreaterThanOrEqual(44); expect(box.width).toBeGreaterThanOrEqual(44);
+    }
+    await quick.getByRole('link', { name: '模型分析', exact: true }).click(); await expect(page).toHaveURL(/#models$/);
+    await expect(quick.getByRole('link', { name: '模型分析', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('dialog', { name: '导航', exact: true })).toHaveCount(0);
+    await quick.getByRole('link', { name: '配额与订阅', exact: true }).click(); await expect(page).toHaveURL(/#quota$/);
+    await quick.getByRole('link', { name: '总览', exact: true }).click(); await expect(page).toHaveURL(/#overview$/);
+    await expect(quick.getByRole('link', { name: '总览', exact: true })).toHaveAttribute('aria-current', 'page');
+    await page.waitForTimeout(500); // Let the newly selected page finish its entry motion before captures.
+    const node = await surface.elementHandle(), closed = (await surface.boundingBox())!;
+    await page.screenshot({ path: `evidence/magnetic-${viewport.width}-closed.png` });
+    const immediate = await trigger.evaluate(button => { const surface = button.closest('.feel-nav-drawer')!; const before = surface.getBoundingClientRect().top; (button as HTMLButtonElement).click(); return { before, after: surface.getBoundingClientRect().top }; });
+    expect(immediate.after).toBe(immediate.before);
+    await expect(surface).toHaveAttribute('data-drawer-stop', 'half');
+    const half = (await surface.boundingBox())!; expect(half.width).toBe(closed.width);
+    await page.screenshot({ path: `evidence/magnetic-${viewport.width}-half.png` });
+    await trigger.click(); await expect(surface).toHaveAttribute('data-drawer-stop', 'open');
+    const opened = (await surface.boundingBox())!;
+    expect(closed.y - half.y).toBeCloseTo(half.y - opened.y, 1); expect(opened.width).toBe(closed.width);
+    expect(await node!.evaluate(el => el === document.querySelector('.feel-nav-drawer'))).toBe(true);
+    const full = page.getByRole('navigation', { name: '页面导航', exact: true });
+    for (const id of ['devices', 'history']) await expect(full.locator(`a[href="#${id}"]`)).toHaveCount(1);
+    await full.getByRole('button', { name: '工作区设置', exact: true }).scrollIntoViewIfNeeded();
+    await expect(full.getByRole('button', { name: '工作区设置', exact: true })).toBeInViewport();
+    await page.screenshot({ path: `evidence/magnetic-${viewport.width}-open.png` });
+    const closing = await page.evaluate(() => {
+      const surface = document.querySelector('.feel-nav-drawer')!, menu = surface.querySelector('.feel-nav-content')!;
+      const before = surface.getBoundingClientRect().top;
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      return { before, after: surface.getBoundingClientRect().top, visibility: getComputedStyle(menu).visibility };
+    });
+    expect(closing.after).toBe(closing.before); expect(closing.visibility).toBe('visible');
+    await expect(surface).toHaveAttribute('data-drawer-stop', 'closed');
+    expect(await node!.evaluate(el => el === document.querySelector('.feel-nav-drawer'))).toBe(true);
+    await expect(full).toBeHidden();
+    expect(await page.locator('.workspace-main').evaluate(el => (el as HTMLElement).inert)).toBe(false);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(viewport.width);
+  });
+}
+
+test('a closing magnetic drawer can be tapped open again and still accepts keyboard and navigation', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/demo.html#overview');
+  const surface = page.locator('.feel-nav-drawer'), trigger = page.locator('[data-mobile-navigation-trigger]');
+  await trigger.press('Home'); await expect(surface).toHaveAttribute('data-drawer-stop', 'open');
+  await page.keyboard.press('Escape'); await page.waitForTimeout(60);
+  await expect(surface).toHaveAttribute('data-drawer-moving', 'true');
+  await trigger.click(); await expect(page.getByRole('dialog', { name: '导航', exact: true })).toBeVisible();
+  await expect(surface).toHaveAttribute('data-drawer-stop', 'half');
+  await trigger.press('Home'); await expect(surface).toHaveAttribute('data-drawer-stop', 'open');
+  const full = page.getByRole('navigation', { name: '页面导航', exact: true });
+  await full.locator('a[href="#devices"]').click();
+  await expect(page).toHaveURL(/#devices$/); await expect(surface).toHaveAttribute('data-drawer-stop', 'closed'); await expect(trigger).toBeFocused();
+});
+
+test('the magnetic hand reverses during dragging and catches a live release without activating links', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/demo.html#overview');
+  const trigger = page.locator('[data-mobile-navigation-trigger]'), surface = page.locator('.feel-nav-drawer');
+  const start = (await trigger.boundingBox())!, x = start.x + start.width / 2, y = start.y + start.height / 2;
+  await page.mouse.move(x, y); await page.mouse.down();
+  for (let i = 1; i <= 8; i++) { await page.mouse.move(x, y - i * 25); await page.waitForTimeout(20); }
+  const raised = (await surface.boundingBox())!.y;
+  for (let i = 1; i <= 6; i++) { await page.mouse.move(x, y - 200 + i * 18); await page.waitForTimeout(20); }
+  const reversed = (await surface.boundingBox())!.y; expect(reversed).toBeGreaterThan(raised + 15);
+  await page.mouse.up(); await expect(surface).toHaveAttribute('data-drawer-moving', 'true');
+  const movingHandle = (await trigger.boundingBox())!;
+  await page.mouse.move(movingHandle.x + movingHandle.width / 2, movingHandle.y + movingHandle.height / 2);
+  const beforeCatch = (await surface.boundingBox())!.y; await page.mouse.down();
+  expect(Math.abs((await surface.boundingBox())!.y - beforeCatch)).toBeLessThan(20);
+  for (let i = 1; i <= 5; i++) { await page.mouse.move(x, movingHandle.y + movingHandle.height / 2 - i * 20); await page.waitForTimeout(20); }
+  await page.mouse.up(); await expect.poll(() => surface.getAttribute('data-drawer-stop')).toMatch(/^(closed|half|open)$/);
+  await expect(page).toHaveURL(/#overview$/); expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await trigger.press('Home'); await expect(surface).toHaveAttribute('data-drawer-stop', 'open');
+  await page.getByRole('navigation', { name: '常用页面', exact: true }).getByRole('link', { name: '模型分析', exact: true }).click();
+  await expect(page).toHaveURL(/#models$/);
+});
+
+test('resizing during a magnetic drag releases the old pointer coordinates without a jump on the next move', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/demo.html#overview');
+  const trigger = page.locator('[data-mobile-navigation-trigger]'), surface = page.locator('.feel-nav-drawer');
+  const start = (await trigger.boundingBox())!, x = start.x + start.width / 2, y = start.y + start.height / 2;
+  await page.mouse.move(x, y); await page.mouse.down();
+  for (let i = 1; i <= 8; i++) { await page.mouse.move(x, y - i * 26); await page.waitForTimeout(20); }
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(40);
+  const capture = await trigger.evaluate(el => el.hasPointerCapture(1)); expect(capture).toBe(false);
+  await page.mouse.move(420, 50); await page.mouse.up();
+  await expect.poll(() => surface.getAttribute('data-drawer-stop')).toMatch(/^(closed|half|open)$/);
+  const box = (await surface.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0); expect(box.width).toBeLessThanOrEqual(844); expect(box.y).toBeGreaterThanOrEqual(15);
+  await trigger.press('Home'); await expect(surface).toHaveAttribute('data-drawer-stop', 'open');
+  await page.keyboard.press('Escape'); await expect(surface).toHaveAttribute('data-drawer-stop', 'closed');
+  expect(await page.locator('body').evaluate(el => el.style.overflow)).not.toBe('hidden');
+});
+
+test('quick search owns Tab and Escape when it replaces the magnetic navigation', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/demo.html#overview');
+  const trigger = page.locator('[data-mobile-navigation-trigger]');
+  await trigger.press('Home'); await expect(page.getByRole('dialog', { name: '导航', exact: true })).toBeVisible();
+  await page.keyboard.press('Meta+k');
+  const search = page.getByRole('dialog', { name: '快速查找', exact: true });
+  await expect(search).toBeVisible(); await expect(page.getByRole('dialog', { name: '导航', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Shift+Tab'); expect(await search.evaluate(el => el.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press('Tab'); expect(await search.evaluate(el => el.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press('Escape'); await expect(search).toBeHidden(); await expect(trigger).toBeFocused();
 });

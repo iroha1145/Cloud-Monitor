@@ -360,6 +360,7 @@ test("built production and Pages menus stay at the viewport edge without changin
       await page.getByRole("button", { name: "打开导航", exact: true }).tap();
       const drawer = page.getByRole("dialog", { name: "导航", exact: true });
       await expect(drawer).toBeVisible();
+      await drawer.locator('[data-mobile-navigation-trigger]').press("Home");
       // The production CSS compiler can lower individual transforms into
       // transform, so this must run against built assets as well as Vite dev.
       for (const viewport of [{ width: 320, height: 740 }, { width: 390, height: 844 }, { width: 430, height: 932 }, { width: 844, height: 390 }]) {
