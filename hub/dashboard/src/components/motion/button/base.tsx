@@ -10,7 +10,6 @@ import {
   type ReactNode,
 } from "react";
 import { SPRING_PRESS } from "@/lib/ease";
-import { useHoverCapable } from "@/lib/hooks/use-hover-capable";
 import { cn } from "@/lib/utils";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "outline";
@@ -22,7 +21,6 @@ export interface ButtonProps extends Omit<
 > {
   variant?: ButtonVariant;
   size?: ButtonSize;
-  pressScale?: number;
   children?: ReactNode;
 }
 
@@ -46,7 +44,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     {
       variant = "primary",
       size = "md",
-      pressScale = 0.93,
       className,
       children,
       ...rest
@@ -54,14 +51,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     ref,
   ) {
     const reduce = useReducedMotion();
-    const canHover = useHoverCapable();
 
     return (
       <motion.button
         ref={ref}
         type="button"
-        whileTap={reduce ? undefined : { scale: pressScale }}
-        whileHover={reduce || !canHover ? undefined : { scale: 1.02 }}
+        // A press sinks 1px and hover only changes colour, as on every other
+        // control (game-manage); the button does not grow or shrink.
+        whileTap={reduce ? undefined : { y: 1 }}
         transition={SPRING_PRESS}
         className={cn(
           "inline-flex items-center justify-center font-medium select-none",

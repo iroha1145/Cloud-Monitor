@@ -337,12 +337,13 @@ details[open]::details-content {
     color var(--duration-quick) var(--ease-smooth-out),
     transform var(--duration-quick) var(--ease-smooth-out);
 }
+/* A press sinks the control 1px (game-manage); hover only changes colour. */
 .plain-button:active:not(:disabled),
 .icon-button:active:not(:disabled),
 .command-search:active,
 .row-arrow:active,
 .insight-trend-day-nav button:active:not(:disabled) {
-  transform: scale(0.96);
+  transform: translateY(1px);
 }
 
 /* Number pop-in: a changed value re-enters from below with a short blur; the
