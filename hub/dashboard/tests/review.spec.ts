@@ -23,7 +23,7 @@ for (const viewport of [
     } else {
       if (viewport.width < 760 || viewport.height < 500) {
         await page.getByRole("button", { name: "打开导航", exact: true }).click();
-        await page.locator(".feel-nav-drawer").getByRole("button", { name: "工作区设置", exact: true }).click();
+        await page.getByRole("dialog", { name: "导航", exact: true }).getByRole("button", { name: "工作区设置", exact: true }).click();
       } else {
         await page.getByRole("button", { name: "连接我的数据" }).click();
       }

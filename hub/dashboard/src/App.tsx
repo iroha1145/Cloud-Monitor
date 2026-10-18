@@ -14,12 +14,7 @@ import {
   ChevronDown,
   ChevronRight,
   Cloud,
-  Download,
-  Menu,
   Palette,
-  RefreshCw,
-  Search,
-  Settings2,
   UserRound,
   X,
 } from "lucide-react";
@@ -45,6 +40,7 @@ import {
 } from "./data";
 import { loadDashboard, isAuthFailure } from "./api";
 import { FloatingNavigation } from "./FloatingNavigation";
+import { AnimatedNavIcon } from "./AnimatedNavIcon";
 import { PAGES, type PageId } from "./pages";
 import { PageSkeleton } from "./PageSkeleton";
 import { DURATION, EASE_SMOOTH_OUT } from "./lib/motion";
@@ -104,12 +100,11 @@ export default function App({ initialData, initialToken = "", hosted = false, is
   const [toast, setToast] = useState("");
   const [dialogError, setDialogError] = useState(false);
   const dialogReturnFocus = useRef<HTMLElement | null>(null);
-  const mobileReturnFocus = useRef<HTMLButtonElement | null>(null);
   const searchButton = useRef<HTMLButtonElement | null>(null);
   const rememberDialogOpener = (opener: HTMLElement | null) => {
-    // Buttons inside the closing navigation drawer will be unmounted.
+    // The sheet's handle remains available after its menu content closes.
     dialogReturnFocus.current = opener?.closest(".feel-nav-drawer")
-      ? mobileReturnFocus.current
+      ? document.querySelector<HTMLElement>("[data-mobile-navigation-trigger]")
       : opener;
     setDialogError(false);
   };
@@ -165,10 +160,12 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        if (!document.querySelector('[role="dialog"][data-state="open"]')) {
+        const activeDialog = document.querySelector('[role="dialog"][data-state="open"]');
+        if (!activeDialog || activeDialog.classList.contains("feel-nav-drawer")) {
           rememberDialogOpener(document.activeElement instanceof HTMLElement && document.activeElement !== document.body
             ? document.activeElement : searchButton.current);
         }
+        setMobile(false);
         setSearchOpen((v) => !v);
       }
       if (e.key === "Escape") setMobile(false);
@@ -373,7 +370,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
             aria-current={page === p.id ? "page" : undefined}
             className={`nav-item ${page === p.id ? "active" : ""}`}
           >
-            <p.icon size={19} />
+            <AnimatedNavIcon name={p.id} size={19} active={page === p.id} />
             <span>{p.name}</span>
             {p.id === "devices" && (
               <span className="nav-count">{data.devices.length}</span>
@@ -406,7 +403,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
           设计说明
         </button>}
         <button className="sidebar-setting" onClick={openSettings}>
-          <Settings2 size={16} />
+          <AnimatedNavIcon name="settings" size={16} />
           工作区设置
         </button>
       </div>
@@ -420,20 +417,12 @@ export default function App({ initialData, initialToken = "", hosted = false, is
       <div
         className={`app-shell feel-shell ${SHOWCASE_UI ? "showcase-shell" : "dashboard-shell"}`}
       >
-        <FloatingNavigation open={mobile} onOpenChange={setMobile} triggerRef={mobileReturnFocus} pageName={current.name}>
+        <FloatingNavigation open={mobile} onOpenChange={setMobile} currentPage={page} onNavigate={go} pageName={current.name}>
           {nav}
         </FloatingNavigation>
         <div className="workspace-main">
           <header className="app-topbar" data-feel-card>
             <div className="breadcrumb">
-              <button
-                className="icon-button mobile-menu"
-                ref={mobileReturnFocus}
-                onClick={() => setMobile(true)}
-                aria-label="打开导航"
-              >
-                <Menu size={19} />
-              </button>
               <span className="breadcrumb-workspace">工作空间</span>
               <ChevronRight size={13} />
               <strong>{current.name}</strong>
@@ -446,7 +435,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                 aria-label="搜索或快速跳转"
                 onClick={(event) => { rememberDialogOpener(event.currentTarget); setSearchOpen(true); }}
               >
-                <Search size={16} />
+                <AnimatedNavIcon name="search" size={16} />
                 <span>搜索或快速跳转</span>
                 <kbd>{SEARCH_SHORTCUT}</kbd>
               </button>
@@ -500,7 +489,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                   }
                   successText="已更新"
                   errorText="重试"
-                  icon={<RefreshCw size={14} />}
+                  icon={<AnimatedNavIcon name="refresh" size={14} />}
                   onClick={refresh}
                   disabled={refreshState === "loading"}
                   className="refresh-button"
@@ -509,12 +498,12 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                 </StatefulButton>
               </div>
             </section>
-            {notices.length > 0 && <details className="workspace-notices" open={!!refreshWarning}>
+            {notices.length > 0 && <details className="workspace-notices" data-feel-card open={!!refreshWarning}>
               <summary>{refreshWarning ? "数据刷新未完成" : `${notices.length} 项数据与同步提示`}</summary>
               <ul>{notices.map((notice, index) => <li key={index}>{notice}</li>)}</ul>
             </details>}
             {(page === "overview" || page === "models") && (
-              <div className="page-controls">
+              <div className="page-controls" data-feel-card>
                 <div className="period-group">
                   <Tabs
                     value={period}
@@ -543,7 +532,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                   </span>
                 </div>
                 <button className="plain-button" onClick={exportModels}>
-                  <Download size={14} />
+                  <AnimatedNavIcon name="download" size={14} />
                   <span>导出数据</span>
                 </button>
               </div>

@@ -3,6 +3,9 @@ import { expect, test, type Page } from "@playwright/test";
 async function expectDrawerAtViewportEdge(page: Page) {
   const drawer = page.getByRole("dialog", { name: "导航", exact: true });
   await expect(drawer).toBeVisible();
+  // The first tap opens the half-height stop; Home requests the full stop
+  // before checking the complete sheet's viewport geometry.
+  await drawer.locator('[data-mobile-navigation-trigger]').press("Home");
   await expect
     .poll(async () => {
       const box = await drawer.boundingBox();
