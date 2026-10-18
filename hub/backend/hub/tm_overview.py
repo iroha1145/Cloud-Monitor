@@ -19,7 +19,8 @@
   降序截 100；sessions_omitted 保留原上游省略标记以兼容旧界面。
 - sessions_by_period / sessions_meta_by_period: 独立今日、本月明细及缺失说明；
   allTime 不同步会话明细，始终空列表并标注 not-synced。
-- projects: 官方聚合 periods.allTime.projects 规范化输出，附 devices 归属。
+- projects: 官方聚合 periods.allTime.projects 规范化输出（含按客户端、按模型
+  的词元），附 devices 归属。
 - diagnostics: 每设备 clientHealth/clientStatus/wslStatus 透传（官方 stats
   devices 原生携带，缺失为 None，前端自动隐藏对应行）。
 - period_windows: （deprecated，保留兼容）最新设备的 periodWindows 透传。
@@ -787,6 +788,7 @@ def _collect_projects(stats: dict) -> list[dict]:
         if not isinstance(value, dict):
             continue
         clients = value.get("clients")
+        models = value.get("models")
         project_item = {
             "label": str(value.get("label") or key),
             "tokens": _int(value.get("tokens") or value.get("totalTokens")),
@@ -794,6 +796,13 @@ def _collect_projects(stats: dict) -> list[dict]:
             "clients": {
                 str(c): _int(t)
                 for c, t in (clients.items() if isinstance(clients, dict) else [])
+            },
+            # v0.74 起官方带出，合计不超过 tokens；旧版客户端上报的项目没有
+            # models，合计可以小于 tokens。只收非负整数，异常值丢弃而不是记 0。
+            "models": {
+                str(m): t
+                for m, t in (models.items() if isinstance(models, dict) else [])
+                if isinstance(t, int) and not isinstance(t, bool) and t >= 0
             },
             "devices": [],
         }

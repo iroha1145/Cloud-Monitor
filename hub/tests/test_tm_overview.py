@@ -17,6 +17,7 @@ from conftest import (
     READ_KEY,
     TM_SECRET,
     make_cloud_app,
+    official_payload,
     requires_node,
     widget_style_payload,
 )
@@ -505,6 +506,57 @@ def test_projects_normalized_with_devices(cloud):
 def test_projects_empty_when_absent(cloud):
     ingest(cloud, widget_style_payload("dev-np"))
     assert overview(cloud)["projects"] == []
+
+
+@requires_node
+def test_project_models_from_official_rollup(cloud):
+    """v0.74 官方按会话汇总项目时带出按模型词元；旧版设备的项目只计入 tokens。"""
+    current = widget_style_payload("dev-v074")
+    current["projectsEnabled"] = True
+    current["allTime"] = {
+        "totalTokens": 1700,
+        "clients": {"codex": 1200, "claude": 500},
+        "sessions": {
+            "codex:s-web": {"client": "codex", "sessionId": "s-web", "projectLabel": "web",
+                            "totalTokens": 1000, "models": {"GPT-5.4": 600, "o3": 400}},
+            # 模型合计超过会话总量：官方 addProjectModels 只分到会话的 500
+            "claude:s-cap": {"client": "claude", "sessionId": "s-cap", "projectLabel": "web",
+                             "totalTokens": 500, "models": {"opus-4.5": 800}},
+            "codex:s-api": {"client": "codex", "sessionId": "s-api", "projectLabel": "api",
+                            "totalTokens": 200},
+        },
+    }
+    ingest(cloud, official_payload(current))
+    legacy = widget_style_payload("dev-v073")
+    legacy["hostname"] = "ThinkPad"
+    legacy["projectsEnabled"] = True
+    legacy["allTime"]["projects"] = {
+        "web": {"label": "web", "tokens": 300, "costUsd": 0.1, "clients": {"codex": 300}},
+    }
+    ingest(cloud, legacy)
+
+    projects = {p["label"]: p for p in overview(cloud)["projects"]}
+    web = projects["web"]
+    assert web["tokens"] == 1800
+    assert web["models"] == {"gpt-5.4": 600, "o3": 400, "opus-4.5": 500}
+    assert web["clients"] == {"codex": 1300, "claude": 500}
+    assert sorted(web["devices"]) == ["MacBook-Pro", "ThinkPad"]
+    assert projects["api"]["models"] == {}
+
+
+def test_project_models_keep_only_non_negative_integers():
+    from hub.tm_overview import _collect_projects
+
+    stats = {"periods": {"allTime": {"projects": {
+        "web": {"label": "web", "tokens": 10, "models": {
+            "kept": 7, "zero": 0, "negative": -1, "flag": True,
+            "fraction": 1.5, "text": "7", "missing": None,
+        }},
+        "api": {"label": "api", "tokens": 5, "models": ["not", "a", "map"]},
+    }}}}
+    projects = {p["label"]: p for p in _collect_projects(stats)}
+    assert projects["web"]["models"] == {"kept": 7, "zero": 0}
+    assert projects["api"]["models"] == {}
 
 
 # ================================================================ diagnostics / period_windows
