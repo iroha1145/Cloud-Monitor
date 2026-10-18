@@ -65,6 +65,28 @@ test("model attribution never borrows a mixed session's full counts or costs", (
   assert.equal(modelUsageDetails(normalizePeriod({}), "missing").clients, null);
 });
 
+test("the gateway's partial table restores model speed and counts the devices left out", () => {
+  const timed = {timedTokens: 900, timedOutputTokens: 400, timedDurationMs: 10000};
+  const data = normalizeOverview({
+    totals: {
+      today: {models: {"model-a": 1000}},
+      month: {models: {"model-a": 1000}, modelThroughput: {"model-a": {timedTokens: 100, timedOutputTokens: 50, timedDurationMs: 1000}}},
+    },
+    model_throughput_partial: {
+      today: {models: {"model-a": timed}, missingDevices: {"model-a": 1}},
+      month: {models: {"model-a": timed}, missingDevices: {"model-a": 2}},
+    },
+  });
+  const today = modelUsageDetails(data.periods.today, "model-a");
+  assert.equal(today.outputTokensPerSecond, 40);
+  assert.equal(today.untimedDevices, 1);
+  // A complete official table wins over the partial one.
+  const month = modelUsageDetails(data.periods.month, "model-a");
+  assert.equal(month.outputTokensPerSecond, 50);
+  assert.equal(month.untimedDevices, 0);
+  assert.equal(modelUsageDetails(data.periods.allTime, "model-a").outputTokensPerSecond, null);
+});
+
 
 test("demo alone provides complete, mixed and missing session readings with truthful context overflow", () => {
   const data = createDemoData(new Date("2026-10-18T02:00:00Z"));

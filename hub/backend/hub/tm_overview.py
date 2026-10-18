@@ -628,6 +628,46 @@ def _current_session_devices(stats: dict, period: str, now: Any = None) -> list[
             if not _session_period_expired(device, period, reference)]
 
 
+_THROUGHPUT_FIELDS = ("timedTokens", "timedOutputTokens", "timedDurationMs")
+
+
+def _model_throughput_partial(stats: dict, now: Any = None) -> dict:
+    """按模型计时的补充表；官方 totals 原样不动。
+
+    官方聚合只要有一台当前设备的某个周期缺 modelThroughput，就删掉该周期整张表
+    （不把缺失当零），面板于是丢掉全部模型速度。这里只用该周期未过期、报了计时的
+    设备补出一份，并按模型记下有几台设备用过却没报计时，由面板标明速度没算进它们。
+    官方表完整时不补；没有任何设备报计时时也不补。
+    """
+    result: dict = {}
+    for period in ("today", "month", "allTime"):
+        total = (stats.get("periods") or {}).get(period)
+        if not isinstance(total, dict) or isinstance(total.get("modelThroughput"), dict):
+            continue
+        models: dict = {}
+        missing: dict = {}
+        for device in _current_session_devices(stats, period, now):
+            data = (device.get("periods") or {}).get(period) or {}
+            throughput = data.get("modelThroughput")
+            if not isinstance(throughput, dict):
+                for model, tokens in (data.get("models") or {}).items():
+                    if isinstance(tokens, (int, float)) and not isinstance(tokens, bool) and tokens > 0:
+                        missing[str(model)] = missing.get(str(model), 0) + 1
+                continue
+            for model, counters in throughput.items():
+                if not isinstance(counters, dict):
+                    continue
+                slot = models.setdefault(str(model), dict.fromkeys(_THROUGHPUT_FIELDS, 0))
+                for field in _THROUGHPUT_FIELDS:
+                    value = counters.get(field)
+                    if (isinstance(value, (int, float)) and not isinstance(value, bool)
+                            and math.isfinite(value) and value >= 0):
+                        slot[field] += int(value)
+        if models:
+            result[period] = {"models": models, "missingDevices": missing}
+    return result
+
+
 def _collect_sessions(stats: dict, period: str = "today", *, now: Any = None) -> tuple[dict, list[dict]]:
     """各设备指定周期 sessions 拍平；缺失观察不填零。
 
@@ -916,6 +956,7 @@ def build_overview(
         "partial": bool(partial_errors),
         "partial_errors": partial_errors,
         "totals": stats.get("periods"),
+        "model_throughput_partial": _model_throughput_partial(stats, now),
         "devices": devices,
         "trend": merge_trend_with_history(
             summarize_trend(trend_days, trend_rows), history, days=TREND_DAYS

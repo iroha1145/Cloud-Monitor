@@ -172,6 +172,13 @@ v0.70 起官方周期还带 `unpricedTokens`、`clientUnpricedTokens`、`modelUn
 （按模型的 `timedTokens`、`timedOutputTokens`、`timedDurationMs`），随 `totals` 原样透传。
 会话详情把未定价词元单独列出，不当作免费用量。
 
+官方聚合只要有一台当前设备的某个周期没有 `modelThroughput`（例如旧版无界面代理），
+就删掉该周期整张表。此时网关另给 `model_throughput_partial[period]`：
+`models` 是该周期未过期、报了计时的设备按模型相加的三项计数，
+`missingDevices` 是每个模型有几台当前设备用过却没报计时。`totals` 本身不改；
+官方表完整、或没有任何设备报计时的周期不出现。面板用它显示模型速度，
+并注明没算进的设备数。
+
 `trend` 与 `history/daily.items` 也携带当天的 `outputTokens`、
 `cacheReadTokens`、`cacheWriteTokens`、`unclassifiedTokens`。每台设备
 先选当天最后一条快照，再合计同一组快照的总量、费用与组成，不能将当天

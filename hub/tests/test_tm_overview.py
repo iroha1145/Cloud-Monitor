@@ -99,6 +99,74 @@ def test_session_period_expiry_matches_real_upstream_aggregate(tmp_path, moment,
         db.close()
 
 
+@requires_node
+def test_model_throughput_survives_a_current_device_without_timing(tmp_path):
+    """Upstream drops a period's whole modelThroughput once one current device
+    lacks it; Cloud rebuilds it from the current devices that report timing and
+    counts, per model, the devices that used it without timing."""
+    import json
+    import subprocess
+    from conftest import VENDOR
+    from hub.db import Database
+    from hub.tm_outbox import ensure_schema as ensure_outbox_schema
+    from hub.tm_snapshots import ensure_schema
+    from hub.tm_overview import build_overview
+
+    def period(models, timed=None):
+        tokens = sum(models.values())
+        data = {"totalTokens": tokens, "outputTokens": tokens, "models": models, "modelOutputs": dict(models)}
+        if timed is not None:
+            data.update({key: sum(item[key] for item in timed.values()) for key in
+                         ("timedTokens", "timedOutputTokens", "timedDurationMs")})
+            data["modelThroughput"] = timed
+        return data
+
+    widget = {"model-a": {"timedTokens": 900, "timedOutputTokens": 400, "timedDurationMs": 10_000}}
+    stale = {"model-a": {"timedTokens": 300, "timedOutputTokens": 100, "timedDurationMs": 5_000}}
+    records = [
+        {"deviceId": "widget", "updatedAt": "2026-10-18T09:00:00Z", "receivedAt": "2026-10-18T09:00:00Z",
+         "today": period({"model-a": 1000}, widget), "month": period({"model-a": 1000}, widget),
+         "allTime": period({"model-a": 1000}, widget)},
+        # An older headless agent reports no timing: unused today, model-a this
+        # month and model-b only before it.
+        {"deviceId": "agent", "updatedAt": "2026-10-18T09:30:00Z", "receivedAt": "2026-10-18T09:30:00Z",
+         "today": period({}), "month": period({"model-a": 50}), "allTime": period({"model-a": 50, "model-b": 7})},
+        # Last synced three days ago: its today has ended, its month has not.
+        {"deviceId": "stale", "updatedAt": "2026-10-15T09:00:00Z", "receivedAt": "2026-10-15T09:00:00Z",
+         "today": period({"model-a": 300}, stale), "month": period({"model-a": 300}, stale),
+         "allTime": period({"model-a": 300}, stale)},
+    ]
+    result = subprocess.run([
+        "node", "-e", "const {aggregateDevices}=require('./src/shared/usage');"
+        "const input=JSON.parse(require('fs').readFileSync(0,'utf8'));"
+        "console.log(JSON.stringify(aggregateDevices(input.devices,600000,Date.parse(input.now))));",
+    ], cwd=VENDOR, input=json.dumps({"devices": records, "now": "2026-10-18T10:00:00Z"}),
+        check=True, capture_output=True, text=True)
+    stats = json.loads(result.stdout)
+    for name in ("today", "month", "allTime"):
+        assert "modelThroughput" not in stats["periods"][name]
+    db = Database(tmp_path / "throughput.sqlite3")
+    ensure_schema(db)
+    ensure_outbox_schema(db)
+    try:
+        partial = build_overview(db, stats, now=datetime(2030, 1, 1, tzinfo=timezone.utc))["model_throughput_partial"]
+        assert partial["today"] == {"models": widget, "missingDevices": {}}
+        both = {key: widget["model-a"][key] + stale["model-a"][key] for key in widget["model-a"]}
+        assert partial["month"] == {"models": {"model-a": both}, "missingDevices": {"model-a": 1}}
+        assert partial["allTime"] == {"models": {"model-a": both}, "missingDevices": {"model-a": 1, "model-b": 1}}
+    finally:
+        db.close()
+
+    complete = dict(stats, periods=dict(stats["periods"], today=dict(stats["periods"]["today"], modelThroughput=widget)))
+    db = Database(tmp_path / "complete.sqlite3")
+    ensure_schema(db)
+    ensure_outbox_schema(db)
+    try:
+        assert "today" not in build_overview(db, complete)["model_throughput_partial"]
+    finally:
+        db.close()
+
+
 @pytest.mark.parametrize("stamp_field", ["updatedAt", "generatedAt"])
 def test_session_expiry_uses_stats_timestamp_when_age_is_unavailable(stamp_field):
     from hub.tm_overview import _session_period_details

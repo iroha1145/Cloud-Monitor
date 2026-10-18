@@ -7,7 +7,9 @@ export function modelUsageDetails(period: PeriodUsage, modelId: string) {
   const clients = period.clientModels === undefined ? null : Object.entries(period.clientModels)
     .filter(([, models]) => typeof models[modelId] === "number" && models[modelId] > 0)
     .map(([client, models]) => ({ client, tokens: models[modelId], costUsd: period.clientModelCosts?.[client]?.[modelId] ?? null }));
-  return { entity, throughput, outputTokensPerSecond: throughput ? outputTokensPerSecond(throughput) : null, clients };
+  // Devices that used this model without reporting timing are left out of the speed.
+  const untimedDevices = period.modelThroughputMissing?.[modelId] ?? 0;
+  return { entity, throughput, outputTokensPerSecond: throughput ? outputTokensPerSecond(throughput) : null, untimedDevices, clients };
 }
 
 export function sessionsForModel(sessions: Session[], modelId: string): Session[] {

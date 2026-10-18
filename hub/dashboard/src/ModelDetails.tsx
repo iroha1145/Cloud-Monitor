@@ -34,6 +34,7 @@ export function ModelDetails({ model, data, per, period }: { model: UsageEntity;
         {detail.throughput?.timedTokens != null && <div><dt>测速样本总量</dt><dd>{count(detail.throughput.timedTokens)} 词元</dd></div>}
       </dl><p>仅统计带有效计时的记录，耗时可能包含等待时间。</p></details>
     </section>}
+    {detail.outputTokensPerSecond !== null && detail.untimedDevices > 0 && <p className="detail-footnote">另有 {detail.untimedDevices} 台设备用过这个模型，但没有上报计时，没算进速度。</p>}
     {detail.clients !== null && detail.clients.length > 0 && <section className="model-client-detail" aria-label="模型的客户端来源">
       <div className="detail-section-heading"><h3>客户端分布</h3><span>{detail.clients.length} 个客户端</span></div>
       <div className="model-client-rows">{detail.clients.sort((a, b) => b.tokens - a.tokens).map(client => <div key={client.client}>
