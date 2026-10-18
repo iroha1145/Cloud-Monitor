@@ -14,14 +14,21 @@ const BAR_HEIGHT = 84;
 const GRIP_HEIGHT = 28;
 type Props = { children: ReactNode; open: boolean; onOpenChange: (open: boolean) => void; pageName: string; currentPage: PageId; onNavigate: (page: PageId) => void };
 type HandleController = { down(event: React.PointerEvent<HTMLElement>): void; key(event: React.KeyboardEvent<HTMLElement>): void; click(event: React.MouseEvent<HTMLElement>): void };
-// Programmatic focus after a tap should not draw the keyboard ring.
-const quietFocus = (node: HTMLElement | null | undefined) => node?.focus({ preventScroll: true, focusVisible: false } as FocusOptions);
+// Focus handed over after a tap or drag should not draw the keyboard ring;
+// after a key press it should. The latest input decides.
+let keyboardInput = false;
+const quietFocus = (node: HTMLElement | null | undefined) => node?.focus({ preventScroll: true, focusVisible: keyboardInput } as FocusOptions);
 
 /** Desktop corner navigation and the phone tab bar that grows into the menu. */
 export function FloatingNavigation(props: Props) {
   const [mobile, setMobile] = useState(() => window.matchMedia(MOBILE_NAV_QUERY).matches);
   const latest = useRef(props); latest.current = props;
   const returnAfterResize = useRef(false);
+  useEffect(() => {
+    const key = () => { keyboardInput = true; }, pointer = () => { keyboardInput = false; };
+    window.addEventListener('keydown', key, true); window.addEventListener('pointerdown', pointer, true);
+    return () => { window.removeEventListener('keydown', key, true); window.removeEventListener('pointerdown', pointer, true); };
+  }, []);
   useEffect(() => {
     const query = window.matchMedia(MOBILE_NAV_QUERY);
     const change = () => {
@@ -136,7 +143,7 @@ function DesktopNavigation({ children }: { children: ReactNode }) {
   </aside>;
 }
 
-type MobileController = HandleController & { sync(open: boolean): void; close(): void; toggle(): void };
+type MobileController = HandleController & { sync(open: boolean): void; close(): void; toggle(opener: HTMLElement): void };
 const QUICK_PAGES = [{ id: 'overview', label: '总览' }, { id: 'models', label: '模型分析' }, { id: 'quota', label: '配额与订阅' }] as const;
 /** The tab bar grows into the menu as one surface (game-manage). A tap
  * springs from rest to the next stop (closed, half, open); a drag follows the
@@ -219,7 +226,9 @@ function MobileDrawer({ children, open, onOpenChange, currentPage, onNavigate }:
     const end = (event?: PointerEvent, cancelled = false) => {
       const g = gesture; if (!g || (event && event.pointerId !== g.id)) return; gesture = null;
       try { if (handle.current?.hasPointerCapture(g.id)) handle.current.releasePointerCapture(g.id); } catch { /* Removed handle. */ }
-      if (!g.moved) return;
+      // A press that caught a moving surface lets it carry on; the click that
+      // follows a tap may then send it to the next stop.
+      if (!g.moved) { if (!frame && progress !== DRAWER_STOPS[stop]) frame = win.requestAnimationFrame(tick); return; }
       suppressed = performance.now() + 700;
       // A finger that rested before letting go releases without momentum.
       if (performance.now() - g.time > 60) velocity = 0;
@@ -252,7 +261,7 @@ function MobileDrawer({ children, open, onOpenChange, currentPage, onNavigate }:
       },
       sync(value) { if (value === logicalOpen) return; logicalOpen = value; if (value) { opener.current ||= handle.current; go('half'); } else go('closed'); },
       close() { go('closed'); },
-      toggle() { if (!logicalOpen) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : handle.current; go(stop === 'open' ? 'closed' : 'open'); },
+      toggle(button) { if (!logicalOpen) opener.current = button; go(stop === 'open' ? 'closed' : 'open'); },
     };
     // The menu's own size (a scrollbar appearing while it opens, a wrapped
     // label) only refits the open stop; a drag in progress keeps going.
@@ -327,7 +336,7 @@ function MobileDrawer({ children, open, onOpenChange, currentPage, onNavigate }:
       <nav id={menuId} ref={content} className="feel-nav-content" aria-label="页面导航" inert={!open} aria-hidden={!open} onClick={event => { if ((event.target as Element).closest('a[href^="#"]')) latest.current.onOpenChange(false); }}><div ref={inner} className="feel-nav-inner">{children}</div></nav>
       <nav className="feel-quick-navigation" aria-label="常用页面">
         {QUICK_PAGES.map(page => <a key={page.id} href={`#${page.id}`} aria-current={currentPage === page.id ? 'page' : undefined} onClick={event => { event.preventDefault(); onNavigate(page.id); }}><AnimatedNavIcon name={page.id} size={20} active={currentPage === page.id} /><span>{page.label}</span></a>)}
-        <button type="button" className="feel-more" aria-expanded={open} aria-controls={menuId} onClick={() => controller.current?.toggle()}><ChevronUp size={20} aria-hidden="true" /><span>更多</span></button>
+        <button type="button" className="feel-more" aria-expanded={open} aria-controls={menuId} onClick={event => controller.current?.toggle(event.currentTarget)}><ChevronUp size={20} aria-hidden="true" /><span>更多</span></button>
       </nav>
       <span id={hintId} className="sr-only">点击抓手依次半开、展开和收起，也可上下拖动或使用方向键。</span>
     </section>

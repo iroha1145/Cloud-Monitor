@@ -69,7 +69,6 @@
   .app-shell .command-search:hover { border-color: var(--line-strong); background: var(--surface); }
 }
 .app-shell :is(.top-avatar, .icon-button, .theme-menu-trigger) { border-radius: var(--r-control); }
-.app-shell .topbar-divider { display: none; }
 
 /* Segmented controls: a grey track, a white slip, the chosen label in the
    accent. Shared by the period tabs, small tabs and metric switches. */

@@ -7,7 +7,7 @@
 
 /* Mobile layouts keep the same records and actions, with room for touch input. */
 
-.sv-mobile-date-picker{
+.sv-mobile-date-picker {
   display: none;
 }
 
@@ -25,12 +25,7 @@
     margin-left: 0;
     padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   }
-  
-  
-  .breadcrumb-workspace,
-  .breadcrumb > svg,
   .command-search kbd,
-  .topbar-divider,
   .top-avatar {
     display: none;
   }
@@ -43,14 +38,6 @@
     padding: 8px max(10px, env(safe-area-inset-right, 0px)) 8px
       max(10px, env(safe-area-inset-left, 0px));
     gap: 4px;
-  }
-  .breadcrumb {
-    min-width: 0;
-    gap: 6px;
-    font-size: 13px;
-  }
-  .breadcrumb strong {
-    white-space: nowrap;
   }
   .preview-badge {
     padding: 2px 6px;
@@ -73,14 +60,6 @@
     position: absolute;
     inset: -5px;
   }
-  
-  
-  
-  
-  
-  
-  
-  
   .page-heading {
     min-height: 0;
     padding-block: 23px 20px;
@@ -538,7 +517,6 @@
     display: grid;
     place-items: center;
   }
-  
   .app-toast {
     bottom: calc(80px + env(safe-area-inset-bottom, 0px));
     max-width: calc(100vw - 28px);
@@ -553,10 +531,6 @@
 }
 
 @media (max-width: 360px) {
-  .breadcrumb {
-    gap: 3px;
-    font-size: 12px;
-  }
   .preview-badge {
     margin-left: 1px;
   }
@@ -576,12 +550,9 @@
 }
 
 @media (max-height: 500px) and (max-width: 960px) {
-  
-  
   .workspace-main {
     padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
   }
-  
 }
 
 @media (pointer: coarse) and (min-width: 761px) {

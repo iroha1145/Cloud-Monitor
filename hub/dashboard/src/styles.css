@@ -339,22 +339,7 @@ input[type="search"]::-webkit-search-decoration {
   padding: 0 max(var(--gutter), calc((100% - var(--content-max)) / 2 + var(--gutter)));
   border-bottom: 1px solid var(--line);
 }
-.breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  color: var(--ink-3);
-  font-size: 13px;
-}
-.breadcrumb > svg {
-  color: var(--line-strong);
-}
-.breadcrumb strong {
-  color: var(--ink);
-  font-weight: 500;
-  white-space: nowrap;
-}
+
 .preview-badge {
   margin-left: 4px;
   padding: 2px 7px;
@@ -392,12 +377,7 @@ input[type="search"]::-webkit-search-decoration {
   border: 0;
   background: var(--surface);
 }
-.topbar-divider {
-  width: 1px;
-  height: 20px;
-  margin: 0 6px;
-  background: var(--line);
-}
+
 .icon-button {
   display: inline-flex;
   align-items: center;
