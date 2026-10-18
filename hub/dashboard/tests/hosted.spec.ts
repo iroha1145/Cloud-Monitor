@@ -115,13 +115,18 @@ test("real ingest supplies period-specific session and model detail while legacy
     const detailDevice = overview.devices.find((device: { deviceId: string }) => device.deviceId === "session-details-real-device");
     expect(detailDevice.today.modelThroughput["detail-model-primary"]).toMatchObject({ timedOutputTokens: 1500, timedDurationMs: 37500 });
     // A legacy device has unknown model timing. Upstream deliberately withholds
-    // the combined map rather than turn partial device timing into a global rate.
+    // the combined map rather than turn partial device timing into a global rate;
+    // Cloud adds a separate partial table that names the devices it leaves out.
     expect(overview.totals.today.modelThroughput).toBeUndefined();
+    expect(overview.model_throughput_partial.today.models["detail-model-primary"]).toMatchObject({ timedOutputTokens: 1500, timedDurationMs: 37500 });
+    expect(overview.model_throughput_partial.today.missingDevices["detail-model-primary"]).toBe(1);
     await login(page);
     await page.getByRole("button", { name: "查看 detail-model-primary 详情", exact: true }).click();
     let dialog = page.getByRole("dialog");
     await expect(dialog).toContainText("今日用量详情");
-    await expect(dialog.getByRole("region", { name: "模型输出速度" })).toHaveCount(0);
+    // The rate comes only from the device that timed it, and says so.
+    await expect(dialog.getByRole("region", { name: "模型输出速度" })).toContainText("40.0");
+    await expect(dialog.locator(".detail-footnote").filter({ hasText: "没算进速度" })).toHaveText("另有 1 台设备用过这个模型，但没有上报计时，没算进速度。");
     await expect(dialog.getByRole("region", { name: "模型的客户端来源" })).toContainText("Codex");
     const mixed = dialog.locator(".session-usage-card").filter({ hasText: "detail-fixture-project" });
     await mixed.locator(":scope > summary").click();

@@ -69,6 +69,9 @@ export interface UsageEntity {
 export interface PeriodUsage {
   throughput?: ThroughputCounters;
   modelThroughput?: Record<string, ThroughputCounters>;
+  /** Set when modelThroughput comes from the gateway's partial table: per
+   * model, the current devices that used it without reporting timing. */
+  modelThroughputMissing?: Record<string, number>;
   totalTokens: number;
   costUsd: number | null;
   components: UsageComponents;
@@ -1054,6 +1057,17 @@ export function normalizeOverview(
   const normalizedPeriods = Object.fromEntries(
     periods.map((key) => [key, normalizePeriod(totals[key])]),
   ) as Record<PeriodKey, PeriodUsage>;
+  // The official aggregate drops a period's whole modelThroughput once one
+  // current device lacks it; the gateway rebuilds it from the devices that do
+  // report timing and counts, per model, the devices that do not.
+  const partialThroughput = record(root.model_throughput_partial);
+  for (const key of periods) {
+    const partial = record(partialThroughput[key]);
+    if (normalizedPeriods[key].modelThroughput || !isRecord(partial.models)) continue;
+    normalizedPeriods[key].modelThroughput = Object.fromEntries(Object.entries(partial.models)
+      .filter(([, value]) => isRecord(value)).map(([id, value]) => [id, throughputCounters(value)]));
+    normalizedPeriods[key].modelThroughputMissing = counterMap(partial.missingDevices) ?? {};
+  }
   const trendModels = new Map(
     list(root.trend_models).map((value) => {
       const item = record(value);
