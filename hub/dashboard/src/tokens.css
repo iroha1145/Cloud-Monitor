@@ -103,6 +103,12 @@
   --quota-3: #b78246;
   --quota-warning: #dba54a;
   --quota-danger: #cb7065;
+  /* Project parts (by model or client) take the same three in turn; the rest
+     share the unclassified grey. */
+  --share-1: var(--quota-1);
+  --share-2: var(--quota-2);
+  --share-3: var(--quota-3);
+  --share-rest: #b4becf;
 
 
   /* Depth stays faint: cards sit on a hairline with a near contact shadow

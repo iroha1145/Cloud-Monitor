@@ -187,6 +187,48 @@ test("real ingest supplies period-specific session and model detail while legacy
   }
 });
 
+test("real ingest fills the project card per period, split by model and by client", async ({ browser, request }) => {
+  const readHeaders = { Authorization: `Bearer ${READ_TOKEN}` };
+  const ingestHeaders = { "X-Token-Monitor-Secret": "unit-tm-secret-0123456789abcdef0000" };
+  const fixture = await (await request.get("/__test/session-details", { headers: readHeaders })).json();
+  const context = await browser.newContext({ baseURL: "http://127.0.0.1:18888", timezoneId: "UTC" });
+  const page = await context.newPage();
+  try {
+    for (const payload of fixture.payloads) {
+      expect((await request.post("/api/ingest", { headers: ingestHeaders, data: payload })).status()).toBe(200);
+    }
+    const overview = await (await request.get("/api/v1/tm/overview", { headers: readHeaders })).json();
+    const project = (period: string, label: string) =>
+      overview.projects_by_period[period].find((row: { label: string }) => row.label === label);
+    // The official kernel rolls today and month up from sessions, models included.
+    expect(project("today", "detail-fixture-project")).toMatchObject({
+      tokens: 16000, clients: { codex: 16000 }, devices: ["details-fixture"],
+      models: { "detail-model-primary": 10000, "detail-model-secondary": 6000 },
+    });
+    expect(project("month", "detail-fixture-project").models).toEqual({ "detail-model-primary": 30000, "detail-model-secondary": 18000 });
+    expect(project("today", "legacy-fixture-project")).toMatchObject({ tokens: 1000, models: { "detail-model-primary": 1000 } });
+    // The device posted at server start has project statistics off but all-time usage.
+    expect(overview.projects_meta_by_period).toEqual({
+      today: { incomplete: false }, month: { incomplete: false }, allTime: { incomplete: true },
+    });
+    await login(page);
+    await page.getByRole("link", { name: "模型分析", exact: true }).first().click();
+    const card = page.locator(".projects-panel");
+    const row = card.locator(".project-row").filter({ hasText: "detail-fixture-project" });
+    await expect(row.locator(".project-share-legend")).toHaveText(/detail-model-primary\s*62\.5%.*detail-model-secondary\s*37\.5%/s);
+    await card.getByRole("button", { name: "按客户端" }).click();
+    await expect(row.locator(".project-share-legend")).toHaveText(/Codex\s*100\.0%/);
+    await expect(card.locator(".project-note")).toHaveCount(0);
+    await page.getByRole("tablist", { name: "统计周期" }).getByRole("tab", { name: "累计", exact: true }).click();
+    await expect(card.locator(".project-note")).toBeVisible();
+  } finally {
+    await context.close();
+    for (const payload of fixture.payloads) {
+      await request.delete(`/api/devices/${payload.deviceId}`, { headers: ingestHeaders });
+    }
+  }
+});
+
 for (const authentication of ["manual", "restored"] as const) {
   test(`hosted ${authentication} login loads one complete batch and keeps scheduled refreshes`, async ({ page }) => {
     const counts = { overview: 0, subscriptions: 0, "provider-status": 0, daily: 0 };
