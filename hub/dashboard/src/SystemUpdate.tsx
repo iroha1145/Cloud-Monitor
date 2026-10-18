@@ -23,7 +23,7 @@ export interface SystemUpdateProps {
 const JOB_LABELS: Record<string, string> = {
   idle: "暂无更新任务",
   unavailable: "在线升级未启用",
-  queued: "等待宿主机处理",
+  queued: "等待后台处理",
   running: "正在执行更新",
   ok: "更新已完成",
   error: "更新失败",
@@ -77,7 +77,7 @@ function JobStatus({ job, timeZone }: { job: UpdateJob; timeZone?: string }) {
         </small>
       )}
       {job.state === "queued" && (
-        <p>请求已写入更新目录；宿主机处理后才会开始升级。</p>
+        <p>升级请求已提交，等待服务端后台执行。</p>
       )}
       {job.state === "running" && (
         <p>页面会继续检查进度，服务重启时可能短暂断开。</p>
@@ -305,7 +305,7 @@ export function SystemUpdate({
             服务维护
           </span>
           <h2 id="system-update-title">系统更新</h2>
-          <p>检查正式版本与主分支进度，并查看宿主机更新任务。</p>
+          <p>检查正式版本与主分支更新，并在服务端执行升级。</p>
         </div>
         <button
           className="system-update-button"
@@ -320,7 +320,7 @@ export function SystemUpdate({
       </header>
       {dataMode === "demo" ? (
         <p className="system-update-empty">
-          演示模式不读取服务器版本，也不会提交升级任务。
+          演示模式不读取服务器版本。
         </p>
       ) : !accessToken ? (
         <p className="system-update-empty">连接服务后可检查和管理系统更新。</p>
@@ -364,7 +364,7 @@ export function SystemUpdate({
                         <span
                           className={`system-update-tag ${status.releaseAhead ? "is-new" : ""}`}
                         >
-                          {status.releaseAhead ? "有新版本" : "暂无较新版本"}
+                          {status.releaseAhead ? "有新版本" : "已是最新"}
                         </span>
                         {status.latestRelease.prerelease && (
                           <span className="system-update-tag">预发布</span>
@@ -410,12 +410,7 @@ export function SystemUpdate({
               )}
               {!status.applyEnabled && (
                 <p className="system-update-hint">
-                  在线升级未启用。需要挂载可写的更新目录，并由安装脚本配置宿主机更新监视器。
-                </p>
-              )}
-              {status.applyEnabled && (
-                <p className="system-update-hint">
-                  升级请求提交后，等待服务器上的更新服务处理。
+                  在线升级未启用。请在服务端配置更新目录并启用后台更新服务。
                 </p>
               )}
               <JobStatus job={status.job} timeZone={timeZone} />

@@ -65,9 +65,9 @@ function retainAuxiliary(
     const retained = retainMatchingHistory(next.trend, previous.trend);
     trend = retained.points;
     if (retained.keptCost)
-      notices.push("部分日期费用暂时读不到，先沿用上次的费用。");
+      notices.push("部分日期费用暂未更新，已沿用上次的费用。");
     if (retained.keptComponents)
-      notices.push("部分日期缓存组成暂时读不到，先沿用上次的组成。");
+      notices.push("部分日期缓存组成暂未更新，已沿用上次的组成。");
   }
   return { ...next, subscriptions, subscriptionsUpdatedAt, providers, trend, notices };
 }

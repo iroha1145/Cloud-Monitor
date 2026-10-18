@@ -370,7 +370,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
           <ChevronDown size={14} />
         </button>
       )}
-      <p className="nav-label">工作空间</p>
+      <p className="nav-label">页面导航</p>
       <GlideMenu className="nav-list" highlightClassName="nav-hover">
         {PAGES.map((p) => (
           <a

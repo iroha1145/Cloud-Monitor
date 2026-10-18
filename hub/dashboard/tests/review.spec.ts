@@ -138,7 +138,7 @@ test("检查某一天时，趋势卡标题换成那天的数字，聚焦带来�
   const trend = page.getByRole("region", { name: "用量趋势" });
   await expect(trend.locator(".insight-trend-canvas")).toBeVisible();
   const label = trend.locator(".insight-trend-metrics > div > span").first();
-  await expect(label).toHaveText("区间词元");
+  await expect(label).toHaveText("区间用量");
   const slider = trend.getByRole("slider");
   // Focusing scrolls the chart into view smoothly; that scroll used to close
   // the keyboard inspection it had just opened.
@@ -147,12 +147,12 @@ test("检查某一天时，趋势卡标题换成那天的数字，聚焦带来�
   const tooltip = page.locator(".insight-trend-tooltip");
   const day = await tooltip.locator("time").getAttribute("datetime");
   const short = `${Number(day!.slice(5, 7))}/${Number(day!.slice(8))}`;
-  await expect(label).toHaveText(`${short} 词元`);
+  await expect(label).toHaveText(`${short} 用量`);
   await page.waitForTimeout(700);
   await expect(tooltip).toBeVisible();
-  await expect(label).toHaveText(`${short} 词元`);
+  await expect(label).toHaveText(`${short} 用量`);
   await slider.press("Escape");
-  await expect(label).toHaveText("区间词元");
+  await expect(label).toHaveText("区间用量");
 });
 
 test("移动端导航 Escape 后焦点回到打开按钮", async ({ page }) => {

@@ -27,10 +27,12 @@ export default function SearchList({
   onSelect?: (item: SearchItem) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
   const results = query
     ? items.filter((i) => i.toLowerCase().includes(query.toLowerCase()))
     : items.slice(0, 5);
   const empty = results.length === 0;
+  const currentIndex = results.length ? Math.min(activeIndex, results.length - 1) : 0;
 
   return (
     <div className="flex min-h-[248px] w-full max-w-72 flex-col items-stretch">
@@ -43,17 +45,23 @@ export default function SearchList({
           </svg>
           <input
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setActiveIndex(0);
+            }}
             onKeyDown={(event) => {
-              if (
-                event.key === "Enter" &&
-                !event.nativeEvent.isComposing &&
-                event.keyCode !== 229 &&
-                results[0]
-              ) {
+              if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+              if (event.key === "ArrowDown" && results.length) {
+                event.preventDefault();
+                setActiveIndex((prev) => (prev + 1) % results.length);
+              } else if (event.key === "ArrowUp" && results.length) {
+                event.preventDefault();
+                setActiveIndex((prev) => (prev - 1 + results.length) % results.length);
+              } else if (event.key === "Enter" && results[currentIndex]) {
                 event.preventDefault();
                 setQuery("");
-                onSelect?.(results[0]);
+                setActiveIndex(0);
+                onSelect?.(results[currentIndex]);
               }
             }}
             placeholder={labels.placeholder}
@@ -64,8 +72,11 @@ export default function SearchList({
             <button
               aria-label="清空搜索"
               type="button"
-              onClick={() => setQuery("")}
-              className="flex size-6 items-center justify-center rounded-full text-ink-3
+              onClick={() => {
+                setQuery("");
+                setActiveIndex(0);
+              }}
+              className="flex size-6 items-center justify-center rounded-chip text-ink-3
                 transition-colors duration-100 hover:bg-line/70 hover:text-ink"
               style={{ animation: "fade-in 150ms ease-out both" }}
             >
@@ -90,14 +101,21 @@ export default function SearchList({
           </div>
         ) : (
           <div className="p-1">
-            <GlideMenu className="flex flex-col gap-px" highlightClassName="inset-x-0 rounded-[6px] bg-hover">
+            <GlideMenu className="flex flex-col gap-px" highlightClassName="inset-x-0 rounded-segment bg-hover">
               {results.map((item, index) => (
                 <button
                   key={item}
                   data-menu-row
                   type="button"
-                  onClick={() => { setQuery(""); onSelect?.(item); }}
-                  className="relative z-10 flex h-8 w-full items-center rounded-[6px] px-2 text-left text-[13px] text-ink"
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onClick={() => {
+                    setQuery("");
+                    setActiveIndex(0);
+                    onSelect?.(item);
+                  }}
+                  className={`relative z-10 flex h-8 w-full items-center rounded-segment px-2 text-left text-[13px] text-ink ${
+                    index === currentIndex ? "bg-hover/60" : ""
+                  }`}
                   // Rows cascade by 20ms (capped) instead of appearing all at once.
                   style={{ animation: `fade-in 200ms ease-out ${Math.min(index, 8) * 20}ms both` }}
                 >

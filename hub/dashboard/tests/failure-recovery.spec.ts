@@ -53,7 +53,7 @@ for (const width of [1512, 390]) {
     await page.goto("/demo.html");
     const trend = page.getByRole("region", { name: "用量趋势" });
     await expect(trend.getByText("趋势曲线暂时无法加载")).toBeVisible();
-    await expect(trend.locator(".insight-trend-metrics")).toContainText("区间词元");
+    await expect(trend.locator(".insight-trend-metrics")).toContainText("区间用量");
     const slider = trend.getByRole("slider");
     const lastDay = await slider.getAttribute("aria-valuetext");
     await trend.getByRole("button", { name: "查看前一天记录" }).click();

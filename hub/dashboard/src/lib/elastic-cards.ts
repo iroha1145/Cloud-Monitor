@@ -66,7 +66,8 @@ export function createElasticCards(root: HTMLElement, { selector = CARD } = {}) 
     if (!gesture) return;
     if (!available() || !gesture.card.isConnected || !root.contains(gesture.card)) { reset(); return; }
     const { card, x, y, scale } = gesture;
-    card.style.setProperty('translate', `${x.toFixed(3)}px ${y.toFixed(3)}px`);
+    const avoidY = parseFloat(card.style.getPropertyValue('--feel-avoid-y')) || 0;
+    card.style.setProperty('translate', `${x.toFixed(3)}px ${(y + avoidY).toFixed(3)}px`);
     card.style.setProperty('rotate', `${(x * 0.05).toFixed(3)}deg`);
     card.style.setProperty('scale', scale.toFixed(5));
   };

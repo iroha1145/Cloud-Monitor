@@ -55,7 +55,7 @@ for (const width of [800, 1024, 1280, 1920]) {
 }
 
 for (const width of [320, 390, 1280]) {
-  test(`model records retain square corners and independent movement at ${width}px`, async ({ page }) => {
+  test(`model records retain rounded well corners and independent movement at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/demo.html#models');
     await page.getByRole('tab', { name: '本月', exact: true }).click();
@@ -69,7 +69,7 @@ for (const width of [320, 390, 1280]) {
       const style = getComputedStyle(node);
       return [style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomLeftRadius, style.borderBottomRightRadius];
     }));
-    expect(radii.flat().every(radius => parseFloat(radius) === 0)).toBe(true);
+    expect(Math.max(...radii.flat().map(radius => parseFloat(radius)))).toBe(14);
     await expect(page.locator('.app-topbar .mobile-menu')).toHaveCount(0);
     await record.getByRole('button').first().click();
     await expect(page.getByRole('dialog')).toBeVisible();

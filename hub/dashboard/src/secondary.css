@@ -273,7 +273,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border-radius: 20px;
+  border-radius: var(--r-chip);
   font-size: var(--fs-meta);
   padding: 3px 0;
   white-space: nowrap;
@@ -362,7 +362,7 @@
   padding: 3px 0 3px 5px;
   font-size: var(--fs-meta);
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: var(--r-chip);
 }
 .sv-device-toggle svg {
   width: 13px;
@@ -547,7 +547,7 @@
     var(--surface)
   );
   border: 1px solid var(--line-strong);
-  border-radius: 6px;
+  border-radius: var(--r-control);
   padding: 6px 8px;
 }
 .sv-date-filter button {
@@ -630,7 +630,7 @@
   cursor: pointer;
   padding: 0;
   width: 100%;
-  border-radius: 3px;
+  border-radius: var(--r-chip);
 }
 .sv-session-toggle strong {
   display: flex;
@@ -932,7 +932,7 @@
   gap: 12px;
   padding: 12px 13px;
   margin-bottom: 19px;
-  border-radius: 7px;
+  border-radius: var(--r-well);
   background: var(--hover);
   color: var(--ink-3);
   font-size: var(--fs-meta);
@@ -1083,6 +1083,7 @@
   padding: 6px;
   color: var(--ink-2);
   font-size: var(--fs-meta);
+  border-radius: var(--r-chip);
 }
 .sv-client-health + .sv-client-health {
   border-top: 1px solid var(--line-soft);
@@ -1517,7 +1518,7 @@
 
 .sv-inline-detail {
   max-width: 100%;
-  border-radius: 3px;
+  border-radius: var(--r-chip);
   cursor: help;
 }
 .sv-inline-detail:focus-visible {

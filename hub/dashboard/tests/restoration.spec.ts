@@ -225,7 +225,7 @@ test("update action is explicit and queued status waits for the host without ano
   ).toBeVisible();
   expect(posts).toBe(0);
   await page.getByRole("button", { name: "升级至 v1.1.0" }).click();
-  await expect(page.getByText("等待宿主机处理", { exact: true })).toBeVisible();
+  await expect(page.getByText("等待后台处理", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "升级至 v1.1.0" })).toHaveCount(
     0,
   );

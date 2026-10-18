@@ -45,7 +45,7 @@ export function SessionTokenBreakdown({ session }: { session: Session }) {
         <dd>{row.value === null ? <span className="value-unavailable">未提供</span> : count(row.value)}</dd>
       </div>)}
     </dl>
-    <p className="detail-footnote">推理已包含在输出中，不重复计入总量。{usage.hasUnconfirmedZeros ? " 部分零值无法确认，显示为未提供。" : !usage.complete ? " 部分组成尚未提供或未能与总量对应。" : ""}</p>
+    <p className="detail-footnote">推理用量已包含在输出中。{usage.hasUnconfirmedZeros ? " 部分零值无法确认，显示为未提供。" : !usage.complete ? " 部分细项未提供，与总量不完全一致。" : ""}</p>
   </section>;
 }
 
@@ -60,7 +60,6 @@ export function SessionDetails({ session, generatedAt, timeZone }: { session: Se
       <div className="detail-section-heading"><h3>上次上报的上下文</h3><strong>{usage.context.percentUsed.toFixed(1)}%</strong></div>
       <progress max={100} value={Math.min(100, usage.context.percentUsed)} aria-label="上次上报的上下文已用比例" style={{ "--context-usage-fill": CONTEXT_USAGE_FILL } as CSSProperties} />
       <p>{count(usage.context.tokens)} / {count(usage.context.window)} 词元 <span>· 已用 {usage.context.percentUsed.toFixed(1)}% · 剩余 {Math.max(0, 100 - usage.context.percentUsed).toFixed(1)}%</span></p>
-      <p className="detail-footnote">横条长度表示占用；渐变沿用用量分类配色。</p>
     </section>}
     <dl className="session-facts sv-detail-grid">
       <div data-feel-item="row"><dt>活动状态</dt><dd className={activity === "等待输入" ? "sv-session-activity-waiting" : undefined}>{activity}{session.archived ? " · 已归档" : ""}</dd></div>
@@ -71,14 +70,14 @@ export function SessionDetails({ session, generatedAt, timeZone }: { session: Se
       <div data-feel-item="row"><dt>最后活动</dt><dd><time dateTime={session.lastUsedAt ?? undefined}>{eventTime(session.lastUsedAt, timeZone)}</time></dd></div>
       <div data-feel-item="row"><dt>完整用量</dt><dd>{count(session.totalTokens)} 词元</dd></div>
       <div data-feel-item="row"><dt>估算费用</dt><dd>{usd(session.costUsd)}</dd></div>
-      {session.timedDurationMs != null && session.timedDurationMs > 0 && <div data-feel-item="row"><dt>已记录生成耗时</dt><dd>{durationLabel(session.timedDurationMs)}</dd></div>}
-      {session.timedOutputTokens != null && session.timedDurationMs != null && session.timedDurationMs > 0 && <div data-feel-item="row"><dt>参与测速的输出</dt><dd>{count(session.timedOutputTokens)} 词元</dd></div>}
+      {session.timedDurationMs != null && session.timedDurationMs > 0 && <div data-feel-item="row"><dt>生成耗时</dt><dd>{durationLabel(session.timedDurationMs)}</dd></div>}
+      {session.timedOutputTokens != null && session.timedDurationMs != null && session.timedDurationMs > 0 && <div data-feel-item="row"><dt>测速输出量</dt><dd>{count(session.timedOutputTokens)} 词元</dd></div>}
       {promptCache && <div data-feel-item="row"><dt>提示词缓存</dt><dd>约剩 {promptCache.minutes} 分钟</dd></div>}
-      {session.unpricedTokens != null && session.unpricedTokens > 0 && <div data-feel-item="row"><dt>未定价词元</dt><dd>{count(session.unpricedTokens)} 词元，未计入估算费用</dd></div>}
+      {session.unpricedTokens != null && session.unpricedTokens > 0 && <div data-feel-item="row"><dt>未定价词元</dt><dd>{count(session.unpricedTokens)} 词元，未计入费用</dd></div>}
       {session.sessionKind && <div data-feel-item="row"><dt>会话类型</dt><dd>{session.sessionKind}</dd></div>}
-      {source && <div data-feel-item="row"><dt>用量来源</dt><dd>{source}</dd></div>}
+      {source && <div data-feel-item="row"><dt>统计范围</dt><dd>{source}</dd></div>}
     </dl>
-    {usage.outputTokensPerSecond !== null && <p className="detail-footnote">速率仅统计带有效计时的输出；生成耗时可能包含等待，并非整段会话时长。</p>}
+    {usage.outputTokensPerSecond !== null && <p className="detail-footnote">速率仅统计带有效计时的输出，耗时可能包含等待时间。</p>}
     <details className="session-origin-disclosure">
       <summary>来源与模型 <ChevronDown size={15} aria-hidden="true" /></summary>
       <dl className="session-facts">
@@ -90,7 +89,7 @@ export function SessionDetails({ session, generatedAt, timeZone }: { session: Se
         {session.projectId && <div data-feel-item="row"><dt>项目标识</dt><dd className="session-identifier">{session.projectId}</dd></div>}
         {session.nativeSessionId && session.nativeSessionId !== session.sessionId && <div data-feel-item="row"><dt>原生会话标识</dt><dd className="session-identifier">{session.nativeSessionId}</dd></div>}
         {session.t3ThreadId && <div data-feel-item="row"><dt>关联会话标识（T3）</dt><dd className="session-identifier">{session.t3ThreadId}</dd></div>}
-        {session.liveActivity?.observedAt && <div data-feel-item="row"><dt>状态采样时间</dt><dd>{eventTime(session.liveActivity.observedAt, timeZone)}</dd></div>}
+        {session.liveActivity?.observedAt && <div data-feel-item="row"><dt>状态更新时间</dt><dd>{eventTime(session.liveActivity.observedAt, timeZone)}</dd></div>}
         {session.promptCache?.observedAt && <div data-feel-item="row"><dt>缓存记录时间</dt><dd>{eventTime(session.promptCache.observedAt, timeZone)}</dd></div>}
         {(session.parentSessionId || session.parentClient) && <div data-feel-item="row"><dt>父级会话</dt><dd className="session-identifier">{[session.parentClient ? clientName(session.parentClient) : null, session.parentSessionId].filter(Boolean).join(" · ")}</dd></div>}
         {Object.entries(session.providers ?? {}).map(([provider, tokens]) => <div key={provider} data-feel-item="row"><dt>提供商 · {providerName(provider)}</dt><dd>{tokens === 0 && session.zeroValuesUnconfirmed !== false ? "未提供" : `${count(tokens)} 词元`}</dd></div>)}
@@ -100,7 +99,7 @@ export function SessionDetails({ session, generatedAt, timeZone }: { session: Se
           <span><BrandIcon name={model} size={20} /><span>{model}</span></span>
           <span>{session.modelTokens?.[model] == null ? "词元未提供" : `${compact(session.modelTokens[model])} 词元`}</span>
           <span>{usd(session.modelCosts?.[model] ?? null)}</span>
-        </div>) : <p className="detail-footnote">使用模型未提供</p>}
+        </div>) : <p className="detail-footnote">未提供模型明细</p>}
       </div>
     </details>
   </div>;
@@ -116,7 +115,7 @@ export function SessionUsageCard({ session, modelId, generatedAt, timeZone }: { 
       <ChevronDown size={17} className="disclosure-chevron" aria-hidden="true" />
     </summary>
     <div className="session-card-body">
-      {!model.wholeSession && <p className="session-scope-note"><Layers3 size={14} />此会话包含多个模型或归属信息不完整。展开后的组成与耗时均为整个会话的统计。</p>}
+      {!model.wholeSession && <p className="session-scope-note"><Layers3 size={14} />此会话使用了多个模型，下方为整个会话的统计。</p>}
       <p className="session-current-line"><Clock3 size={14} />{sessionActivity(session, generatedAt)}<span>·</span>{clientName(session.client)}<span>·</span>本模型费用 {usd(model.costUsd)}</p>
       <SessionDetails session={session} generatedAt={generatedAt} timeZone={timeZone} />
     </div>

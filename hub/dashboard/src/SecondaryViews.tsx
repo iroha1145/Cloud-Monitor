@@ -42,7 +42,6 @@ import { formatMoney as money, usd } from "./money";
 import { quotaAmount, quotaBalance, quotaBoundaryLabel, quotaHeadline, quotaPercent } from "./quota-presentation";
 import { sessionActivity } from "./session-presentation";
 import { SessionDetails } from "./SessionUsage";
-import { LOCAL_DETAIL_NOTICE } from "./session-details";
 import { useActivityReference } from "./lib/hooks/use-activity-reference";
 // Last import: mobile overrides must win ties within this async chunk.
 import "./secondary-mobile.css";
@@ -113,11 +112,11 @@ function dateKey(value: string | null, timeZone: string): string | null {
 }
 
 function relativeTime(value: string | null, reference: string): string {
-  if (!value) return "尚无同步时间";
+  if (!value) return "尚未同步";
   const seconds =
     (new Date(reference).getTime() - new Date(value).getTime()) / 1000;
   if (!Number.isFinite(seconds)) return "同步时间未知";
-  if (seconds < -60) return "时间晚于当前快照";
+  if (seconds < -60) return "设备时间快于当前时间";
   if (seconds < 60) return "刚刚同步";
   if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟前同步`;
   if (seconds < DAY / 1000) return `${Math.floor(seconds / 3600)} 小时前同步`;
@@ -161,7 +160,7 @@ function SummaryItem({
   foot: string;
 }) {
   return (
-    <div className="sv-summary-item" data-feel-item="row">
+    <div className="sv-summary-item" data-feel-card>
       <div className="sv-summary-label">
         <span aria-hidden="true">{icon}</span>
         {label}
@@ -218,7 +217,7 @@ function DeviceCard({
             title={`${device.name} · 最近同步`}
             rows={[
               {
-                label: "上报时间",
+                label: "同步时间",
                 value: detailDateTime(device.lastSeen, data.timeZone),
               },
               { label: "设备状态", value: status },
@@ -254,9 +253,9 @@ function DeviceCard({
         </div>
         <div className="sv-device-meta">
           <span>
-            采集程序 {device.version}
+            客户端同步 v{device.version.replace(/^v/, "")}
             {device.runtime
-              ? ` · ${({ desktop: "桌面程序", widget: "桌面组件", service: "后台服务", daemon: "后台进程", cli: "命令行" } as Record<string, string>)[device.runtime] || device.runtime}`
+              ? ` · ${({ desktop: "桌面程序", widget: "桌面小组件", service: "后台服务", daemon: "后台进程", cli: "命令行" } as Record<string, string>)[device.runtime] || device.runtime}`
               : ""}
           </span>
           {syncInterval(device.syncIntervalMs) && (
@@ -276,7 +275,7 @@ function DeviceCard({
               </span>
             )}
         </div>
-        <div className="sv-device-tools" aria-label="客户端与健康状态">
+        <div className="sv-device-tools" aria-label="客户端与运行状态">
           {(device.clientHealth || []).map((client) => (
             <MetricTooltip
               key={client.name}
@@ -288,9 +287,9 @@ function DeviceCard({
                     ? `v${client.version.replace(/^v/, "")}`
                     : "未提供",
                 },
-                { label: "上报状态", value: client.state },
+                { label: "运行状态", value: client.state },
                 {
-                  label: "观察时间",
+                  label: "检测时间",
                   value: detailDateTime(client.observedAt, data.timeZone),
                 },
                 {
@@ -299,7 +298,7 @@ function DeviceCard({
                 },
               ]}
             >
-              <span className="sv-client-health sv-detail-trigger">
+              <span className="sv-client-health sv-detail-trigger" data-feel-item="row">
                 <BrandIcon name={client.name} size={22} />
                 <span>
                   {client.name}
@@ -310,7 +309,7 @@ function DeviceCard({
                 <em className={`sv-health-${client.level}`}>
                   {
                     {
-                      ok: "健康",
+                      ok: "正常",
                       warning: "警告",
                       error: "异常",
                       unknown: "未知",
@@ -323,13 +322,13 @@ function DeviceCard({
           {device.clients
             .filter((client) => !healthNames.has(client.toLowerCase()))
             .map((client) => (
-              <span className="sv-client-health" key={client}>
+              <span className="sv-client-health" key={client} data-feel-item="row">
                 <BrandIcon name={client} size={22} />
                 {client}
               </span>
             ))}
           {!device.clients.length && !device.clientHealth?.length && (
-            <span className="sv-muted">客户端信息未上报</span>
+            <span className="sv-muted">未提供客户端信息</span>
           )}
         </div>
         {(device.clientStatus ||
@@ -382,7 +381,7 @@ function DeviceCard({
             ]}
           >
             <div className="sv-device-stat sv-detail-trigger" data-feel-item="row">
-              <span className="sv-metric-label">累计估算费用</span>
+              <span className="sv-metric-label">累计费用</span>
               <span className="sv-metric-value">
                 {usd(device.periods.allTime.costUsd)}
               </span>
@@ -410,19 +409,19 @@ function DeviceCard({
       {expanded && (
         <div className="sv-device-detail" id={`device-detail-${device.id}`}>
           <dl className="sv-detail-grid">
-            <div>
+            <div data-feel-item="row">
               <dt>设备标识</dt>
               <dd>{device.id}</dd>
             </div>
-            <div>
+            <div data-feel-item="row">
               <dt>最近同步</dt>
               <dd>{dateLabel(device.lastSeen, data.timeZone, true)}</dd>
             </div>
-            <div>
+            <div data-feel-item="row">
               <dt>今日用量占比</dt>
               <dd>{share.toFixed(1)}%</dd>
             </div>
-            <div>
+            <div data-feel-item="row">
               <dt>本月完整用量</dt>
               <dd>{fullNumber(device.periods.month.totalTokens)} 词元</dd>
             </div>
@@ -452,13 +451,13 @@ export function DevicesView({ data }: SecondaryProps) {
   );
   return (
     <div className="sv-page sv-dense-page">
-      <section className="sv-summary" aria-label="设备概况" data-feel-card>
+      <section className="sv-summary" aria-label="设备概况" data-feel-group>
         <SummaryItem
           icon={<Monitor />}
           label="已连接设备"
           value={data.devices.length}
           unit="台"
-          foot="按已上报设备统计"
+          foot="已接入同步的设备"
         />
         <SummaryItem
           icon={<Wifi />}
@@ -471,7 +470,7 @@ export function DevicesView({ data }: SecondaryProps) {
           icon={<Activity />}
           label="今日设备用量"
           value={compact(total)}
-          foot="来自全部已上报设备"
+          foot="所有设备合计"
         />
       </section>
       <div className="sv-toolbar" data-feel-card>
@@ -514,14 +513,14 @@ export function DevicesView({ data }: SecondaryProps) {
           ))}
         </div>
       ) : (
-        <div className="sv-card">
+        <div className="sv-card" data-feel-card>
           <EmptyState
             icon={<Monitor />}
-            title={data.devices.length ? "没有匹配的设备" : "还没有设备上报"}
+            title={data.devices.length ? "没有匹配的设备" : "暂无接入设备"}
             text={
               data.devices.length
-                ? "换一个设备名称，或清除状态筛选。"
-                : "设备连接后，会在这里显示同步状态和用量。"
+                ? "请尝试其他关键词或状态筛选。"
+                : "设备开启同步后，会在这里显示连接状态与用量。"
             }
           >
             {data.devices.length > 0 && (
@@ -552,8 +551,8 @@ function quotaGroupStatus(group: Quota[]) {
     unauthorized: "授权失效",
     error: "读取失败",
     rateLimited: "已达速率限制",
-    sourceRateLimited: "状态源限流",
-    unavailable: "来源暂不可用",
+    sourceRateLimited: "接口限流",
+    unavailable: "暂不可用",
   };
   const unavailable = group.find(
     (quota) =>
@@ -577,13 +576,13 @@ function quotaGroupStatus(group: Quota[]) {
         quota.used === null,
     )
   )
-    return { label: "数据待更新", className: "" };
+    return { label: "待更新", className: "" };
   if (
     group.some(
       (quota) => (quotaPercent(quota) ?? -1) >= 75 || quota.remaining === 0,
     )
   )
-    return { label: "额度留意", className: "sv-status-warning" };
+    return { label: "额度预警", className: "sv-status-warning" };
   return {
     label: group.some((quota) => quotaPercent(quota) !== null)
       ? "额度充足"
@@ -658,7 +657,7 @@ function QuotaAccountDetails({ quota, data }: { quota: Quota; data: DashboardDat
             <details>
               <summary>查看重置额度明细</summary>
               {reset.grants.map((grant, index) => (
-                <div className="sv-quota-grant" key={index}>
+                <div className="sv-quota-grant" key={index} data-feel-item="row">
                   <strong>{grant.label || `额度 ${index + 1}`}</strong>
                   <span>{grant.resetsLeft === null ? "剩余次数未提供" : `剩余 ${fullNumber(grant.resetsLeft)} 次`}
                     {grant.resetsTotal !== null ? ` / 共 ${fullNumber(grant.resetsTotal)} 次` : ""}</span>
@@ -670,7 +669,7 @@ function QuotaAccountDetails({ quota, data }: { quota: Quota; data: DashboardDat
                 </div>
               ))}
               {reset.grants.length === 0 && reset.expirations.map((date, index) => (
-                <div className="sv-quota-grant" key={date}>第 {index + 1} 次到期：{detailDateTime(date, data.timeZone)}</div>
+                <div className="sv-quota-grant" key={date} data-feel-item="row">第 {index + 1} 次到期：{detailDateTime(date, data.timeZone)}</div>
               ))}
             </details>
           )}
@@ -680,7 +679,7 @@ function QuotaAccountDetails({ quota, data }: { quota: Quota; data: DashboardDat
         <details>
           <summary>查看预付额度明细（{tranches.length} 笔）</summary>
           {tranches.map((grant, index) => (
-            <div className="sv-quota-grant" key={index}>
+            <div className="sv-quota-grant" key={index} data-feel-item="row">
               {quotaBalance(grant.amount, { balanceCurrency: grant.currency })} · {grant.expiresAt ? `到期 ${detailDateTime(grant.expiresAt, data.timeZone)}` : "到期时间未提供"}
             </div>
           ))}
@@ -690,7 +689,7 @@ function QuotaAccountDetails({ quota, data }: { quota: Quota; data: DashboardDat
         <details>
           <summary>{quota.provider === "thirdparty" ? "第三方接口使用摘要" : "服务使用摘要"}</summary>
           <dl className="sv-quota-summary">
-            {usageRows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
+            {usageRows.map(([label, value]) => <div key={label} data-feel-item="row"><dt>{label}</dt><dd>{value}</dd></div>)}
           </dl>
         </details>
       )}
@@ -764,8 +763,8 @@ function QuotaWindow({ quota, data }: { quota: Quota; data: DashboardData }) {
               unauthorized: "授权失效",
               error: "读取失败",
               rateLimited: "已达速率限制",
-              sourceRateLimited: "状态源限流",
-              unavailable: "来源暂不可用",
+              sourceRateLimited: "接口限流",
+              unavailable: "暂不可用",
               disabled: "已禁用",
               notConfigured: "未配置",
               unknown: "状态未知",
@@ -779,15 +778,7 @@ function QuotaWindow({ quota, data }: { quota: Quota; data: DashboardData }) {
       value: detailDateTime(data.generatedAt, data.timeZone),
     },
   );
-  const detailNote = [
-    percent !== null && quota.usedPercent === null
-      ? "百分比按已用额度与上限计算。"
-      : "",
-    expired ? `${boundary}时间已过，等待来源更新。` : "",
-    `时间按 ${data.timeZone} 显示。`,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const detailNote = expired ? `${boundary}时间已过，等待更新。` : undefined;
   return (
     <MetricTooltip
       title={`${quota.plan || quota.name} · ${quota.label}`}
@@ -825,9 +816,9 @@ function QuotaWindow({ quota, data }: { quota: Quota; data: DashboardData }) {
                   : percent !== null
                     ? `剩余 ${fullNumber(100 - percent)}%`
                     : quota.used !== null
-                      ? "已上报使用金额"
+                      ? "已记录使用金额"
                       : quota.remaining !== null
-                        ? "已上报剩余额度"
+                        ? "已记录剩余额度"
                         : "用量未提供"}
             {quota.used !== null && !isBalance && quota.metric === "percentage" && (
               <> · 已用 {quotaAmount(quota.used, quota)}</>
@@ -895,7 +886,7 @@ function SubscriptionRow({ subscription }: { subscription: Subscription }) {
           className={`sv-status ${!isTopUp && subscription.autoRenew ? "sv-status-active" : ""}`}
         >
           {isTopUp
-            ? "充值台账"
+            ? "按量充值"
             : subscription.autoRenew
               ? "自动续订"
               : "手动续订"}
@@ -994,27 +985,27 @@ export function QuotaView({ data }: SecondaryProps) {
   ).length;
   return (
     <div className="sv-page sv-dense-page">
-      <section className="sv-summary" aria-label="配额与订阅概况" data-feel-card>
+      <section className="sv-summary" aria-label="配额与订阅概况" data-feel-group>
         <SummaryItem
           icon={<Database />}
           label="已连接服务"
           value={new Set(data.quotas.map((quota) => quota.provider)).size}
           unit="个"
-          foot={`${data.quotas.length} 个已上报额度窗口`}
+          foot={`${data.quotas.length} 个额度窗口`}
         />
         <SummaryItem
           icon={<Activity />}
-          label="接近额度上限"
+          label="额度预警"
           value={warnings}
           unit="个"
-          foot="已使用至少 75% 的窗口"
+          foot="已用达 75% 及以上"
         />
         <SummaryItem
           icon={<CreditCard />}
           label="订阅与充值"
           value={data.subscriptions.length}
           unit="项"
-          foot="按已录入账单统计"
+          foot="已记录的固定订阅与充值"
         />
       </section>
       <section aria-label="使用额度">
@@ -1107,11 +1098,11 @@ export function QuotaView({ data }: SecondaryProps) {
             })}
           </div>
         ) : (
-          <div className="sv-card">
+          <div className="sv-card" data-feel-card>
             <EmptyState
               icon={<Database />}
-              title="还没有配额数据"
-              text="连接支持配额上报的服务后，将显示可用额度和重置时间。"
+              title="暂无配额数据"
+              text="接入支持配额同步的服务后，这里会显示剩余额度与重置时间。"
             />
           </div>
         )}
@@ -1123,11 +1114,11 @@ export function QuotaView({ data }: SecondaryProps) {
         <div className="sv-section-head" data-feel-card>
           <div>
             <h2 id="sv-subscription-title">订阅与账单</h2>
-            <p className="sv-muted">
-              套餐、绑定账户与账单记录。
-              {data.subscriptionsUpdatedAt &&
-                ` 更新于 ${fullDate(data.subscriptionsUpdatedAt)}`}
-            </p>
+            {data.subscriptionsUpdatedAt && (
+              <p className="sv-muted">
+                更新于 {fullDate(data.subscriptionsUpdatedAt)}
+              </p>
+            )}
           </div>
           <span className="sv-result-count">
             {data.subscriptions.length} 项
@@ -1145,8 +1136,8 @@ export function QuotaView({ data }: SecondaryProps) {
         ) : (
           <EmptyState
             icon={<CreditCard />}
-            title="尚未记录订阅"
-            text="添加的订阅与充值计划将在此展示。"
+            title="暂无订阅记录"
+            text="添加订阅或充值记录后将在此显示。"
           />
         )}
       </section>
@@ -1256,26 +1247,26 @@ export function HistoryView({ data }: SecondaryProps) {
   }
   return (
     <div className="sv-page sv-history-page">
-      <section className="sv-summary" aria-label="历史活动概况" data-feel-card>
+      <section className="sv-summary" aria-label="历史活动概况" data-feel-group>
         <SummaryItem
           icon={<CalendarDays />}
-          label="累计活动天数"
+          label="活跃天数"
           value={activeDays}
           unit="天"
-          foot={`在 ${data.activity.length} 个已上报日期中`}
+          foot={`共记录 ${data.activity.length} 天`}
         />
         <SummaryItem
           icon={<Activity />}
-          label="历史上报用量"
+          label="历史总用量"
           value={compact(activityTotal)}
-          foot="按活动记录汇总"
+          foot="所有已记录日期合计"
         />
         <SummaryItem
           icon={<Database />}
-          label="已上报会话"
+          label="近期会话"
           value={data.sessions.length}
           unit="次"
-          foot="仅统计当前快照内的记录"
+          foot="当前同步的会话记录"
         />
       </section>
       <div className="sv-history-layout" data-feel-group>
@@ -1291,9 +1282,6 @@ export function HistoryView({ data }: SecondaryProps) {
           <div className="sv-section-head">
             <div>
               <h2 id="sv-sessions-title">会话记录</h2>
-              <p className="sv-muted">
-                按最后活动时间排列，展开查看来源与模型。
-              </p>
             </div>
             <div className="sv-session-actions">
               <span
@@ -1368,7 +1356,6 @@ export function HistoryView({ data }: SecondaryProps) {
               </Select>
             </div>
           </div>
-          <p className="history-detail-note">{LOCAL_DETAIL_NOTICE}</p>
           {displayed.length ? (
             <div className="sv-table-wrap">
               <table className="sv-session-table">
@@ -1475,13 +1462,13 @@ export function HistoryView({ data }: SecondaryProps) {
           ) : (
             <EmptyState
               icon={<Search />}
-              title={data.sessions.length ? "没有匹配的会话" : "还没有会话记录"}
+              title={data.sessions.length ? "没有匹配的会话" : "暂无会话记录"}
               text={
                 selectedDay
-                  ? `${selectedDay} 没有匹配的已上报会话。活动用量可能来自未包含在当前快照中的会话。`
+                  ? `${selectedDay} 没有匹配的会话记录。`
                   : data.sessions.length
-                    ? "调整搜索词或客户端筛选后，再查看会话。"
-                    : "设备上报会话记录后，会在这里显示；不会根据总用量生成会话。"
+                    ? "请尝试其他关键词或客户端筛选。"
+                    : "客户端同步会话记录后，将在此显示每次会话的用量与费用。"
               }
             >
               {data.sessions.length > 0 && (

@@ -17,7 +17,7 @@ export default function GlideMenu({
   rowSelector = "[data-menu-row]",
 }: GlideMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
-  const [box, setBox] = useState<{ top: number; height: number } | null>(null);
+  const [box, setBox] = useState<{ top: number; height: number; animate: boolean } | null>(null);
   const [visible, setVisible] = useState(false);
 
   const moveTo = (target: EventTarget | null) => {
@@ -27,7 +27,12 @@ export default function GlideMenu({
     if (!(row instanceof HTMLElement) || !container.contains(row)) return;
     const containerRect = container.getBoundingClientRect();
     const rowRect = row.getBoundingClientRect();
-    setBox({ top: rowRect.top - containerRect.top, height: rowRect.height });
+    const scaleY = container.offsetHeight > 0 ? containerRect.height / container.offsetHeight : 1;
+    setBox({
+      top: (rowRect.top - containerRect.top) / (scaleY || 1),
+      height: rowRect.height / (scaleY || 1),
+      animate: visible && box !== null,
+    });
     setVisible(true);
   };
 
@@ -46,11 +51,13 @@ export default function GlideMenu({
         aria-hidden
         className={`pointer-events-none absolute ${highlightClassName}`}
         style={{
-          top: box?.top ?? 0,
+          top: 0,
           height: box?.height ?? 0,
           opacity: box && visible ? 1 : 0,
-          transition:
-            "top 220ms cubic-bezier(0.23,1,0.32,1), height 220ms cubic-bezier(0.23,1,0.32,1), opacity 150ms ease",
+          transform: `translate3d(0, ${box?.top ?? 0}px, 0)`,
+          transition: box?.animate
+            ? "transform var(--duration-normal, 220ms) var(--ease-spring-smooth, cubic-bezier(0.22,1,0.36,1)), height var(--duration-normal, 220ms) var(--ease-spring-smooth, cubic-bezier(0.22,1,0.36,1)), opacity var(--duration-quick, 140ms) var(--ease-smooth-out, ease)"
+            : "opacity var(--duration-quick, 140ms) var(--ease-smooth-out, ease)",
         }}
       />
       {children}

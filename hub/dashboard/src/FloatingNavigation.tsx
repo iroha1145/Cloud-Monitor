@@ -128,11 +128,11 @@ function DesktopNavigation({ children }: { children: ReactNode }) {
       if (event.detail !== 0 && performance.now() < suppressed) { event.preventDefault(); event.stopImmediatePropagation(); }
     };
     win.addEventListener('pointerdown', freshPress, true); win.addEventListener('click', suppressClick, true);
-    win.addEventListener('pointermove', move, { passive: false }); win.addEventListener('pointerup', up); win.addEventListener('pointercancel', cancel); win.addEventListener('blur', blur); win.addEventListener('resize', resize);
+    win.addEventListener('pointermove', move, { passive: false }); win.addEventListener('pointerup', up); win.addEventListener('pointercancel', cancel); win.addEventListener('lostpointercapture', cancel); win.addEventListener('blur', blur); win.addEventListener('resize', resize);
     win.visualViewport?.addEventListener('resize', resize); reduced.addEventListener('change', reducedChanged); resize();
     return () => {
       disposed = true; if (gesture) { try { gesture.handle.releasePointerCapture(gesture.id); } catch { /* Removed handle. */ } } stop(); controller.current = null; cards.destroy(); sizes.disconnect();
-      win.removeEventListener('pointerdown', freshPress, true); win.removeEventListener('click', suppressClick, true); win.removeEventListener('pointermove', move); win.removeEventListener('pointerup', up); win.removeEventListener('pointercancel', cancel); win.removeEventListener('blur', blur); win.removeEventListener('resize', resize);
+      win.removeEventListener('pointerdown', freshPress, true); win.removeEventListener('click', suppressClick, true); win.removeEventListener('pointermove', move); win.removeEventListener('pointerup', up); win.removeEventListener('pointercancel', cancel); win.removeEventListener('lostpointercapture', cancel); win.removeEventListener('blur', blur); win.removeEventListener('resize', resize);
       win.visualViewport?.removeEventListener('resize', resize); reduced.removeEventListener('change', reducedChanged);
     };
   }, []);
@@ -182,7 +182,7 @@ function MobileDrawer({ children, open, onOpenChange, currentPage, onNavigate }:
       el.style.setProperty('--drawer-stretch', `${clamp((progress - 1) * travel(), 0, stretchLimit()).toFixed(2)}px`);
       el.style.setProperty('--drawer-shift', `${clamp(-progress * travel(), 0, 8).toFixed(2)}px`);
       const rect = el.getBoundingClientRect();
-      cards.update(shown > .001 ? { left: rect.left, right: rect.right, top: Math.max(0, rect.top), bottom: Math.min(win.innerHeight, rect.bottom), width: rect.width, height: Math.min(win.innerHeight, rect.bottom) - Math.max(0, rect.top) } : null, 'mobile');
+      cards.update(shown > .001 ? { left: rect.left, right: rect.right, top: Math.max(0, rect.top), bottom: Math.min(win.innerHeight, rect.bottom), width: rect.width, height: Math.min(win.innerHeight, rect.bottom) - Math.max(0, rect.top) } : null, 'mobile', Boolean(gesture?.moved) || frame !== 0);
     }
     function settle() {
       win.cancelAnimationFrame(frame); frame = 0; last = 0;
@@ -280,14 +280,14 @@ function MobileDrawer({ children, open, onOpenChange, currentPage, onNavigate }:
     };
     const reducedChanged = () => { if (reduced.matches && !gesture) settle(); };
     const up = (event: PointerEvent) => end(event), cancel = (event: PointerEvent) => end(event, true), blur = () => end(undefined, true);
-    win.addEventListener('pointermove', move, { passive: false }); win.addEventListener('pointerup', up); win.addEventListener('pointercancel', cancel); win.addEventListener('blur', blur);
+    win.addEventListener('pointermove', move, { passive: false }); win.addEventListener('pointerup', up); win.addEventListener('pointercancel', cancel); win.addEventListener('lostpointercapture', cancel); win.addEventListener('blur', blur);
     win.addEventListener('pointerdown', freshPress, true); win.addEventListener('click', suppressClick, true);
     win.addEventListener('resize', resize); win.visualViewport?.addEventListener('resize', resize); reduced.addEventListener('change', reducedChanged);
     settle();
     return () => {
       disposed = true; win.cancelAnimationFrame(frame); controller.current = null; sizes.disconnect(); cards.destroy();
       if (gesture) { try { handle.current?.releasePointerCapture(gesture.id); } catch { /* Removed handle. */ } }
-      win.removeEventListener('pointermove', move); win.removeEventListener('pointerup', up); win.removeEventListener('pointercancel', cancel); win.removeEventListener('blur', blur);
+      win.removeEventListener('pointermove', move); win.removeEventListener('pointerup', up); win.removeEventListener('pointercancel', cancel); win.removeEventListener('lostpointercapture', cancel); win.removeEventListener('blur', blur);
       win.removeEventListener('pointerdown', freshPress, true); win.removeEventListener('click', suppressClick, true); win.removeEventListener('resize', resize);
       win.visualViewport?.removeEventListener('resize', resize); reduced.removeEventListener('change', reducedChanged);
     };

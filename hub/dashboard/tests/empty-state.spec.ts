@@ -16,18 +16,18 @@ test("a server with no reports explains how to connect a device instead of showi
   await page.getByRole("button", { name: "连接并查看真实用量" }).click();
   await expect(page.getByText("当前展示真实数据")).toBeVisible();
 
-  const onboarding = page.getByRole("region", { name: "还没有设备上报用量" });
+  const onboarding = page.getByRole("region", { name: "等待设备接入" });
   await expect(onboarding).toBeVisible();
   await expect(onboarding).toContainText(new URL(page.url()).origin);
   await expect(onboarding).toContainText("TOKEN_MONITOR_SECRET");
   await expect(page.getByRole("region", { name: "用量组成" })).toContainText("暂无上报用量");
-  await expect(page.getByText("这个周期还没有模型用量")).toBeVisible();
+  await expect(page.getByText("暂无模型用量")).toBeVisible();
   await expect(page.getByText("没有找到匹配的模型")).toHaveCount(0);
-  await expect(page.getByText("还没有客户端上报")).toBeVisible();
+  await expect(page.getByText("暂无客户端数据")).toBeVisible();
 });
 
 test("the demo workspace never shows the first-report guide", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByText("当前展示示例数据")).toBeVisible();
-  await expect(page.getByRole("region", { name: "还没有设备上报用量" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "等待设备接入" })).toHaveCount(0);
 });

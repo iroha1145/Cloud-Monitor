@@ -49,9 +49,9 @@ function createFeelItems(root: HTMLElement, schedule: () => void) {
     }
     if (!targetsDirty) return;
     targetsDirty = false;
-    // On a desktop records answer the menu only while it moves; once it rests
-    // they return to their places, so nothing stays scaled under a still menu.
-    if (reduced || !menu || (!mobile && !menuMoving)) {
+    // Records answer the menu only while it moves; once it rests they return
+    // to their places, so nothing stays scaled under a still menu or drawer.
+    if (reduced || !menu || !menuMoving) {
       for (const item of active) { item.tx = item.ty = 0; item.ts = 1; if (reduced) restore(item); }
       return;
     }
@@ -111,8 +111,8 @@ function createFeelItems(root: HTMLElement, schedule: () => void) {
 }
 
 /** The column count of a grid whose columns are all the same width, or 0. */
-function equalColumns(style: CSSStyleDeclaration) {
-  if (!style.display.includes('grid')) return 0;
+function equalColumns(el: HTMLElement, style: CSSStyleDeclaration) {
+  if (!style.display.includes('grid') || el.classList.contains('sv-history-layout')) return 0;
   const tracks = style.gridTemplateColumns.split(' ').filter(track => track.endsWith('px')).map(parseFloat);
   return tracks.length > 1 && tracks.every(track => Math.abs(track - tracks[0]) < 1) ? tracks.length : 0;
 }
@@ -164,7 +164,7 @@ export function createFeelCards(root: HTMLElement) {
         const old = previous.get(el), style = win.getComputedStyle(el);
         return [{ el, slot: { left: rect.left, right: rect.right, width: rect.width, top: rect.top - (old?.ay || 0), bottom: rect.bottom - (old?.ay || 0), height: rect.height },
           saved: LAYOUT_PROPERTIES.map(key => [el.style.getPropertyValue(key), el.style.getPropertyPriority(key)] as [string, string]),
-          ml: parseFloat(style.marginLeft) || 0, mr: parseFloat(style.marginRight) || 0, cols: equalColumns(style),
+          ml: parseFloat(style.marginLeft) || 0, mr: parseFloat(style.marginRight) || 0, cols: equalColumns(el, style),
           loss: old?.loss || 0, inset: old?.inset || 0, vl: old?.vl || 0, vi: old?.vi || 0,
           side: old?.side || null, ay: old?.ay || 0, av: old?.av || 0, mobileTarget: 0, mobileLimit: 0, blockers: precedingBlocks(el), target: cardAvoidance(rect, null, { left: 0, right: win.innerWidth }) }];
       });

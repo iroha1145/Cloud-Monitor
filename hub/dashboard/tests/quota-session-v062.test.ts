@@ -183,7 +183,7 @@ test("prompt cache shows minutes left only for a live claude or codex reading", 
   assert.equal(sessionPromptCache({ ...base, archived: true }, now), null);
   assert.equal(sessionPromptCache({ ...base, promptCache: { observedAt: "2026-09-26T12:01:00Z", ttlSeconds: 300 } }, now), null);
 
-  assert.equal(sessionUsageSource(base), "本机观测，只计入观测到的请求，可能少计");
+  assert.equal(sessionUsageSource(base), "仅统计本机记录到的请求");
   assert.equal(sessionUsageSource({ ...base, usageSource: "other", usageCoverage: "partial" }), null);
 });
 

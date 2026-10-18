@@ -247,8 +247,8 @@
    transition for every property, and the controller would read back the old
    geometry (device cards keep their own border-colour transition). */
 [data-feel-card]:not(.sv-device-card), [data-feel-group] { transition-property: none; }
-[data-feel-card][data-menu-avoidance="mobile"] { translate: 0 var(--feel-avoid-y, 0px); }
-[data-feel-card][data-menu-avoidance="mobile"][data-feel-moving] { will-change: translate; }
+:is([data-feel-card], [data-feel-group])[data-menu-avoidance="mobile"] { translate: 0 var(--feel-avoid-y, 0px); }
+:is([data-feel-card], [data-feel-group])[data-menu-avoidance="mobile"][data-feel-moving] { will-change: translate; }
 [data-feel-item][data-feel-item-active] { translate: var(--feel-item-x, 0px) var(--feel-item-y, 0px); scale: var(--feel-item-scale, 1); }
 [data-feel-item][data-feel-item-moving] { will-change: translate; }
 

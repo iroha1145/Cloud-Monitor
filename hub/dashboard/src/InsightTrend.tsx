@@ -115,7 +115,7 @@ function DayDetails({
           </div>
         ))}
       </dl>
-      {!parts && <p>当日用量细项未提供</p>}
+      {!parts && <p>暂无当日明细</p>}
       {parts && !parts.known && (
         <p>当日用量未分类</p>
       )}
@@ -422,7 +422,6 @@ export function InsightTrend({ data }: { data: DashboardData }) {
       <div className="panel-head insight-trend-heading">
         <div>
           <h2 id={`${uid}-title`}>用量趋势</h2>
-          <p>每日词元、费用与缓存</p>
         </div>
         <Tabs value={days} onValueChange={setDays}>
           <TabsList className="small-tabs" aria-label="趋势日期范围">
@@ -446,24 +445,24 @@ export function InsightTrend({ data }: { data: DashboardData }) {
         <div data-feel-item="row">
           <span>
             <i style={{ background: TREND_COLOR.tokens }} aria-hidden="true" />
-            {day ? `${shortDay(day.day)} 词元` : "区间词元"}
+            {day ? `${shortDay(day.day)} 用量` : "区间用量"}
           </span>
           <strong>
             <PopValue value={compact(day ? day.totalTokens : tokenTotal)} />
           </strong>
           <small>
-            {day ? `${count(day.totalTokens)} 词元` : `${series.length} 天已记录`}
+            {day ? `${count(day.totalTokens)} 词元` : `共 ${series.length} 天`}
           </small>
         </div>
         <div data-feel-item="row">
           <span>
             <i style={{ background: TREND_COLOR.cost }} aria-hidden="true" />
-            {day ? "当天花费" : allCosts ? "区间花费" : hasCost ? "已知花费" : "区间花费"}
+            {day ? "当日费用" : allCosts ? "区间费用" : hasCost ? "已知费用" : "区间费用"}
           </span>
           <strong>
             <PopValue value={usd(day ? day.costUsd : costTotal)} />
           </strong>
-          <small>美元（USD）</small>
+          <small>按模型单价估算</small>
         </div>
         <div data-feel-item="row">
           <span>
@@ -477,12 +476,12 @@ export function InsightTrend({ data }: { data: DashboardData }) {
           </strong>
           <small>
             {day
-              ? "缓存读取 ÷ 总词元"
+              ? "缓存读取 ÷ 总用量"
               : cacheSkippedDays > 0
                 ? cacheDays > 0
                   ? `仅统计 ${cacheDays}/${series.length} 天`
                   : "暂无缓存明细"
-                : "缓存读取 ÷ 总词元"}
+                : "缓存读取 ÷ 总用量"}
           </small>
         </div>
       </div>
@@ -497,7 +496,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
           <span>
             {firstDay && lastDay
               ? `${shortDay(firstDay)} — ${shortDay(lastDay)}`
-              : "等待每日记录"}
+              : "暂无每日记录"}
           </span>
           <div
             ref={metricSwitch}
@@ -536,7 +535,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
               aria-valuenow={Math.max(0, pointIndex)}
               aria-valuetext={
                 point
-                  ? `${point.day}，${count(point.totalTokens)} 词元，当天花费 ${usd(point.costUsd)}，${point.components?.partial && point.components.cacheRate !== null ? "已识别缓存占比" : "缓存占比"} ${pct(point.components?.cacheRate ?? null)}`
+                  ? `${point.day}，${count(point.totalTokens)} 词元，当日费用 ${usd(point.costUsd)}，${point.components?.partial && point.components.cacheRate !== null ? "已识别缓存占比" : "缓存占比"} ${pct(point.components?.cacheRate ?? null)}`
                   : "暂无记录"
               }
               aria-describedby={`${uid}-hint${tooltipVisible ? ` ${uid}-details` : ""}`}
@@ -623,7 +622,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
                       ? "部分日期费用未提供"
                       : "已记录 1 天"}
                   </strong>
-                  <span>移动到日期位置可查看已有明细</span>
+                  <span>选择日期查看明细</span>
                 </div>
               )}
               {tooltipVisible && (
@@ -663,8 +662,8 @@ export function InsightTrend({ data }: { data: DashboardData }) {
               <span id={`${uid}-hint`}>
                 <MoveHorizontal aria-hidden="true" size={13} />
                 {detailMode === "navigation" || detailMode === "keyboard"
-                  ? "点按曲线，继续拖动查看明细"
-                  : "悬停或按住拖动，查看当天明细"}
+                  ? "点按图表可恢复滑动查看"
+                  : "滑动或悬停查看每日明细"}
               </span>
               <span
                 ref={navigationRef}
@@ -715,7 +714,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
             </div>
           </>
         ) : (
-          <div className="insight-trend-empty">暂无每日用量记录</div>
+          <div className="insight-trend-empty">暂无每日记录</div>
         )}
       </div>
     </section>
