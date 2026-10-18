@@ -503,7 +503,7 @@ export function DevicesView({ data }: SecondaryProps) {
         </div>
       </div>
       {filtered.length > 0 ? (
-        <div className="sv-device-grid">
+        <div className="sv-device-grid" data-feel-group>
           {filtered.map((device) => (
             <DeviceCard
               key={device.id}
@@ -1019,7 +1019,7 @@ export function QuotaView({ data }: SecondaryProps) {
       </section>
       <section aria-label="使用额度">
         {groups.length ? (
-          <div className="sv-quota-grid">
+          <div className="sv-quota-grid" data-feel-group>
             {groups.map((group) => {
               const first = group[0];
               const status = quotaGroupStatus(group);
@@ -1134,7 +1134,7 @@ export function QuotaView({ data }: SecondaryProps) {
           </span>
         </div>
         {data.subscriptions.length ? (
-          <div className="sv-subscription-grid">
+          <div className="sv-subscription-grid" data-feel-group>
             {data.subscriptions.map((subscription) => (
               <SubscriptionRow
                 key={subscription.id}
@@ -1278,7 +1278,7 @@ export function HistoryView({ data }: SecondaryProps) {
           foot="仅统计当前快照内的记录"
         />
       </section>
-      <div className="sv-history-layout">
+      <div className="sv-history-layout" data-feel-group>
         <ActivityPanel
           data={data}
           selected={selectedDay}

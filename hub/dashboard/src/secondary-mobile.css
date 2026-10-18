@@ -198,7 +198,7 @@
     min-height: 44px;
     padding: 9px 14px;
     border: 1px solid transparent;
-    border-radius: var(--r-pill);
+    border-radius: var(--r-control);
     background: var(--field);
     color: var(--ink);
     font: inherit;

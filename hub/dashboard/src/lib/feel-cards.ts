@@ -1,6 +1,9 @@
 import { cardAvoidance, mobileCardAvoidance, itemRepulsion, clamp, springStep, SLOT_SPRING, type AvoidanceSide, type CardAvoidance, type Rectangle } from './feel-physics';
 
-const SELECTOR = '[data-feel-card]';
+// A group (a grid of cards) makes room as one block, so a narrow card at the
+// start of a row is not left under the menu; the cards in it keep their own
+// press feedback and records.
+const SELECTOR = '[data-feel-card], [data-feel-group]';
 const LAYOUT_PROPERTIES = ['width', 'margin-left', 'margin-right'];
 type Card = { el: HTMLElement; slot: Rectangle; saved: [string, string][]; ml: number; mr: number; loss: number; inset: number; vl: number; vi: number; side: AvoidanceSide; target: CardAvoidance; ay: number; av: number; mobileTarget: number; mobileLimit: number; blockers: Element[] };
 

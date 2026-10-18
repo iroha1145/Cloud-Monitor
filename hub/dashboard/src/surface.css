@@ -79,13 +79,14 @@
 }
 .app-shell .period-tabs { height: 40px !important; padding: 3px !important; }
 .app-shell :is(.period-tabs, .small-tabs) [role="tab"],
-.app-shell .metric-switch button { border-radius: calc(var(--r-control) - 3px) !important; }
+.app-shell .metric-switch button { border-radius: var(--r-segment) !important; }
 .app-shell .period-tabs [role="tab"] { height: 34px; }
-.app-shell :is(.period-tabs, .small-tabs, .metric-switch) > [data-sliding-indicator] { border-radius: calc(var(--r-control) - 3px); }
+.app-shell :is(.period-tabs, .small-tabs, .metric-switch) > [data-sliding-indicator] { border-radius: var(--r-segment); }
 .app-shell :is(.period-tabs, .small-tabs) [role="tab"][data-state="active"],
-.app-shell .metric-switch [aria-pressed="true"] { color: var(--primary) !important; }
+.app-shell :is(.metric-switch, .insight-trend-switch) [aria-pressed="true"],
+.app-shell .cm-activity-tabs [aria-selected="true"] { color: var(--primary) !important; }
 .app-shell :is(.period-tabs, .small-tabs) [role="tab"]:active,
-.app-shell .metric-switch button:active { transform: translateY(1px); }
+.app-shell :is(.metric-switch, .insight-trend-switch, .cm-activity-tabs) button:active { transform: translateY(1px); }
 
 .app-shell :is(.count-badge, .preview-badge) {
   padding: 1px 7px;

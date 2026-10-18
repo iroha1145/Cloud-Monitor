@@ -71,7 +71,7 @@
   min-height: 35px;
   padding: 7px 12px;
   border: 1px solid var(--line);
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   background: var(--surface);
   color: var(--ink-2);
   cursor: pointer;
@@ -188,7 +188,7 @@
   width: 100%;
   min-height: 37px;
   border: 1px solid transparent;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   background: var(--field);
   padding: 8px 14px 8px 35px;
   font-size: 12px;
@@ -1179,7 +1179,9 @@
 }
 .sv-quota-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  /* auto-fit: a short row of accounts fills the width instead of leaving an
+     empty column, and the row keeps its column count while it makes room. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 18px;
   align-items: start;
 }
@@ -1349,7 +1351,7 @@
 }
 .sv-subscription-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
   gap: 18px;
   align-items: start;
 }

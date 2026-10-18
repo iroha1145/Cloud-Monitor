@@ -376,7 +376,7 @@ input[type="search"]::-webkit-search-decoration {
   width: 280px;
   height: 34px;
   padding: 0 8px 0 13px;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   background: var(--field);
   color: var(--ink-3);
   font-size: 13px;
@@ -404,7 +404,7 @@ input[type="search"]::-webkit-search-decoration {
   justify-content: center;
   width: 34px;
   height: 34px;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   color: var(--ink-2);
   background: transparent;
   transition: background var(--duration-quick) var(--ease-smooth-out),
@@ -419,7 +419,7 @@ input[type="search"]::-webkit-search-decoration {
   place-items: center;
   width: 34px;
   height: 34px;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   background: transparent;
   color: var(--ink-2);
   transition:
@@ -494,7 +494,7 @@ input[type="search"]::-webkit-search-decoration {
   height: 34px !important;
   padding: 0 14px !important;
   border-color: var(--line) !important;
-  border-radius: var(--r-pill) !important;
+  border-radius: var(--r-control) !important;
   background: var(--surface) !important;
   color: var(--ink) !important;
   font-size: 13px !important;
@@ -521,7 +521,7 @@ input[type="search"]::-webkit-search-decoration {
 .small-tabs {
   gap: 2px;
   border: 0 !important;
-  border-radius: var(--r-pill) !important;
+  border-radius: var(--r-control) !important;
   background: var(--canvas) !important;
 }
 .period-tabs {
@@ -531,7 +531,7 @@ input[type="search"]::-webkit-search-decoration {
 .period-tabs [role="tab"],
 .small-tabs [role="tab"] {
   border: 0 !important;
-  border-radius: var(--r-pill) !important;
+  border-radius: var(--r-control) !important;
   color: var(--ink-2) !important;
   font-weight: 500;
   transition:
@@ -556,7 +556,7 @@ input[type="search"]::-webkit-search-decoration {
 }
 .period-tabs > [data-sliding-indicator],
 .small-tabs > [data-sliding-indicator] {
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   background: var(--surface);
   box-shadow: var(--shadow-thumb);
 }
@@ -602,7 +602,7 @@ input[type="search"]::-webkit-search-decoration {
   min-height: 34px;
   padding: 0 14px;
   border: 1px solid var(--line);
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   background: var(--surface);
   color: var(--ink);
   font-size: 13px;
@@ -843,14 +843,14 @@ input[type="search"]::-webkit-search-decoration {
   display: flex;
   flex-shrink: 0;
   padding: 2px;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   background: var(--canvas);
   font-size: var(--fs-label);
 }
 .metric-switch button {
   min-height: 26px;
   padding: 0 12px;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   color: var(--ink-2);
   font-weight: 500;
   transition:
@@ -866,7 +866,7 @@ input[type="search"]::-webkit-search-decoration {
   box-shadow: var(--shadow-thumb);
 }
 .metric-switch > [data-sliding-indicator] {
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   background: var(--surface);
   box-shadow: var(--shadow-thumb);
 }
@@ -1140,7 +1140,7 @@ input[type="search"]::-webkit-search-decoration {
   height: 36px;
   padding: 0 14px;
   border: 1px solid transparent;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   background: var(--field);
   color: var(--ink-3);
   transition: background var(--duration-quick) var(--ease-smooth-out);
@@ -1526,7 +1526,7 @@ input[type="search"]::-webkit-search-decoration {
   width: 30px;
   height: 30px;
   padding: 0;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   background: var(--hover);
   cursor: pointer;
   transition: background var(--duration-quick) var(--ease-smooth-out);
@@ -1546,7 +1546,7 @@ input[type="search"]::-webkit-search-decoration {
   gap: 8px;
   padding: 0 12px 0 14px;
   border: 1px solid var(--line);
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   background: var(--surface);
   color: var(--ink);
   font-size: 13px;
@@ -1770,7 +1770,7 @@ input[type="search"]::-webkit-search-decoration {
   margin-bottom: 8px;
   padding: 0 14px;
   border: 1px solid transparent;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   background: var(--field);
 }
 .search-dialog .h-10:focus-within {

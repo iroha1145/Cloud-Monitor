@@ -30,9 +30,9 @@
   --r-tile: 18px;
   --r-well: 14px;
   --r-control: 14px;
+  /* an item inside a segmented track, concentric with the track's 3px inset */
+  --r-segment: 11px;
   --r-chip: 7px;
-  /* only status badges and toggles stay round */
-  --r-pill: 999px;
 
   /* A white page under white cards: each card has a hairline and a soft
      two-step shadow (game-manage's card), inner pieces sit on a grey well
