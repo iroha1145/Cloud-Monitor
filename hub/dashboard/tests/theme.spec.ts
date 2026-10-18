@@ -35,10 +35,14 @@ test("theme reveal starts at the menu trigger and settles in both directions", a
     const start = document.startViewTransition.bind(document);
     document.startViewTransition = ((update: () => void) => {
       document.documentElement.dataset.snapshotMenuCount = String(document.querySelectorAll('[role="listbox"]').length);
+      // A floating menu can still be settling after the page first appears.
+      // Check the reveal against the trigger at the instant of activation.
+      const box = document.querySelector('[role="combobox"][aria-label="外观设置"]')!.getBoundingClientRect();
+      document.documentElement.dataset.snapshotThemeX = `${box.x + box.width / 2}px`;
+      document.documentElement.dataset.snapshotThemeY = `${box.y + box.height / 2}px`;
       return start(update);
     }) as typeof document.startViewTransition;
   });
-  const box = await page.getByRole("combobox", { name: "外观设置" }).boundingBox();
   for (const [label, appearance] of [["深色", "dark"], ["浅色", "light"]] as const) {
     await chooseTheme(page, label);
     await expectTheme(page, appearance);
@@ -49,7 +53,11 @@ test("theme reveal starts at the menu trigger and settles in both directions", a
       y: (root as HTMLElement).style.getPropertyValue("--theme-y"),
       animation: getComputedStyle(root, "::view-transition-new(root)").animationName,
     }));
-    expect(origin).toEqual({ x: `${box!.x + box!.width / 2}px`, y: `${box!.y + box!.height / 2}px`, animation: "theme-reveal" });
+    const triggerAtActivation = await page.locator("html").evaluate(root => ({
+      x: (root as HTMLElement).dataset.snapshotThemeX,
+      y: (root as HTMLElement).dataset.snapshotThemeY,
+    }));
+    expect(origin).toEqual({ ...triggerAtActivation, animation: "theme-reveal" });
     await expect(page.getByRole("listbox")).toHaveCount(0);
     await expect(page.locator("html")).not.toHaveAttribute("data-theme-switching");
   }
