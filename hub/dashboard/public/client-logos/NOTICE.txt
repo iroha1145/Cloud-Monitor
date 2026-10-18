@@ -9,3 +9,6 @@ https://github.com/Javis603/token-monitor/tree/9ad1ca2f6ec27e497eb38fffe7d9533ae
 
 CatPaw and FX icons from v0.70.0; MiniMax Code (mcode) uses the existing MiniMax mark as upstream does:
 https://github.com/Javis603/token-monitor/tree/ac4eeb2c4aea239dd94b67f074c73f69aafc46f8/assets/icons
+
+Goose and Notion icons from v0.74.0:
+https://github.com/Javis603/token-monitor/tree/cbed5915e294abb4a210f7ebb385e9415f706821/assets/icons

@@ -24,6 +24,7 @@ const logoIds = new Set([
   "dsh",
   "fx",
   "gemini",
+  "goose",
   "grok",
   "hermes-agent",
   "hunyuan",
@@ -35,6 +36,7 @@ const logoIds = new Set([
   "minimax",
   "mistral",
   "newapi",
+  "notion",
   "ollama",
   "omp",
   "openclaw",
@@ -79,6 +81,7 @@ const aliases: Record<string, string> = {
   zaiteam: "zai",
   volc: "volcengine",
   cherrystudioapp: "cherrystudio",
+  notionai: "notion",
 };
 
 /** Resolve the same client and vendor artwork used by the original dashboard. */

@@ -41,5 +41,8 @@ test("service-reported client ids keep their product names", () => {
   assert.equal(clientName("mcode"), "MiniMax Code");
   assert.equal(clientName("droid"), "Factory Droid");
   assert.equal(clientName("kilo"), "Kilo Code");
+  // v0.71–v0.74: Goose usage and Notion AI allowances.
+  assert.equal(clientName("goose"), "Goose");
+  assert.equal(providerName("notion"), "Notion AI");
 });
 

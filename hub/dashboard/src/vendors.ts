@@ -48,6 +48,7 @@ const CLIENT_NAMES: Record<string, string> = {
   catpaw: "CatPaw",
   fx: "FX",
   mcode: "MiniMax Code",
+  notion: "Notion AI",
 };
 
 const CLIENT_TITLES: Record<string, string> = {
@@ -55,6 +56,7 @@ const CLIENT_TITLES: Record<string, string> = {
   claude: "Claude Code",
   cursor: "Cursor",
   gemini: "Gemini CLI",
+  goose: "Goose",
   opencode: "OpenCode",
   openclaw: "OpenClaw",
   pi: "Pi",

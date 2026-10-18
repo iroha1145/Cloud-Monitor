@@ -1,4 +1,5 @@
-"""Official v0.70.0 wire contracts, sync routes, and session/throughput fields."""
+"""Wire contracts, sync routes and session/throughput fields introduced in v0.70.0,
+checked against the current vendored pin (v0.74.0)."""
 from __future__ import annotations
 
 import copy
@@ -16,22 +17,22 @@ from hub.tm_validate import PayloadValidationError, validate_ingest_payload
 READ = {"Authorization": f"Bearer {READ_KEY}"}
 
 
-def test_v070_vendor_matches_reviewed_pin_and_complete_closure():
+def test_vendor_matches_reviewed_pin_and_complete_closure():
     result = subprocess.run(
         [sys.executable, str(HUB_ROOT / "tm-core" / "sync_vendor.py"), "--check"],
         capture_output=True, text=True, check=True,
     )
-    assert "v0.70.0 (ac4eeb2c4aea239dd94b67f074c73f69aafc46f8)" in result.stdout
-    assert "23 source files" in result.stdout
+    assert "v0.74.0 (cbed5915e294abb4a210f7ebb385e9415f706821)" in result.stdout
+    assert "24 source files" in result.stdout
 
 
 @requires_node
-def test_v070_build_identity(node_hub):
+def test_vendored_hub_build_identity(node_hub):
     health = httpx.get(node_hub.url + "/api/health").json()
     expected = {
         "schemaVersion": 1,
-        "coreRevision": 80,
-        "coreBuildId": "sha256:04f734afadd03540a3db992734808c07803460c4bf4296d912dbf2816102a32a",
+        "coreRevision": 88,
+        "coreBuildId": "sha256:43e2cae75b5d4023a92e01ad2a686cf7fcece84793984a779f4e0802300f7744",
         "runtime": "node-hub",
         "runtimeRevision": 5,
         "runtimeBuildId": "sha256:d825a515df8f90735f15682eaae40d039b266b21a0e282667d6f6472987977e8",

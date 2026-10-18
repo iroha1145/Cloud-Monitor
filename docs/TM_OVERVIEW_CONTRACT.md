@@ -11,7 +11,7 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
 不重造官方聚合。官方 `/api/ingest` `/api/stats` `/api/history` SSE 订阅
 行为不得因本扩展改变。
 
-当前内核固定为 Token Monitor v0.70.0（`ac4eeb2c4aea239dd94b67f074c73f69aafc46f8`）。支持 CatPaw（`catpaw`）、FX（`fx`）、MiniMax Code（`mcode`）、Factory Droid（`factory` / `droid`）、Muse Code（`muse`）与 StepFun 配额窗口；`limits` 原样传递官方完整配额记录，Token Plan 未提供实际点数余额时，网页只展示上报的用量比例。
+当前内核固定为 Token Monitor v0.74.0（`cbed5915e294abb4a210f7ebb385e9415f706821`）。支持 CatPaw（`catpaw`）、FX（`fx`）、MiniMax Code（`mcode`）、Factory Droid（`factory` / `droid`）、Muse Code（`muse`）、Goose（`goose`）客户端与 StepFun、Notion AI（`notion`）配额窗口；v0.71–v0.74 起 WorkBuddy 多个账号分开显示，多日汇总保留为 0 的未分类词元，官方项目汇总多出按模型的词元（`models`，网关的 `projects` 列表暂未带出）；`limits` 原样传递官方完整配额记录，Token Plan 未提供实际点数余额时，网页只展示上报的用量比例。
 
 鉴权：面板与 Cloud 扩展一律 `Authorization: Bearer ACCESS_TOKEN`。
 `TOKEN_MONITOR_SECRET` 不能读这些端点。Token Monitor 未启用 → 404。
