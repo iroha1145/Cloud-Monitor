@@ -40,7 +40,7 @@
   min-height: 38px;
   padding: 8px 14px;
   border: 1px solid var(--line);
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   background: var(--surface);
   color: var(--ink);
   font: inherit;
@@ -103,15 +103,15 @@
 }
 .system-update-versions small {
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: var(--fs-meta);
 }
 .system-update-tag {
   display: inline-flex;
   align-items: center;
   background: var(--hover);
   color: var(--ink-2);
-  border-radius: 4px;
-  padding: 3px 6px;
+  border-radius: var(--r-chip);
+  padding: 3px 7px;
   font-size: var(--fs-meta);
 }
 .system-update-tag.is-new {
@@ -139,7 +139,7 @@
 }
 .system-update-job {
   padding: 14px 16px;
-  border-radius: 8px;
+  border-radius: var(--r-well);
   background: var(--inset);
   border: 1px solid var(--line);
   margin-top: 15px;
@@ -160,7 +160,7 @@
   display: block;
   margin-top: 7px;
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: var(--fs-meta);
 }
 .system-update-job > .system-update-button {
   margin-top: 12px;
@@ -190,7 +190,7 @@
   max-height: 300px;
   overflow: auto;
   padding: 14px;
-  border-radius: 7px;
+  border-radius: var(--r-well);
   border: 1px solid var(--line);
 }
 .system-update-notes a {
@@ -218,7 +218,7 @@
   font-size: 12px;
 }
 .system-update-footer > small {
-  font-size: 11px;
+  font-size: var(--fs-meta);
   color: var(--ink-3);
 }
 .system-update-empty {

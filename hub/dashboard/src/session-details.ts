@@ -3,7 +3,7 @@ import type { DashboardData, PeriodKey, Session, SessionPeriodDetails, Throughpu
 
 const counter = (value: unknown): number | null => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 
-export const LOCAL_DETAIL_NOTICE = "逐次回复、提问正文和工具事件尚未同步到网页。";
+export const LOCAL_DETAIL_NOTICE = "逐次回复、提问正文和工具事件尚未同步，此处仅展示会话汇总。";
 
 export function sessionsForPeriod(data: DashboardData, period: PeriodKey): Session[] {
   return data.sessionsByPeriod?.[period] ?? (period === "today" ? data.sessions : []);

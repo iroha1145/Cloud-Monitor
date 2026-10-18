@@ -1,26 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cardAvoidance, cornerPosition, drawerStops, itemRepulsion, navigationBounds, nearestDrawerStop, projectedCorner, springStep } from '../src/lib/feel-physics.ts';
+import { cardAvoidance, cornerPosition, itemRepulsion, navigationBounds, projectedCorner, springStep, SLOT_SPRING } from '../src/lib/feel-physics.ts';
 
-test('navigation stays within a small viewport and projects throw momentum to a corner', () => {
-  assert.deepEqual(navigationBounds(320, 240, 224, 500), { left: 12, top: 12, right: 84, bottom: 12 });
-  const b = navigationBounds(1280, 900, 224, 500);
+test('navigation keeps 16px from the edges and projects throw momentum to a corner', () => {
+  assert.deepEqual(navigationBounds(320, 240, 216, 500), { left: 16, top: 16, right: 88, bottom: 16 });
+  const b = navigationBounds(1280, 900, 216, 500);
+  // 70ms of the release velocity decides the corner (game-manage).
   assert.equal(projectedCorner(450, 100, 2000, 3000, b), 'bottom-right');
-  assert.deepEqual(cornerPosition('bottom-right', b), { x: 1044, y: 388 });
+  assert.equal(projectedCorner(450, 100, 1000, 0, b), 'top-left');
+  assert.deepEqual(cornerPosition('bottom-right', b), { x: 1048, y: 384 });
   assert.equal(projectedCorner(450, 100, 0, 0, b), 'top-left');
-});
-test('drawer has open, half and peek positions and responds to a fast flick', () => {
-  assert.deepEqual(drawerStops(600), [0, 268, 536]);
-  assert.equal(nearestDrawerStop(100, 0, 600), 0);
-  assert.equal(nearestDrawerStop(100, 1600, 600), 268);
-  assert.equal(nearestDrawerStop(430, 1600, 600), 536);
-  assert.equal(nearestDrawerStop(430, -2600, 600), 0);
 });
 test('Feel spring settles after a high velocity release and survives delayed frames', () => {
   let x = 0, v = 4000;
   for (let i = 0; i < 180; i++) [x, v] = springStep(x, v, 400, i % 5 === 0 ? .2 : 1 / 60);
   assert.ok(Math.abs(x - 400) < .01);
   assert.ok(Math.abs(v) < .1);
+});
+test('the slot spring (mass 1, k 260, c 28) settles without a visible overshoot', () => {
+  let x = 0, v = 0, peak = 0;
+  for (let i = 0; i < 120; i++) { [x, v] = springStep(x, v, 100, 1 / 60, ...SLOT_SPRING); peak = Math.max(peak, x); }
+  assert.ok(Math.abs(x - 100) < .05);
+  assert.ok(peak < 101, `peak ${peak}`);
 });
 test('wide panels clear the docked menu by shrinking inside their original slot', () => {
   const card = { left: 300, right: 1240, top: 100, bottom: 400, width: 940, height: 300 };
@@ -78,6 +79,8 @@ test('inner records react before touching the menu and return to rest beyond the
   assert.deepEqual(itemRepulsion(item, middle, 'cell'), { x: 0, y: 0, scale: 1 });
   assert.deepEqual(itemRepulsion(item, { ...menu, left: 544, right: 768 }, 'row'), { x: 0, y: 0, scale: 1 });
   assert.deepEqual(itemRepulsion(item, null, 'row'), { x: 0, y: 0, scale: 1 });
+  // A row stacked with others steps sideways only, even below the menu.
+  assert.equal(itemRepulsion({ ...item, top: 520, bottom: 560 }, menu, 'row').y, 0);
   assert.deepEqual(item, { left: 200, right: 400, top: 200, bottom: 240, width: 200, height: 40 });
 });
 

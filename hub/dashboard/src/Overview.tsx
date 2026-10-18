@@ -52,7 +52,7 @@ function usageDetails(
     { label: "总用量", value: count(item.totalTokens) },
     {
       label: "费用",
-      value: item.costUsd === null ? "来源未提供" : usd(item.costUsd),
+      value: item.costUsd === null ? "未提供" : usd(item.costUsd),
     },
     {
       label: parts.partial ? "已识别缓存占比" : "缓存占比",
@@ -61,28 +61,28 @@ function usageDetails(
     ...COMPOSITION.map((part) => ({
       label: part.label,
       color: part.color,
-      value: partUnknown(parts, part.key) ? "来源未提供" : count(parts[part.key]),
+      value: partUnknown(parts, part.key) ? "未提供" : count(parts[part.key]),
     })),
   ];
 }
 
 function usageNote(item: Pick<PeriodUsage, "components">) {
   return !item.components.complete && item.components.known
-    ? "组成与总量不一致，暂不计算比例。"
+    ? "细项与总量不一致，暂不计算比例。"
     : item.components.partial
-      ? "仅展示来源已上报的组成，未识别部分单独保留。"
+      ? "部分用量未分类，仅统计已知缓存。"
       : undefined;
 }
 
 function compositionNote(per: Pick<PeriodUsage, "totalTokens" | "components">) {
   const parts = per.components;
   if (per.totalTokens === 0) return "暂无上报用量";
-  if (!parts.known) return "用量尚未分类，缓存明细未提供";
+  if (!parts.known) return "用量尚未分类";
   return !parts.complete
-    ? "数据不一致，暂未计算占比"
+    ? "细项与总量数据不一致，暂不计算占比"
     : parts.partial
       ? "部分用量未分类，仅统计已知缓存"
-      : "输入、输出与缓存用量分布";
+      : "输入、输出与缓存占比";
 }
 
 function CompositionLegend({ parts, feelItems = false }: { parts: PeriodUsage["components"]; feelItems?: boolean }) {
@@ -115,11 +115,12 @@ function UsageSpectrum({ per }: { per: PeriodUsage }) {
   const parts = per.components;
   const sum = COMPOSITION.reduce((total, part) => total + parts[part.key], 0);
   const drawable = parts.complete && sum > 0;
+  const showNote = !parts.complete || parts.partial || per.totalTokens === 0;
   return (
-    <section className="ledger-composition" aria-labelledby="ledger-composition-title">
+    <section className="ledger-composition" aria-labelledby="ledger-composition-title" data-feel-card>
       <div className="ledger-composition-head">
         <h2 id="ledger-composition-title">用量组成</h2>
-        <p>{compositionNote(per)}</p>
+        {showNote && <p>{compositionNote(per)}</p>}
       </div>
       <div
         className={`spectrum ${drawable ? "" : "is-incomplete"}`}
@@ -163,11 +164,11 @@ export function Stats({
     rate = per.components.cacheRate;
   const online = data.devices.filter((d) => d.status === "online").length;
   return (
-    <section className="ledger" aria-label="用量摘要" data-feel-card>
-      <div className="ledger-figures">
-        <article className="ledger-figure ledger-lead" data-feel-item="row">
+    <section className="ledger" aria-label="用量摘要">
+      <div className="ledger-figures" data-feel-group>
+        <article className="ledger-figure ledger-lead" data-feel-card>
           <span className="ledger-label">
-            总用量<small>词元（Tokens）</small>
+            总用量<small>词元</small>
           </span>
           <strong className="ledger-value">
             <NumberTicker
@@ -181,10 +182,10 @@ export function Stats({
             <span className="ledger-unit">{compact(per.totalTokens).split(" ")[1]}</span>
           </strong>
           <span className="ledger-note">
-            {count(per.totalTokens)} · 所有模型与客户端
+            {count(per.totalTokens)} 词元
           </span>
         </article>
-        <article className="ledger-figure" data-feel-item="row">
+        <article className="ledger-figure" data-feel-card>
           <span className="ledger-label">
             使用费用
           </span>
@@ -217,9 +218,9 @@ export function Stats({
               })()
             )}
           </strong>
-          <span className="ledger-note">按上报价格统计</span>
+          <span className="ledger-note">按模型单价估算</span>
         </article>
-        <article className="ledger-figure" data-feel-item="row">
+        <article className="ledger-figure" data-feel-card>
           <span className="ledger-label">
             {per.components.partial ? "已识别缓存占比" : "缓存占比"}
             <MetricTooltip
@@ -252,10 +253,10 @@ export function Stats({
           <span className="ledger-note">
             {per.components.cacheReadKnown
               ? `${compact(per.components.cacheRead)} 缓存读取`
-              : "等待来源提供缓存数据"}
+              : "未提供缓存明细"}
           </span>
         </article>
-        <article className="ledger-figure" data-feel-item="row">
+        <article className="ledger-figure" data-feel-card>
           <span className="ledger-label">在线设备</span>
           <strong className="ledger-value">
             <NumberTicker value={online} duration={0.4} startOnView={false} digitClassName="ledger-digit" />
@@ -324,7 +325,7 @@ export function CompositionCard({
           <span className="composition-hint">
             {parts.cacheReadKnown
               ? `${compact(parts.cacheRead)} 缓存读取`
-              : "未上报缓存组成"}
+              : "未提供缓存明细"}
           </span>
         </div>
       </div>
@@ -375,7 +376,6 @@ export function ModelTable({
           <h2>
             模型用量 <span className="count-badge">{per.models.length}</span>
           </h2>
-          <p>输入、输出与缓存一眼可见，展开查看会话和计时明细</p>
         </div>
         {!full && (
           <a href="#models" className="text-link">
@@ -485,7 +485,7 @@ export function ModelTable({
                           label: "完整用量",
                           value: m.components.cacheReadKnown
                             ? count(m.components.cacheRead)
-                            : "来源未提供",
+                            : "未提供",
                         },
                       ]}
                       focusable
@@ -575,18 +575,17 @@ export function ModelTable({
           <div className="empty-inline">
             <Search size={22} />
             <strong>没有找到匹配的模型</strong>
-            <span>调整搜索词或提供商筛选后再试。</span>
+            <span>请尝试其他关键词或筛选条件。</span>
           </div>
         ) : (
           <div className="empty-inline">
-            <strong>这个周期还没有模型用量</strong>
-            <span>设备上报后，这里按模型列出词元、缓存与费用。</span>
+            <strong>暂无模型用量</strong>
+            <span>设备同步后，这里会列出各模型的用量与费用。</span>
           </div>
         ))}
       <div className="table-foot">
-        <span>点击模型名称查看用量明细</span>
         <span>
-          {Math.min(full ? models.length : 5, models.length)} /{" "}
+          显示 {Math.min(full ? models.length : 5, models.length)} /{" "}
           {per.models.length} 个模型
         </span>
       </div>
@@ -600,13 +599,13 @@ function Clients({ per }: { per: PeriodUsage }) {
       <div className="panel-head">
         <div>
           <h2>客户端分布</h2>
-          <p>{per.clients.length} 个客户端 · 占全部用量</p>
+          <p>共 {per.clients.length} 个客户端</p>
         </div>
       </div>
       {!per.clients.length && (
         <div className="empty-inline">
-          <strong>还没有客户端上报</strong>
-          <span>Codex、Claude Code、Cursor 等客户端的用量会按来源分开显示。</span>
+          <strong>暂无客户端数据</strong>
+          <span>设备同步后，这里会按客户端展示用量占比。</span>
         </div>
       )}
       <div className="client-rows">
@@ -674,15 +673,14 @@ function FirstReport() {
   return (
     <section className="panel first-report" aria-labelledby="first-report-title" data-feel-card>
       <div>
-        <h2 id="first-report-title">还没有设备上报用量</h2>
+        <h2 id="first-report-title">等待设备接入</h2>
         <p>
-          在本机 token-monitor 里打开「设置 → 多设备同步」，填好 hub 与密钥两项后保存。widget
-          按自己的同步间隔推送，第一次上报后这里就会出现用量。
+          在本机的 token-monitor 里打开「设置 → 多设备同步」，填入以下服务地址与密钥即可开始同步。
         </p>
       </div>
       <dl>
         <div>
-          <dt>hub</dt>
+          <dt>地址</dt>
           <dd>
             <code>{location.origin}</code>
           </dd>
@@ -723,10 +721,10 @@ export function Overview({
         <Clients per={per} />
       </div>
       <ModelTable per={per} onSelect={onModel} />
-      {data.providers.length > 0 && <section className="provider-strip" aria-label="提供商状态">
+      {data.providers.length > 0 && <section className="provider-strip" aria-label="提供商状态" data-feel-card>
         <span className="provider-caption">服务状态</span>
         {data.providers.map((p) => (
-          <div key={p.id} className="provider-status">
+          <div key={p.id} className="provider-status" data-feel-item="row">
             <BrandIcon name={p.name} size={22} />
             <strong>{p.name}</strong>
             <span className={`provider-state ${p.status}`}>
@@ -746,7 +744,7 @@ export function Overview({
           </div>
         ))}
         <span className="provider-demo-note">
-          {data.mode === "demo" ? "示例状态" : "官方状态页"}
+          {data.mode === "demo" ? "演示状态" : "官方状态页"}
         </span>
       </section>}
     </>
@@ -768,7 +766,6 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
       <div className="panel-head">
         <div>
           <h2>客户端 × 模型</h2>
-          <p>每个客户端用了哪些模型</p>
         </div>
         <div className="metric-switch" ref={metricSwitch}>
           <span data-sliding-indicator aria-hidden="true" />
@@ -835,7 +832,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
                                 metric === "tokens" ? "词元用量" : "使用费用",
                               value:
                                 v === undefined
-                                  ? "未提供该组合的记录"
+                                  ? "无记录"
                                   : metric === "tokens"
                                     ? count(v)
                                     : usd(v),
@@ -849,7 +846,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
                             {v === undefined ? (
                               <>
                                 <span aria-hidden="true">—</span>
-                                <span className="sr-only">未提供</span>
+                                <span className="sr-only">无记录</span>
                               </>
                             ) : metric === "tokens" ? (
                               compact(v)
@@ -868,11 +865,11 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
         </div>
       ) : (
         <div className="empty-inline">
-          该来源尚未提供客户端与模型的对应记录。
+          暂无客户端与模型的交叉记录。
         </div>
       )}
       <div className="table-foot">
-        <span>颜色越深代表当前组合{metric === "tokens" ? "用量" : "费用"}越高；— 表示未提供该组合数据</span>
+        <span>颜色越深代表{metric === "tokens" ? "用量" : "费用"}越高；— 表示无记录</span>
       </div>
     </section>
   );

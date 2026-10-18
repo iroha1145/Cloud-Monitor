@@ -48,7 +48,7 @@ function Composition({
           ))}
         </dl>
       ) : (
-        <p>未提供构成明细</p>
+        <p>未提供明细</p>
       )}
     </section>
   );
@@ -92,11 +92,11 @@ function ArchiveRow({ row }: { row: ArchiveDay }) {
             ? `覆盖率 ${row.coverage.toFixed(1)}%。`
             : "覆盖率未提供。"}
           {incomplete &&
-            "部分记录可能损坏或缺失，已显示的数据仅代表可读取部分。"}
+            "部分记录缺失，仅显示已同步部分。"}
         </p>
         <div className="archive-compositions">
-          <Composition title="客户端构成" values={row.perClient} />
-          <Composition title="模型构成" values={row.perModel} />
+          <Composition title="按客户端" values={row.perClient} />
+          <Composition title="按模型" values={row.perModel} />
         </div>
       </div>
     </details>
@@ -224,8 +224,8 @@ export function ArchivePanel({
     metadata?.dayBasis === "device-local"
       ? "按各设备本地日期归档"
       : metadata?.dayBasis
-        ? `服务报告的日期口径：${metadata.dayBasis}`
-        : "日期口径未提供";
+        ? `日期统计方式：${metadata.dayBasis}`
+        : "日期统计方式未提供";
   return (
     <section className="archive-panel" aria-labelledby="archive-title" data-feel-card>
       <header className="archive-header">
@@ -241,8 +241,8 @@ export function ArchivePanel({
                 ? "演示数据 · 展示概览中已有的日期"
                 : "归档接口暂不可用 · 展示概览中已有的日期"
               : metadata?.retentionDays
-                ? `服务最多保留 ${metadata.retentionDays} 天，按日期逐页加载。`
-                : "读取设备每日归档，按日期逐页加载。"}
+                ? `最多保留 ${metadata.retentionDays} 天记录。`
+                : "按日汇总历史用量与费用。"}
           </p>
         </div>
         {dataMode === "live" && historyAvailable !== false && (
@@ -263,39 +263,33 @@ export function ArchivePanel({
           </button>
         )}
       </header>
-      <div className="archive-context">
-        {fallback ? (
+      {!fallback && metadata && (
+        <div className="archive-context">
           <p>
-            当前显示概览中的每日用量；缺少的明细标为未提供。
+            {basis}。
+            {metadata.deviceTimeZone
+              ? `设备时区：${metadata.deviceTimeZone}。`
+              : ""}
+            {metadata.dashboardTimeZone
+              ? `当前时区：${metadata.dashboardTimeZone}。`
+              : ""}
           </p>
-        ) : metadata ? (
-          <>
-            <p>
-              {basis}。
-              {metadata.deviceTimeZone
-                ? `设备时区：${metadata.deviceTimeZone}。`
-                : ""}
-              {metadata.dashboardTimeZone
-                ? `仪表盘时区：${metadata.dashboardTimeZone}。`
-                : ""}
+          {metadata.mixedTimeZones && (
+            <p className="archive-warning">
+              包含多个设备时区；同一日期对应各设备本地日。
             </p>
-            {metadata.mixedTimeZones && (
-              <p className="archive-warning">
-                包含多个设备时区；同一日期对应各设备本地日。
-              </p>
-            )}
-            {metadata.partial && (
-              <p className="archive-warning">
-                部分归档数据未能完整读取
-                {metadata.partialErrorCount
-                  ? `（${metadata.partialErrorCount} 处）`
-                  : ""}
-                ，请参考每日完整性标记。
-              </p>
-            )}
-          </>
-        ) : null}
-      </div>
+          )}
+          {metadata.partial && (
+            <p className="archive-warning">
+              部分归档数据未能完整读取
+              {metadata.partialErrorCount
+                ? `（${metadata.partialErrorCount} 处）`
+                : ""}
+              ，请参考每日完整性标记。
+            </p>
+          )}
+        </div>
+      )}
       {error && (
         <div className="archive-feedback" role="alert">
           <p>{error}</p>

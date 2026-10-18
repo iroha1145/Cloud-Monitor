@@ -46,7 +46,7 @@ export function sessionPromptCache(session: Session, generatedAt: string): { min
 }
 
 export function sessionUsageSource(session: Session): string | null {
-  if (session.usageCoverage === "observed-only") return "本机观测，只计入观测到的请求，可能少计";
+  if (session.usageCoverage === "observed-only") return "仅统计本机记录到的请求";
   return null;
 }
 

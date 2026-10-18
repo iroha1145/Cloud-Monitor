@@ -1,0 +1,385 @@
+/* Card surface after game-manage (docs/frontend-motion.md there): white cards
+   with a hairline and a soft two-step shadow, one level of grey wells inside a
+   card and no shadow below that, rounded-rectangle controls, a 12px floor for
+   text and 600 for titles. The page stays white and every colour comes from
+   tokens.css, so the dashboard keeps its own palette. */
+
+/* ── Shell ────────────────────────────────────────────────────────── */
+/* The menu floats over the page; the page itself is centred in the window and
+   each card makes its own room (lib/feel-cards.ts). */
+.app-shell .workspace-main { margin-inline: 0; }
+.app-shell .app-topbar { height: 80px; border-bottom: 0; }
+@media (min-width: 761px) and (min-height: 501px), (min-width: 961px) {
+  /* As in game-manage, the bar spans the window: search sits at its left
+     edge and the actions at its right. The bar is a card in feel-cards, so a
+     side gives way only while the menu actually covers it. */
+  .app-shell .app-topbar {
+    --bar-gutter: 24px;
+    width: calc(100% - 2 * var(--bar-gutter));
+    max-width: none;
+    margin-inline: var(--bar-gutter);
+    padding-inline: 0;
+  }
+}
+@media (min-width: 761px) and (max-width: 960px) {
+  .app-shell .app-topbar { --bar-gutter: 16px; }
+}
+.app-shell .main-content { padding-top: 4px; }
+
+/* ── Type ─────────────────────────────────────────────────────────── */
+.app-shell h1 { font-size: var(--fs-page); line-height: 36px; font-weight: 600; letter-spacing: -0.03em; }
+.app-shell h2 { font-weight: 600; letter-spacing: -0.02em; }
+.app-shell .panel-head h2,
+.app-shell .ledger-composition-head h2,
+.app-shell .insight-trend-heading h2 { font-size: 16px; line-height: 24px; }
+.app-shell .sv-section-head h2 { font-size: 18px; line-height: 26px; }
+.app-shell .page-heading { align-items: center; padding: 20px 0 22px; }
+.app-shell .heading-kicker { margin-bottom: 8px; font-size: 13px; }
+.app-shell .heading-mode { margin-top: 6px; font-size: 13px; color: var(--ink-3); }
+
+/* ── Controls: rounded rectangles with a hairline, a 1px press ───── */
+.app-shell :is(.plain-button, .sv-button, .archive-button),
+.app-shell .refresh-button,
+[data-slot="dialog-content"] .plain-button {
+  min-height: 40px;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--r-control) !important;
+  background: var(--surface) !important;
+  box-shadow: none !important;
+  color: var(--ink) !important;
+  font-size: 13px !important;
+  font-weight: 500;
+}
+.app-shell .refresh-button { height: 40px !important; padding: 0 15px !important; }
+.app-shell :is(.plain-button, .sv-button, .archive-button, .refresh-button):not(:disabled):active,
+[data-slot="dialog-content"] .plain-button:not(:disabled):active { transform: translateY(1px); }
+@media (hover: hover) and (pointer: fine) {
+  .app-shell :is(.plain-button, .sv-button, .archive-button, .refresh-button):not(:disabled):hover,
+  [data-slot="dialog-content"] .plain-button:not(:disabled):hover {
+    background: var(--inset) !important;
+    border-color: var(--line-strong) !important;
+  }
+}
+/* Top bar after game-manage: the search field on the left, the mode chip and
+   actions on the right; the page title below names the page. */
+.app-shell .topbar-left { display: flex; flex: 1 1 auto; align-items: center; min-width: 0; }
+.app-shell .command-search {
+  width: min(340px, 100%);
+  height: 40px;
+  padding: 0 10px 0 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  background: var(--surface);
+}
+.app-shell .command-search > span { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell .command-search kbd { border: 1px solid var(--line); border-radius: 5px; background: var(--surface); }
+@media (hover: hover) and (pointer: fine) {
+  .app-shell .command-search:hover { border-color: var(--line-strong); background: var(--surface); }
+}
+.app-shell :is(.top-avatar, .icon-button, .theme-menu-trigger) { border-radius: var(--r-control); }
+
+/* Segmented controls: a grey track, a white slip, the chosen label in the
+   accent. Shared by the period tabs, small tabs and metric switches. */
+.app-shell :is(.period-tabs, .small-tabs, .metric-switch) {
+  border-radius: var(--r-control) !important;
+  background: var(--canvas) !important;
+}
+.app-shell .period-tabs { height: 40px !important; padding: 3px !important; }
+.app-shell :is(.period-tabs, .small-tabs) [role="tab"],
+.app-shell .metric-switch button { border-radius: var(--r-segment) !important; }
+.app-shell .period-tabs [role="tab"] { height: 34px; }
+.app-shell :is(.period-tabs, .small-tabs, .metric-switch) > [data-sliding-indicator] { border-radius: var(--r-segment); }
+.app-shell :is(.period-tabs, .small-tabs) [role="tab"][data-state="active"],
+.app-shell :is(.metric-switch, .insight-trend-switch) [aria-pressed="true"],
+.app-shell .cm-activity-tabs [aria-selected="true"] { color: var(--primary) !important; }
+.app-shell :is(.period-tabs, .small-tabs) [role="tab"]:active,
+.app-shell :is(.metric-switch, .insight-trend-switch, .cm-activity-tabs) button:active { transform: translateY(1px); }
+
+.app-shell :is(.count-badge, .preview-badge),
+[data-slot="dialog-content"] :is(.count-badge, .preview-badge) {
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-chip);
+  background: var(--canvas);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+}
+.app-shell .workspace-notices { border-radius: var(--r-well); }
+
+/* ── Cards ────────────────────────────────────────────────────────── */
+.app-shell :is(.panel, .sv-card, .archive-panel, .ledger-figure, .ledger-composition, .first-report),
+.app-shell .sv-page .sv-summary-item {
+  min-width: 0;
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-panel);
+}
+.app-shell .panel-head { padding: 22px 22px 0; }
+.app-shell .panel-head p { margin-top: 2px; font-size: 12px; line-height: 18px; }
+
+/* The ledger is four figure cards and a composition card, not one strip. */
+.app-shell .ledger {
+  display: grid;
+  gap: 16px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+.app-shell .ledger-figures { gap: 16px; grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)); }
+.app-shell .ledger-figure { padding: 22px; min-height: 164px; }
+.app-shell .ledger-figure + .ledger-figure { border-left: 1px solid var(--card-border); }
+/* The lead figure is the one tinted card, like game-manage's hero tone. Its
+   tinted border holds at every width, and it drops the white top highlight,
+   which would read as a pale line on the tint. */
+.app-shell .ledger-lead { --lead-border: color-mix(in srgb, var(--primary) 10%, var(--card-border)); background: var(--accent-tint); border-color: var(--lead-border); box-shadow: var(--shadow-panel-lift); }
+.app-shell .ledger-label { font-size: 13px; color: var(--ink-2); white-space: normal; flex-wrap: wrap; }
+.app-shell .ledger-value { font-weight: 500; letter-spacing: -0.04em; }
+.app-shell .ledger-lead .ledger-value { font-size: var(--fs-lead); font-weight: 500; letter-spacing: -0.05em; }
+.app-shell .ledger-note { white-space: normal; line-height: 18px; }
+.app-shell .ledger-composition { padding: 22px; border-top: 1px solid var(--card-border); }
+.app-shell .ledger-composition-head p { font-size: 12px; }
+.app-shell .ledger-composition .composition-legend { gap: 8px; }
+.app-shell .ledger-composition .composition-legend > div { padding: 10px 12px; }
+
+/* ── Wells: the one level of grey inside a card ───────────────────── */
+/* Tiles sit inside a card, so they take a tone step and no outline. */
+.app-shell :is(
+  .ledger-composition .composition-legend > div,
+  .insight-trend-metrics > div,
+  .client-row,
+  .sv-device-stat,
+  .sv-quota-window,
+  .sv-subscription-dates > div,
+  .sv-subscription-records li,
+  .cm-activity-summary > span,
+  .cm-activity-sampling-grid > div,
+  .archive-context,
+  .archive-day,
+  .first-report dl
+) {
+  border: 0;
+  border-radius: var(--r-well);
+  background: var(--inset);
+  box-shadow: inset 0 0 0 1px rgb(23 23 23 / 0.035);
+}
+.dark .app-shell :is(
+  .ledger-composition .composition-legend > div,
+  .insight-trend-metrics > div,
+  .client-row,
+  .sv-device-stat,
+  .sv-quota-window,
+  .sv-subscription-dates > div,
+  .sv-subscription-records li,
+  .cm-activity-summary > span,
+  .cm-activity-sampling-grid > div,
+  .archive-context,
+  .archive-day,
+  .first-report dl
+) {
+  background: var(--inset);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.04);
+}
+.app-shell .sv-quota-window + .sv-quota-window { border-top: 0; }
+.app-shell .client-row + .client-row { border-top: 0; }
+
+/* Trend card: figures above the chart, each in a well. */
+.app-shell .insight-trend-metrics { gap: 8px; padding: 0 22px 16px; grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr)); }
+.app-shell .insight-trend-metrics > div { padding: 12px 14px; }
+.app-shell .insight-trend-metrics > div > span { white-space: normal; line-height: 18px; }
+.app-shell .insight-trend-metrics > div > small { white-space: normal; line-height: 18px; overflow-wrap: anywhere; }
+.app-shell .insight-trend-inset { margin: 0; padding: 0 12px 4px; }
+
+/* Clients card. */
+.app-shell .client-rows { display: grid; gap: 8px; padding: 16px 22px 22px; }
+.app-shell .client-row { padding: 14px; }
+.app-shell .client-head strong { font-weight: 600; }
+
+/* ── Tables: square model rows, rounded session rows ──────────────── */
+.app-shell .model-filters { padding: 14px 22px; gap: 8px; border-block: 1px solid var(--line-soft); background: transparent; }
+.app-shell .model-filters .search-field,
+.app-shell .sv-search input {
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  background: var(--surface);
+}
+.app-shell .model-table th,
+.app-shell .sv-session-table th { background: transparent; color: var(--ink-3); font-size: 12px; font-weight: 500; }
+.app-shell .model-open > .brand-icon { width: 32px; height: 32px; }
+.app-shell .model-open strong { font-weight: 500; }
+.app-shell .table-foot,
+.app-shell .sv-history-sessions .sv-table-footer { padding-block: 14px; background: transparent; border-top: 1px solid var(--line-soft); }
+.app-shell .matrix-scroll { padding: 16px 22px; border-block: 1px solid var(--line-soft); background: transparent; }
+.app-shell .matrix-panel .matrix-note { padding: 14px 22px; }
+@media (min-width: 761px) and (min-height: 501px), (min-width: 961px) {
+  .app-shell :is(.model-table-scroll, .sv-table-wrap) { padding-inline: 16px; }
+  .app-shell :is(.model-table, .sv-session-table) { border-collapse: separate; border-spacing: 0 8px; }
+  .app-shell :is(.model-table th, .model-table td, .sv-session-table th, .sv-session-table td):first-child { padding-left: 14px; }
+  .app-shell :is(.model-table th, .model-table td, .sv-session-table th, .sv-session-table td):last-child { padding-right: 14px; }
+  .app-shell .table-glide { left: 16px; right: 16px; border-radius: 0; }
+  .app-shell .model-table tbody tr > td,
+  .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td {
+    background: var(--inset);
+    border-block: 0;
+    border-radius: 0;
+    box-shadow: inset 0 1px 0 rgb(23 23 23 / 0.035), inset 0 -1px 0 rgb(23 23 23 / 0.035);
+    transition: background-color var(--duration-quick) var(--ease-smooth-out);
+  }
+  .app-shell .model-table tbody tr > td:first-child,
+  .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td:first-child {
+    box-shadow: inset 1px 1px 0 rgb(23 23 23 / 0.035), inset 0 -1px 0 rgb(23 23 23 / 0.035);
+  }
+  .app-shell .model-table tbody tr > td:last-child,
+  .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td:last-child {
+    box-shadow: inset -1px 1px 0 rgb(23 23 23 / 0.035), inset 0 -1px 0 rgb(23 23 23 / 0.035);
+  }
+  /* Model rows stay square, as asked for the model usage list; session rows
+     are rounded wells. */
+  .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td:first-child { border-radius: var(--r-well) 0 0 var(--r-well); }
+  .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td:last-child { border-radius: 0 var(--r-well) var(--r-well) 0; }
+  .app-shell .sv-session-table tbody tr.sv-session-detail > td {
+    border-bottom: 0;
+    border-radius: var(--r-well);
+    box-shadow: inset 0 0 0 1px rgb(23 23 23 / 0.035);
+  }
+  /* At night the rows sit a step darker than the card; a faint light edge
+     keeps each one readable as its own card. */
+  .dark .app-shell .model-table tbody tr > td,
+  .dark .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), inset 0 -1px 0 rgb(255 255 255 / 0.05); }
+  .dark .app-shell .model-table tbody tr > td:first-child,
+  .dark .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td:first-child { box-shadow: inset 1px 1px 0 rgb(255 255 255 / 0.05), inset 0 -1px 0 rgb(255 255 255 / 0.05); }
+  .dark .app-shell .model-table tbody tr > td:last-child,
+  .dark .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td:last-child { box-shadow: inset -1px 1px 0 rgb(255 255 255 / 0.05), inset 0 -1px 0 rgb(255 255 255 / 0.05); }
+  .dark .app-shell .sv-session-table tbody tr.sv-session-detail > td { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05); }
+  @media (hover: hover) and (pointer: fine) {
+    .app-shell .model-table tbody tr:hover > td,
+    .app-shell .sv-session-table tbody tr:not(.sv-session-detail):hover > td { background: var(--hover); }
+  }
+}
+
+/* ── Secondary pages ──────────────────────────────────────────────── */
+.app-shell .sv-page .sv-summary { gap: 16px; background: transparent; border: 0; border-radius: 0; overflow: visible; }
+.app-shell .sv-page .sv-summary-item { padding: 22px; gap: 8px; min-height: 132px; }
+.app-shell .sv-page .sv-summary-item + .sv-summary-item::before { display: none; }
+.app-shell .sv-summary-value { font-weight: 500; letter-spacing: -0.04em; overflow-wrap: anywhere; }
+.app-shell .sv-summary-label { flex-wrap: wrap; font-size: 13px; }
+/* A toolbar is a row of controls on the page, not a card. */
+.app-shell .sv-page > .sv-toolbar { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+
+/* Devices */
+.app-shell .sv-device-main { padding: 22px; }
+.app-shell .sv-device-heading { padding: 0; gap: 12px; border: 0; border-radius: 0; background: transparent; }
+.app-shell .sv-device-heading h3 { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.app-shell .sv-device-icon { border-radius: var(--r-well); background: var(--inset); }
+.app-shell .sv-device-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; border-top: 0; padding-top: 0; }
+.app-shell .sv-device-stat { padding: 12px 14px; }
+.app-shell .sv-device-metrics .sv-metric-value { font-size: 20px; font-weight: 500; letter-spacing: -0.03em; overflow-wrap: anywhere; }
+.app-shell .sv-device-footer { padding: 12px 22px; background: transparent; border-top: 1px solid var(--line-soft); }
+.app-shell .sv-device-detail { padding: 16px 22px; }
+
+/* Quota and subscriptions */
+.app-shell :is(.sv-quota-card, .sv-subscription) { padding: 22px; }
+.app-shell .sv-provider-icon { border-radius: var(--r-well); background: var(--inset); }
+.app-shell .sv-quota-windows { gap: 8px; padding-top: 0; border-top: 0; }
+.app-shell .sv-quota-window { padding: 14px; }
+.app-shell .sv-subscription h3.sv-subscription-plan { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.app-shell .sv-subscription-price { padding: 0; border: 0; border-radius: 0; background: transparent; }
+.app-shell .sv-subscription-dates { gap: 8px; }
+.app-shell .sv-subscription-dates > div { padding: 10px 12px; min-width: 0; }
+.app-shell .sv-subscription-records li { padding: 10px 12px; }
+
+/* History */
+.app-shell .cm-activity-head { padding: 22px; }
+.app-shell .cm-activity-body { background: transparent; }
+.app-shell .cm-activity-summary > span { padding: 10px 12px; }
+.app-shell .sv-history-sessions .sv-history-filters { padding: 14px 22px; background: transparent; border-bottom: 1px solid var(--line-soft); }
+.app-shell .sv-session-table thead { background: transparent; }
+.app-shell .archive-panel { padding: 22px; }
+.app-shell .archive-days { display: grid; gap: 8px; }
+.app-shell .archive-day summary { padding: 14px 16px; border-radius: inherit; }
+.app-shell .archive-columns { padding-inline: 16px; border-color: var(--line-soft); }
+.app-shell .archive-day-detail { padding: 0 16px 16px; }
+.app-shell .archive-composition { border: 1px solid var(--line); border-radius: var(--r-well); background: var(--surface); }
+
+/* Heat cells: small squares with soft corners, flat. */
+.app-shell :is(.matrix-cell, .cm-activity-cell) { border-radius: 6px; }
+
+/* ── Mid widths and phones ────────────────────────────────────────── */
+@media (min-width: 761px) and (max-width: 1180px) {
+  .app-shell .ledger-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell .ledger-lead { grid-column: auto; }
+  .app-shell .ledger-figure:nth-child(n) { border: 1px solid var(--card-border); }
+  .app-shell .ledger-lead:nth-child(n) { border-color: var(--lead-border); }
+  .app-shell .ledger-composition .composition-legend { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .app-shell { --gutter: 24px; --gap: 20px; }
+  .app-shell .model-compact-split { flex-direction: column; align-items: flex-end; gap: 3px; }
+}
+@media (max-width: 760px), (max-width: 960px) and (max-height: 500px) {
+  html { scroll-padding-bottom: calc(116px + env(safe-area-inset-bottom, 0px)); }
+  .app-shell { --gap: 16px; --r-card: 22px; }
+  .app-shell .workspace-main { padding-bottom: calc(116px + env(safe-area-inset-bottom, 0px)); }
+  .app-toast { bottom: calc(116px + env(safe-area-inset-bottom, 0px)); }
+  .app-shell .app-topbar { height: auto; min-height: 68px; }
+  .app-shell .command-search { flex: 1 1 auto; width: auto; min-width: 0; height: 44px; padding: 0 13px; justify-content: flex-start; }
+  .app-shell .command-search kbd { display: none; }
+  .app-shell .page-heading { padding-block: 12px 16px; gap: 12px; }
+  .app-shell h1 { font-size: 26px; line-height: 34px; }
+  .app-shell .heading-actions { align-items: center; }
+  .app-shell .ledger { gap: 12px; }
+  .app-shell .ledger-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .app-shell .ledger-figure,
+  .app-shell .ledger-figure:nth-child(n) { padding: 18px 16px; border: 1px solid var(--card-border); min-height: 148px; }
+  .app-shell .ledger-lead:nth-child(n) { border-color: var(--lead-border); }
+  .app-shell .ledger-value { font-size: clamp(23px, 6vw, 28px); flex-wrap: wrap; line-height: 1.15; }
+  .app-shell .ledger-lead .ledger-value { font-size: clamp(26px, 7vw, 32px); }
+  .app-shell .ledger-composition { padding: 18px 16px; }
+  .app-shell .ledger-composition .composition-legend { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .app-shell .panel-head { padding: 18px 18px 0; }
+  .app-shell .insight-trend-metrics { padding-inline: 16px; }
+  .app-shell .client-rows { padding: 14px 16px 16px; }
+  .app-shell .client-row { padding: 12px; }
+  .app-shell .model-table td { padding-block: 0; }
+  .app-shell .model-table tbody,
+  .app-shell .sv-session-table tbody { display: grid; gap: 8px; padding: 12px 16px 16px; }
+  .app-shell .model-table tbody tr,
+  .app-shell .sv-session-table tbody tr:not(.sv-session-detail) { padding: 14px; border: 0; border-radius: 0; background: var(--inset); box-shadow: inset 0 0 0 1px rgb(23 23 23 / 0.035); }
+  .app-shell .sv-session-table tbody tr:not(.sv-session-detail) { border-radius: var(--r-well); }
+  .app-shell .sv-session-table tbody tr.sv-session-detail > td { border-radius: var(--r-well); box-shadow: inset 0 0 0 1px rgb(23 23 23 / 0.035); }
+  .dark .app-shell .model-table tbody tr,
+  .dark .app-shell .sv-session-table tbody tr:not(.sv-session-detail),
+  .dark .app-shell .sv-session-table tbody tr.sv-session-detail > td { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.04); }
+  .app-shell .model-filters { padding: 14px 16px; }
+  .app-shell .model-compact-split { flex-direction: column; align-items: flex-start; }
+  .app-shell .matrix-scroll { padding: 14px 16px; }
+  .app-shell .sv-page .sv-summary { gap: 12px; }
+  .app-shell .sv-page .sv-summary-item { padding: 18px 16px; min-height: 120px; }
+  .app-shell :is(.sv-device-main, .sv-quota-card, .sv-subscription) { padding: 18px 16px; }
+  .app-shell .sv-device-metrics { gap: 8px; }
+  .app-shell .sv-device-stat { padding: 12px; }
+  .app-shell .sv-device-metrics .sv-metric-value { font-size: 18px; }
+  .app-shell .sv-quota-window { padding: 12px; }
+  .app-shell .cm-activity-head { padding: 18px 16px; }
+  .app-shell .cm-activity-summary { gap: 6px; }
+  .app-shell .archive-panel { padding: 18px 16px; }
+  .app-shell .archive-day summary { padding: 14px 12px; }
+  .app-shell .archive-day-detail { padding: 0 12px 14px; }
+  .app-shell :is(.plain-button, .sv-button, .archive-button, .sv-device-toggle, .period-tabs [role="tab"], .small-tabs [role="tab"]) { min-height: 44px; }
+  .app-shell .period-tabs { height: auto !important; }
+}
+@media (max-width: 480px) {
+  .app-shell .sv-page .sv-summary { grid-template-columns: 1fr; }
+  .app-shell .sv-page .sv-summary-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 12px; min-height: 96px; }
+  .app-shell .sv-summary-item .sv-summary-label { grid-column: 1; }
+  .app-shell .sv-summary-item .sv-summary-value { grid-column: 2; grid-row: 1 / 3; font-size: 25px; text-align: right; }
+  .app-shell .sv-summary-item .sv-summary-foot { grid-column: 1; }
+}
+@media (min-width: 600px) and (max-width: 960px) and (max-height: 500px) {
+  .app-shell .page-heading { flex-wrap: nowrap; align-items: center; }
+  .app-shell .heading-actions { width: auto; }
+}

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createRequire } from "node:module";
+import { finishAnimations } from "./motion-helpers";
 const require = createRequire(import.meta.url);
 const fixture = require("./fixtures/overview.json");
 const longName = "private-model-" + "abcdefghijklmnop".repeat(7);
@@ -34,6 +35,8 @@ for (const viewport of [
     await page.getByRole("button", { name: `查看 ${longName} 详情`, exact: true }).click();
     const dialog = page.locator(".model-dialog");
     await expect(dialog.getByRole("heading", { name: longName, exact: true })).toBeVisible();
+    // The dialog grows in from 96%; measure where it comes to rest.
+    await finishAnimations(dialog);
     const dimensions = await dialog.evaluate(element => {
       const box = element.getBoundingClientRect();
       const title = element.querySelector('[data-slot="dialog-title"]')!.getBoundingClientRect();
@@ -45,6 +48,9 @@ for (const viewport of [
     expect(dimensions.right).toBeLessThanOrEqual(dimensions.viewport);
     expect(dimensions.top).toBeGreaterThanOrEqual(0);
     expect(dimensions.bottom).toBeLessThanOrEqual(dimensions.height);
+    // A dialog centred over the page: equal room on either side and above and below.
+    expect(Math.abs(dimensions.left - (dimensions.viewport - dimensions.right))).toBeLessThan(1);
+    expect(Math.abs(dimensions.top - (dimensions.height - dimensions.bottom))).toBeLessThan(1);
     expect(errors).toEqual([]);
     await testInfo.attach("long-model-dialog", { body: await page.screenshot({ path: `evidence/review-long-model-${viewport.width}x${viewport.height}.png`, animations: "disabled" }), contentType: "image/png" });
     await page.keyboard.press("Escape");
@@ -130,7 +136,7 @@ test("检查某一天时，趋势卡标题换成那天的数字，聚焦带来�
   const trend = page.getByRole("region", { name: "用量趋势" });
   await expect(trend.locator(".insight-trend-canvas")).toBeVisible();
   const label = trend.locator(".insight-trend-metrics > div > span").first();
-  await expect(label).toHaveText("区间词元");
+  await expect(label).toHaveText("区间用量");
   const slider = trend.getByRole("slider");
   // Focusing scrolls the chart into view smoothly; that scroll used to close
   // the keyboard inspection it had just opened.
@@ -139,12 +145,12 @@ test("检查某一天时，趋势卡标题换成那天的数字，聚焦带来�
   const tooltip = page.locator(".insight-trend-tooltip");
   const day = await tooltip.locator("time").getAttribute("datetime");
   const short = `${Number(day!.slice(5, 7))}/${Number(day!.slice(8))}`;
-  await expect(label).toHaveText(`${short} 词元`);
+  await expect(label).toHaveText(`${short} 用量`);
   await page.waitForTimeout(700);
   await expect(tooltip).toBeVisible();
-  await expect(label).toHaveText(`${short} 词元`);
+  await expect(label).toHaveText(`${short} 用量`);
   await slider.press("Escape");
-  await expect(label).toHaveText("区间词元");
+  await expect(label).toHaveText("区间用量");
 });
 
 test("移动端导航 Escape 后焦点回到打开按钮", async ({ page }) => {

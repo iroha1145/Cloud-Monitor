@@ -6,18 +6,22 @@ async function expectDrawerAtViewportEdge(page: Page) {
   // The first tap opens the half-height stop; Home requests the full stop
   // before checking the complete sheet's viewport geometry.
   await drawer.locator('[data-mobile-navigation-trigger]').press("Home");
+  await expect(drawer).toHaveAttribute("data-drawer-stop", "open");
   await expect
     .poll(async () => {
       const box = await drawer.boundingBox();
       const viewport = page.viewportSize()!;
+      // One floating surface, centred and anchored 12px above the bottom
+      // edge, min(100vw - 20px, 520px) wide once fully open and never
+      // closer than 12px to the top.
       return Boolean(
         box &&
         Math.abs(box.x - (viewport.width - box.width) / 2) < 1 &&
-        Math.abs(box.y + box.height - viewport.height) < 1 &&
-        box.y >= 15 &&
-        box.height <= viewport.height - 15 &&
+        Math.abs(box.y + box.height - (viewport.height - 12)) < 1 &&
+        box.y >= 11.5 &&
+        box.height <= viewport.height - 23.5 &&
         box.width > 240 &&
-        box.width <= Math.min(520, viewport.width),
+        Math.abs(box.width - Math.min(520, viewport.width - 20)) < 1,
       );
     })
     .toBe(true);

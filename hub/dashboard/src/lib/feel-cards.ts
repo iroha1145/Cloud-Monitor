@@ -1,9 +1,11 @@
-import { cardAvoidance, mobileCardAvoidance, itemRepulsion, clamp, springStep, type AvoidanceSide, type CardAvoidance, type Rectangle } from './feel-physics';
+import { cardAvoidance, mobileCardAvoidance, itemRepulsion, clamp, springStep, SLOT_SPRING, type AvoidanceSide, type CardAvoidance, type Rectangle } from './feel-physics';
 
-const SELECTOR = '[data-feel-card]';
-const CONTROLS = 'a,button,input,select,textarea,label,summary,[role="button"],[role="slider"],[contenteditable="true"],[data-feel-ignore]';
-const LAYOUT_PROPERTIES = ['width', 'margin-left', 'margin-right'];
-type Card = { el: HTMLElement; slot: Rectangle; saved: [string, string][]; ml: number; mr: number; loss: number; inset: number; vl: number; vi: number; side: AvoidanceSide; target: CardAvoidance; ay: number; av: number; mobileTarget: number; mobileLimit: number; blockers: Element[] };
+// A group (a grid of cards) makes room as one block, so a narrow card at the
+// start of a row is not left under the menu; the cards in it keep their own
+// press feedback and records.
+const SELECTOR = '[data-feel-card], [data-feel-group]';
+const LAYOUT_PROPERTIES = ['width', 'margin-left', 'margin-right', 'grid-template-columns'];
+type Card = { el: HTMLElement; slot: Rectangle; saved: [string, string][]; ml: number; mr: number; cols: number; loss: number; inset: number; vl: number; vi: number; side: AvoidanceSide; target: CardAvoidance; ay: number; av: number; mobileTarget: number; mobileLimit: number; blockers: Element[] };
 
 type InnerItem = {
   el: HTMLElement; kind: 'row' | 'cell'; parent: HTMLElement | null;
@@ -19,7 +21,8 @@ function createFeelItems(root: HTMLElement, schedule: () => void) {
   const records = new Map<HTMLElement, InnerItem>(), visible = new Set<InnerItem>(), active = new Set<InnerItem>();
   let scan = true, targetsDirty = true, disposed = false;
   const restore = (item: InnerItem) => {
-    ITEM_PROPERTIES.forEach(key => item.el.style.removeProperty(key)); delete item.el.dataset.feelItemActive;
+    ITEM_PROPERTIES.forEach(key => item.el.style.removeProperty(key));
+    delete item.el.dataset.feelItemActive; delete item.el.dataset.feelItemMoving;
     item.x = item.y = item.vx = item.vy = item.vs = item.tx = item.ty = 0; item.scale = item.ts = 1;
     active.delete(item);
   };
@@ -32,7 +35,7 @@ function createFeelItems(root: HTMLElement, schedule: () => void) {
     targetsDirty = true; schedule();
   }, { rootMargin: '0px', threshold: 0 });
   function refresh() { scan = true; targetsDirty = true; }
-  function read(menu: Rectangle | null, mobile: boolean, safeTop: number, reduced: boolean) {
+  function read(menu: Rectangle | null, mobile: boolean, safeTop: number, reduced: boolean, menuMoving: boolean) {
     if (scan) {
       const found = new Set([...root.querySelectorAll<HTMLElement>('[data-feel-item]')]
         .filter(el => !el.closest('[role="dialog"]') && !el.parentElement?.closest('[data-feel-item]')));
@@ -46,7 +49,9 @@ function createFeelItems(root: HTMLElement, schedule: () => void) {
     }
     if (!targetsDirty) return;
     targetsDirty = false;
-    if (reduced || !menu) {
+    // Records answer the menu only while it moves; once it rests they return
+    // to their places, so nothing stays scaled under a still menu or drawer.
+    if (reduced || !menu || !menuMoving) {
       for (const item of active) { item.tx = item.ty = 0; item.ts = 1; if (reduced) restore(item); }
       return;
     }
@@ -98,17 +103,30 @@ function createFeelItems(root: HTMLElement, schedule: () => void) {
       item.el.style.setProperty('--feel-item-y', `${item.y.toFixed(3)}px`);
       item.el.style.setProperty('--feel-item-scale', item.scale.toFixed(6));
       item.el.dataset.feelItemActive = 'true';
+      if (settled) delete item.el.dataset.feelItemMoving; else item.el.dataset.feelItemMoving = 'true';
     }
     return moving;
   }
   return { refresh, invalidate() { targetsDirty = true; }, read, paint, destroy() { disposed = true; observer.disconnect(); records.forEach(restore); records.clear(); visible.clear(); } };
 }
 
-/** Decorative only. These listeners never cancel scrolling, selection or clicks. */
+/** The column count of a grid whose columns are all the same width, or 0. */
+function equalColumns(el: HTMLElement, style: CSSStyleDeclaration) {
+  if (!style.display.includes('grid') || el.classList.contains('sv-history-layout')) return 0;
+  const tracks = style.gridTemplateColumns.split(' ').filter(track => track.endsWith('px')).map(parseFloat);
+  return tracks.length > 1 && tracks.every(track => Math.abs(track - tracks[0]) < 1) ? tracks.length : 0;
+}
+
+/** Cards make room for the floating menu. On a desktop each top-level card
+ * keeps its own layout slot and gives up width beside the menu (game-manage
+ * card-avoidance); on a phone cards just above the tab-bar drawer rise into
+ * free space. Inner records add their own small translation. Nothing here
+ * cancels scrolling, selection or clicks, and nothing stays transformed or
+ * promoted to its own layer once the motion has settled. */
 export function createFeelCards(root: HTMLElement) {
   const win = root.ownerDocument.defaultView!, doc = root.ownerDocument;
   const reduced = win.matchMedia('(prefers-reduced-motion: reduce)');
-  let cards: Card[] = [], dirty = true, mode: 'desktop' | 'mobile' = 'desktop', menu: Rectangle | null = null, frame = 0, time = 0, destroyed = false;
+  let cards: Card[] = [], dirty = true, mode: 'desktop' | 'mobile' = 'desktop', menu: Rectangle | null = null, menuMoving = false, frame = 0, time = 0, destroyed = false;
   const items = createFeelItems(root, schedule);
   const heights = new WeakMap<Element, number>();
   const sizes = new ResizeObserver(entries => {
@@ -119,34 +137,19 @@ export function createFeelCards(root: HTMLElement) {
     }
     if (changed) { items.invalidate(); schedule(); }
   });
-  let returnFrame = 0, returning: HTMLElement | null = null;
-  let press: { el: HTMLElement; id: number; x: number; y: number; touch: boolean } | null = null;
-  const restore = (el: HTMLElement) => {
-    ['--feel-avoid-x', '--feel-avoid-y', '--feel-press-x', '--feel-press-y', '--feel-press-scale'].forEach(key => el.style.removeProperty(key));
-    delete el.dataset.feelMoving;
-  };
-  function resetPress() {
-    win.cancelAnimationFrame(returnFrame); returnFrame = 0;
-    if (returning) {
-      returning.style.removeProperty('--feel-press-x'); returning.style.removeProperty('--feel-press-y'); returning.style.removeProperty('--feel-press-scale'); returning = null;
-    }
-    if (!press) return;
-    const el = press.el;
-    el.style.removeProperty('--feel-press-x'); el.style.removeProperty('--feel-press-y'); el.style.removeProperty('--feel-press-scale');
-    press = null;
-  }
   function restoreLayout(card: Card) {
     LAYOUT_PROPERTIES.forEach((key, index) => {
       const [value, priority] = card.saved[index];
       if (value) card.el.style.setProperty(key, value, priority); else card.el.style.removeProperty(key);
     });
+    card.el.style.removeProperty('--feel-avoid-y');
     delete card.el.dataset.menuAvoidance; delete card.el.dataset.feelMoving;
   }
   function precedingBlocks(el: HTMLElement) {
     const result: Element[] = [];
     for (let node: Element | null = el; node && node !== root; node = node.parentElement) {
       for (let sibling = node.previousElementSibling; sibling; sibling = sibling.previousElementSibling) {
-        if (!sibling.matches('.feel-navigation, .feel-nav-peek, .skip-link, script, style')) result.push(sibling);
+        if (!sibling.matches('.feel-navigation, .feel-nav-drawer, .feel-nav-backdrop, .skip-link, script, style')) result.push(sibling);
       }
     }
     return result;
@@ -161,11 +164,10 @@ export function createFeelCards(root: HTMLElement) {
         const old = previous.get(el), style = win.getComputedStyle(el);
         return [{ el, slot: { left: rect.left, right: rect.right, width: rect.width, top: rect.top - (old?.ay || 0), bottom: rect.bottom - (old?.ay || 0), height: rect.height },
           saved: LAYOUT_PROPERTIES.map(key => [el.style.getPropertyValue(key), el.style.getPropertyPriority(key)] as [string, string]),
-          ml: parseFloat(style.marginLeft) || 0, mr: parseFloat(style.marginRight) || 0,
+          ml: parseFloat(style.marginLeft) || 0, mr: parseFloat(style.marginRight) || 0, cols: equalColumns(el, style),
           loss: old?.loss || 0, inset: old?.inset || 0, vl: old?.vl || 0, vi: old?.vi || 0,
           side: old?.side || null, ay: old?.ay || 0, av: old?.av || 0, mobileTarget: 0, mobileLimit: 0, blockers: precedingBlocks(el), target: cardAvoidance(rect, null, { left: 0, right: win.innerWidth }) }];
       });
-    for (const [el] of previous) if (!cards.some(card => card.el === el)) restore(el);
     cards.forEach(card => sizes.observe(card.el)); dirty = false;
   }
   function tick(now: number) {
@@ -194,36 +196,42 @@ export function createFeelCards(root: HTMLElement) {
       const mobileResponse = mode === 'mobile' ? mobileCardAvoidance(base, menu, safeTop, precedingBottom) : { y: 0, available: 0 };
       card.mobileTarget = mobileResponse.y; card.mobileLimit = mobileResponse.available;
     }
-    items.read(menu, mode === 'mobile', safeTop, reduced.matches);
+    items.read(menu, mode === 'mobile', safeTop, reduced.matches, menuMoving);
     let moving = false, outerChanged = false;
     for (const card of cards) {
       const beforeLoss = card.loss, beforeInset = card.inset, beforeY = card.ay;
+      let cardMoving = false;
       for (const [key, velocity] of [['loss', 'vl'], ['inset', 'vi']] as const) {
         if (reduced.matches) { card[key] = card.target[key]; card[velocity] = 0; }
-        else [card[key], card[velocity]] = springStep(card[key], card[velocity], card.target[key], dt, 260, 28, 1);
+        else [card[key], card[velocity]] = springStep(card[key], card[velocity], card.target[key], dt, ...SLOT_SPRING);
         if (Math.abs(card[key] - card.target[key]) < .03 && Math.abs(card[velocity]) < .1) { card[key] = card.target[key]; card[velocity] = 0; }
-        else moving = true;
+        else cardMoving = true;
       }
       card.loss = clamp(card.loss, 0, card.target.limit); card.inset = clamp(card.inset, 0, card.loss);
-      if (card.loss < .03 && card.target.loss === 0) restoreLayout(card);
-      else {
-        card.el.style.width = `${(card.slot.width - card.loss).toFixed(2)}px`;
-        card.el.style.marginLeft = `${(card.ml + card.inset).toFixed(2)}px`;
-        card.el.style.marginRight = `${(card.mr + card.loss - card.inset).toFixed(2)}px`;
-        card.el.dataset.menuAvoidance = card.target.covered ? 'overlap' : 'clear';
-        if (!reduced.matches) card.el.dataset.feelMoving = 'true'; else delete card.el.dataset.feelMoving;
-      }
       if (reduced.matches) { card.ay = card.mobileTarget; card.av = 0; }
-      else [card.ay, card.av] = springStep(card.ay, card.av, card.mobileTarget, dt, 260, 28, 1);
+      else [card.ay, card.av] = springStep(card.ay, card.av, card.mobileTarget, dt, ...SLOT_SPRING);
       if (Math.abs(card.ay - card.mobileTarget) < .02 && Math.abs(card.av) < .1) { card.ay = card.mobileTarget; card.av = 0; }
-      else moving = true;
+      else cardMoving = true;
       // The spring cannot overshoot a safety boundary or cover preceding content.
       card.ay = clamp(card.ay, -card.mobileLimit, 0);
-      card.el.style.setProperty('--feel-avoid-x', '0.00px'); card.el.style.setProperty('--feel-avoid-y', `${card.ay.toFixed(3)}px`);
-      if (Math.abs(card.ay) > .01) {
-        card.el.dataset.menuAvoidance = 'mobile';
-        if (!reduced.matches) card.el.dataset.feelMoving = 'true';
+      if (card.loss < .03 && card.target.loss === 0 && Math.abs(card.ay) <= .01) restoreLayout(card);
+      else {
+        if (card.loss >= .03 || card.target.loss > 0) {
+          // A grid of equal columns keeps its column count while it narrows,
+          // so cards shrink in place instead of jumping to another row.
+          if (card.cols) card.el.style.gridTemplateColumns = `repeat(${card.cols}, minmax(0, 1fr))`;
+          card.el.style.width = `${(card.slot.width - card.loss).toFixed(2)}px`;
+          card.el.style.marginLeft = `${(card.ml + card.inset).toFixed(2)}px`;
+          card.el.style.marginRight = `${(card.mr + card.loss - card.inset).toFixed(2)}px`;
+          card.el.dataset.menuAvoidance = card.target.covered ? 'overlap' : 'clear';
+        }
+        if (Math.abs(card.ay) > .01) {
+          card.el.style.setProperty('--feel-avoid-y', `${(cardMoving ? card.ay : Math.round(card.ay)).toFixed(cardMoving ? 3 : 0)}px`);
+          card.el.dataset.menuAvoidance = 'mobile';
+        } else card.el.style.removeProperty('--feel-avoid-y');
+        if (cardMoving && !reduced.matches) card.el.dataset.feelMoving = 'true'; else delete card.el.dataset.feelMoving;
       }
+      if (cardMoving) moving = true;
       if (Math.abs(card.loss - beforeLoss) + Math.abs(card.inset - beforeInset) + Math.abs(card.ay - beforeY) > .001) outerChanged = true;
     }
     const innerMoving = items.paint(dt, reduced.matches);
@@ -231,97 +239,25 @@ export function createFeelCards(root: HTMLElement) {
     if (moving || innerMoving || outerChanged) frame = win.requestAnimationFrame(tick); else time = 0;
   }
   function schedule() { if (!destroyed && !frame) frame = win.requestAnimationFrame(tick); }
-  const selection = () => doc.getSelection()?.isCollapsed === false;
-  const beginPress = (target: Element | null, id: number, x: number, y: number, touch: boolean) => {
-    if (reduced.matches || selection()) return;
-    const el = target?.closest<HTMLElement>(SELECTOR);
-    if (!el || target?.closest(CONTROLS) || el.parentElement?.closest(SELECTOR)) return;
-    for (let node = target; node && node !== el; node = node.parentElement) {
-      const style = win.getComputedStyle(node);
-      if (/(auto|scroll)/.test(`${style.overflowX} ${style.overflowY}`)) return;
-    }
-    resetPress(); press = { el, id, x, y, touch };
-    el.style.setProperty('--feel-press-scale', '.997');
-  };
-  const down = (event: PointerEvent) => {
-    if (event.pointerType === 'touch') return;
-    if (press && press.id !== event.pointerId) { resetPress(); return; }
-    if (event.isPrimary === false || event.button !== 0) return;
-    beginPress(event.target instanceof Element ? event.target : null, event.pointerId, event.clientX, event.clientY, false);
-  };
-  const movePress = (x: number, y: number) => {
-    if (!press) return;
-    const dx = x - press.x, dy = y - press.y;
-    if (selection() || (press.touch && Math.abs(dy) > 5)) { resetPress(); return; }
-    press.el.style.setProperty('--feel-press-x', `${clamp(dx * .035, -5, 5)}px`);
-    press.el.style.setProperty('--feel-press-y', `${press.touch ? 0 : clamp(dy * .035, -5, 5)}px`);
-  };
-  const move = (event: PointerEvent) => { if (press && !press.touch && press.id === event.pointerId) movePress(event.clientX, event.clientY); };
-  const releasePress = () => {
-    if (!press) return;
-    const el = press.el;
-    let x = parseFloat(el.style.getPropertyValue('--feel-press-x')) || 0, y = parseFloat(el.style.getPropertyValue('--feel-press-y')) || 0;
-    let vx = 0, vy = 0, at = 0;
-    press = null; returning = el;
-    el.style.removeProperty('--feel-press-scale');
-    const rebound = (now: number) => {
-      returnFrame = 0;
-      if (reduced.matches || !el.isConnected) { resetPress(); return; }
-      const dt = at ? (now - at) / 1000 : 1 / 60; at = now;
-      [x, vx] = springStep(x, vx, 0, dt, 330, 29, .8); [y, vy] = springStep(y, vy, 0, dt, 330, 29, .8);
-      if (Math.abs(x) + Math.abs(y) < .02 && Math.hypot(vx, vy) < .2) { resetPress(); return; }
-      el.style.setProperty('--feel-press-x', `${x.toFixed(3)}px`); el.style.setProperty('--feel-press-y', `${y.toFixed(3)}px`);
-      returnFrame = win.requestAnimationFrame(rebound);
-    };
-    returnFrame = win.requestAnimationFrame(rebound);
-  };
-  const up = (event: PointerEvent) => { if (press && !press.touch && press.id === event.pointerId) releasePress(); };
-  // Passive touch events keep decorative tracking alive even after the browser
-  // hands a gesture to native scrolling. No touch-action restriction is applied
-  // to cards, so nested tables and rails retain their own horizontal gestures.
-  const touchStart = (event: TouchEvent) => {
-    if (event.touches.length !== 1) { resetPress(); return; }
-    const touch = event.changedTouches[0]; if (!touch) return;
-    beginPress(event.target instanceof Element ? event.target : null, touch.identifier, touch.clientX, touch.clientY, true);
-  };
-  const touchMove = (event: TouchEvent) => {
-    if (!press?.touch) return;
-    const touch = [...event.touches].find(value => value.identifier === press!.id);
-    if (touch) movePress(touch.clientX, touch.clientY);
-  };
-  const touchEnd = (event: TouchEvent) => { if (press?.touch && [...event.changedTouches].some(value => value.identifier === press!.id)) releasePress(); };
-  const onSelection = () => { if (selection()) resetPress(); };
-  const scroll = () => { resetPress(); items.invalidate(); if (menu) schedule(); };
-  const changed = () => {
-    dirty = true; items.refresh();
-    // Count-up text and freshly loaded panels may change during a gesture.
-    // Only abandon feedback when its own card disappears or motion is disabled.
-    if (reduced.matches || (press && !root.contains(press.el)) || (returning && !root.contains(returning))) resetPress();
-    schedule();
-  };
+  const scroll = () => { items.invalidate(); if (menu) schedule(); };
+  const changed = () => { dirty = true; items.refresh(); schedule(); };
+  // Re-measure when cards come or go, and when a scroll-revealed card drops
+  // its entrance transform: a slot measured mid-rise would be off by its scale.
   const observer = new MutationObserver(changes => {
-    if (changes.some(change => [...change.addedNodes, ...change.removedNodes].some(node => node.nodeType === 1))) changed();
+    if (changes.some(change => change.type === 'attributes' || [...change.addedNodes, ...change.removedNodes].some(node => node.nodeType === 1))) changed();
   });
-  observer.observe(root, { childList: true, subtree: true });
-  root.addEventListener('pointerdown', down, { passive: true });
-  root.addEventListener('touchstart', touchStart, { passive: true }); root.addEventListener('touchmove', touchMove, { passive: true }); root.addEventListener('touchend', touchEnd, { passive: true }); root.addEventListener('touchcancel', resetPress, { passive: true });
-  win.addEventListener('pointermove', move, { passive: true });
-  win.addEventListener('pointerup', up, { passive: true });
-  win.addEventListener('pointercancel', up, { passive: true });
-  win.addEventListener('blur', resetPress);
-  doc.addEventListener('selectionchange', onSelection);
+  observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-reveal'] });
   doc.addEventListener('scroll', scroll, { passive: true, capture: true });
   reduced.addEventListener('change', changed); win.addEventListener('resize', changed);
   return {
-    update(rect: Rectangle | null, nextMode: 'desktop' | 'mobile' = 'desktop') {
-      if (!rect || !menu || nextMode !== mode || Math.abs(rect.left - menu.left) + Math.abs(rect.top - menu.top) + Math.abs(rect.width - menu.width) + Math.abs(rect.height - menu.height) > .01) items.invalidate();
-      menu = rect; mode = nextMode; schedule();
+    /** `moving` says whether the menu is being dragged or is still settling. */
+    update(rect: Rectangle | null, nextMode: 'desktop' | 'mobile' = 'desktop', moving = false) {
+      if (!rect || !menu || nextMode !== mode || moving !== menuMoving || Math.abs(rect.left - menu.left) + Math.abs(rect.top - menu.top) + Math.abs(rect.width - menu.width) + Math.abs(rect.height - menu.height) > .01) items.invalidate();
+      menu = rect; mode = nextMode; menuMoving = moving; schedule();
     },
     destroy() {
-      destroyed = true; win.cancelAnimationFrame(frame); observer.disconnect(); sizes.disconnect(); items.destroy(); resetPress(); cards.forEach(card => { restoreLayout(card); restore(card.el); });
-      root.removeEventListener('touchstart', touchStart); root.removeEventListener('touchmove', touchMove); root.removeEventListener('touchend', touchEnd); root.removeEventListener('touchcancel', resetPress);
-      root.removeEventListener('pointerdown', down); win.removeEventListener('pointermove', move); win.removeEventListener('pointerup', up); win.removeEventListener('pointercancel', up); win.removeEventListener('blur', resetPress);
-      doc.removeEventListener('selectionchange', onSelection); doc.removeEventListener('scroll', scroll, true); reduced.removeEventListener('change', changed); win.removeEventListener('resize', changed);
+      destroyed = true; win.cancelAnimationFrame(frame); observer.disconnect(); sizes.disconnect(); items.destroy(); cards.forEach(restoreLayout);
+      doc.removeEventListener('scroll', scroll, true); reduced.removeEventListener('change', changed); win.removeEventListener('resize', changed);
     },
   };
 }

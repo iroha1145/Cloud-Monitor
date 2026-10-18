@@ -66,14 +66,14 @@
   position: relative;
   display: flex;
   padding: 2px;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-control);
   background: var(--canvas);
 }
 .insight-trend-switch button {
   min-height: 26px;
   padding: 0 12px;
   border: 0;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-segment);
   background: transparent;
   color: var(--ink-2);
   font-size: var(--fs-label);
@@ -93,7 +93,7 @@
   box-shadow: var(--shadow-thumb);
 }
 .insight-trend-switch > [data-sliding-indicator] {
-  border-radius: var(--r-pill);
+  border-radius: var(--r-segment);
   background: var(--surface);
   box-shadow: var(--shadow-thumb);
 }

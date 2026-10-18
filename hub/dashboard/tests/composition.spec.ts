@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { createRequire } from "node:module";
+import { scrollIntoViewAndReveal } from "./motion-helpers";
 
 const require = createRequire(import.meta.url);
 const overviewFixture = require("./fixtures/overview.json");
@@ -104,6 +105,8 @@ for (const touch of [false, true]) {
 
       const model = page.locator(".model-table tbody tr").first();
       const cache = model.locator(".cache-track");
+      // The models card starts below the fold and rises in once scrolled to.
+      await scrollIntoViewAndReveal(cache);
       if (touch) await cache.tap();
       else await cache.hover();
       await expect(page.getByRole("tooltip")).toContainText("缓存读取");

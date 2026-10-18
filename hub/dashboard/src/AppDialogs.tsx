@@ -154,19 +154,13 @@ export default function AppDialogs({
               if (target) go(target.id);
               else {
                 go("models");
-                setTimeout(
-                  () =>
-                    setSelected(
-                      per.models.find((m) => m.name === item) || null,
-                    ),
-                  100,
-                );
+                setSelected(per.models.find((m) => m.name === item) || null);
               }
               setSearchOpen(false);
             }}
           />
           <div className="search-dialog-foot">
-            <span>按 Tab 选择结果，Enter 打开</span>
+            <span>↑↓ 或 Tab 选择 · Enter 打开</span>
             <span>
               <Command size={11} /> K
             </span>
@@ -228,7 +222,7 @@ export default function AppDialogs({
             />
             <p className="field-help">
               <ShieldCheck size={13} />
-              密钥只保留在此页面内存中，刷新或关闭后清除。
+              密钥只保存在当前页面，刷新或关闭后清除。
             </p>
             {connectError && (
               <p role="alert" className="error-message" id="access-key-error">
@@ -381,7 +375,7 @@ export default function AppDialogs({
                 "趋势曲线、快速搜索与导航反馈",
               ],
               ["beUI", "https://beui.dev", "数字变化与刷新状态"],
-              ["Arc UI", "https://uiarc.dev", "平面层次、胶囊控件与图表形状"],
+              ["Arc UI", "https://uiarc.dev", "平面层次、圆环图与用量条"],
               ["Rare UI", "https://www.rareui.com", "新提示出现时的通知铃"],
               [
                 "Transitions",

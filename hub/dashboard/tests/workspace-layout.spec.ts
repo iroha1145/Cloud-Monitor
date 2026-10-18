@@ -16,12 +16,17 @@ for (const width of [800, 1024, 1280, 1920]) {
     const nav = page.locator('.feel-navigation');
     const main = page.locator('.main-content');
     const below = page.locator('.models-panel');
+    // The menu is 216px wide (196px between 961 and 1250px) and keeps 16px from every edge.
+    const navWidth = width >= 961 && width <= 1250 ? 196 : 216;
     await handle.press('Home');
-    await expect.poll(async () => Math.round((await nav.boundingBox())!.x)).toBe(12);
+    await expect.poll(async () => Math.round((await nav.boundingBox())!.x)).toBe(16);
+    expect(Math.round((await nav.boundingBox())!.y)).toBe(16);
+    expect(Math.round((await nav.boundingBox())!.width)).toBe(navWidth);
     const frame = (await main.boundingBox())!;
     expect(Math.abs(frame.x - (width - frame.x - frame.width))).toBeLessThan(1);
     const topbar = page.locator('.app-topbar');
-    await expect.poll(async () => (await topbar.boundingBox())!.x - (await page.locator('.page-heading').boundingBox())!.x).toBeCloseTo(0, 1);
+    // The bar spans the window, so the menu at the top left covers its search side, which gives way.
+    await expect.poll(async () => (await topbar.boundingBox())!.x - ((await nav.boundingBox())!.x + (await nav.boundingBox())!.width)).toBeGreaterThanOrEqual(15.5);
     const lowerBefore = (await below.boundingBox())!;
     expect(Math.abs(lowerBefore.x - (width - lowerBefore.x - lowerBefore.width))).toBeLessThan(1);
     expect(lowerBefore.y).toBeGreaterThan((await nav.boundingBox())!.y + (await nav.boundingBox())!.height + 64);
@@ -31,8 +36,11 @@ for (const width of [800, 1024, 1280, 1920]) {
       await expect.poll(async () => (await block.boundingBox())!.x - ((await nav.boundingBox())!.x + (await nav.boundingBox())!.width)).toBeGreaterThanOrEqual(15.5);
     }
     await handle.press('ArrowRight');
-    await expect.poll(async () => Math.round((await nav.boundingBox())!.x)).toBe(width - 236);
-    await expect.poll(async () => (await topbar.boundingBox())!.x - (await page.locator('.page-heading').boundingBox())!.x).toBeCloseTo(0, 1);
+    await expect.poll(async () => Math.round((await nav.boundingBox())!.x)).toBe(width - navWidth - 16);
+    // As in game-manage, the bar spans the window: with the menu on the right
+    // its search returns to the window's left edge and only its right side gives way.
+    await expect.poll(async () => (await topbar.boundingBox())!.x).toBeCloseTo(width <= 960 ? 16 : 24, 1);
+    await expect.poll(async () => (await nav.boundingBox())!.x - ((await topbar.boundingBox())!.x + (await topbar.boundingBox())!.width)).toBeGreaterThanOrEqual(15.5);
     for (const selector of ['.workspace-notices', '.page-controls']) {
       const block = page.locator(selector);
       await expect.poll(async () => (await nav.boundingBox())!.x - ((await block.boundingBox())!.x + (await block.boundingBox())!.width)).toBeGreaterThanOrEqual(15.5);

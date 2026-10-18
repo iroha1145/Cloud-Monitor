@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { finishAnimations, scrollIntoViewAndReveal, waitForReveal } from "./motion-helpers";
 const require = createRequire(import.meta.url);
 const fixture = JSON.parse(readFileSync(new URL("./fixtures/overview.json", import.meta.url), "utf8"));
 
@@ -45,7 +46,7 @@ test("activity restores day/week/month, source coverage, keyboard filtering and 
   await expect(panel).toContainText("32.8%");
   await panel.locator("summary").click();
   await expect(panel).toContainText("33 / 100");
-  await expect(panel).toContainText("缺口 2 · 重置 0");
+  await expect(panel).toContainText("中断 2 · 重置 0");
   await panel.locator("summary").click();
   await panel.locator('[data-day="2026-08-01"]').focus();
   await page.keyboard.press("End");
@@ -55,7 +56,7 @@ test("activity restores day/week/month, source coverage, keyboard filtering and 
   await expect(page.getByRole("button", { name: "清除日期筛选" })).toBeVisible();
   await panel.getByRole("button", { name: "取消活动日期选择" }).click();
   const anchor = panel.locator('[data-day="2026-08-11"]');
-  await anchor.scrollIntoViewIfNeeded();
+  await scrollIntoViewAndReveal(anchor);
   const rect = (await anchor.boundingBox())!;
   await page.mouse.move(rect.x + 10, rect.y + 10);
   const tooltip = page.locator('.metric-tooltip-card[data-input="mouse"]');
@@ -112,7 +113,7 @@ for (const width of [320, 390]) {
     await panel.getByRole("button", { name: "取消活动日期选择" }).tap();
     if (width === 390) {
       const target = panel.locator('[data-day="2026-08-13"]');
-      await target.scrollIntoViewIfNeeded();
+      await scrollIntoViewAndReveal(target);
       const box = (await target.boundingBox())!;
       const cdp = await context.newCDPSession(page);
       await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: box.x + box.width / 2, y: box.y + box.height / 2 }] });
@@ -125,6 +126,10 @@ for (const width of [320, 390]) {
       await expect(target).toHaveAttribute("aria-pressed", "false");
       await page.keyboard.press("Escape");
     }
+    // Audit the settled colours: cells enter with a staggered fade and scale,
+    // and a card below the fold rises in, so both must finish first.
+    await waitForReveal(panel);
+    await finishAnimations(panel);
     await page.addScriptTag({ path: require.resolve("axe-core/axe.min.js") });
     const audit = await page.evaluate(async () => (window as any).axe.run(document.querySelector(".cm-activity-panel"), { runOnly: ["wcag2a", "wcag2aa", "wcag21aa"] }));
     expect(audit.violations.map((item: any) => ({ id: item.id, nodes: item.nodes.map((node: any) => node.target) }))).toEqual([]);

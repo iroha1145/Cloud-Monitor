@@ -13,11 +13,12 @@
 }
 .cm-activity-head h2 { margin: 0; color: var(--ink); font-size: 14px; font-weight: 500; }
 .cm-activity-head p { margin: 6px 0 0; color: var(--ink-2); font-size: var(--fs-meta); line-height: 1.5; }
-.cm-activity-tabs { display: flex; flex-shrink: 0; padding: 3px; gap: 2px; border-radius: var(--r-pill); background: var(--canvas); }
-.cm-activity-tabs button { min-width: 30px; min-height: 30px; padding: 4px 8px; border-radius: var(--r-pill); color: var(--ink-2); font-size: 11px; }
+.cm-activity-tabs { display: flex; flex-shrink: 0; padding: 3px; gap: 2px; border-radius: var(--r-control); background: var(--canvas); }
+.cm-activity-tabs button { min-width: 30px; min-height: 30px; padding: 4px 8px; border-radius: var(--r-segment); color: var(--ink-2); font-size: var(--fs-meta); }
 .cm-activity-tabs button[aria-selected="true"] { color: var(--nav-ink); background: var(--surface); box-shadow: var(--shadow-thumb); }
+.dark .cm-activity-tabs button[aria-selected="true"] { background: var(--hover-2); }
 .cm-activity-tabs { position: relative; }
-.cm-activity-tabs > [data-sliding-indicator] { border-radius: var(--r-pill); background: var(--surface); box-shadow: var(--shadow-thumb); }
+.cm-activity-tabs > [data-sliding-indicator] { border-radius: var(--r-segment); background: var(--surface); box-shadow: var(--shadow-thumb); }
 .cm-activity-tabs[data-indicator="ready"] button[aria-selected="true"] { background: transparent; box-shadow: none; }
 .dark .cm-activity-tabs > [data-sliding-indicator] { background: var(--hover-2); }
 .cm-activity-tabs button { transition: color var(--duration-fast) var(--ease-smooth-out); }
@@ -27,7 +28,7 @@
 .cm-activity-grid-day { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .cm-activity-grid-week { --cm-activity-week-cell: clamp(14px, 4.8vw, 24px); grid-auto-flow: column; grid-template-rows: repeat(7, var(--cm-activity-week-cell)); grid-auto-columns: var(--cm-activity-week-cell); justify-content: center; }
 .cm-activity-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin: 0 0 7px; color: var(--ink-2); text-align: center; font-size: var(--fs-meta); }
-.cm-activity-cell { display: grid; place-items: center; width: 100%; height: auto; aspect-ratio: 1; min-width: 0; min-height: 0; padding: 0; border-radius: 4px; font-size: 11px; font-variant-numeric: tabular-nums; border: 1px solid transparent; color: var(--ink-2); background: var(--inset); }
+.cm-activity-cell { display: grid; place-items: center; width: 100%; height: auto; aspect-ratio: 1; min-width: 0; min-height: 0; padding: 0; border-radius: 4px; font-size: var(--fs-meta); font-variant-numeric: tabular-nums; border: 1px solid transparent; color: var(--ink-2); background: var(--inset); }
 .cm-activity-grid-week .cm-activity-cell { height: var(--cm-activity-week-cell); }
 /* Zero is an empty outline, so it never reads as the faintest heat level. */
 .cm-activity-cell[data-level="0"], .cm-activity-legend i[data-level="0"] { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
@@ -58,7 +59,7 @@
 .cm-activity-missing { margin: 12px 0 0; }
 .cm-activity-empty { margin: 0 0 14px; }
 .cm-activity-coverage-missing { margin: 0; padding: 12px 20px; border-top: 1px solid var(--line); }
-.cm-activity-selection { display: inline-flex; align-items: center; gap: 7px; margin-top: 12px; padding: 6px 8px; border-radius: 5px; background: var(--accent-tint); color: var(--nav-ink); font-size: var(--fs-meta); }
+.cm-activity-selection { display: inline-flex; align-items: center; gap: 7px; margin-top: 12px; padding: 6px 8px; border-radius: var(--r-chip); background: var(--accent-tint); color: var(--nav-ink); font-size: var(--fs-meta); }
 .cm-activity-coverage { padding: 12px 20px; border-top: 1px solid var(--line); }
 .cm-activity-coverage summary { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: var(--fs-meta); color: var(--ink-2); list-style: none; cursor: pointer; }
 .cm-activity-coverage summary::-webkit-details-marker { display: none; }

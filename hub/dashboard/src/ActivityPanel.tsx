@@ -29,9 +29,9 @@ function fallbackMetadata(data: DashboardData): ActivityMetadata {
 
 function samplingMode(value: string | null) {
   return ({
-    delta: "增量采样", "delta-low-coverage": "采样覆盖不足",
-    "delta-with-reset": "采样含计数重置", none: "暂无可归属采样",
-  } as Record<string, string>)[value || ""] || value || "归属方式未提供";
+    delta: "按增量统计", "delta-low-coverage": "记录不完整",
+    "delta-with-reset": "含计数重置", none: "无有效记录",
+  } as Record<string, string>)[value || ""] || value || "统计方式未提供";
 }
 
 function stamp(value: string | null, timeZone: string) {
@@ -51,28 +51,28 @@ function CoverageDetails({ coverage, metadata, data }: {
   return (
     <div className="cm-activity-coverage">
       {low && <p className="cm-activity-warning"><Info size={13} aria-hidden="true" />
-        小时分布按采样增量记录，可能集中在首次采样时段。
+        小时用量按同步增量统计，可能集中在首次同步时段。
       </p>}
       <details>
         <summary>
-          <span>采样覆盖率 <strong>{coverage.coveragePercent === null ? "未提供" : `${coverage.coveragePercent.toFixed(1)}%`}</strong></span>
-          <span>采样说明 <ChevronDown size={13} aria-hidden="true" /></span>
+          <span>同步覆盖率 <strong>{coverage.coveragePercent === null ? "未提供" : `${coverage.coveragePercent.toFixed(1)}%`}</strong></span>
+          <span>覆盖详情 <ChevronDown size={13} aria-hidden="true" /></span>
         </summary>
         <dl className="cm-activity-sampling-grid">
-          <div data-feel-item="row"><dt>实际 / 期望采样</dt><dd>{full(coverage.observedBuckets)} / {full(coverage.expectedBuckets)}</dd></div>
-          <div data-feel-item="row"><dt>归属方式</dt><dd>{samplingMode(coverage.attributionMode)}</dd></div>
-          <div data-feel-item="row"><dt>首次采样</dt><dd>{stamp(coverage.firstSampleAt, metadata.timeZone)}</dd></div>
-          <div data-feel-item="row"><dt>最近采样</dt><dd>{stamp(coverage.lastSampleAt, metadata.timeZone)}</dd></div>
+          <div data-feel-item="row"><dt>实际 / 预期时段</dt><dd>{full(coverage.observedBuckets)} / {full(coverage.expectedBuckets)}</dd></div>
+          <div data-feel-item="row"><dt>统计方式</dt><dd>{samplingMode(coverage.attributionMode)}</dd></div>
+          <div data-feel-item="row"><dt>首次记录</dt><dd>{stamp(coverage.firstSampleAt, metadata.timeZone)}</dd></div>
+          <div data-feel-item="row"><dt>最近记录</dt><dd>{stamp(coverage.lastSampleAt, metadata.timeZone)}</dd></div>
           {(coverage.gapCount !== null || coverage.resetCount !== null) && <>
-            <div data-feel-item="row"><dt>采样缺口</dt><dd>{full(coverage.gapCount)}</dd></div>
+            <div data-feel-item="row"><dt>中断次数</dt><dd>{full(coverage.gapCount)}</dd></div>
             <div data-feel-item="row"><dt>计数重置</dt><dd>{full(coverage.resetCount)}</dd></div>
           </>}
         </dl>
         {coverage.devices.length > 0 && <ul className="cm-activity-device-coverage">
-          {coverage.devices.map((device, index) => <li key={`${device.deviceId}-${index}`}>
+          {coverage.devices.map((device, index) => <li key={`${device.deviceId}-${index}`} data-feel-item="row">
             <strong>{names.get(device.deviceId) || device.deviceId || "未知设备"}</strong>
-            <span>采样 {full(device.observedBuckets)} / {full(device.expectedBuckets)}</span>
-            <span>缺口 {full(device.gapCount)} · 重置 {full(device.resetCount)}</span>
+            <span>时段 {full(device.observedBuckets)} / {full(device.expectedBuckets)}</span>
+            <span>中断 {full(device.gapCount)} · 重置 {full(device.resetCount)}</span>
             {(device.firstSampleAt || device.lastSampleAt) && <small>
               {stamp(device.firstSampleAt, metadata.timeZone)} — {stamp(device.lastSampleAt, metadata.timeZone)}
             </small>}
@@ -133,16 +133,16 @@ export function ActivityPanel({ data, selected, onSelect }: {
   const tabIndexAt = focusedIndex >= 0 ? focusedIndex : selectedIndex >= 0 ? selectedIndex : lastPast;
   const monthLabel = metadata.month ? `${Number(metadata.month.slice(0, 4))} 年 ${Number(metadata.month.slice(5))} 月` : "日期未提供";
   const subtitle = view === "day" ? `${metadata.hourlyDay || today || "日期未提供"} · 24 小时`
-    : view === "week" ? "最近 12 周 · 每格一天" : `${monthLabel} · 每格一天`;
+    : view === "week" ? "最近 12 周" : monthLabel;
   const hourlyMessage = {
-    disabled: "服务尚未启用小时活动。",
-    unavailable: "当前数据未提供小时活动，未上报时段保留为未知。",
+    disabled: "服务尚未启用小时分布。",
+    unavailable: "当前数据未提供小时分布。",
     "date-mismatch": "小时记录与当前数据的日期不一致，已暂不展示。",
     ready: "",
   }[metadata.hourlyStatus];
   const dailyBasis = metadata.dailyMixedBasis === true || metadata.dailyBasis === "hybrid-dashboard-and-device-local"
-    ? `历史活动包含设备本地日${metadata.archiveCutoverDay ? `（${metadata.archiveCutoverDay}及之前）` : ""}，跨时区设备不可视为同一日期。`
-    : metadata.dailyBasis === "device-local" ? "每日记录按设备本地日期汇总。" : "";
+    ? `${metadata.archiveCutoverDay ? `${metadata.archiveCutoverDay} 及之前的` : "部分"}历史活动按各设备本地日期统计，跨时区设备不可视为同一日期。`
+    : metadata.dailyBasis === "device-local" ? "按各设备本地日期统计。" : "";
 
   function switchByKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     const next = event.key === "ArrowRight" ? (index + 1) % VIEWS.length
@@ -179,7 +179,7 @@ export function ActivityPanel({ data, selected, onSelect }: {
       </div>
     </header>
     <div id={`${uid}-panel`} role="tabpanel" aria-labelledby={`${uid}-${view}-tab`} className="cm-activity-body">
-      {!cells.length ? <p className="cm-activity-empty">活动日期未提供，收到有效的数据日期后显示活动。</p> : <>
+      {!cells.length ? <p className="cm-activity-empty">暂无活动日期记录。</p> : <>
         {view === "day" && hourlyMessage && <p className="cm-activity-empty">{hourlyMessage}</p>}
         {view === "month" && <div className="cm-activity-weekdays" aria-hidden="true">{WEEKDAYS.map((day) => <span key={day}>{day}</span>)}</div>}
         <div className={`cm-activity-grid cm-activity-grid-${view}`} key={view} role="group"
@@ -199,15 +199,15 @@ export function ActivityPanel({ data, selected, onSelect }: {
             return <MetricTooltip key={cell.hour ?? cell.day} title={label}
               preserveAction={cell.hour === undefined}
               focusable={cell.hour !== undefined}
-              rows={[{ label: "词元用量", value: cell.total === null ? "未上报" : full(cell.total) }]}
-              note={cell.hour === undefined ? "点击日期筛选会话" : `活动时区：${metadata.timeZone}`}>
+              rows={[{ label: "词元用量", value: cell.total === null ? "未提供" : full(cell.total) }]}
+              note={cell.hour === undefined ? "点击日期筛选会话" : undefined}>
               <button type="button" className={`cm-activity-cell${selected === cell.day && view !== "day" ? " is-selected" : ""}`}
                 data-feel-item="cell"
                 data-level={level} data-day={cell.day} data-hour={cell.hour} style={entrance}
                 aria-pressed={cell.hour === undefined ? selected === cell.day : undefined}
                 tabIndex={index === tabIndexAt ? 0 : -1}
                 onFocus={() => setFocusKey(cellKey(cell))}
-                aria-label={`${label}，${cell.total === null ? "未上报用量" : `${full(cell.total)} 词元`}${cell.hour === undefined ? "，点击筛选会话" : ""}`}
+                aria-label={`${label}，${cell.total === null ? "未提供用量" : `${full(cell.total)} 词元`}${cell.hour === undefined ? "，点击筛选会话" : ""}`}
                 ref={(element) => { buttons.current[index] = element; }}
                 onClick={cell.hour === undefined ? () => onSelect(selected === cell.day ? null : cell.day) : undefined}
                 onKeyDown={(event) => moveCell(event, index)}>{cell.label}</button>
@@ -216,13 +216,13 @@ export function ActivityPanel({ data, selected, onSelect }: {
         </div>
         <div className="cm-activity-range"><span>{metadata.timeZone}</span><span className="cm-activity-legend" aria-label="颜色越浓，用量越多">少{[0, 1, 2, 3, 4].map((level) => <i key={level} data-level={level} />)}多</span></div>
         <div className="cm-activity-summary">
-          <MetricTooltip title="已上报用量合计" rows={[{ label: "词元用量", value: reported.length ? full(total) : "未上报" }]} note="仅合计已上报的时段，未知记录不计为零。">
-            <span data-feel-item="row"><small>已上报合计</small><strong>{reported.length ? compact(total) : "未提供"}</strong></span>
+          <MetricTooltip title="区间用量合计" rows={[{ label: "词元用量", value: reported.length ? full(total) : "未提供" }]}>
+            <span data-feel-item="row"><small>区间合计</small><strong>{reported.length ? compact(total) : "未提供"}</strong></span>
           </MetricTooltip>
-          <span data-feel-item="row"><small>有活动{view === "day" ? "时段" : "日期"}</small><strong>{reported.length ? `${active} ${view === "day" ? "小时" : "天"}` : "未提供"}</strong></span>
-          <span data-feel-item="row"><small>已上报{view === "day" ? "时段" : "日期"}</small><strong>{reported.length} / {cells.filter((cell) => !cell.future).length}</strong></span>
+          <span data-feel-item="row"><small>活跃{view === "day" ? "时段" : "天数"}</small><strong>{reported.length ? `${active} ${view === "day" ? "小时" : "天"}` : "未提供"}</strong></span>
+          <span data-feel-item="row"><small>已记录{view === "day" ? "时段" : "天数"}</small><strong>{reported.length} / {cells.filter((cell) => !cell.future).length}</strong></span>
         </div>
-        {missing > 0 && <p className="cm-activity-missing">斜线格表示未上报，与零用量分开显示。</p>}
+        {missing > 0 && <p className="cm-activity-missing">斜线格表示未记录时段。</p>}
       </>}
       <label className="sv-mobile-date-picker">
         <span>按日期筛选会话</span>
@@ -235,6 +235,6 @@ export function ActivityPanel({ data, selected, onSelect }: {
       {view !== "day" && dailyBasis && <p className="cm-activity-warning"><Info size={13} aria-hidden="true" />{dailyBasis}</p>}
     </div>
     {metadata.coverage ? <CoverageDetails coverage={metadata.coverage} metadata={metadata} data={data} />
-      : <p className="cm-activity-coverage-missing">采样覆盖信息未提供。</p>}
+      : <p className="cm-activity-coverage-missing">暂无同步覆盖信息。</p>}
   </section>;
 }

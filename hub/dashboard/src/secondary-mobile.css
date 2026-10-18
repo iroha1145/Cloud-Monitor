@@ -22,7 +22,7 @@
   }
   .sv-summary-label,
   .sv-dense-page .sv-summary-label {
-    font-size: 11px;
+    font-size: var(--fs-meta);
     line-height: 1.5;
   }
   .sv-summary-foot {
@@ -38,7 +38,7 @@
   }
   .sv-section-head p,
   .sv-muted {
-    font-size: 11px;
+    font-size: var(--fs-meta);
     line-height: 1.7;
   }
   .sv-button,
@@ -75,7 +75,7 @@
   .sv-device-statusline,
   .sv-device-footer,
   .sv-device-id {
-    font-size: 11px;
+    font-size: var(--fs-meta);
     line-height: 1.65;
   }
   .sv-device-footer {
@@ -90,7 +90,7 @@
   }
   .sv-device-metrics .sv-metric-label,
   .sv-subscription .sv-metric-label {
-    font-size: 11px;
+    font-size: var(--fs-meta);
   }
   .sv-device-metrics > * {
     min-height: 58px;
@@ -100,7 +100,7 @@
   }
   .sv-detail-grid dt,
   .sv-subscription-dates dt {
-    font-size: 11px;
+    font-size: var(--fs-meta);
   }
   .sv-detail-grid dd,
   .sv-subscription-dates dd,
@@ -116,7 +116,7 @@
   .sv-quota-source,
   .sv-records-label,
   .sv-subscription-records time {
-    font-size: 11px;
+    font-size: var(--fs-meta);
   }
   .sv-quota-window {
     padding-block: 5px;
@@ -142,7 +142,7 @@
     font-size: 16px;
   }
   .cm-activity-head p {
-    font-size: 11px;
+    font-size: var(--fs-meta);
   }
   .cm-activity-tabs button {
     min-width: 44px;
@@ -168,7 +168,7 @@
   .cm-activity-coverage-missing,
   .cm-activity-warning,
   .cm-activity-sampling-grid {
-    font-size: 11px;
+    font-size: var(--fs-meta);
     line-height: 1.65;
   }
   .cm-activity-selection,
@@ -198,7 +198,7 @@
     min-height: 44px;
     padding: 9px 14px;
     border: 1px solid transparent;
-    border-radius: var(--r-pill);
+    border-radius: var(--r-control);
     background: var(--field);
     color: var(--ink);
     font: inherit;
@@ -216,21 +216,33 @@
     justify-content: center;
   }
   .sv-session-table,
-  .sv-session-table tbody,
   .sv-session-table tr,
   .sv-session-table td {
     display: block;
+    width: 100%;
+  }
+  .sv-session-table tbody {
+    display: grid;
+    gap: 8px;
+    padding: 12px 16px 16px;
     width: 100%;
   }
   .sv-session-table thead {
     display: none;
   }
   .sv-session-table tr:not(.sv-session-detail) {
-    padding: 18px 16px;
+    padding: 16px 14px;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 14px 12px;
-    border-bottom: 1px solid var(--line);
+    border: 0;
+    border-radius: var(--r-well);
+    background: var(--inset);
+    box-shadow: inset 0 0 0 1px rgb(23 23 23 / 0.035);
+  }
+  .dark .sv-session-table tr:not(.sv-session-detail),
+  .dark .sv-session-table .sv-session-detail td {
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.04);
   }
   .sv-session-table td,
   .sv-session-table td:first-child,
@@ -248,7 +260,7 @@
     content: attr(data-label);
     display: block;
     color: var(--ink-2);
-    font-size: 11px;
+    font-size: var(--fs-meta);
     margin-bottom: 6px;
   }
   .sv-session-table td:first-child::before {
@@ -268,11 +280,13 @@
     line-height: 1.6;
   }
   .sv-session-table small {
-    font-size: 11px;
+    font-size: var(--fs-meta);
     line-height: 1.7;
   }
   .sv-session-table .sv-session-detail td {
-    padding: 17px 16px;
+    padding: 16px 14px;
+    border-radius: var(--r-well);
+    box-shadow: inset 0 0 0 1px rgb(23 23 23 / 0.035);
   }
   .sv-session-table .sv-session-detail td::before {
     display: none;
@@ -280,7 +294,7 @@
   .sv-table-footer {
     flex-wrap: wrap;
     gap: 10px;
-    font-size: 11px;
+    font-size: var(--fs-meta);
     line-height: 1.6;
   }
   .sv-pagination {

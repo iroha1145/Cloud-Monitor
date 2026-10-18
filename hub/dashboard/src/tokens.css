@@ -6,31 +6,39 @@
 :root {
   color-scheme: light;
 
-  /* type scale: meta 11, label 12, body 13, emphasis 14, section 16,
-     page 26, ledger figures 28 and the lead figure up to 52. Weights stop
-     at 500: regular for reading, medium for headings and figures. */
-  --fs-meta: 11px;
+  /* Type scale after game-manage: nothing under 12px; body 13, emphasis 14,
+     card titles 16, page title 28; figures 28 up to 44 for the lead. Titles
+     and strong text take 600, controls and figures 500, reading text 400. */
+  --fs-meta: 12px;
   --fs-label: 12px;
   --fs-body: 13px;
   --fs-strong: 14px;
   --fs-section: 16px;
-  --fs-page: 26px;
+  --fs-page: 28px;
   --fs-figure: 28px;
-  --fs-lead: clamp(40px, 2.6vw + 14px, 52px);
+  --fs-lead: clamp(34px, 1.9vw + 12px, 44px);
 
   /* --radius-* belong to Tailwind's @theme (styles.css); these are the
-     dashboard's own corner steps: controls 8–10, panels 16 */
+     dashboard's own corner steps. The game-manage scale: the floating menu
+     is roundest, then cards, tiles inside cards, wells, controls and chips. */
   --r-xs: 6px;
   --r-sm: 8px;
   --r-md: 10px;
   --r-lg: 16px;
-  /* buttons, search fields and segmented controls are pills */
-  --r-pill: 999px;
+  --r-shell: 30px;
+  --r-card: 26px;
+  --r-tile: 18px;
+  --r-well: 14px;
+  --r-control: 14px;
+  /* an item inside a segmented track, concentric with the track's 3px inset */
+  --r-segment: 11px;
+  --r-chip: 7px;
 
-  /* Surfaces are flat: a near-white page, white panels edged by a hairline,
-     no resting shadow. Greys carry no hue (chroma 0), as on uiarc.dev and
-     transitions.dev; colour is left to the data. */
-  --page: #fafafa;
+  /* A white page under white cards: each card has a hairline and a soft
+     two-step shadow (game-manage's card), inner pieces sit on a grey well
+     with no shadow of their own. Greys carry no hue; colour is left to the
+     data. */
+  --page: #ffffff;
   --canvas: #f2f2f2;
   --surface: #ffffff;
   --inset: #fafafa;
@@ -97,12 +105,23 @@
   --quota-danger: #cb7065;
 
 
-  /* Only things that float (tooltips, menus, dialogs, toasts) cast a shadow. */
-  --shadow-panel: none;
-  --shadow-float: 0 3px 10px rgb(0 0 0 / 0.045), 0 20px 48px rgb(0 0 0 / 0.1);
+  /* Depth stays faint: cards sit on a hairline with a near contact shadow
+     and a soft far one; only floating layers cast a real shadow. */
+  --card-border: #ebebeb;
+  --shadow-panel-lift: 0 1px 2px rgb(23 23 23 / 0.025), 0 8px 24px -16px rgb(23 23 23 / 0.16);
+  --shadow-panel: inset 0 1px 0 rgb(255 255 255 / 0.9), var(--shadow-panel-lift);
+  /* menus, dialogs, tooltips and the menu while it is dragged */
+  --shadow-float: inset 0 1px 0 rgb(255 255 255 / 0.92), 0 3px 8px rgb(23 23 23 / 0.045), 0 24px 64px -14px rgb(23 23 23 / 0.2);
   --shadow-overlay: var(--shadow-float);
-  /* a segmented control's thumb: an edge, not a lift */
-  --shadow-thumb: 0 0 0 1px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.05);
+  /* the resting menu and the phone tab bar */
+  --shadow-sidebar: inset 0 1px 0 rgb(255 255 255 / 0.95), 0 2px 6px rgb(23 23 23 / 0.035), 0 16px 42px -14px rgb(23 23 23 / 0.18);
+  --shadow-bar: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 2px 6px rgb(23 23 23 / 0.035), 0 12px 32px -12px rgb(23 23 23 / 0.15);
+  /* a segmented control's thumb: a white slip on the grey track */
+  --shadow-thumb: 0 1px 2px rgb(23 23 23 / 0.06);
+  /* Only the floating menu and the phone tab bar frost what scrolls beneath. */
+  --glass: rgb(255 255 255 / 0.96);
+  --glass-border: #ffffff;
+  --glass-filter: blur(16px);
 
   /* transitions.dev motion tokens; recipes live in motion.css. */
   --duration-stagger: 40ms;
@@ -113,11 +132,20 @@
   --duration-very-slow: 500ms;
   --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-bounce: cubic-bezier(0.34, 1.36, 0.64, 1);
+  /* Damped springs sampled from Feel into CSS linear(), as in game-manage:
+     --ease-spring (mass 1, 3.2 Hz, zeta 0.68) overshoots ~5% and settles in
+     340ms; --ease-spring-smooth (2.8 Hz, zeta 0.86) settles crisply in 260ms. */
+  --ease-spring: linear(0, 0.027, 0.099, 0.193, 0.306, 0.418, 0.532, 0.634, 0.725, 0.808, 0.874, 0.93, 0.972, 1.004, 1.026, 1.041, 1.05, 1.053, 1.053, 1.05, 1.045, 1.04, 1.034, 1.028, 1.022, 1.017, 1.012, 1.008, 1);
+  --duration-spring: 340ms;
+  --ease-spring-smooth: linear(0, 0.036, 0.124, 0.236, 0.358, 0.478, 0.588, 0.685, 0.767, 0.834, 0.887, 0.928, 0.958, 0.979, 0.993, 1.002, 1.007, 1.009, 1.009, 1.008, 1.006, 1.004, 1.003, 1.002, 1.001, 1);
+  --duration-spring-smooth: 260ms;
   --distance-base: 8px;
   --scale-large: 0.96;
   --scale-medium: 0.97;
+  --scale-small: 0.98;
   --scale-tiny: 0.99;
   --blur-small: 2px;
+  --blur-medium: 3px;
 }
 
 .dark {
@@ -177,7 +205,13 @@
 
 
 
-  --shadow-panel: none;
-  --shadow-float: 0 3px 10px rgb(0 0 0 / 0.3), 0 20px 48px rgb(0 0 0 / 0.5);
-  --shadow-thumb: 0 0 0 1px rgb(255 255 255 / 0.06);
+  --card-border: rgb(255 255 255 / 0.06);
+  --shadow-panel-lift: 0 1px 2px rgb(0 0 0 / 0.12), 0 8px 24px -16px rgb(0 0 0 / 0.45);
+  --shadow-panel: inset 0 1px 0 rgb(255 255 255 / 0.025), var(--shadow-panel-lift);
+  --shadow-float: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 4px 12px rgb(0 0 0 / 0.2), 0 24px 64px -12px rgb(0 0 0 / 0.55);
+  --shadow-sidebar: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 2px 6px rgb(0 0 0 / 0.12), 0 16px 42px -14px rgb(0 0 0 / 0.5);
+  --shadow-bar: 0 4px 18px rgb(0 0 0 / 0.3);
+  --shadow-thumb: 0 1px 2px rgb(0 0 0 / 0.3);
+  --glass: rgb(23 23 23 / 0.96);
+  --glass-border: rgb(255 255 255 / 0.06);
 }
