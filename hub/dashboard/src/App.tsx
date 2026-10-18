@@ -70,6 +70,9 @@ const AppDialogs = lazyWithReload("dialogs", () => import("./AppDialogs"));
 const ModelMatrixView = lazyWithReload("matrix", async () => ({
   default: (await import("./Overview")).ModelMatrix,
 }));
+const ProjectUsageView = lazyWithReload("projects", async () => ({
+  default: (await import("./ProjectUsage")).ProjectUsage,
+}));
 
 // The shortcut handler takes either modifier; the hint names the one this
 // platform's keyboard actually has.
@@ -581,6 +584,11 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                     <AppErrorBoundary title="模型矩阵已更新，请刷新。">
                       <Suspense fallback={<PageSkeleton label="正在加载矩阵…" columns={1} height={320} />}>
                         <ModelMatrixView per={per} />
+                      </Suspense>
+                    </AppErrorBoundary>
+                    <AppErrorBoundary title="项目用量已更新，请刷新。">
+                      <Suspense fallback={<PageSkeleton label="正在加载项目用量…" columns={1} height={280} />}>
+                        <ProjectUsageView data={data} period={period} />
                       </Suspense>
                     </AppErrorBoundary>
                   </>

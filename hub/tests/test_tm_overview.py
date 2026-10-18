@@ -17,6 +17,7 @@ from conftest import (
     READ_KEY,
     TM_SECRET,
     make_cloud_app,
+    official_payload,
     requires_node,
     widget_style_payload,
 )
@@ -505,6 +506,109 @@ def test_projects_normalized_with_devices(cloud):
 def test_projects_empty_when_absent(cloud):
     ingest(cloud, widget_style_payload("dev-np"))
     assert overview(cloud)["projects"] == []
+
+
+@requires_node
+def test_project_models_from_official_rollup(cloud):
+    """v0.74 官方按会话汇总项目时带出按模型词元；旧版设备的项目只计入 tokens。"""
+    current = widget_style_payload("dev-v074")
+    current["projectsEnabled"] = True
+    current["allTime"] = {
+        "totalTokens": 1700,
+        "clients": {"codex": 1200, "claude": 500},
+        "sessions": {
+            "codex:s-web": {"client": "codex", "sessionId": "s-web", "projectLabel": "web",
+                            "totalTokens": 1000, "models": {"GPT-5.4": 600, "o3": 400}},
+            # 模型合计超过会话总量：官方 addProjectModels 只分到会话的 500
+            "claude:s-cap": {"client": "claude", "sessionId": "s-cap", "projectLabel": "web",
+                             "totalTokens": 500, "models": {"opus-4.5": 800}},
+            "codex:s-api": {"client": "codex", "sessionId": "s-api", "projectLabel": "api",
+                            "totalTokens": 200},
+        },
+    }
+    ingest(cloud, official_payload(current))
+    legacy = widget_style_payload("dev-v073")
+    legacy["hostname"] = "ThinkPad"
+    legacy["projectsEnabled"] = True
+    legacy["allTime"]["projects"] = {
+        "web": {"label": "web", "tokens": 300, "costUsd": 0.1, "clients": {"codex": 300}},
+    }
+    ingest(cloud, legacy)
+
+    projects = {p["label"]: p for p in overview(cloud)["projects"]}
+    web = projects["web"]
+    assert web["tokens"] == 1800
+    assert web["models"] == {"gpt-5.4": 600, "o3": 400, "opus-4.5": 500}
+    assert web["clients"] == {"codex": 1300, "claude": 500}
+    assert sorted(web["devices"]) == ["MacBook-Pro", "ThinkPad"]
+    assert projects["api"]["models"] == {}
+
+
+@requires_node
+def test_projects_by_period_follow_upstream_expiry(cloud):
+    """今日、本月的项目由官方按会话汇总；今日窗口已结束的设备不计入今日。"""
+    def session(client, sid, tokens, models):
+        return {"client": client, "sessionId": sid, "projectLabel": "web",
+                "totalTokens": tokens, "models": models}
+
+    current = widget_style_payload("dev-proj-now")
+    current["projectsEnabled"] = True
+    current["today"]["sessions"] = {"codex:a1": session("codex", "a1", 300, {"gpt-5.4": 300})}
+    current["month"]["sessions"] = {"codex:a2": session("codex", "a2", 900, {"gpt-5.4": 900})}
+    ingest(cloud, current)
+    ended = widget_style_payload("dev-proj-ended")
+    ended["hostname"] = "ThinkPad"
+    ended["projectsEnabled"] = True
+    now = datetime.now(timezone.utc)
+    ended["periodWindows"]["today"]["endsAt"] = (now - timedelta(hours=1)).isoformat()
+    ended["periodWindows"]["month"]["endsAt"] = (now + timedelta(days=1)).isoformat()
+    ended["today"]["sessions"] = {"claude:b1": session("claude", "b1", 100, {"opus-4.5": 100})}
+    ended["month"]["sessions"] = {"claude:b2": session("claude", "b2", 400, {"o3": 400})}
+    ingest(cloud, ended)
+
+    data = overview(cloud)
+    by_period = data["projects_by_period"]
+    today = {p["label"]: p for p in by_period["today"]}["web"]
+    assert (today["tokens"], today["models"], today["devices"]) == (300, {"gpt-5.4": 300}, ["MacBook-Pro"])
+    month = {p["label"]: p for p in by_period["month"]}["web"]
+    assert month["tokens"] == 1300
+    assert month["models"] == {"gpt-5.4": 900, "o3": 400}
+    assert month["clients"] == {"codex": 900, "claude": 400}
+    assert sorted(month["devices"]) == ["MacBook-Pro", "ThinkPad"]
+    assert by_period["allTime"] == data["projects"]
+    assert data["projects_meta_by_period"] == {
+        period: {"incomplete": False} for period in ("today", "month", "allTime")
+    }
+
+
+@requires_node
+def test_projects_meta_marks_incomplete_breakdowns(cloud):
+    """上游口径：今日、本月有设备省略了项目明细，或累计有设备关闭项目统计。"""
+    omitted = widget_style_payload("dev-omitted")
+    omitted["projectsEnabled"] = True
+    omitted["periodProjectsOmitted"] = {"today": 2}
+    ingest(cloud, omitted)
+    ingest(cloud, widget_style_payload("dev-disabled"))  # projectsEnabled False，累计有用量
+    assert overview(cloud)["projects_meta_by_period"] == {
+        "today": {"incomplete": True}, "month": {"incomplete": False}, "allTime": {"incomplete": True},
+    }
+
+
+def test_project_models_keep_only_non_negative_integers():
+    from hub.tm_overview import _collect_projects
+
+    stats = {"periods": {"allTime": {"projects": {
+        "api": {"label": "api", "tokens": 5, "models": ["not", "a", "map"]},
+        "web": {"label": "web", "tokens": 10, "models": {
+            "kept": 7, "zero": 0, "negative": -1, "flag": True,
+            "fraction": 1.5, "text": "7", "missing": None,
+        }},
+    }}}}
+    collected = _collect_projects(stats)
+    assert [p["label"] for p in collected] == ["web", "api"]  # tokens 降序，不按官方插入顺序
+    projects = {p["label"]: p for p in collected}
+    assert projects["web"]["models"] == {"kept": 7, "zero": 0}
+    assert projects["api"]["models"] == {}
 
 
 # ================================================================ diagnostics / period_windows
