@@ -474,7 +474,7 @@ export function DevicesView({ data }: SecondaryProps) {
           foot="来自全部已上报设备"
         />
       </section>
-      <div className="sv-toolbar">
+      <div className="sv-toolbar" data-feel-card>
         <label className="sv-search">
           <Search aria-hidden="true" />
           <input
@@ -1120,7 +1120,7 @@ export function QuotaView({ data }: SecondaryProps) {
         className="sv-subscriptions-section"
         aria-labelledby="sv-subscription-title"
       >
-        <div className="sv-section-head">
+        <div className="sv-section-head" data-feel-card>
           <div>
             <h2 id="sv-subscription-title">订阅与账单</h2>
             <p className="sv-muted">

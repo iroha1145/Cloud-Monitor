@@ -40,6 +40,8 @@ import {
 } from "./data";
 import { loadDashboard, isAuthFailure } from "./api";
 import { FloatingNavigation } from "./FloatingNavigation";
+import { createElasticCards } from "./lib/elastic-cards";
+import { installScrollReveal } from "./lib/scroll-reveal";
 import { AnimatedNavIcon } from "./AnimatedNavIcon";
 import { PAGES, type PageId } from "./pages";
 import { PageSkeleton } from "./PageSkeleton";
@@ -51,7 +53,7 @@ import {
 } from "./Overview";
 import { pct } from "./lib/format";
 import "./mobile.css";
-import "./workspace-refresh.css";
+import "./surface.css";
 
 const DevicesView = lazyWithReload("secondary", async () => ({
   default: (await import("./SecondaryViews")).DevicesView,
@@ -138,6 +140,15 @@ export default function App({ initialData, initialToken = "", hosted = false, is
       ),
   ])];
   const statusCount = notices.length;
+  // Cards give a little under a drag on their empty space and spring back.
+  const workspace = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!workspace.current) return;
+    const elastic = createElasticCards(workspace.current);
+    // Cards below the fold rise in when they are scrolled to.
+    const reveal = installScrollReveal(workspace.current);
+    return () => { elastic.destroy(); reveal(); };
+  }, []);
   // Sections rise in after navigation only; the first screen stays still.
   const [navigated, setNavigated] = useState(false);
   const pageRef = useRef(page);
@@ -415,12 +426,12 @@ export default function App({ initialData, initialToken = "", hosted = false, is
         跳到主内容
       </a>
       <div
-        className={`app-shell feel-shell ${SHOWCASE_UI ? "showcase-shell" : "dashboard-shell"}`}
+        className={`app-shell ${SHOWCASE_UI ? "showcase-shell" : "dashboard-shell"}`}
       >
         <FloatingNavigation open={mobile} onOpenChange={setMobile} currentPage={page} onNavigate={go} pageName={current.name}>
           {nav}
         </FloatingNavigation>
-        <div className="workspace-main">
+        <div className="workspace-main" ref={workspace}>
           <header className="app-topbar" data-feel-card>
             <div className="breadcrumb">
               <span className="breadcrumb-workspace">工作空间</span>
@@ -596,7 +607,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                 )}
               </motion.div>
             </AnimatePresence>
-            <footer className="page-footer">
+            <footer className="page-footer" data-feel-card>
               <span>
                 Cloud Monitor
                 <span className="footer-separator" aria-hidden="true">·</span>

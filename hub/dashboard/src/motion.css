@@ -33,6 +33,25 @@
 .theme-menu [data-slot="select-item"][data-state="checked"],
 .theme-menu [data-slot="select-item"][data-state="checked"] svg { color: var(--accent); }
 
+/* Scroll reveal (lib/scroll-reveal.ts, game-manage v-reveal). The attribute
+   exists only while a below-the-fold card waits and rises; the transition is
+   !important for that window so the card's own transitions cannot cut the
+   rise short, and the attribute is removed once the rise ends. */
+[data-reveal] {
+  transition:
+    opacity var(--duration-very-slow) var(--ease-smooth-out) var(--reveal-delay, 0ms),
+    transform 600ms var(--ease-spring-smooth) var(--reveal-delay, 0ms),
+    filter var(--duration-very-slow) var(--ease-smooth-out) var(--reveal-delay, 0ms) !important;
+}
+[data-reveal="pending"] {
+  opacity: 0;
+  transform: translate3d(0, 20px, 0) scale(var(--scale-small));
+  filter: blur(var(--blur-medium));
+}
+/* Keyboard focus never lands on something invisible. */
+[data-reveal="pending"]:focus-within { opacity: 1; transform: none; filter: none; }
+@media print { [data-reveal] { opacity: 1 !important; transform: none !important; filter: none !important; } }
+
 /* Page entry: sections rise in order after navigation (texts reveal rhythm). */
 .page-stage > * {
   animation: t-rise var(--duration-fast) var(--ease-smooth-out) backwards;
@@ -72,6 +91,21 @@
 }
 [data-slot="dialog-content"][data-state="closed"] {
   animation: t-modal-out var(--duration-quick) var(--ease-smooth-out) forwards;
+}
+/* A side sheet slides in from the right edge instead (game-manage .t-dialog). */
+[data-slot="dialog-content"].model-dialog[data-state="open"] {
+  animation: t-sheet-in var(--duration-spring-smooth) var(--ease-spring-smooth);
+}
+[data-slot="dialog-content"].model-dialog[data-state="closed"] {
+  animation: t-sheet-out var(--duration-quick) var(--ease-out, ease-out) forwards;
+}
+@keyframes t-sheet-in {
+  from { opacity: 0.6; translate: 30px 0; }
+  to { opacity: 1; translate: 0 0; }
+}
+@keyframes t-sheet-out {
+  from { opacity: 1; translate: 0 0; }
+  to { opacity: 0; translate: 30px 0; }
 }
 @keyframes t-fade-in {
   from {
@@ -297,8 +331,6 @@ details[open]::details-content {
 .icon-button,
 .command-search,
 .row-arrow,
-.mobile-bottom-nav a,
-.mobile-bottom-nav a > svg,
 .insight-trend-day-nav button {
   transition:
     background-color var(--duration-quick) var(--ease-smooth-out),
@@ -311,10 +343,6 @@ details[open]::details-content {
 .row-arrow:active,
 .insight-trend-day-nav button:active:not(:disabled) {
   transform: scale(0.96);
-}
-/* The tab keeps its 44px target; only the icon dips. */
-.mobile-bottom-nav a:active > svg {
-  transform: scale(0.88);
 }
 
 /* Number pop-in: a changed value re-enters from below with a short blur; the

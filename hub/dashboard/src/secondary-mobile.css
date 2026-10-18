@@ -22,7 +22,7 @@
   }
   .sv-summary-label,
   .sv-dense-page .sv-summary-label {
-    font-size: 11px;
+    font-size: var(--fs-meta);
     line-height: 1.5;
   }
   .sv-summary-foot {
@@ -38,7 +38,7 @@
   }
   .sv-section-head p,
   .sv-muted {
-    font-size: 11px;
+    font-size: var(--fs-meta);
     line-height: 1.7;
   }
   .sv-button,
@@ -75,7 +75,7 @@
   .sv-device-statusline,
   .sv-device-footer,
   .sv-device-id {
-    font-size: 11px;
+    font-size: var(--fs-meta);
     line-height: 1.65;
   }
   .sv-device-footer {
@@ -90,7 +90,7 @@
   }
   .sv-device-metrics .sv-metric-label,
   .sv-subscription .sv-metric-label {
-    font-size: 11px;
+    font-size: var(--fs-meta);
   }
   .sv-device-metrics > * {
     min-height: 58px;
@@ -100,7 +100,7 @@
   }
   .sv-detail-grid dt,
   .sv-subscription-dates dt {
-    font-size: 11px;
+    font-size: var(--fs-meta);
   }
   .sv-detail-grid dd,
   .sv-subscription-dates dd,
@@ -116,7 +116,7 @@
   .sv-quota-source,
   .sv-records-label,
   .sv-subscription-records time {
-    font-size: 11px;
+    font-size: var(--fs-meta);
   }
   .sv-quota-window {
     padding-block: 5px;
@@ -142,7 +142,7 @@
     font-size: 16px;
   }
   .cm-activity-head p {
-    font-size: 11px;
+    font-size: var(--fs-meta);
   }
   .cm-activity-tabs button {
     min-width: 44px;
@@ -168,7 +168,7 @@
   .cm-activity-coverage-missing,
   .cm-activity-warning,
   .cm-activity-sampling-grid {
-    font-size: 11px;
+    font-size: var(--fs-meta);
     line-height: 1.65;
   }
   .cm-activity-selection,
@@ -248,7 +248,7 @@
     content: attr(data-label);
     display: block;
     color: var(--ink-2);
-    font-size: 11px;
+    font-size: var(--fs-meta);
     margin-bottom: 6px;
   }
   .sv-session-table td:first-child::before {
@@ -268,7 +268,7 @@
     line-height: 1.6;
   }
   .sv-session-table small {
-    font-size: 11px;
+    font-size: var(--fs-meta);
     line-height: 1.7;
   }
   .sv-session-table .sv-session-detail td {
@@ -280,7 +280,7 @@
   .sv-table-footer {
     flex-wrap: wrap;
     gap: 10px;
-    font-size: 11px;
+    font-size: var(--fs-meta);
     line-height: 1.6;
   }
   .sv-pagination {

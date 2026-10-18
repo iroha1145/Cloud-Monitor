@@ -314,6 +314,7 @@ export default function AppDialogs({
         <DialogContent
           returnFocusRef={returnFocusRef}
           className="model-dialog"
+          placement="right"
           showCloseButton={false}
           onOpenAutoFocus={(event) => {
             const content = event.target;

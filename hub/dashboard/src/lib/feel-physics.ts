@@ -3,17 +3,22 @@ export const clamp = (n: number, min: number, max: number) => Math.max(min, Math
 export type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 export type Bounds = { left: number; right: number; top: number; bottom: number };
 export const CORNERS: readonly Corner[] = ['top-left', 'top-right', 'bottom-right', 'bottom-left'];
+/** The menu keeps 16px from every edge (game-manage navigationBounds). */
 export function navigationBounds(width: number, height: number, cardWidth: number, cardHeight: number): Bounds {
-  return { left: 12, top: 12, right: Math.max(12, width - cardWidth - 12), bottom: Math.max(12, height - cardHeight - 12) };
+  return { left: 16, top: 16, right: Math.max(16, width - cardWidth - 16), bottom: Math.max(16, height - cardHeight - 16) };
 }
+/** A release keeps 70ms of its velocity when choosing the corner it heads to. */
 export function projectedCorner(x: number, y: number, vx: number, vy: number, bounds: Bounds): Corner {
-  const px = clamp(x + vx * .0658, bounds.left, bounds.right);
-  const py = clamp(y + vy * .0658, bounds.top, bounds.bottom);
+  const px = clamp(x + vx * .07, bounds.left, bounds.right);
+  const py = clamp(y + vy * .07, bounds.top, bounds.bottom);
   return `${py > (bounds.top + bounds.bottom) / 2 ? 'bottom' : 'top'}-${px > (bounds.left + bounds.right) / 2 ? 'right' : 'left'}`;
 }
 export function cornerPosition(corner: Corner, bounds: Bounds) {
   return { x: corner.endsWith('right') ? bounds.right : bounds.left, y: corner.startsWith('bottom') ? bounds.bottom : bounds.top };
 }
+/** The spring that carries the menu into its corner and every card into its
+ * new slot: mass 1, stiffness 260, damping 28 (game-manage). */
+export const SLOT_SPRING = [260, 28, 1] as const;
 /** Stable semi-implicit spring, substepped so slow frames cannot explode. */
 export function springStep(position: number, velocity: number, target: number, dt: number, stiffness = 345, damping = 16.5, mass = .35): [number, number] {
   const elapsed = clamp(dt, 0, .04), steps = Math.max(1, Math.ceil(elapsed / (1 / 240))), h = elapsed / steps;
@@ -22,14 +27,6 @@ export function springStep(position: number, velocity: number, target: number, d
     position += velocity * h;
   }
   return [position, velocity];
-}
-/** Three positions: fully open, half height and a closed handle. */
-export function drawerStops(height: number, peek = 64) {
-  return [0, Math.max(0, (height - peek) * .5), Math.max(0, height - peek)];
-}
-export function nearestDrawerStop(position: number, velocity: number, height: number) {
-  const projected = position + clamp(velocity, -2600, 2600) * .12;
-  return drawerStops(height).reduce((nearest, value) => Math.abs(value - projected) < Math.abs(nearest - projected) ? value : nearest, 0);
 }
 export type Rectangle = { left: number; right: number; top: number; bottom: number; width: number; height: number };
 export type AvoidanceSide = 'left' | 'right' | null;
@@ -80,8 +77,10 @@ export function mobileCardAvoidance(card: Rectangle, sheet: Rectangle | null, sa
 }
 
 export type ItemMotion = { x: number; y: number; scale: number };
-/** Inner records react before contact, including after an outer card clears
- * the menu. The response never changes a record's layout width or spacing. */
+/** Inner records react as the menu passes, including after an outer card has
+ * cleared it. The response never changes a record's layout width or spacing;
+ * the controller only applies it while the menu moves (lib/feel-cards.ts), so
+ * nothing is left scaled once the menu rests. */
 export function itemRepulsion(item: Rectangle, menu: Rectangle | null, kind: 'row' | 'cell', mobile = false): ItemMotion {
   const still: ItemMotion = { x: 0, y: 0, scale: 1 };
   if (!menu || (mobile && item.top >= menu.top)) return still;
@@ -91,6 +90,8 @@ export function itemRepulsion(item: Rectangle, menu: Rectangle | null, kind: 'ro
   const distance = Math.hypot(nx, ny);
   if (distance >= radius) return still;
   if (mobile) { nx = 0; ny = -1; }
+  // A row is one of a stack: it steps sideways, never into its neighbours.
+  else if (kind === 'row') { nx = item.left + item.width / 2 < menu.left + menu.width / 2 ? -1 : 1; ny = 0; }
   else if (distance > 0) { nx /= distance; ny /= distance; }
   else {
     const horizontal = Math.min(Math.abs(item.right - menu.left), Math.abs(item.left - menu.right));

@@ -1,88 +1,253 @@
-/* Navigation uses the dashboard's existing neutral surfaces and data colours. */
+/* The floating menu after game-manage (floating-navigation.css there): a
+   compact frosted panel on desktop that can be thrown to any corner, and on
+   phones a frosted tab bar that grows into the menu as one surface. The
+   controllers in FloatingNavigation.tsx write position and progress per frame. */
+
+/* ── Desktop ──────────────────────────────────────────────────────── */
 .feel-navigation {
-  transition: none;
   position: fixed;
   inset: 0 auto auto 0;
   z-index: 40;
-  width: 224px;
-  max-width: calc(100vw - 24px);
-  max-height: calc(100dvh - 24px);
   display: flex;
   flex-direction: column;
-  color: var(--ink);
-  background: var(--surface);
-  border: 1px solid var(--line-strong);
-  border-radius: 18px;
-  box-shadow: var(--shadow-float);
-  isolation: isolate;
+  width: 216px;
+  max-height: calc(100dvh - 32px);
+  padding-top: 24px;
   overflow: hidden;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-shell);
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  box-shadow: var(--shadow-sidebar);
+  color: var(--ink);
+  transform: translate3d(16px, 16px, 0);
+  isolation: isolate;
+  transition: none;
 }
-.feel-navigation[data-expanded="false"] { width: 156px; }
-.feel-nav-header { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 8px; border-bottom: 1px solid var(--line-soft); }
-.feel-nav-handle { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 40px; padding: 0 7px; font-size: 12px; color: var(--ink-2); text-align: left; }
-.feel-nav-handle, .feel-sheet-handle { touch-action: none; user-select: none; cursor: grab; }
-.feel-navigation[data-dragging="true"] .feel-nav-handle, .feel-sheet-handle:active { cursor: grabbing; }
-.feel-navigation[data-dragging="true"] { box-shadow: 0 8px 22px rgb(0 0 0 / .08), 0 24px 58px rgb(0 0 0 / .15); }
-.feel-nav-toggle, .feel-sheet-close { display: grid; flex-shrink: 0; place-items: center; width: 40px; height: 40px; color: var(--ink-2); border-radius: 10px; }
-.feel-nav-toggle:hover, .feel-sheet-close:hover { background: var(--hover); }
-.feel-nav-toggle svg { transition: rotate 150ms var(--ease-smooth-out); }
-.feel-navigation[data-expanded="false"] .feel-nav-toggle svg { rotate: 180deg; }
-.feel-nav-content { min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 12px 10px 10px; }
-.feel-nav-content[hidden] { display: none; }
-.feel-nav-content .app-brand { padding: 6px 8px; font-size: 15px; gap: 8px; }
-.feel-nav-content .brand-mark { width: 29px; height: 29px; }
+/* A faint light from below keeps the glass from reading as a flat sheet. */
+.feel-navigation::before,
+.feel-nav-drawer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(ellipse at 50% 100%, rgb(23 23 23 / 0.04), transparent 70%);
+}
+.dark :is(.feel-navigation, .feel-nav-drawer)::before {
+  background: radial-gradient(ellipse at 50% 100%, rgb(255 255 255 / 0.05), transparent 70%);
+}
+.feel-navigation[data-dragging="true"] { box-shadow: var(--shadow-float); }
+.app-shell:has(.feel-navigation[data-dragging="true"]) { user-select: none; }
+
+/* The grip: the whole top strip moves the menu; only the short bar shows. */
+.feel-nav-handle,
+.feel-sheet-handle {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.feel-nav-handle > span:first-child,
+.feel-sheet-handle > span:first-child {
+  width: 30px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.35;
+  transition: opacity var(--duration-quick) var(--ease-smooth-out);
+}
+/* A pointer press never draws the keyboard ring; Tab still does. */
+:is(.feel-nav-handle, .feel-sheet-handle):focus:not(:focus-visible) { outline: none; }
+:is(.feel-nav-handle, .feel-sheet-handle):focus-visible { outline: 2px solid var(--primary); outline-offset: -4px; border-radius: 20px; }
+.feel-navigation[data-dragging="true"] .feel-nav-handle { cursor: grabbing; }
+@media (hover: hover) and (pointer: fine) {
+  :is(.feel-nav-handle, .feel-sheet-handle):hover > span:first-child { opacity: 0.65; }
+}
+
+.feel-nav-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 2px 12px 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.feel-nav-content .app-brand { padding: 4px 8px; font-size: 15px; gap: 10px; }
+.feel-nav-content .brand-mark { width: 30px; height: 30px; }
 .feel-nav-content .nav-label { margin: 20px 10px 8px; }
+.feel-nav-content .nav-list { gap: 4px; }
+.feel-nav-content .nav-item {
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 13px;
+  font-size: 14px;
+}
+/* The current page takes the accent, as in game-manage's menu. */
+.feel-nav-content .nav-item.active { color: var(--primary); font-weight: 600; }
+.feel-nav-content .nav-item.active > svg { color: var(--primary); }
+.feel-nav-content .nav-active { border-radius: 13px; background: var(--accent-tint); }
+.feel-nav-content .nav-hover { border-radius: 13px; }
+.feel-nav-content .nav-item:active { transform: translateY(1px); }
 .feel-nav-content .sidebar-bottom { margin-top: 14px; padding-top: 12px; }
-.feel-nav-content .workspace-picker { margin-top: 14px; }
-.feel-nav-content .sidebar-connection { padding: 2px 8px 10px; }
-.feel-navigation button:focus-visible, .feel-nav-peek:focus-visible, .feel-nav-drawer button:focus-visible { outline: 2px solid var(--primary); outline-offset: -3px; }
-.feel-nav-backdrop { --feel-drawer-open: 0; position: fixed; inset: 0; z-index: 39; background: rgb(0 0 0 / .24); opacity: var(--feel-drawer-open); pointer-events: none; transition: none; }
+.feel-nav-content .sidebar-connection { padding: 12px 8px; }
+.feel-nav-content .sidebar-setting { min-height: 36px; border-radius: 11px; }
+@media (min-width: 961px) and (max-width: 1250px) {
+  .feel-navigation { width: 196px; }
+}
+
+/* ── Phones: the tab bar and the menu are one surface ─────────────── */
+.feel-nav-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  background: rgb(0 0 0 / 0.22);
+  opacity: var(--drawer-progress, 0);
+  pointer-events: none;
+  touch-action: none;
+  transition: none;
+}
 .feel-nav-backdrop[data-active="true"] { z-index: 50; pointer-events: auto; }
-.feel-nav-drawer { --feel-collapsed-height: 106px; position: fixed; z-index: 40; bottom: 0; left: 50%; translate: -50% 0; transform: translateY(var(--feel-sheet-shift, calc(100% - var(--feel-collapsed-height)))); width: min(520px, 100vw); max-width: 100vw; height: min(620px, calc(100dvh - max(16px, env(safe-area-inset-top, 0px)))); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line-strong); border-bottom: 0; border-radius: 24px 24px 0 0; background: var(--surface); color: var(--ink); box-shadow: var(--shadow-float); outline: none; transition: none; }
-.feel-nav-drawer[data-state="open"] { z-index: 51; }
-.feel-nav-drawer[data-drawer-moving="true"] { will-change: transform; }
-.feel-mobile-bar { flex: none; padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)); border-bottom: 1px solid var(--line-soft); }
-.feel-sheet-close { position: absolute; right: 12px; top: 0; width: 44px; height: 44px; opacity: clamp(0, calc(var(--feel-drawer-open, 0) * 4), 1); }
+.feel-nav-drawer {
+  --drawer-progress: 0;
+  --bar-height: 84px;
+  --drawer-extra-height: calc(var(--nav-open-height, 560px) - var(--bar-height));
+  position: fixed;
+  left: 50%;
+  bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  z-index: 40;
+  width: min(calc(100vw - 24px + 4px * var(--drawer-progress)), calc(396px + 124px * var(--drawer-progress)));
+  height: calc(var(--bar-height) + var(--drawer-extra-height) * var(--drawer-progress) + var(--drawer-stretch, 0px));
+  max-height: calc(100dvh - max(12px, env(safe-area-inset-bottom, 0px)) - 8px);
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  border-radius: calc(32px - 4px * var(--drawer-progress));
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  box-shadow: var(--shadow-bar);
+  color: var(--ink);
+  transform: translate(-50%, var(--drawer-shift, 0px));
+  isolation: isolate;
+  outline: none;
+  transition: none;
+}
+.feel-nav-drawer[data-state="open"] { z-index: 51; box-shadow: var(--shadow-float); }
+.feel-sheet-handle { height: 24px; }
+.feel-sheet-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-control);
+  color: var(--ink-2);
+  opacity: clamp(0, calc(var(--drawer-progress) * 3 - 1.4), 1);
+}
 .feel-nav-drawer[data-drawer-stop="closed"] .feel-sheet-close { visibility: hidden; }
-.feel-sheet-header { position: relative; display: flex; flex-shrink: 0; align-items: center; height: 44px; padding: 0 12px; }
-.feel-sheet-handle { display: flex; align-items: center; justify-content: center; align-self: stretch; flex: 1; min-width: 44px; min-height: 44px; color: var(--ink-3); border-radius: 12px; }
-.feel-sheet-handle > span:first-child { display: block; width: 40px; height: 4px; border-radius: 4px; background: var(--line-strong); }
-.feel-quick-navigation { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 0 10px; }
-.feel-quick-navigation a { min-width: 0; min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border-radius: 14px; color: var(--ink-2); font-size: 12px; line-height: 1.3; text-align: center; text-decoration: none; }
-.feel-quick-navigation a:hover { background: var(--hover); }
-.feel-quick-navigation a[aria-current="page"] { color: var(--ink); background: var(--hover); }
-.feel-nav-drawer .feel-nav-content { box-sizing: border-box; flex: none; height: max(0px, calc(100% - max(0px, var(--feel-sheet-shift, 0px)) - var(--feel-collapsed-height))); padding: 12px max(18px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left, 0px)); }
-.feel-nav-drawer .nav-item, .feel-nav-drawer .sidebar-setting { min-height: 46px; font-size: 14px; }
+@media (hover: hover) and (pointer: fine) {
+  .feel-sheet-close:hover { background: var(--hover); color: var(--ink); }
+}
+/* The menu scrolls in the room between the grip and the bar: a half-open
+   drawer shows the pages and scrolls to the rest, a full one fits it all. */
+.feel-nav-drawer > .feel-nav-content {
+  position: absolute;
+  top: 28px;
+  left: 0;
+  right: 0;
+  bottom: var(--bar-height);
+  padding: 4px max(18px, env(safe-area-inset-right, 0px)) 12px max(18px, env(safe-area-inset-left, 0px));
+  opacity: clamp(0, calc(var(--drawer-progress) * 2.4 - 0.2), 1);
+  transform: translateY(calc(12px * (1 - var(--drawer-progress))));
+  pointer-events: none;
+}
+.feel-nav-drawer[data-state="open"] > .feel-nav-content { pointer-events: auto; }
+.feel-nav-drawer[data-drawer-stop="closed"] > .feel-nav-content { visibility: hidden; }
+.feel-nav-inner { display: flex; flex-direction: column; }
+.feel-nav-drawer .feel-nav-content .app-brand { padding-right: 52px; }
+.feel-nav-drawer .feel-nav-content .nav-item,
+.feel-nav-drawer .feel-nav-content .sidebar-setting { min-height: 46px; }
 .feel-nav-drawer .sidebar-bottom { flex-shrink: 0; }
-.feel-nav-drawer[data-drawer-stop="closed"] .feel-nav-content { visibility: hidden; }
-[data-feel-card] { translate: calc(var(--feel-avoid-x, 0px) + var(--feel-press-x, 0px)) calc(var(--feel-avoid-y, 0px) + var(--feel-press-y, 0px)); scale: var(--feel-press-scale, 1); transition: scale 160ms var(--ease-smooth-out); }
-[data-feel-card][data-feel-moving="true"] { will-change: translate; }
+
+.feel-quick-navigation {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+  height: 64px;
+  padding: 6px;
+  /* The bar has its own glass, so a half-open menu passes under it. */
+  background: var(--glass);
+}
+/* A hairline between the menu and the bar appears as the drawer opens. */
+.feel-quick-navigation::before {
+  content: "";
+  position: absolute;
+  inset: -1px 18px auto;
+  height: 1px;
+  background: var(--line);
+  opacity: var(--drawer-progress);
+}
+.feel-quick-navigation > :is(a, button) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 44px;
+  min-height: 52px;
+  padding: 5px 2px;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 14px;
+  text-align: center;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.feel-quick-navigation > [aria-current="page"] { background: var(--accent-tint); color: var(--primary); font-weight: 600; }
+.feel-quick-navigation > :is(a, button):active { transform: translateY(1px); }
+.feel-more > svg { transform: rotate(0deg); transition: transform var(--duration-fast) var(--ease-smooth-out); }
+.feel-more[aria-expanded="true"] > svg { transform: rotate(180deg); }
+.feel-quick-navigation > :is(a, button):focus-visible { outline: 2px solid var(--primary); outline-offset: -3px; }
+@media (hover: hover) and (pointer: fine) {
+  .feel-quick-navigation > :is(a, button):not([aria-current="page"]):hover { background: var(--hover); color: var(--ink); }
+}
+
+/* ── Cards and records making room ────────────────────────────────── */
+/* Offsets exist only while something is displaced: records answer a moving
+   menu and return once it rests, so at rest nothing keeps a transform or a
+   layer of its own. Width-based room on desktop needs neither. */
+[data-feel-card][data-menu-avoidance="mobile"] { translate: 0 var(--feel-avoid-y, 0px); }
+[data-feel-card][data-menu-avoidance="mobile"][data-feel-moving] { will-change: translate; }
+[data-feel-item][data-feel-item-active] { translate: var(--feel-item-x, 0px) var(--feel-item-y, 0px); scale: var(--feel-item-scale, 1); }
+[data-feel-item][data-feel-item-moving] { will-change: translate; }
+
 @media (prefers-reduced-motion: reduce) {
-  .feel-nav-toggle svg, [data-feel-card] { transition: none; }
-  .feel-nav-drawer, .feel-nav-backdrop { animation: none !important; }
+  .feel-navigation, .feel-navigation *, .feel-nav-drawer, .feel-nav-drawer *, .feel-nav-backdrop { transition: none !important; animation: none !important; }
+  .feel-nav-drawer > .feel-nav-content { transform: none; }
 }
-
-/* Floating layers use glass only where content passes behind them. Text and
-   ordinary workspace cards remain opaque and keep their own colour tokens. */
-.feel-navigation, .feel-nav-drawer {
-  border-color: color-mix(in srgb, var(--line-strong) 85%, var(--surface));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 80%, transparent), 0 4px 12px rgb(0 0 0 / .06), 0 22px 54px -18px rgb(0 0 0 / .18);
-}
-.feel-navigation[data-dragging="true"] {
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 85%, transparent), 0 8px 20px rgb(0 0 0 / .08), 0 28px 64px -16px rgb(0 0 0 / .24);
-}
-@supports (backdrop-filter: blur(18px)) or (-webkit-backdrop-filter: blur(18px)) {
-  .feel-navigation, .feel-nav-drawer {
-    background: color-mix(in srgb, var(--surface) 93%, transparent);
-    -webkit-backdrop-filter: blur(18px);
-    backdrop-filter: blur(18px);
-  }
-}
-
-/* Inner rows and heat cells have their own bounded visual response. Their
-   parent card keeps its separate width/margin or vertical avoidance state. */
-[data-feel-item] {
-  translate: var(--feel-item-x, 0px) var(--feel-item-y, 0px);
-  scale: var(--feel-item-scale, 1);
-}
-[data-feel-item][data-feel-item-active="true"] { will-change: translate, scale; }

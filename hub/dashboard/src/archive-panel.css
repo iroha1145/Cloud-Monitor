@@ -128,7 +128,7 @@
   font-size: 13px;
 }
 .archive-day small {
-  font-size: 11px;
+  font-size: var(--fs-meta);
   color: var(--ink-3);
 }
 .archive-number,

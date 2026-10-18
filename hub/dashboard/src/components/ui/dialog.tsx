@@ -55,7 +55,7 @@ function DialogContent({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
-  placement?: "center" | "left"
+  placement?: "center" | "left" | "right"
   returnFocusRef?: React.RefObject<HTMLElement | null>
 }) {
   const restoreFocus = React.useRef<HTMLElement | null>(null)
@@ -91,7 +91,9 @@ function DialogContent({
           // translate resets into transform without cancelling those utilities.
           placement === "center"
             ? "top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
-            : "inset-y-0 left-0",
+            : placement === "right"
+              ? "inset-y-0 right-0"
+              : "inset-y-0 left-0",
           className
         )}
         {...props}
