@@ -5,7 +5,9 @@
  */
 const CARD = '[data-feel-card]';
 const GLOBAL_EXCLUDED = '[data-elastic-ignore], [role="dialog"]';
-const INNER_EXCLUDED = 'a, button, input, select, textarea, option, label, summary, dialog, [role="button"], [role="slider"], [role="tab"], [contenteditable]:not([contenteditable="false"]), [draggable="true"], canvas';
+// Metric bars measure a touch against their own box, so pressing them must not
+// scale the card first; charts take their own pointer gestures.
+const INNER_EXCLUDED = 'a, button, input, select, textarea, option, label, summary, dialog, [role="button"], [role="slider"], [role="tab"], [contenteditable]:not([contenteditable="false"]), [draggable="true"], canvas, [data-metric-trigger], [data-metric-tooltip], .insight-chart-stage';
 const PROPERTIES = ['translate', 'rotate', 'scale'] as const;
 const PASSIVE = { passive: true } as const;
 const H = 1 / 240;
@@ -111,7 +113,9 @@ export function createElasticCards(root: HTMLElement, { selector = CARD } = {}) 
       x: 0, y: 0, scale: 0.994, vx: 0, vy: 0, vs: 0, time: clock(), released: false,
       previous: PROPERTIES.map(name => [name, card.style.getPropertyValue(name), card.style.getPropertyPriority(name)]),
     };
-    paint();
+    // The press shows from the next frame, so handlers further up that measure
+    // this pointerdown (tooltips, charts) still see the card unscaled.
+    frame = view.requestAnimationFrame(() => { frame = 0; paint(); });
   };
   const move = (event: PointerEvent) => {
     if (!gesture || gesture.released || event.pointerId !== gesture.id) return;

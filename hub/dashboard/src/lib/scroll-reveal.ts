@@ -45,21 +45,36 @@ export function installScrollReveal(root: HTMLElement, selector = CARD) {
     if (node.matches(selector)) consider(node);
     else node.querySelectorAll<HTMLElement>(selector).forEach(consider);
   };
-  const mutations = new view.MutationObserver(records => {
-    for (const record of records) record.addedNodes.forEach(scan);
-  });
-  mutations.observe(root, { childList: true, subtree: true });
-  scan(root);
   // Turning reduced motion on shows everything that is still waiting.
   const showAll = () => {
     if (!reduced.matches) return;
     root.querySelectorAll<HTMLElement>('[data-reveal]').forEach(el => { observer.unobserve(el); settle(el); });
   };
   reduced.addEventListener('change', showAll);
+  // The observer ignores the bottom tenth of the window, which the last rows
+  // of a page never leave: at the end of the page, show what is on screen.
+  const atEnd = () => {
+    const page = root.ownerDocument.documentElement;
+    if (view.scrollY + view.innerHeight < page.scrollHeight - 4) return;
+    root.querySelectorAll<HTMLElement>('[data-reveal="pending"]').forEach(el => {
+      if (el.getBoundingClientRect().top < view.innerHeight) { observer.unobserve(el); el.dataset.reveal = 'shown'; timers.set(el, view.setTimeout(() => settle(el), SETTLE_MS)); }
+    });
+  };
+  const mutations = new view.MutationObserver(records => {
+    for (const record of records) record.addedNodes.forEach(scan);
+    atEnd();
+  });
+  mutations.observe(root, { childList: true, subtree: true });
+  view.addEventListener('scroll', atEnd, { passive: true });
+  view.addEventListener('resize', atEnd);
+  scan(root);
+  atEnd();
   return () => {
     mutations.disconnect();
     observer.disconnect();
     reduced.removeEventListener('change', showAll);
+    view.removeEventListener('scroll', atEnd);
+    view.removeEventListener('resize', atEnd);
     root.querySelectorAll<HTMLElement>('[data-reveal]').forEach(settle);
     for (const el of [...timers.keys()]) settle(el);
   };

@@ -90,7 +90,6 @@
 }
 .sv-button:active {
   background: var(--hover);
-  scale: 0.97;
 }
 .sv-button:disabled {
   opacity: 0.5;

@@ -159,7 +159,7 @@
   height: 44px;
   border-radius: var(--r-control);
   color: var(--ink-2);
-  opacity: clamp(0, calc(var(--drawer-progress) * 3 - 1.4), 1);
+  opacity: clamp(0, calc(var(--drawer-progress) * 4), 1);
 }
 .feel-nav-drawer[data-drawer-stop="closed"] .feel-sheet-close { visibility: hidden; }
 @media (hover: hover) and (pointer: fine) {

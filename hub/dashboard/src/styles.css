@@ -586,13 +586,7 @@ input[type="search"]::-webkit-search-decoration {
   background: var(--surface);
   color: var(--ink);
   font-size: 13px;
-  transition:
-    background var(--duration-quick) var(--ease-smooth-out),
-    scale var(--duration-quick) var(--ease-smooth-out);
-}
-.plain-button:active,
-.refresh-button:active {
-  scale: 0.97;
+  transition: background var(--duration-quick) var(--ease-smooth-out);
 }
 .plain-button > svg {
   color: var(--ink-3);

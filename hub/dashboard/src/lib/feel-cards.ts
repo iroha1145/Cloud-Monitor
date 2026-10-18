@@ -4,8 +4,8 @@ import { cardAvoidance, mobileCardAvoidance, itemRepulsion, clamp, springStep, S
 // start of a row is not left under the menu; the cards in it keep their own
 // press feedback and records.
 const SELECTOR = '[data-feel-card], [data-feel-group]';
-const LAYOUT_PROPERTIES = ['width', 'margin-left', 'margin-right'];
-type Card = { el: HTMLElement; slot: Rectangle; saved: [string, string][]; ml: number; mr: number; loss: number; inset: number; vl: number; vi: number; side: AvoidanceSide; target: CardAvoidance; ay: number; av: number; mobileTarget: number; mobileLimit: number; blockers: Element[] };
+const LAYOUT_PROPERTIES = ['width', 'margin-left', 'margin-right', 'grid-template-columns'];
+type Card = { el: HTMLElement; slot: Rectangle; saved: [string, string][]; ml: number; mr: number; cols: number; loss: number; inset: number; vl: number; vi: number; side: AvoidanceSide; target: CardAvoidance; ay: number; av: number; mobileTarget: number; mobileLimit: number; blockers: Element[] };
 
 type InnerItem = {
   el: HTMLElement; kind: 'row' | 'cell'; parent: HTMLElement | null;
@@ -110,6 +110,13 @@ function createFeelItems(root: HTMLElement, schedule: () => void) {
   return { refresh, invalidate() { targetsDirty = true; }, read, paint, destroy() { disposed = true; observer.disconnect(); records.forEach(restore); records.clear(); visible.clear(); } };
 }
 
+/** The column count of a grid whose columns are all the same width, or 0. */
+function equalColumns(style: CSSStyleDeclaration) {
+  if (!style.display.includes('grid')) return 0;
+  const tracks = style.gridTemplateColumns.split(' ').filter(track => track.endsWith('px')).map(parseFloat);
+  return tracks.length > 1 && tracks.every(track => Math.abs(track - tracks[0]) < 1) ? tracks.length : 0;
+}
+
 /** Cards make room for the floating menu. On a desktop each top-level card
  * keeps its own layout slot and gives up width beside the menu (game-manage
  * card-avoidance); on a phone cards just above the tab-bar drawer rise into
@@ -157,7 +164,7 @@ export function createFeelCards(root: HTMLElement) {
         const old = previous.get(el), style = win.getComputedStyle(el);
         return [{ el, slot: { left: rect.left, right: rect.right, width: rect.width, top: rect.top - (old?.ay || 0), bottom: rect.bottom - (old?.ay || 0), height: rect.height },
           saved: LAYOUT_PROPERTIES.map(key => [el.style.getPropertyValue(key), el.style.getPropertyPriority(key)] as [string, string]),
-          ml: parseFloat(style.marginLeft) || 0, mr: parseFloat(style.marginRight) || 0,
+          ml: parseFloat(style.marginLeft) || 0, mr: parseFloat(style.marginRight) || 0, cols: equalColumns(style),
           loss: old?.loss || 0, inset: old?.inset || 0, vl: old?.vl || 0, vi: old?.vi || 0,
           side: old?.side || null, ay: old?.ay || 0, av: old?.av || 0, mobileTarget: 0, mobileLimit: 0, blockers: precedingBlocks(el), target: cardAvoidance(rect, null, { left: 0, right: win.innerWidth }) }];
       });
@@ -210,6 +217,9 @@ export function createFeelCards(root: HTMLElement) {
       if (card.loss < .03 && card.target.loss === 0 && Math.abs(card.ay) <= .01) restoreLayout(card);
       else {
         if (card.loss >= .03 || card.target.loss > 0) {
+          // A grid of equal columns keeps its column count while it narrows,
+          // so cards shrink in place instead of jumping to another row.
+          if (card.cols) card.el.style.gridTemplateColumns = `repeat(${card.cols}, minmax(0, 1fr))`;
           card.el.style.width = `${(card.slot.width - card.loss).toFixed(2)}px`;
           card.el.style.marginLeft = `${(card.ml + card.inset).toFixed(2)}px`;
           card.el.style.marginRight = `${(card.mr + card.loss - card.inset).toFixed(2)}px`;
@@ -231,10 +241,12 @@ export function createFeelCards(root: HTMLElement) {
   function schedule() { if (!destroyed && !frame) frame = win.requestAnimationFrame(tick); }
   const scroll = () => { items.invalidate(); if (menu) schedule(); };
   const changed = () => { dirty = true; items.refresh(); schedule(); };
+  // Re-measure when cards come or go, and when a scroll-revealed card drops
+  // its entrance transform: a slot measured mid-rise would be off by its scale.
   const observer = new MutationObserver(changes => {
-    if (changes.some(change => [...change.addedNodes, ...change.removedNodes].some(node => node.nodeType === 1))) changed();
+    if (changes.some(change => change.type === 'attributes' || [...change.addedNodes, ...change.removedNodes].some(node => node.nodeType === 1))) changed();
   });
-  observer.observe(root, { childList: true, subtree: true });
+  observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-reveal'] });
   doc.addEventListener('scroll', scroll, { passive: true, capture: true });
   reduced.addEventListener('change', changed); win.addEventListener('resize', changed);
   return {
