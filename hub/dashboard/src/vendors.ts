@@ -49,6 +49,11 @@ const CLIENT_NAMES: Record<string, string> = {
   fx: "FX",
   mcode: "MiniMax Code",
   notion: "Notion AI",
+  grok: "Grok",
+  zai: "GLM",
+  zaiteam: "GLM Team",
+  volcengine: "Volcengine",
+  thirdparty: "第三方接口",
 };
 
 const CLIENT_TITLES: Record<string, string> = {
@@ -106,6 +111,7 @@ export function providerFor(name: string): string {
 }
 
 export function providerName(provider: string): string {
-  if (provider === "other") return "其他";
-  return VENDOR_NAMES[provider] ?? CLIENT_NAMES[provider] ?? provider;
+  const key = provider.trim().toLowerCase();
+  if (key === "other") return "其他";
+  return VENDOR_NAMES[key] ?? CLIENT_NAMES[key] ?? CLIENT_TITLES[key] ?? provider;
 }

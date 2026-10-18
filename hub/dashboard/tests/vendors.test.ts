@@ -46,3 +46,39 @@ test("service-reported client ids keep their product names", () => {
   assert.equal(providerName("notion"), "Notion AI");
 });
 
+test("all official limit providers resolve to formatted product names", () => {
+  for (const [id, expected] of [
+    ["claude", "Claude Code"],
+    ["codex", "Codex"],
+    ["opencode", "OpenCode"],
+    ["cursor", "Cursor"],
+    ["antigravity", "Antigravity"],
+    ["cline", "Cline"],
+    ["factory", "Factory Droid"],
+    ["kimi", "Kimi"],
+    ["grok", "Grok"],
+    ["copilot", "GitHub Copilot"],
+    ["zed", "Zed"],
+    ["commandcode", "Command Code"],
+    ["mimo", "Xiaomi MiMo"],
+    ["zai", "GLM"],
+    ["zaiteam", "GLM Team"],
+    ["kiro", "Kiro"],
+    ["workbuddy", "WorkBuddy"],
+    ["qoder", "Qoder"],
+    ["deepseek", "DeepSeek"],
+    ["devin", "Devin"],
+    ["minimax", "MiniMax"],
+    ["typesafe", "TypeSafe"],
+    ["openrouter", "OpenRouter"],
+    ["volcengine", "Volcengine"],
+    ["ollama", "Ollama"],
+    ["trae", "Trae"],
+    ["alibaba", "Alibaba Cloud"],
+    ["stepfun", "StepFun"],
+    ["notion", "Notion AI"],
+    ["thirdparty", "第三方接口"],
+  ]) {
+    assert.equal(providerName(id), expected, id);
+  }
+});

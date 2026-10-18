@@ -530,11 +530,13 @@ function normalizeClientHealth(diagnostic: JsonRecord): ClientHealth[] {
     ready: "ok",
     normal: "ok",
     waiting: "warning",
+    attention: "warning",
     warning: "warning",
     stale: "warning",
     degraded: "warning",
     partial: "warning",
     "no-data": "warning",
+    unavailable: "error",
     missing: "error",
     error: "error",
     failed: "error",
@@ -552,9 +554,11 @@ function normalizeClientHealth(diagnostic: JsonRecord): ClientHealth[] {
       const state =
         override ||
         [
+          item.overall,
           item.status,
           item.health,
           item.state,
+          record(item.source).state === "missing" ? "missing" : "",
           record(item.collection).state,
           record(item.source).state,
           record(item.data).state,
