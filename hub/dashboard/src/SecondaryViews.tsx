@@ -23,7 +23,7 @@ import {
   type Session,
   type Subscription,
 } from "./data";
-import { providerName } from "./vendors";
+import { clientName, providerName } from "./vendors";
 import "./secondary.css";
 import { BrandIcon } from "./BrandIcon";
 import { MetricTooltip } from "./MetricTooltip";
@@ -183,6 +183,36 @@ function syncInterval(value?: number | null): string {
     : `每 ${value} 毫秒`;
 }
 
+const CLIENT_HEALTH_STATE_LABELS: Record<string, string> = {
+  active: "活跃",
+  direct: "直读",
+  detected: "已检测到",
+  healthy: "正常",
+  operational: "正常",
+  ok: "正常",
+  ready: "正常",
+  normal: "正常",
+  waiting: "等待用量",
+  idle: "闲置",
+  pending: "同步中",
+  attention: "同步需关注",
+  warning: "警告",
+  stale: "数据已过期",
+  degraded: "部分异常",
+  partial: "部分可用",
+  "no-data": "暂无数据",
+  unavailable: "未检测到数据源",
+  missing: "未检测到数据源",
+  error: "读取异常",
+  failed: "同步失败",
+  unhealthy: "状态异常",
+  critical: "严重异常",
+  "not-running": "未运行",
+  stopped: "已停止",
+  crashed: "异常退出",
+  unknown: "状态未知",
+};
+
 function DeviceCard({
   device,
   total,
@@ -202,7 +232,10 @@ function DeviceCard({
       ? Math.min(100, (device.periods.today.totalTokens / total) * 100)
       : 0;
   const healthNames = new Set(
-    (device.clientHealth || []).map((client) => client.name.toLowerCase()),
+    (device.clientHealth || []).flatMap((client) => [
+      client.name.toLowerCase(),
+      clientName(client.name).toLowerCase(),
+    ]),
   );
   return (
     <article className="sv-card sv-device-card" data-feel-card>
@@ -279,7 +312,7 @@ function DeviceCard({
           {(device.clientHealth || []).map((client) => (
             <MetricTooltip
               key={client.name}
-              title={`${device.name} · ${client.name}`}
+              title={`${device.name} · ${clientName(client.name)}`}
               rows={[
                 {
                   label: "客户端版本",
@@ -287,7 +320,15 @@ function DeviceCard({
                     ? `v${client.version.replace(/^v/, "")}`
                     : "未提供",
                 },
-                { label: "运行状态", value: client.state },
+                {
+                  label: "运行状态",
+                  value:
+                    CLIENT_HEALTH_STATE_LABELS[
+                      client.state.trim().toLowerCase()
+                    ] ||
+                    client.state ||
+                    "状态未知",
+                },
                 {
                   label: "检测时间",
                   value: detailDateTime(client.observedAt, data.timeZone),
@@ -301,7 +342,7 @@ function DeviceCard({
               <span className="sv-client-health sv-detail-trigger" data-feel-item="row">
                 <BrandIcon name={client.name} size={22} />
                 <span>
-                  {client.name}
+                  {clientName(client.name)}
                   {client.version && (
                     <small>v{client.version.replace(/^v/, "")}</small>
                   )}
@@ -320,11 +361,15 @@ function DeviceCard({
             </MetricTooltip>
           ))}
           {device.clients
-            .filter((client) => !healthNames.has(client.toLowerCase()))
+            .filter(
+              (client) =>
+                !healthNames.has(client.toLowerCase()) &&
+                !healthNames.has(clientName(client).toLowerCase()),
+            )
             .map((client) => (
               <span className="sv-client-health" key={client} data-feel-item="row">
                 <BrandIcon name={client} size={22} />
-                {client}
+                {clientName(client)}
               </span>
             ))}
           {!device.clients.length && !device.clientHealth?.length && (
@@ -445,7 +490,12 @@ export function DevicesView({ data }: SecondaryProps) {
   const filtered = data.devices.filter(
     (device) =>
       (status === "all" || device.status === status) &&
-      [device.name, device.platform, ...device.clients].some((value) =>
+      [
+        device.name,
+        device.platform,
+        ...device.clients,
+        ...device.clients.map(clientName),
+      ].some((value) =>
         value.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
       ),
   );
@@ -1030,7 +1080,10 @@ export function QuotaView({ data }: SecondaryProps) {
                         </div>
                         <div>
                           <h3>{first.plan || first.name}</h3>
-                          <p>{providerName(first.provider)}</p>
+                          {Boolean(
+                            first.plan &&
+                              first.plan !== providerName(first.provider),
+                          ) && <p>{providerName(first.provider)}</p>}
                         </div>
                       </div>
                       {(first.balanceUsd !== null || first.balance != null) &&

@@ -20,7 +20,7 @@ import {
   type PeriodUsage,
   type UsageEntity,
 } from "./data";
-import { providerName } from "./vendors";
+import { clientName, providerName } from "./vendors";
 import { matrixHeatLevel, matrixHeatPeak } from "./matrix-heat";
 import { COMPOSITION } from "./palette";
 import { usd } from "./money";
@@ -816,7 +816,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
                   <th scope="row">
                     <span className="matrix-client-heading">
                       <BrandIcon name={c} size={27} />
-                      {c}
+                      {clientName(c)}
                     </span>
                   </th>
                   {models.map((m) => {
@@ -825,7 +825,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
                     return (
                       <td key={m.id} data-model={m.name}>
                         <MetricTooltip
-                          title={`${c} × ${m.name}`}
+                          title={`${clientName(c)} × ${m.name}`}
                           rows={[
                             {
                               label:

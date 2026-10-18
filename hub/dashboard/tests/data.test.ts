@@ -807,3 +807,37 @@ test("without an official freshness flag, a late upload reads as delayed before 
     ["online", "delayed", "offline"],
   );
 });
+
+test("clientHealth respects overall and source state before collection mode", () => {
+  const data = normalizeOverview({
+    totals: {},
+    devices: [{ deviceId: "d1", hostname: "Mac" }],
+    diagnostics: [
+      {
+        deviceId: "d1",
+        clientHealth: {
+          claude: {
+            overall: "unavailable",
+            source: { state: "missing" },
+            collection: { state: "direct" },
+          },
+          codex: {
+            overall: "attention",
+            source: { state: "configured" },
+            collection: { state: "hook" },
+          },
+          gemini: {
+            overall: "ready",
+            source: { state: "ready" },
+            collection: { state: "direct" },
+          },
+        },
+      },
+    ],
+  });
+  assert.deepEqual(data.devices[0].clientHealth, [
+    { name: "claude", version: "", state: "unavailable", level: "error", observedAt: null },
+    { name: "codex", version: "", state: "attention", level: "warning", observedAt: null },
+    { name: "gemini", version: "", state: "ready", level: "ok", observedAt: null },
+  ]);
+});
