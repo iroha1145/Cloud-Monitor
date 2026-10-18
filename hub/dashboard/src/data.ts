@@ -1518,17 +1518,24 @@ export function normalizeOverview(
   const projectsByPeriod = Object.fromEntries(periods.map((period) => {
     const rows = Array.isArray(projectSource[period]) ? projectSource[period]
       : period === "allTime" && Array.isArray(root.projects) ? root.projects : null;
+    // Keyed by label, so a refresh that reorders projects keeps each row mounted.
+    const seen = new Map<string, number>();
     const projects = list(rows).map(record).filter((item) => text(item.label))
-      .map((item, index): ProjectUsage => ({
-        id: `${index}:${text(item.label)}`,
-        name: text(item.label),
-        totalTokens: count(item.tokens),
-        costUsd: optionalNumber(item.costUsd),
-        unpricedTokens: validCounter(item.unpricedTokens) ? item.unpricedTokens : null,
-        clients: counterMap(item.clients) ?? {},
-        models: counterMap(item.models) ?? {},
-        devices: list(item.devices).filter((name): name is string => typeof name === "string" && name.length > 0),
-      }))
+      .map((item): ProjectUsage => {
+        const name = text(item.label);
+        const repeat = seen.get(name) ?? 0;
+        seen.set(name, repeat + 1);
+        return {
+          id: repeat ? `${name}#${repeat}` : name,
+          name,
+          totalTokens: count(item.tokens),
+          costUsd: optionalNumber(item.costUsd),
+          unpricedTokens: validCounter(item.unpricedTokens) ? item.unpricedTokens : null,
+          clients: counterMap(item.clients) ?? {},
+          models: counterMap(item.models) ?? {},
+          devices: list(item.devices).filter((device): device is string => typeof device === "string" && device.length > 0),
+        };
+      })
       .sort((a, b) => b.totalTokens - a.totalTokens);
     return [period, {
       reported: rows !== null,

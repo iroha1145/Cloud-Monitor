@@ -11,7 +11,7 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
 不重造官方聚合。官方 `/api/ingest` `/api/stats` `/api/history` SSE 订阅
 行为不得因本扩展改变。
 
-当前内核固定为 Token Monitor v0.74.0（`cbed5915e294abb4a210f7ebb385e9415f706821`）。支持 CatPaw（`catpaw`）、FX（`fx`）、MiniMax Code（`mcode`）、Factory Droid（`factory` / `droid`）、Muse Code（`muse`）、Goose（`goose`）客户端与 StepFun、Notion AI（`notion`）配额窗口；v0.71–v0.74 起 WorkBuddy 多个账号分开显示，多日汇总保留为 0 的未分类词元，官方项目汇总多出按模型的词元（`models`，网关的 `projects` 与 `projects_by_period` 照样带出）；`limits` 原样传递官方完整配额记录，Token Plan 未提供实际点数余额时，网页只展示上报的用量比例。
+当前内核固定为 Token Monitor v0.74.0（`cbed5915e294abb4a210f7ebb385e9415f706821`）。支持 CatPaw（`catpaw`）、FX（`fx`）、MiniMax Code（`mcode`）、Factory Droid（`factory` / `droid`）、Muse Code（`muse`）、Goose（`goose`）客户端与 StepFun、Notion AI（`notion`）配额窗口；v0.71–v0.74 起 WorkBuddy 多个账号分开显示，多日汇总保留为 0 的未分类词元，官方项目汇总多出按模型的词元（`models`，网关的 `projects` 与 `projects_by_period` 也带出）；`limits` 原样传递官方完整配额记录，Token Plan 未提供实际点数余额时，网页只展示上报的用量比例。
 
 鉴权：面板与 Cloud 扩展一律 `Authorization: Bearer ACCESS_TOKEN`。
 `TOKEN_MONITOR_SECRET` 不能读这些端点。Token Monitor 未启用 → 404。
@@ -155,7 +155,8 @@ Overview **不得**把 370 天日归档塞进每 5 分钟刷新的 payload。长
 
 `projects` 是累计口径，来自官方 `periods.allTime.projects`，按 `tokens` 降序；
 `projects_by_period` 给今日、本月、累计各一份同样形状的列表，来自官方
-`periods.<period>.projects`（今日、本月由官方按会话汇总）。`devices` 是同期上报过该项目的
+`periods.<period>.projects`（今日、本月一般由官方按会话汇总；设备因载荷过大截断会话明细时，
+改用设备自带的完整汇总）。`devices` 是同期上报过该项目的
 设备显示名，今日、本月只算该周期未过期的设备，与官方聚合一致。`models` 始终是对象，键为
 官方规范化后的模型名（小写），值为非负整数词元。官方逐个来源按模型名顺序分配，不超过该来源的
 项目词元；v0.73 及更早的客户端上报的项目、没有模型明细的会话只计入 `tokens`，

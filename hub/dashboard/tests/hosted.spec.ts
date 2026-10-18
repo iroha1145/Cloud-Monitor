@@ -200,7 +200,8 @@ test("real ingest fills the project card per period, split by model and by clien
     const overview = await (await request.get("/api/v1/tm/overview", { headers: readHeaders })).json();
     const project = (period: string, label: string) =>
       overview.projects_by_period[period].find((row: { label: string }) => row.label === label);
-    // The official kernel rolls today and month up from sessions, models included.
+    // Official code rolled these devices' today and month projects up from
+    // their sessions, models included.
     expect(project("today", "detail-fixture-project")).toMatchObject({
       tokens: 16000, clients: { codex: 16000 }, devices: ["details-fixture"],
       models: { "detail-model-primary": 10000, "detail-model-secondary": 6000 },

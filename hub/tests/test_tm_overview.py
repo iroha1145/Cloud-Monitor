@@ -598,13 +598,15 @@ def test_project_models_keep_only_non_negative_integers():
     from hub.tm_overview import _collect_projects
 
     stats = {"periods": {"allTime": {"projects": {
+        "api": {"label": "api", "tokens": 5, "models": ["not", "a", "map"]},
         "web": {"label": "web", "tokens": 10, "models": {
             "kept": 7, "zero": 0, "negative": -1, "flag": True,
             "fraction": 1.5, "text": "7", "missing": None,
         }},
-        "api": {"label": "api", "tokens": 5, "models": ["not", "a", "map"]},
     }}}}
-    projects = {p["label"]: p for p in _collect_projects(stats)}
+    collected = _collect_projects(stats)
+    assert [p["label"] for p in collected] == ["web", "api"]  # tokens 降序，不按官方插入顺序
+    projects = {p["label"]: p for p in collected}
     assert projects["web"]["models"] == {"kept": 7, "zero": 0}
     assert projects["api"]["models"] == {}
 

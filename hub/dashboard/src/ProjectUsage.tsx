@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ChevronDown, Folder } from "lucide-react";
 import { PERIOD_LABELS, type DashboardData, type PeriodKey, type ProjectUsage as Project } from "./data";
 import { MetricTooltip } from "./MetricTooltip";
@@ -24,7 +24,9 @@ function projectNote(project: Project): string | undefined {
 export function ProjectUsage({ data, period }: { data: DashboardData; period: PeriodKey }) {
   const [by, setBy] = useState<ProjectBreakdown>("model");
   const [shown, setShown] = useState(FIRST_ROWS);
+  const rows = useRef<HTMLDivElement>(null);
   const breakdownSwitch = useSlidingIndicator<HTMLDivElement>('[aria-pressed="true"]');
+  useEffect(() => setShown(FIRST_ROWS), [period]);
   const usage = data.projectsByPeriod?.[period];
   const projects = usage?.projects ?? [];
   const periodTotal = data.periods[period].totalTokens;
@@ -47,7 +49,7 @@ export function ProjectUsage({ data, period }: { data: DashboardData; period: Pe
       </div>
       {usage?.incomplete && <p className="project-note">部分设备没有同步项目明细，项目用量可能不全。</p>}
       {projects.length ? (
-        <div className="client-rows project-rows">
+        <div className="client-rows project-rows" ref={rows}>
           {projects.slice(0, shown).map((project) => {
             const shares = projectShares(project, by);
             const parts = groupedShares(shares, by);
@@ -93,7 +95,8 @@ export function ProjectUsage({ data, period }: { data: DashboardData; period: Pe
                     </div>
                   </div>
                 </MetricTooltip>
-                <ul className="project-share-legend" aria-label={`${project.name} 按${BREAKDOWN_LABELS[by]}的占比`}>
+                {/* role keeps list semantics that Safari drops with list-style: none */}
+                <ul className="project-share-legend" role="list" aria-label={`${project.name} 按${BREAKDOWN_LABELS[by]}的占比`}>
                   {parts.map((part) => (
                     <li key={part.key}>
                       <i style={{ background: part.color }} aria-hidden="true" />
@@ -121,7 +124,21 @@ export function ProjectUsage({ data, period }: { data: DashboardData; period: Pe
         </div>
       )}
       {projects.length > shown && (
-        <button type="button" className="plain-button more-projects" onClick={() => setShown((value) => value + 10)}>
+        <button
+          type="button"
+          className="plain-button more-projects"
+          onClick={(event) => {
+            const first = shown;
+            setShown((value) => value + 10);
+            // A key press (detail 0) would leave focus on a button that may
+            // vanish; carry it to the first project just shown.
+            if (event.detail === 0) {
+              requestAnimationFrame(() =>
+                rows.current?.querySelectorAll<HTMLElement>(".metric-bar-trigger")[first]?.focus(),
+              );
+            }
+          }}
+        >
           再显示 {Math.min(10, projects.length - shown)} 个项目 <ChevronDown size={15} />
         </button>
       )}

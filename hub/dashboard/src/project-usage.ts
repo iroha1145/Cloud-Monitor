@@ -49,7 +49,8 @@ export function projectShares(project: ProjectUsage, by: ProjectBreakdown): Proj
   if (rest > 0) {
     rows.push({
       key: "__unattributed",
-      label: `未区分${BREAKDOWN_LABELS[by]}`,
+      // Not 未分类: on this page that word names the composition part.
+      label: `无${BREAKDOWN_LABELS[by]}明细`,
       tokens: rest,
       share: rest / total,
       kind: "unattributed",
@@ -60,12 +61,13 @@ export function projectShares(project: ProjectUsage, by: ProjectBreakdown): Proj
 }
 
 /** The first `limit` named parts, the others as one, then the unattributed
- * part. The bar and its legend keep the three coloured parts. */
+ * part. The bar and its legend keep the three coloured parts. A single part
+ * past the limit keeps its name rather than become 其他 1 个. */
 export function groupedShares(shares: ProjectShare[], by: ProjectBreakdown, limit = NAMED_COLORS.length): ProjectShare[] {
   const named = shares.filter((share) => share.kind === "named");
   const others = named.slice(limit);
-  const grouped = named.slice(0, limit);
-  if (others.length) {
+  const grouped = named.slice(0, others.length === 1 ? limit + 1 : limit);
+  if (others.length > 1) {
     grouped.push({
       key: "__other",
       label: `其他 ${others.length} 个${BREAKDOWN_LABELS[by]}`,

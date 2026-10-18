@@ -104,11 +104,12 @@
   --quota-warning: #dba54a;
   --quota-danger: #cb7065;
   /* Project parts (by model or client) take the same three in turn; the rest
-     share the unclassified grey. */
+     share a hueless grey mixed from the text grey, never a composition colour.
+     .dark sits on this element, so the mix follows the theme. */
   --share-1: var(--quota-1);
   --share-2: var(--quota-2);
   --share-3: var(--quota-3);
-  --share-rest: #b4becf;
+  --share-rest: color-mix(in srgb, var(--ink-3) 55%, var(--surface));
 
 
   /* Depth stays faint: cards sit on a hairline with a near contact shadow
