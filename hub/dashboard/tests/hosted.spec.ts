@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { createRequire } from "node:module";
+import { revealAll } from "./motion-helpers";
 const require = createRequire(import.meta.url);
 const READ_TOKEN = "b".repeat(32);
 const WRITE_TOKEN = "a".repeat(32);
@@ -361,16 +362,20 @@ test("built production and Pages menus stay at the viewport edge without changin
       const drawer = page.getByRole("dialog", { name: "导航", exact: true });
       await expect(drawer).toBeVisible();
       await drawer.locator('[data-mobile-navigation-trigger]').press("Home");
+      await expect(drawer).toHaveAttribute("data-drawer-stop", "open");
       // The production CSS compiler can lower individual transforms into
       // transform, so this must run against built assets as well as Vite dev.
       for (const viewport of [{ width: 320, height: 740 }, { width: 390, height: 844 }, { width: 430, height: 932 }, { width: 844, height: 390 }]) {
         await page.setViewportSize(viewport);
+        // One floating surface, centred and anchored 12px above the bottom
+        // edge, min(100vw - 20px, 520px) wide when fully open and never
+        // closer than 12px to the top.
         await expect.poll(async () => {
           const box = await drawer.boundingBox();
           return Boolean(box && Math.abs(box.x - (viewport.width - box.width) / 2) < 1
-            && Math.abs(box.y + box.height - viewport.height) < 1
-            && box.y >= 15 && box.height <= viewport.height - 15
-            && box.width > 240 && box.width <= Math.min(520, viewport.width)
+            && Math.abs(box.y + box.height - (viewport.height - 12)) < 1
+            && box.y >= 11.5 && box.height <= viewport.height - 23.5
+            && box.width > 240 && Math.abs(box.width - Math.min(520, viewport.width - 20)) < 1
             && box.x >= 0 && box.x + box.width <= viewport.width);
         }).toBe(true);
         const close = drawer.getByRole("button", { name: "关闭导航", exact: true });
@@ -451,10 +456,20 @@ test("320px hosted interface supports bottom drawer navigation, theme and access
   let violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: "tag", values: ["wcag2a","wcag2aa","wcag21aa"] } })).violations);
   expect(violations).toEqual([]);
   await login(page);
+  // The grip is a full-width 28px drag strip; the tab bar's links and its
+  // 更多 button are the 44px tap targets.
   const openNavigation = page.getByRole("button", { name: "打开导航", exact: true });
   const triggerBox = await openNavigation.boundingBox();
   expect(triggerBox!.width).toBeGreaterThanOrEqual(44);
-  expect(triggerBox!.height).toBeGreaterThanOrEqual(44);
+  expect(triggerBox!.height).toBeGreaterThanOrEqual(24);
+  const tabBar = page.getByRole("navigation", { name: "常用页面", exact: true });
+  const targets = [...await tabBar.getByRole("link").all(), tabBar.getByRole("button", { name: "更多", exact: true })];
+  expect(targets).toHaveLength(4);
+  for (const target of targets) {
+    const targetBox = await target.boundingBox();
+    expect(targetBox!.width).toBeGreaterThanOrEqual(44);
+    expect(targetBox!.height).toBeGreaterThanOrEqual(44);
+  }
   await openNavigation.click();
   const drawer = page.getByRole("dialog", { name: "导航", exact: true });
   const historyLink = drawer.getByRole("navigation", { name: "页面导航", exact: true }).getByRole("link", { name: "历史记录", exact: true });
@@ -470,6 +485,9 @@ test("320px hosted interface supports bottom drawer navigation, theme and access
   await page.reload();
   await expect(page.getByText("当前展示真实数据")).toBeAttached();
   await expect(page.locator("html")).toHaveClass(/dark/);
+  // Cards below the fold stay hidden until they are scrolled to; bring every
+  // one into view so the audit covers the whole page.
+  await revealAll(page);
   // Check settled colors once every entrance (heading, activity cells) has
   // finished; looping indicators such as the live status dot never finish.
   await expect.poll(() => page.evaluate(() => document.getAnimations().filter(animation =>

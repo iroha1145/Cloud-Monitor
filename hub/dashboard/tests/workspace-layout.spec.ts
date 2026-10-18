@@ -16,8 +16,12 @@ for (const width of [800, 1024, 1280, 1920]) {
     const nav = page.locator('.feel-navigation');
     const main = page.locator('.main-content');
     const below = page.locator('.models-panel');
+    // The menu is 216px wide (196px between 961 and 1250px) and keeps 16px from every edge.
+    const navWidth = width >= 961 && width <= 1250 ? 196 : 216;
     await handle.press('Home');
-    await expect.poll(async () => Math.round((await nav.boundingBox())!.x)).toBe(12);
+    await expect.poll(async () => Math.round((await nav.boundingBox())!.x)).toBe(16);
+    expect(Math.round((await nav.boundingBox())!.y)).toBe(16);
+    expect(Math.round((await nav.boundingBox())!.width)).toBe(navWidth);
     const frame = (await main.boundingBox())!;
     expect(Math.abs(frame.x - (width - frame.x - frame.width))).toBeLessThan(1);
     const topbar = page.locator('.app-topbar');
@@ -31,7 +35,7 @@ for (const width of [800, 1024, 1280, 1920]) {
       await expect.poll(async () => (await block.boundingBox())!.x - ((await nav.boundingBox())!.x + (await nav.boundingBox())!.width)).toBeGreaterThanOrEqual(15.5);
     }
     await handle.press('ArrowRight');
-    await expect.poll(async () => Math.round((await nav.boundingBox())!.x)).toBe(width - 236);
+    await expect.poll(async () => Math.round((await nav.boundingBox())!.x)).toBe(width - navWidth - 16);
     await expect.poll(async () => (await topbar.boundingBox())!.x - (await page.locator('.page-heading').boundingBox())!.x).toBeCloseTo(0, 1);
     for (const selector of ['.workspace-notices', '.page-controls']) {
       const block = page.locator(selector);

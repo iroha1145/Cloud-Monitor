@@ -52,7 +52,15 @@ for (const viewport of [
         const dimensions = await page.evaluate(() => ({
           viewport: innerWidth,
           document: document.documentElement.scrollWidth,
-          controls: [...document.querySelectorAll(".feel-nav-peek")].map(
+          // The grip is a full-width 28px drag strip; the tab bar's links
+          // and its 更多 button are the 44px tap targets.
+          grip: [...document.querySelectorAll(".feel-nav-peek")].map(
+            (node) => {
+              const rect = node.getBoundingClientRect();
+              return { width: rect.width, height: rect.height };
+            },
+          ),
+          controls: [...document.querySelectorAll('nav[aria-label="常用页面"] > a, nav[aria-label="常用页面"] > button.feel-more')].map(
             (node) => {
               const rect = node.getBoundingClientRect();
               return { width: rect.width, height: rect.height };
@@ -71,6 +79,10 @@ for (const viewport of [
           }),
         }));
         expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport);
+        expect(dimensions.grip).toHaveLength(1);
+        expect(dimensions.grip[0].width).toBeGreaterThanOrEqual(44);
+        expect(dimensions.grip[0].height).toBeGreaterThanOrEqual(24);
+        expect(dimensions.controls).toHaveLength(4);
         expect(
           dimensions.controls.every(
             (item) => item.width >= 44 && item.height >= 44,

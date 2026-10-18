@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createRequire } from "node:module";
+import { finishAnimations } from "./motion-helpers";
 const require = createRequire(import.meta.url);
 const fixture = require("./fixtures/overview.json");
 const longName = "private-model-" + "abcdefghijklmnop".repeat(7);
@@ -34,6 +35,8 @@ for (const viewport of [
     await page.getByRole("button", { name: `查看 ${longName} 详情`, exact: true }).click();
     const dialog = page.locator(".model-dialog");
     await expect(dialog.getByRole("heading", { name: longName, exact: true })).toBeVisible();
+    // The sheet slides in from 30px to the right; measure where it comes to rest.
+    await finishAnimations(dialog);
     const dimensions = await dialog.evaluate(element => {
       const box = element.getBoundingClientRect();
       const title = element.querySelector('[data-slot="dialog-title"]')!.getBoundingClientRect();
@@ -45,6 +48,11 @@ for (const viewport of [
     expect(dimensions.right).toBeLessThanOrEqual(dimensions.viewport);
     expect(dimensions.top).toBeGreaterThanOrEqual(0);
     expect(dimensions.bottom).toBeLessThanOrEqual(dimensions.height);
+    // A full-height sheet against the right edge: 16px from the viewport, 10px on phones.
+    const inset = viewport.width <= 760 || (viewport.width <= 960 && viewport.height <= 500) ? 10 : 16;
+    expect(Math.abs(dimensions.viewport - inset - dimensions.right)).toBeLessThan(1);
+    expect(Math.abs(dimensions.top - inset)).toBeLessThan(1);
+    expect(Math.abs(dimensions.height - inset - dimensions.bottom)).toBeLessThan(1);
     expect(errors).toEqual([]);
     await testInfo.attach("long-model-dialog", { body: await page.screenshot({ path: `evidence/review-long-model-${viewport.width}x${viewport.height}.png`, animations: "disabled" }), contentType: "image/png" });
     await page.keyboard.press("Escape");

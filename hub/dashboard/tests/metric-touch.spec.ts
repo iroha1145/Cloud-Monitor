@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { scrollIntoViewAndReveal } from "./motion-helpers";
 
 for (const width of [320, 390]) {
   test.describe(`horizontal bar touch boundaries at ${width}px`, () => {
@@ -19,7 +20,9 @@ for (const width of [320, 390]) {
       }) => {
         await page.goto(`/demo.html#${view}`);
         const bar = page.locator(selector).first();
-        await bar.scrollIntoViewIfNeeded();
+        // A card below the fold rises into place once scrolled to; tap raw
+        // coordinates only after it has settled.
+        await scrollIntoViewAndReveal(bar);
         const box = (await bar.boundingBox())!;
         const x = box.x + box.width / 2;
         const tooltip = page.locator(".metric-tooltip-card");
