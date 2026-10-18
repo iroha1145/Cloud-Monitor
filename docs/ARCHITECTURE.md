@@ -242,7 +242,7 @@ today_total 汇总（近似当日用量）。
 widget/agent ──官方同步协议──► Python 网关（鉴权/严格校验/1MiB 实测限流）
                                    │ 转发
                                    ▼
-                          tm-core（官方 v0.70.0 @ac4eeb2，逐字节未改）
+                          tm-core（官方 v0.74.0 @cbed591，逐字节未改）
                             规范化 / 设备合并(含 limitsOnly) / 多设备聚合 /
                             periodWindows 过期 / syncUploadIntervalMs stale /
                             history / limits / SSE 广播 / subscriptions /
@@ -262,8 +262,8 @@ headless agent 风格、官方 mergeDeviceRecord 生成的载荷、partial、
 limits-only、trackedClients 变化、窗口过期、删除）断言：经 Cloud 全链路
 与直连官方 hub 的 stats/devices/history/ingest 响应核心字段等价。
 
-固定版本测试 `tests/test_tm_v070_core.py` 验证 v0.70 的 CatPaw（`catpaw`）/ FX（`fx`）/ MiniMax Code（`mcode`）/ Factory Droid 客户端、会话实时状态（`waitingForInput`、`liveActivity`、`promptCache`、流式输出速率与父子会话关联）、内容同步端点（`/api/sync/*`）及上报合并；`tests/test_tm_v064_core.py` 与 `tests/test_tm_v062_core.py` 继续验证旧客户端载荷。样例与预期独立提交，不通过当前内核生成预期。
-完整依赖与来源哈希由 `tm-core/upstream-v070.json` 固定，`tm-core/sync_vendor.py --check` 校验；生成清单不能替代版本契约检查。Git 保留 vendor 原始字节，跨平台检出不能改变来源哈希。
+固定版本测试 `tests/test_tm_v070_core.py` 校验当前固定版本（v0.74.0）与内核构建号，并验证 v0.70 引入的 CatPaw（`catpaw`）/ FX（`fx`）/ MiniMax Code（`mcode`）/ Factory Droid 客户端、会话实时状态（`waitingForInput`、`liveActivity`、`promptCache`、流式输出速率与父子会话关联）、内容同步端点（`/api/sync/*`）及上报合并；`tests/test_tm_v064_core.py` 与 `tests/test_tm_v062_core.py` 继续验证旧客户端载荷。样例与预期独立提交，不通过当前内核生成预期。
+完整依赖与来源哈希由 `tm-core/upstream-v074.json` 固定，`tm-core/sync_vendor.py --check` 校验；生成清单不能替代版本契约检查。Git 保留 vendor 原始字节，跨平台检出不能改变来源哈希。
 
 ## 关键语义（全部由官方代码执行，网关不重造）
 

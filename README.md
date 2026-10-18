@@ -4,7 +4,7 @@
 
 **在线演示（免安装）：** https://iroha1145.github.io/Cloud-Monitor/
 
-官方 hub 按固定提交 `ac4eeb2`（v0.70.0）原样放进 tm-core 容器，协议行为跟官方一致。前面是 Python 网关：鉴权、校验、1MiB 实测限流，并把快照写入 SQLite。官方 `devices.json` 只留每台设备最新状态，没有历史点；长期趋势和日归档是我们自己补的。
+官方 hub 按固定提交 `cbed591`（v0.74.0）原样放进 tm-core 容器，协议行为跟官方一致。前面是 Python 网关：鉴权、校验、1MiB 实测限流，并把快照写入 SQLite。官方 `devices.json` 只留每台设备最新状态，没有历史点；长期趋势和日归档是我们自己补的。
 
 另有一条 [OpenWebUI-Monitor](https://github.com/iroha1145/OpenWebUI-Monitor) 记录同步（纯 API，没有独立页面）。两条链路密钥分开，互碰不到。
 
@@ -96,8 +96,8 @@ widget 按自己的同步间隔推送，本机不用再装别的。然后打开 
 
 ## 协议支持
 
-内置服务端固定为 Token Monitor **v0.70.0**（`ac4eeb2c4aea239dd94b67f074c73f69aafc46f8`），源码保持上游原样。
-支持 CatPaw（`catpaw`）、FX（`fx`）、MiniMax Code（`mcode`）、Factory Droid（`factory` / `droid`）客户端，以及会话实时状态（`waitingForInput`、`liveActivity`、提示词缓存剩余时间、未定价词元、流式输出速率、用量来源与父子会话关联）。网页与安卓端同步支持 CatPaw、FX、MiniMax Code、Factory Droid、StepFun 与 Muse Code 图标。
+内置服务端固定为 Token Monitor **v0.74.0**（`cbed5915e294abb4a210f7ebb385e9415f706821`），源码保持上游原样。
+支持 CatPaw（`catpaw`）、FX（`fx`）、MiniMax Code（`mcode`）、Factory Droid（`factory` / `droid`）、Goose（`goose`）客户端与 Notion AI 配额，以及会话实时状态（`waitingForInput`、`liveActivity`、提示词缓存剩余时间、未定价词元、流式输出速率、用量来源与父子会话关联）。网页与安卓端同步支持 CatPaw、FX、MiniMax Code、Factory Droid、StepFun 与 Muse Code 图标，网页另有 Goose 与 Notion AI 图标。
 Cursor 的 Auto/default 模型按官方规则归并到 cursor-auto，同时保留其它工具的同名模型；MiMo、Kilo 的旧工具名继续归并。旧客户端仍可上报，v0.62–v0.64 的每日额度、Claude 重置券、StepFun 配额、第三方用量摘要和会话上下文字段保持兼容。
 
 | 官方端点 | 状态 | 谁处理 |
