@@ -177,10 +177,12 @@
   transform: translate(var(--indicator-x, 0px), var(--indicator-y, 0px));
   opacity: 0;
   pointer-events: none;
+  /* The slip springs into place with a slight overshoot; its size settles
+     without one (game-manage v-glide). */
   transition:
-    transform var(--duration-fast) var(--ease-smooth-out),
-    width var(--duration-fast) var(--ease-smooth-out),
-    height var(--duration-fast) var(--ease-smooth-out);
+    transform var(--duration-spring) var(--ease-spring),
+    width var(--duration-spring-smooth) var(--ease-spring-smooth),
+    height var(--duration-spring-smooth) var(--ease-spring-smooth);
 }
 [data-indicator="ready"] > [data-sliding-indicator] {
   opacity: 1;
