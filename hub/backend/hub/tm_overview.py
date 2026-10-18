@@ -19,7 +19,10 @@
   降序截 100；sessions_omitted 保留原上游省略标记以兼容旧界面。
 - sessions_by_period / sessions_meta_by_period: 独立今日、本月明细及缺失说明；
   allTime 不同步会话明细，始终空列表并标注 not-synced。
-- projects: 官方聚合 periods.allTime.projects 规范化输出，附 devices 归属。
+- projects: 官方聚合 periods.allTime.projects 规范化输出（含按客户端、按模型
+  的词元），附 devices 归属。
+- projects_by_period / projects_meta_by_period: 今日、本月、累计各一份同样形状
+  的项目列表（今日、本月只算未过期设备）及上游口径的不完整标记。
 - diagnostics: 每设备 clientHealth/clientStatus/wslStatus 透传（官方 stats
   devices 原生携带，缺失为 None，前端自动隐藏对应行）。
 - period_windows: （deprecated，保留兼容）最新设备的 periodWindows 透传。
@@ -775,11 +778,10 @@ def _session_period_details(stats: dict, period: str, *, now: Any = None) -> tup
     }, sessions
 
 
-def _collect_projects(stats: dict) -> list[dict]:
-    """官方聚合 allTime.projects 规范化；devices 归属从各设备同期 projects 反查。"""
+def _collect_projects(stats: dict, period: str = "allTime", *, now: Any = None) -> list[dict]:
+    """官方聚合 periods.<period>.projects 规范化；devices 归属从同期未过期设备的 projects 反查。"""
     periods = stats.get("periods") or {}
-    all_time = periods.get("allTime") or {}
-    projects = all_time.get("projects")
+    projects = (periods.get(period) or {}).get("projects")
     if not isinstance(projects, dict):
         return []
     out: dict[str, dict] = {}
@@ -787,6 +789,7 @@ def _collect_projects(stats: dict) -> list[dict]:
         if not isinstance(value, dict):
             continue
         clients = value.get("clients")
+        models = value.get("models")
         project_item = {
             "label": str(value.get("label") or key),
             "tokens": _int(value.get("tokens") or value.get("totalTokens")),
@@ -795,13 +798,20 @@ def _collect_projects(stats: dict) -> list[dict]:
                 str(c): _int(t)
                 for c, t in (clients.items() if isinstance(clients, dict) else [])
             },
+            # v0.74 起官方带出，合计不超过 tokens；旧版客户端上报的项目没有
+            # models，合计可以小于 tokens。只收非负整数，异常值丢弃而不是记 0。
+            "models": {
+                str(m): t
+                for m, t in (models.items() if isinstance(models, dict) else [])
+                if isinstance(t, int) and not isinstance(t, bool) and t >= 0
+            },
             "devices": [],
         }
         if "unpricedTokens" in value:
             project_item["unpricedTokens"] = _int(value.get("unpricedTokens"))
         out[str(key)] = project_item
-    for device in stats.get("devices") or []:
-        dev_projects = ((device.get("periods") or {}).get("allTime") or {}).get("projects")
+    for device in _current_session_devices(stats, period, now):
+        dev_projects = ((device.get("periods") or {}).get(period) or {}).get("projects")
         if not isinstance(dev_projects, dict):
             continue
         display = _device_display(device)
@@ -810,6 +820,14 @@ def _collect_projects(stats: dict) -> list[dict]:
             if bucket is not None and display not in bucket["devices"]:
                 bucket["devices"].append(display)
     return sorted(out.values(), key=lambda p: p["tokens"], reverse=True)
+
+
+def _projects_incomplete(stats: dict, period: str) -> bool:
+    """镜像上游 projectBreakdownIncomplete：累计看 projectsIncomplete，今日、本月看 periodProjectsOmitted。"""
+    if period == "allTime":
+        return stats.get("projectsIncomplete") is True
+    omitted = stats.get("periodProjectsOmitted")
+    return isinstance(omitted, dict) and _int(omitted.get(period)) > 0
 
 
 def _collect_diagnostics(stats: dict) -> list[dict]:
@@ -893,6 +911,7 @@ def build_overview(
     session_now = _session_aggregate_time(stats, now)
     sessions_meta, sessions = _collect_sessions(stats, now=session_now)
     period_details = {period: _session_period_details(stats, period, now=session_now) for period in ("today", "month", "allTime")}
+    projects_by_period = {period: _collect_projects(stats, period, now=session_now) for period in ("today", "month", "allTime")}
 
     # v2 扩展：活动口径 / 每设备窗口 / 降级信息（P0-3 / P1-4）
     partial_errors: list[dict] = []
@@ -975,7 +994,11 @@ def build_overview(
         "sessions_meta": sessions_meta,
         "sessions_by_period": {period: detail[1] for period, detail in period_details.items()},
         "sessions_meta_by_period": {period: detail[0] for period, detail in period_details.items()},
-        "projects": _collect_projects(stats),
+        "projects": projects_by_period["allTime"],
+        "projects_by_period": projects_by_period,
+        "projects_meta_by_period": {
+            period: {"incomplete": _projects_incomplete(stats, period)} for period in projects_by_period
+        },
         "diagnostics": _collect_diagnostics(stats),
     }
     if history is None:

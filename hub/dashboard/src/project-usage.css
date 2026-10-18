@@ -1,0 +1,64 @@
+/* Project usage card (models page). Rows reuse the clients card: head, bar
+   with the period's rest as track, foot. Only the legend and notes are new. */
+.projects-panel {
+  margin-bottom: var(--gap);
+}
+.project-row .brand-icon {
+  color: var(--ink-2);
+}
+.project-note {
+  margin: 12px 22px 0;
+  color: var(--ink-3);
+  font-size: var(--fs-label);
+  line-height: 1.5;
+}
+.project-share-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0 0 9px;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-2);
+  font-size: var(--fs-label);
+  line-height: 18px;
+}
+.project-share-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.project-share-legend span {
+  overflow-wrap: anywhere;
+}
+.project-share-legend strong {
+  color: var(--ink);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.project-share-legend i {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.project-row .client-head > span {
+  overflow-wrap: anywhere;
+}
+.more-projects {
+  display: flex;
+  margin: 0 auto 16px;
+}
+
+@media (max-width: 760px), (max-width: 960px) and (max-height: 500px) {
+  .projects-panel .panel-head {
+    flex-wrap: wrap;
+  }
+  .projects-panel .metric-switch {
+    margin-left: 0;
+  }
+  .project-note {
+    margin-inline: 16px;
+  }
+}

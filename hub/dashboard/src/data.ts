@@ -346,6 +346,28 @@ export interface ActivityMetadata {
   coverage: ActivityCoverage | null;
 }
 
+/** One project's synchronized usage in a period. Model and client parts may
+ * add up to less than the total: older clients and sessions without model
+ * detail count only towards totalTokens. */
+export interface ProjectUsage {
+  id: string;
+  name: string;
+  totalTokens: number;
+  costUsd: number | null;
+  unpricedTokens: number | null;
+  clients: Record<string, number>;
+  models: Record<string, number>;
+  devices: string[];
+}
+
+export interface ProjectPeriodUsage {
+  /** False when the server sent no list for this period (an older gateway). */
+  reported: boolean;
+  /** Upstream's rule: some device left project detail out of this period. */
+  incomplete: boolean;
+  projects: ProjectUsage[];
+}
+
 export interface DashboardData {
   mode: "demo" | "live";
   generatedAt: string;
@@ -365,6 +387,7 @@ export interface DashboardData {
   sessions: Session[];
   sessionsByPeriod?: Record<PeriodKey, Session[]>;
   sessionDetailsByPeriod?: Record<PeriodKey, SessionPeriodDetails>;
+  projectsByPeriod?: Record<PeriodKey, ProjectPeriodUsage>;
   providers: Provider[];
   notices: string[];
 }
@@ -1492,6 +1515,38 @@ export function normalizeOverview(
       callDetailsAvailable: false, messageContentAvailable: false, toolEventsAvailable: false,
     }];
   })) as Record<PeriodKey, SessionPeriodDetails>;
+  // An older gateway sends only the all-time list as `projects`; its today and
+  // month are unreported, not empty.
+  const projectSource = record(root.projects_by_period);
+  const projectMeta = record(root.projects_meta_by_period);
+  const projectsByPeriod = Object.fromEntries(periods.map((period) => {
+    const rows = Array.isArray(projectSource[period]) ? projectSource[period]
+      : period === "allTime" && Array.isArray(root.projects) ? root.projects : null;
+    // Keyed by label, so a refresh that reorders projects keeps each row mounted.
+    const seen = new Map<string, number>();
+    const projects = list(rows).map(record).filter((item) => text(item.label))
+      .map((item): ProjectUsage => {
+        const name = text(item.label);
+        const repeat = seen.get(name) ?? 0;
+        seen.set(name, repeat + 1);
+        return {
+          id: repeat ? `${name}#${repeat}` : name,
+          name,
+          totalTokens: count(item.tokens),
+          costUsd: optionalNumber(item.costUsd),
+          unpricedTokens: validCounter(item.unpricedTokens) ? item.unpricedTokens : null,
+          clients: counterMap(item.clients) ?? {},
+          models: counterMap(item.models) ?? {},
+          devices: list(item.devices).filter((device): device is string => typeof device === "string" && device.length > 0),
+        };
+      })
+      .sort((a, b) => b.totalTokens - a.totalTokens);
+    return [period, {
+      reported: rows !== null,
+      incomplete: record(projectMeta[period]).incomplete === true,
+      projects,
+    }];
+  })) as Record<PeriodKey, ProjectPeriodUsage>;
   const providers: Provider[] = list(record(extras.providers).providers).map(
     (value) => {
       const item = record(value);
@@ -1598,6 +1653,7 @@ export function normalizeOverview(
     sessions,
     sessionsByPeriod,
     sessionDetailsByPeriod,
+    projectsByPeriod,
     providers,
     notices,
     features,
@@ -1681,6 +1737,48 @@ const DEMO_MODELS = [
     rate: 0.42,
   },
 ];
+
+/** Synthetic projects: shares of each period and their model mix. The last
+ * one comes from an older client, so part of it has no model breakdown. The
+ * rest of every period's usage carries no project, like unlabelled sessions. */
+const DEMO_PROJECTS = [
+  { name: "Cloud Monitor", share: 0.36, devices: [0, 1], models: { "gpt-6-astra": 0.58, "claude-sonnet-4-6": 0.27, "claude-opus-4-6": 0.15 } },
+  { name: "Workspace", share: 0.22, devices: [0], models: { "claude-sonnet-4-6": 0.52, "claude-opus-4-6": 0.31, "gpt-6-astra": 0.17 } },
+  { name: "Design system", share: 0.13, devices: [1], models: { "gemini-2.5-flash": 0.46, "gpt-6-astra": 0.34, "claude-sonnet-4-6": 0.12, "grok-bot-default": 0.08 } },
+  { name: "Release tooling", share: 0.07, devices: [1], models: { "gpt-6-astra": 0.4, "claude-opus-4-6": 0.18 } },
+];
+
+function demoProjects(period: PeriodUsage, deviceNames: string[]): ProjectUsage[] {
+  return DEMO_PROJECTS.map((project, index) => {
+    const totalTokens = Math.round(period.totalTokens * project.share);
+    const mix = Object.entries(project.models);
+    const covered = mix.reduce((sum, [, share]) => sum + share, 0);
+    const models: Record<string, number> = {};
+    const clients: Record<string, number> = {};
+    for (const [id, share] of mix) {
+      models[id] = Math.floor(totalTokens * share);
+      // Tools are known for the whole project even where models are not.
+      const client = DEMO_MODELS.find((model) => model.id === id)?.client ?? "codex";
+      clients[client] = (clients[client] || 0) + Math.floor(totalTokens * share / covered);
+    }
+    // Rounding leftovers go to the largest part, so only the older client's
+    // project has usage without a model.
+    const leftover = (parts: Record<string, number>) =>
+      totalTokens - Object.values(parts).reduce((sum, value) => sum + value, 0);
+    clients[Object.keys(clients)[0]] += leftover(clients);
+    if (covered === 1) models[mix[0][0]] += leftover(models);
+    return {
+      id: `demo-project-${index}`,
+      name: project.name,
+      totalTokens,
+      costUsd: cents((period.costUsd || 0) * project.share),
+      unpricedTokens: null,
+      clients,
+      models,
+      devices: project.devices.map((device) => deviceNames[device]),
+    };
+  });
+}
 
 function demoPeriod(total: number): PeriodUsage {
   const raw: JsonRecord = {
@@ -2037,6 +2135,12 @@ export function createDemoData(now = new Date(), refreshes = 0, timeZone = brows
     total: sessionsByPeriod[period].length, returned: sessionsByPeriod[period].length, omitted: 0, dashboardOmitted: 0,
     callDetailsAvailable: false, messageContentAvailable: false, toolEventsAvailable: false,
   }])) as Record<PeriodKey, SessionPeriodDetails>;
+  // The build server has project statistics off but all-time usage, which
+  // upstream counts as an incomplete all-time breakdown.
+  const projectsByPeriod = Object.fromEntries(periods.map(period => [period, {
+    reported: true, incomplete: period === "allTime",
+    projects: demoProjects(allPeriods[period], devices.map(device => device.name)),
+  }])) as Record<PeriodKey, ProjectPeriodUsage>;
   const localHour = Number(
     new Intl.DateTimeFormat("en-GB", {
       timeZone: zone,
@@ -2084,6 +2188,7 @@ export function createDemoData(now = new Date(), refreshes = 0, timeZone = brows
     sessions,
     sessionsByPeriod,
     sessionDetailsByPeriod,
+    projectsByPeriod,
     trend: history.slice(-30).map(({ day, period }) => ({
       day,
       totalTokens: period.totalTokens,
