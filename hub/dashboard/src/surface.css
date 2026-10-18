@@ -198,6 +198,7 @@
 .app-shell .client-rows { display: grid; gap: 8px; padding: 16px 22px 22px; }
 .app-shell .client-row { padding: 14px; }
 .app-shell .client-head strong { font-weight: 600; }
+.app-shell :is(.cache-track, .client-track):not(.is-incomplete)::after { background: var(--inset); }
 
 /* ── Tables: square model rows, rounded session rows ──────────────── */
 .app-shell .model-filters { padding: 14px 22px; gap: 8px; border-block: 1px solid var(--line-soft); background: transparent; }
@@ -211,7 +212,7 @@
 .app-shell .sv-session-table th { background: transparent; color: var(--ink-3); font-size: 12px; font-weight: 500; }
 .app-shell .model-open > .brand-icon { width: 32px; height: 32px; }
 .app-shell .model-open strong { font-weight: 500; }
-.app-shell .table-foot,
+.app-shell .table-foot { padding: 14px 22px; background: transparent; border-top: 1px solid var(--line-soft); }
 .app-shell .sv-history-sessions .sv-table-footer { padding-block: 14px; background: transparent; border-top: 1px solid var(--line-soft); }
 .app-shell .matrix-scroll { padding: 16px 22px; border-block: 1px solid var(--line-soft); background: transparent; }
 .app-shell .matrix-panel .matrix-note { padding: 14px 22px; }
@@ -340,7 +341,7 @@
   .app-shell .ledger-lead .ledger-value { font-size: clamp(26px, 7vw, 32px); }
   .app-shell .ledger-composition { padding: 18px 16px; }
   .app-shell .ledger-composition .composition-legend { display: grid; grid-template-columns: 1fr; gap: 8px; }
-  .app-shell .panel-head { padding: 18px 18px 0; }
+  .app-shell .panel-head { padding: 18px 16px 0; }
   .app-shell .insight-trend-metrics { padding-inline: 16px; }
   .app-shell .client-rows { padding: 14px 16px 16px; }
   .app-shell .client-row { padding: 12px; }
@@ -357,6 +358,7 @@
   .app-shell .model-filters { padding: 14px 16px; }
   .app-shell .model-compact-split { flex-direction: column; align-items: flex-start; }
   .app-shell .matrix-scroll { padding: 14px 16px; }
+  .app-shell .table-foot { padding: 13px 16px; }
   .app-shell .sv-page .sv-summary { gap: 12px; }
   .app-shell .sv-page .sv-summary-item { padding: 18px 16px; min-height: 120px; }
   .app-shell :is(.sv-device-main, .sv-quota-card, .sv-subscription) { padding: 18px 16px; }

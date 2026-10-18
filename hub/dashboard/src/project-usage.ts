@@ -31,17 +31,24 @@ export const BREAKDOWN_LABELS: Record<ProjectBreakdown, string> = {
  * the bar's 其他 segment. */
 export function projectShares(project: ProjectUsage, by: ProjectBreakdown): ProjectShare[] {
   const source = by === "model" ? project.models : project.clients;
-  const named = Object.entries(source)
-    .filter(([, tokens]) => tokens > 0)
-    .sort(([a, x], [b, y]) => y - x || a.localeCompare(b));
-  const attributed = named.reduce((sum, [, tokens]) => sum + tokens, 0);
+  const merged = new Map<string, { key: string; label: string; tokens: number }>();
+  for (const [key, tokens] of Object.entries(source)) {
+    if (tokens <= 0) continue;
+    const label = by === "model" ? key : clientName(key);
+    const id = by === "model" ? key : label;
+    const existing = merged.get(id);
+    if (existing) existing.tokens += tokens;
+    else merged.set(id, { key, label, tokens });
+  }
+  const named = [...merged.values()].sort((a, b) => b.tokens - a.tokens || a.key.localeCompare(b.key));
+  const attributed = named.reduce((sum, item) => sum + item.tokens, 0);
   // Parts are reported per source; never let them claim more than the project.
   const total = Math.max(project.totalTokens, attributed);
-  const rows: ProjectShare[] = named.map(([key, tokens], index) => ({
-    key,
-    label: by === "model" ? key : clientName(key),
-    tokens,
-    share: total ? tokens / total : 0,
+  const rows: ProjectShare[] = named.map((item, index) => ({
+    key: item.key,
+    label: item.label,
+    tokens: item.tokens,
+    share: total ? item.tokens / total : 0,
     kind: "named",
     color: NAMED_COLORS[index] ?? OTHER_COLOR,
   }));

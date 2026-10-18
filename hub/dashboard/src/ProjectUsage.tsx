@@ -36,7 +36,7 @@ export function ProjectUsage({ data, period }: { data: DashboardData; period: Pe
       <div className="panel-head">
         <div>
           <h2 id="projects-title">项目用量</h2>
-          <p>共 {projects.length} 个项目</p>
+          {usage?.reported !== false && <p>共 {projects.length} 个项目</p>}
         </div>
         <div className="metric-switch" ref={breakdownSwitch} role="group" aria-label="项目用量拆分方式">
           <span data-sliding-indicator aria-hidden="true" />
@@ -47,13 +47,15 @@ export function ProjectUsage({ data, period }: { data: DashboardData; period: Pe
           ))}
         </div>
       </div>
-      {usage?.incomplete && <p className="project-note">部分设备没有同步项目明细，项目用量可能不全。</p>}
+      {usage?.incomplete && projects.length > 0 && (
+        <p className="project-note">部分设备没有同步项目明细，项目用量可能不全。</p>
+      )}
       {projects.length ? (
         <div className="client-rows project-rows" ref={rows}>
           {projects.slice(0, shown).map((project) => {
             const shares = projectShares(project, by);
             const parts = groupedShares(shares, by);
-            const share = periodTotal ? project.totalTokens / periodTotal : 0;
+            const share = periodTotal ? Math.min(1, project.totalTokens / periodTotal) : 0;
             return (
               <div className="client-row project-row" key={project.id} data-feel-item="row">
                 <div className="client-head">
@@ -96,15 +98,17 @@ export function ProjectUsage({ data, period }: { data: DashboardData; period: Pe
                   </div>
                 </MetricTooltip>
                 {/* role keeps list semantics that Safari drops with list-style: none */}
-                <ul className="project-share-legend" role="list" aria-label={`${project.name} 按${BREAKDOWN_LABELS[by]}的占比`}>
-                  {parts.map((part) => (
-                    <li key={part.key}>
-                      <i style={{ background: part.color }} aria-hidden="true" />
-                      <span>{part.label}</span>
-                      <strong>{pct(part.share)}</strong>
-                    </li>
-                  ))}
-                </ul>
+                {parts.length > 0 && (
+                  <ul className="project-share-legend" role="list" aria-label={`${project.name} 按${BREAKDOWN_LABELS[by]}的占比`}>
+                    {parts.map((part) => (
+                      <li key={part.key}>
+                        <i style={{ background: part.color }} aria-hidden="true" />
+                        <span>{part.label}</span>
+                        <strong>{pct(part.share)}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <div className="client-foot">
                   <span>{compact(project.totalTokens)} 词元</span>
                   <span>{usd(project.costUsd)}</span>
@@ -142,11 +146,13 @@ export function ProjectUsage({ data, period }: { data: DashboardData; period: Pe
           再显示 {Math.min(10, projects.length - shown)} 个项目 <ChevronDown size={15} />
         </button>
       )}
-      <div className="table-foot">
-        <span>
-          项目占比按{label}全部用量计算，{BREAKDOWN_LABELS[by]}占比按项目自身用量计算；没有项目信息的用量不计入项目。
-        </span>
-      </div>
+      {projects.length > 0 && (
+        <div className="table-foot">
+          <span>
+            项目占比按{label}全部用量计算，{BREAKDOWN_LABELS[by]}占比按项目自身用量计算
+          </span>
+        </div>
+      )}
     </section>
   );
 }

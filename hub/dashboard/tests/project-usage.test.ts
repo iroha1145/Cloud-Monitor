@@ -64,6 +64,8 @@ test("model shares keep the part without a model apart instead of spreading it",
 test("client shares use display names and never exceed the project", () => {
   const shares = projectShares(project({ totalTokens: 900, clients: { codex: 600, claude: 600 } }), "client");
   assert.deepEqual(shares.map((s) => [s.label, s.share]), [["Claude Code", 0.5], ["Codex", 0.5]]);
+  const aliased = projectShares(project({ totalTokens: 500, clients: { kilo: 200, kilocode: 300 } }), "client");
+  assert.deepEqual(aliased.map((s) => [s.label, s.tokens, s.share]), [["Kilo Code", 500, 1]]);
 });
 
 test("parts past the coloured three are grouped, tooltips name more of them", () => {
