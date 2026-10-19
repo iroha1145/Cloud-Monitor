@@ -186,6 +186,11 @@ test('mobile card touch feedback rebounds and leaves vertical scrolling native',
   expect(sideways.x).toBeGreaterThan(2); expect(sideways.y).toBe(0);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await expect.poll(pressed).toBe('');
+  // The browser starts panning after the second move and cancels the pointer, so
+  // the rebound begins before the finger lifts and its last frames can land
+  // after the read above. Nothing is written once the card is at rest: zero the
+  // count again so none of that tail is counted against the next gesture.
+  await readPull();
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: y + 60 }] });
   for (let i = 1; i <= 6; i++) {
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + 60 - i * 18 }] });
