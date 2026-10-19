@@ -105,14 +105,14 @@
 .feel-nav-content .nav-item {
   min-height: 44px;
   padding: 0 12px;
-  border-radius: 13px;
+  border-radius: var(--r-well);
   font-size: 14px;
 }
 /* The current page takes the accent, as in game-manage's menu. */
 .feel-nav-content .nav-item.active { color: var(--primary); font-weight: 600; }
 .feel-nav-content .nav-item.active > svg { color: var(--primary); }
-.feel-nav-content .nav-active { border-radius: 13px; background: var(--accent-tint); }
-.feel-nav-content .nav-hover { border-radius: 13px; }
+.feel-nav-content .nav-active { border-radius: var(--r-well); background: var(--accent-tint); }
+.feel-nav-content .nav-hover { border-radius: var(--r-well); }
 .feel-nav-content .nav-item:active { transform: translateY(1px); }
 .feel-nav-content .sidebar-bottom { margin-top: 14px; padding-top: 12px; }
 .feel-nav-content .sidebar-connection { padding: 12px 8px; }
@@ -200,8 +200,8 @@
 }
 /* The menu scrolls in the room between the grip and the 64px bar: a half-open
    drawer shows the pages and scrolls to the rest, a full one fits it all.
-   While moving, height is locked to its full open slot so children never
-   reflow or recalculate scrollbars on every animation frame. */
+   The box follows the sheet while it moves, so a scrolled menu keeps its
+   place; the stable gutter keeps its width when the scrollbar comes and goes. */
 .feel-nav-drawer > .feel-nav-content {
   position: absolute;
   top: 28px;
@@ -209,15 +209,13 @@
   right: 0;
   bottom: var(--quick-bar-height);
   padding: 4px max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px));
+  scrollbar-gutter: stable;
   opacity: clamp(0, calc(var(--drawer-progress) * 2.2 - 0.08), 1);
   transform: translate3d(0, calc(8px * (1 - var(--drawer-progress))), 0);
   pointer-events: none;
   contain: layout style;
 }
 .feel-nav-drawer[data-drawer-moving="true"] > .feel-nav-content {
-  bottom: auto;
-  height: max(0px, calc(var(--nav-open-height, 560px) - 28px - var(--quick-bar-height)));
-  overflow-y: hidden;
   will-change: transform, opacity;
 }
 .feel-nav-drawer[data-state="open"] > .feel-nav-content { pointer-events: auto; }
@@ -240,7 +238,7 @@
   min-height: 46px;
   padding: 0 12px;
   border: 1px solid var(--line-soft);
-  border-radius: 13px;
+  border-radius: var(--r-well);
   background: var(--inset);
   color: var(--ink);
   font-weight: 500;
@@ -275,14 +273,14 @@
   margin: 0;
   padding: 10px 12px;
   border: 1px solid var(--line-soft);
-  border-radius: 13px;
+  border-radius: var(--r-well);
   background: var(--inset);
 }
 .feel-nav-drawer .feel-nav-content .sidebar-setting {
   min-height: 46px;
   padding: 0 12px;
   border: 1px solid var(--line-soft);
-  border-radius: 13px;
+  border-radius: var(--r-well);
   background: var(--inset);
   color: var(--ink);
   font-weight: 500;

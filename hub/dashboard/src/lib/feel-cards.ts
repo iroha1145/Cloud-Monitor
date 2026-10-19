@@ -9,11 +9,20 @@ type Card = { el: HTMLElement; slot: Rectangle; base: Rectangle; precedingBottom
 
 type InnerItem = {
   el: HTMLElement; kind: 'row' | 'cell'; parent: HTMLElement | null;
+  /** The card or group that makes room as one block around this record. */
+  outer: HTMLElement | null;
   base: Rectangle | null; epoch: number;
   x: number; y: number; scale: number; vx: number; vy: number; vs: number;
   tx: number; ty: number; ts: number;
 };
 const ITEM_PROPERTIES = ['--feel-item-x', '--feel-item-y', '--feel-item-scale'];
+
+/** The outermost card or group around `el`: the only level that rises. */
+function outermostBlock(el: HTMLElement) {
+  let outer: HTMLElement | null = null;
+  for (let node = el.parentElement?.closest<HTMLElement>(SELECTOR); node; node = node.parentElement?.closest<HTMLElement>(SELECTOR) ?? null) outer = node;
+  return outer;
+}
 
 /** Only intersecting items are considered; stationary menus do no per-frame
  * scans. Base rectangles are cached per layout epoch so active menu/drawer
@@ -39,6 +48,24 @@ function createFeelItems(root: HTMLElement, schedule: () => void, cardByEl: Map<
   }, { rootMargin: '0px', threshold: 0 });
   function refresh() { scan = true; boxEpoch++; targetsDirty = true; }
   function invalidateBoxes() { boxEpoch++; targetsDirty = true; }
+  // A card inside a group is no block of its own: its box is cached like the
+  // records' boxes, without the group's rise, which is added back on use.
+  const nestedBoxes = new WeakMap<HTMLElement, { box: Rectangle; epoch: number }>();
+  function parentBox(parent: HTMLElement, rise: number): Rectangle {
+    const card = cardByEl.get(parent);
+    if (card) {
+      const b = card.base;
+      return { left: b.left + card.inset, right: b.right - (card.loss - card.inset), top: b.top + card.ay, bottom: b.bottom + card.ay, width: b.width - card.loss, height: b.height };
+    }
+    let cached = nestedBoxes.get(parent);
+    if (!cached || cached.epoch !== boxEpoch) {
+      const r = parent.getBoundingClientRect();
+      cached = { box: { left: r.left, right: r.right, top: r.top - rise, bottom: r.bottom - rise, width: r.width, height: r.height }, epoch: boxEpoch };
+      nestedBoxes.set(parent, cached);
+    }
+    const b = cached.box;
+    return rise ? { ...b, top: b.top + rise, bottom: b.bottom + rise } : b;
+  }
   function read(menu: Rectangle | null, mobile: boolean, safeTop: number, reduced: boolean, menuMoving: boolean) {
     if (scan) {
       const found = new Set([...root.querySelectorAll<HTMLElement>('[data-feel-item]')]
@@ -46,7 +73,7 @@ function createFeelItems(root: HTMLElement, schedule: () => void, cardByEl: Map<
       for (const [el, item] of records) if (!found.has(el)) { observer.unobserve(el); restore(item); visible.delete(item); records.delete(el); }
       for (const el of found) if (!records.has(el)) {
         const item: InnerItem = { el, kind: el.dataset.feelItem === 'cell' ? 'cell' : 'row', parent: el.parentElement?.closest<HTMLElement>('[data-feel-card]') || null,
-          base: null, epoch: 0, x: 0, y: 0, scale: 1, vx: 0, vy: 0, vs: 0, tx: 0, ty: 0, ts: 1 };
+          outer: outermostBlock(el), base: null, epoch: 0, x: 0, y: 0, scale: 1, vx: 0, vy: 0, vs: 0, tx: 0, ty: 0, ts: 1 };
         records.set(el, item); observer.observe(el);
       }
       scan = false;
@@ -59,25 +86,16 @@ function createFeelItems(root: HTMLElement, schedule: () => void, cardByEl: Map<
       for (const item of active) { item.tx = item.ty = 0; item.ts = 1; if (reduced) restore(item); }
       return;
     }
-    const fallbackParents = new Map<HTMLElement, Rectangle>();
+    const parents = new Map<HTMLElement, Rectangle>();
     const samples: { item: InnerItem; x: number; y: number; scale: number }[] = [];
     for (const item of visible) {
       let parent: Rectangle | undefined;
-      let parentShiftY = 0;
+      // Cached boxes leave out the rise of the block that moves; it is added
+      // back here, so records follow a rising group without a reflow.
+      const rise = (item.outer && cardByEl.get(item.outer)?.ay) || 0;
       if (item.parent) {
-        const parentCard = cardByEl.get(item.parent);
-        if (parentCard) {
-          parentShiftY = parentCard.ay;
-          const b = parentCard.base;
-          parent = { left: b.left + parentCard.inset, right: b.right - (parentCard.loss - parentCard.inset), top: b.top + parentShiftY, bottom: b.bottom + parentShiftY, width: b.width - parentCard.loss, height: b.height };
-        } else {
-          parent = fallbackParents.get(item.parent);
-          if (!parent) {
-            const r = item.parent.getBoundingClientRect();
-            parent = { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
-            fallbackParents.set(item.parent, parent);
-          }
-        }
+        parent = parents.get(item.parent);
+        if (!parent) { parent = parentBox(item.parent, rise); parents.set(item.parent, parent); }
         const reach = item.kind === 'cell' ? 80 : 144;
         if (parent.right < menu.left - reach || parent.left > menu.right + reach || parent.bottom < menu.top - reach || parent.top > menu.bottom + reach) {
           if (active.has(item)) samples.push({ item, x: 0, y: 0, scale: 1 });
@@ -92,13 +110,13 @@ function createFeelItems(root: HTMLElement, schedule: () => void, cardByEl: Map<
           continue;
         }
         const width = rect.width / item.scale, height = rect.height / item.scale;
-        const left = rect.left - item.x - (width - rect.width) / 2, top = rect.top - item.y - parentShiftY - (height - rect.height) / 2;
+        const left = rect.left - item.x - (width - rect.width) / 2, top = rect.top - item.y - rise - (height - rect.height) / 2;
         item.base = { left, top, right: left + width, bottom: top + height, width, height };
         item.epoch = boxEpoch;
       }
       const unshifted = item.base;
-      const base = parentShiftY
-        ? { left: unshifted.left, right: unshifted.right, top: unshifted.top + parentShiftY, bottom: unshifted.bottom + parentShiftY, width: unshifted.width, height: unshifted.height }
+      const base = rise
+        ? { left: unshifted.left, right: unshifted.right, top: unshifted.top + rise, bottom: unshifted.bottom + rise, width: unshifted.width, height: unshifted.height }
         : unshifted;
       if (base.bottom <= safeTop || base.top >= win.innerHeight) {
         if (active.has(item)) samples.push({ item, x: 0, y: 0, scale: 1 });
@@ -166,11 +184,14 @@ export function createFeelCards(root: HTMLElement) {
     }
     if (changed) { layoutDirty = true; items.invalidateBoxes(); schedule(); }
   });
-  function restoreLayout(card: Card) {
+  /** `keepRise` leaves a phone rise in place: it is a transform that layout
+   * ignores, so a re-measure reads the card where it is and takes the rise out. */
+  function restoreLayout(card: Card, keepRise = false) {
     LAYOUT_PROPERTIES.forEach((key, index) => {
       const [value, priority] = card.saved[index];
       if (value) card.el.style.setProperty(key, value, priority); else card.el.style.removeProperty(key);
     });
+    if (keepRise) return;
     card.el.style.removeProperty('--feel-avoid-y');
     delete card.el.dataset.menuAvoidance; delete card.el.dataset.feelMoving;
   }
@@ -185,7 +206,9 @@ export function createFeelCards(root: HTMLElement) {
   }
   function measure() {
     const previous = new Map(cards.map(card => [card.el, card]));
-    cards.forEach(restoreLayout); sizes.disconnect(); cardByEl.clear();
+    // Width and margins go back to measure the slot; a rise stays, so the
+    // `- old.ay` below and records read in this frame see the same card.
+    cards.forEach(card => restoreLayout(card, true)); sizes.disconnect(); cardByEl.clear();
     cards = [...root.querySelectorAll<HTMLElement>(SELECTOR)]
       .filter(el => !el.parentElement?.closest(SELECTOR) && !el.closest('[role="dialog"], [hidden]'))
       .flatMap(el => {
@@ -200,6 +223,7 @@ export function createFeelCards(root: HTMLElement) {
         cardByEl.set(el, card);
         return [card];
       });
+    for (const [el, card] of previous) if (!cardByEl.has(el)) restoreLayout(card);
     cards.forEach(card => sizes.observe(card.el)); dirty = false; layoutDirty = true;
   }
   function refreshLayout() {
@@ -304,7 +328,7 @@ export function createFeelCards(root: HTMLElement) {
       menu = rect; mode = nextMode; menuMoving = moving; schedule();
     },
     destroy() {
-      destroyed = true; win.cancelAnimationFrame(frame); observer.disconnect(); sizes.disconnect(); items.destroy(); cards.forEach(restoreLayout);
+      destroyed = true; win.cancelAnimationFrame(frame); observer.disconnect(); sizes.disconnect(); items.destroy(); cards.forEach(card => restoreLayout(card));
       doc.removeEventListener('scroll', scroll, true); reduced.removeEventListener('change', changed); win.removeEventListener('resize', changed);
     },
   };
