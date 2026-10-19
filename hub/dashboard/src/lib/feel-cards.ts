@@ -16,6 +16,13 @@ type InnerItem = {
   tx: number; ty: number; ts: number;
 };
 const ITEM_PROPERTIES = ['--feel-item-x', '--feel-item-y', '--feel-item-scale'];
+/** Sets or clears a data attribute only when it changes: the controllers run
+ * every frame, and an unchanged attribute need not be rewritten. */
+function mark(el: HTMLElement, key: string, value: string | boolean) {
+  const next = value === true ? 'true' : value || undefined;
+  if (el.dataset[key] === next) return;
+  if (next === undefined) delete el.dataset[key]; else el.dataset[key] = next;
+}
 
 /** The outermost card or group around `el`: the only level that rises. */
 function outermostBlock(el: HTMLElement) {
@@ -28,7 +35,6 @@ function outermostBlock(el: HTMLElement) {
  * scans. Base rectangles are cached per layout epoch so active menu/drawer
  * springs compute repulsion targets without per-frame DOM reflows. */
 function createFeelItems(root: HTMLElement, schedule: () => void, cardByEl: Map<HTMLElement, Card>) {
-  const win = root.ownerDocument.defaultView!;
   const records = new Map<HTMLElement, InnerItem>(), visible = new Set<InnerItem>(), active = new Set<InnerItem>();
   let scan = true, targetsDirty = true, boxEpoch = 1, disposed = false;
   const restore = (item: InnerItem) => {
@@ -66,7 +72,7 @@ function createFeelItems(root: HTMLElement, schedule: () => void, cardByEl: Map<
     const b = cached.box;
     return rise ? { ...b, top: b.top + rise, bottom: b.bottom + rise } : b;
   }
-  function read(menu: Rectangle | null, mobile: boolean, safeTop: number, reduced: boolean, menuMoving: boolean) {
+  function read(menu: Rectangle | null, mobile: boolean, safeTop: number, viewport: { right: number; bottom: number }, reduced: boolean, menuMoving: boolean) {
     if (scan) {
       const found = new Set([...root.querySelectorAll<HTMLElement>('[data-feel-item]')]
         .filter(el => !el.closest('[role="dialog"]') && !el.parentElement?.closest('[data-feel-item]')));
@@ -118,13 +124,13 @@ function createFeelItems(root: HTMLElement, schedule: () => void, cardByEl: Map<
       const base = rise
         ? { left: unshifted.left, right: unshifted.right, top: unshifted.top + rise, bottom: unshifted.bottom + rise, width: unshifted.width, height: unshifted.height }
         : unshifted;
-      if (base.bottom <= safeTop || base.top >= win.innerHeight) {
+      if (base.bottom <= safeTop || base.top >= viewport.bottom) {
         if (active.has(item)) samples.push({ item, x: 0, y: 0, scale: 1 });
         continue;
       }
       const response = itemRepulsion(base, menu, item.kind, mobile);
       const insetX = base.width * (1 - response.scale) / 2, insetY = base.height * (1 - response.scale) / 2;
-      const clip = { left: parent?.left || 0, right: parent?.right || win.innerWidth, top: Math.max(safeTop, parent?.top || 0), bottom: Math.min(win.innerHeight, parent?.bottom || win.innerHeight) };
+      const clip = { left: parent?.left || 0, right: parent?.right || viewport.right, top: Math.max(safeTop, parent?.top || 0), bottom: Math.min(viewport.bottom, parent?.bottom || viewport.bottom) };
       response.x = clamp(response.x, Math.min(0, clip.left - base.left - insetX), Math.max(0, clip.right - base.right + insetX));
       response.y = clamp(response.y, Math.min(0, clip.top - base.top - insetY), Math.max(0, clip.bottom - base.bottom + insetY));
       samples.push({ item, ...response });
@@ -148,8 +154,8 @@ function createFeelItems(root: HTMLElement, schedule: () => void, cardByEl: Map<
       item.el.style.setProperty('--feel-item-x', `${item.x.toFixed(3)}px`);
       item.el.style.setProperty('--feel-item-y', `${item.y.toFixed(3)}px`);
       item.el.style.setProperty('--feel-item-scale', item.scale.toFixed(6));
-      item.el.dataset.feelItemActive = 'true';
-      if (settled) delete item.el.dataset.feelItemMoving; else item.el.dataset.feelItemMoving = 'true';
+      mark(item.el, 'feelItemActive', true);
+      mark(item.el, 'feelItemMoving', !settled);
     }
     return moving;
   }
@@ -172,7 +178,7 @@ function equalColumns(el: HTMLElement, style: CSSStyleDeclaration) {
 export function createFeelCards(root: HTMLElement) {
   const win = root.ownerDocument.defaultView!, doc = root.ownerDocument;
   const reduced = win.matchMedia('(prefers-reduced-motion: reduce)');
-  let cards: Card[] = [], dirty = true, layoutDirty = true, safeTop = 12, mode: 'desktop' | 'mobile' = 'desktop', menu: Rectangle | null = null, menuMoving = false, frame = 0, time = 0, destroyed = false;
+  let cards: Card[] = [], dirty = true, layoutDirty = true, safeTop = 12, viewport = { left: 0, right: 0, bottom: 0 }, mode: 'desktop' | 'mobile' = 'desktop', menu: Rectangle | null = null, menuMoving = false, frame = 0, time = 0, destroyed = false;
   const cardByEl = new Map<HTMLElement, Card>();
   const items = createFeelItems(root, schedule, cardByEl);
   const heights = new WeakMap<Element, number>();
@@ -227,8 +233,12 @@ export function createFeelCards(root: HTMLElement) {
     cards.forEach(card => sizes.observe(card.el)); dirty = false; layoutDirty = true;
   }
   function refreshLayout() {
+    // Read with the other geometry, never per frame: in a frame the menu has
+    // just moved, so a read (on phones even innerHeight) would force another
+    // style and layout pass.
+    viewport = { left: 0, right: doc.documentElement.clientWidth || win.innerWidth, bottom: win.innerHeight };
     const topbar = root.querySelector('.app-topbar')?.getBoundingClientRect();
-    safeTop = Math.max(12, topbar && topbar.top < win.innerHeight && topbar.bottom > 0 ? topbar.bottom + 4 : 0);
+    safeTop = Math.max(12, topbar && topbar.top < viewport.bottom && topbar.bottom > 0 ? topbar.bottom + 4 : 0);
     const blockerRects = new Map<Element, { left: number; right: number; bottom: number; valid: boolean }>();
     for (const card of cards) {
       const actual = card.el.getBoundingClientRect();
@@ -258,14 +268,13 @@ export function createFeelCards(root: HTMLElement) {
     const dt = time ? (now - time) / 1000 : 1 / 60; time = now;
     if (dirty) measure();
     if (layoutDirty) refreshLayout();
-    const viewport = { left: 0, right: doc.documentElement.clientWidth || win.innerWidth };
     for (const card of cards) {
       card.target = cardAvoidance(card.base, mode === 'desktop' ? menu : null, viewport, card.side);
       card.side = card.target.side;
       const mobileResponse = mode === 'mobile' ? mobileCardAvoidance(card.base, menu, safeTop, card.precedingBottom) : { y: 0, available: 0 };
       card.mobileTarget = mobileResponse.y; card.mobileLimit = mobileResponse.available;
     }
-    items.read(menu, mode === 'mobile', safeTop, reduced.matches, menuMoving);
+    items.read(menu, mode === 'mobile', safeTop, viewport, reduced.matches, menuMoving);
     let moving = false, outerChanged = false, widthChanged = false;
     for (const card of cards) {
       const beforeLoss = card.loss, beforeInset = card.inset, beforeY = card.ay;
@@ -292,13 +301,13 @@ export function createFeelCards(root: HTMLElement) {
           card.el.style.width = `${(card.slot.width - card.loss).toFixed(2)}px`;
           card.el.style.marginLeft = `${(card.ml + card.inset).toFixed(2)}px`;
           card.el.style.marginRight = `${(card.mr + card.loss - card.inset).toFixed(2)}px`;
-          card.el.dataset.menuAvoidance = card.target.covered ? 'overlap' : 'clear';
+          mark(card.el, 'menuAvoidance', card.target.covered ? 'overlap' : 'clear');
         }
         if (Math.abs(card.ay) > .01) {
           card.el.style.setProperty('--feel-avoid-y', `${(cardMoving ? card.ay : Math.round(card.ay)).toFixed(cardMoving ? 3 : 0)}px`);
-          card.el.dataset.menuAvoidance = 'mobile';
+          mark(card.el, 'menuAvoidance', 'mobile');
         } else card.el.style.removeProperty('--feel-avoid-y');
-        if (cardMoving && !reduced.matches) card.el.dataset.feelMoving = 'true'; else delete card.el.dataset.feelMoving;
+        mark(card.el, 'feelMoving', cardMoving && !reduced.matches);
       }
       if (cardMoving) moving = true;
       const dWidth = Math.abs(card.loss - beforeLoss) + Math.abs(card.inset - beforeInset);
@@ -311,7 +320,11 @@ export function createFeelCards(root: HTMLElement) {
     if (moving || innerMoving || outerChanged) frame = win.requestAnimationFrame(tick); else time = 0;
   }
   function schedule() { if (!destroyed && !frame) frame = win.requestAnimationFrame(tick); }
-  const scroll = () => { layoutDirty = true; items.invalidateBoxes(); if (menu) schedule(); };
+  // Scrolling inside the menus moves no card.
+  const scroll = (event: Event) => {
+    if (event.target instanceof Element && event.target.closest('.feel-nav-drawer, .feel-navigation')) return;
+    layoutDirty = true; items.invalidateBoxes(); if (menu) schedule();
+  };
   const changed = () => { dirty = true; layoutDirty = true; items.refresh(); schedule(); };
   // Re-measure when cards come or go, and when a scroll-revealed card drops
   // its entrance transform: a slot measured mid-rise would be off by its scale.

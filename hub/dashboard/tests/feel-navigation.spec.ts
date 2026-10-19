@@ -134,11 +134,12 @@ test('mobile sheet has three keyboard stops, traps focus, restores scroll and cl
   await expect(surface).toHaveAttribute('data-drawer-stop', 'half');
   await handle.press('ArrowUp');
   await expect(surface).toHaveAttribute('data-drawer-stop', 'open');
-  // Fully open, the surface holds the whole menu and still floats 12px above the bottom edge.
+  // Fully open, the panel holds the whole menu, docked to the bottom edge
+  // and reaching 48px below it.
   const openHeight = await surface.evaluate(el => parseFloat((el as HTMLElement).style.getPropertyValue('--nav-open-height')));
   expect(openHeight).toBeGreaterThan(84); expect(openHeight).toBeLessThanOrEqual(844 - 24);
-  await expect.poll(async () => Math.round((await box(dialog)).y)).toBe(844 - 12 - openHeight);
-  expect(Math.round((await box(dialog)).height)).toBe(openHeight);
+  await expect.poll(async () => Math.round((await box(dialog)).y)).toBe(844 - openHeight);
+  expect(Math.round((await box(dialog)).height)).toBe(openHeight + 48);
   await handle.press('ArrowDown');
   await expect(surface).toHaveAttribute('data-drawer-stop', 'half');
   await page.keyboard.press('Shift+Tab');
@@ -216,7 +217,7 @@ const PHONE_CARD_GAP = 16, CARD_RISE = PHONE_CARD_GAP - 8, ABOVE_HALF_STOP = 9;
 /** The top of the half-open drawer: an 84px tab bar plus half of the menu above it. */
 const halfStopTop = (surface: Locator) => surface.evaluate(el => {
   const open = parseFloat((el as HTMLElement).style.getPropertyValue('--nav-open-height'));
-  return el.getBoundingClientRect().bottom - (84 + (open - 84) / 2);
+  return innerHeight - (84 + (open - 84) / 2);
 });
 
 test('dragging only the mobile sheet actively repels cards, preserves control gaps and restores native scrolling', async ({ browser }) => {
@@ -358,6 +359,124 @@ test('records inside a rising card group answer from where they are, not where t
   await page.evaluate(() => { const probe = document.createElement('i'); document.querySelector('.app-shell')!.append(probe); probe.remove(); });
   unchanged(await settled());
   await releaseStill(page, cdp);
+  await context.close();
+});
+
+test('a menu scrolled to its end at the half stop opens without a jump', async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: String(test.info().project.use.baseURL), viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await page.goto('/demo.html#overview');
+  const surface = page.locator('.feel-nav-drawer');
+  const menu = page.getByRole('dialog', { name: '导航', exact: true }).getByRole('navigation', { name: '页面导航', exact: true });
+  await page.locator('.feel-nav-peek').tap();
+  await expect(surface).toHaveAttribute('data-drawer-stop', 'half');
+  // At rest the menu's box ends at the tab bar, so the rows the half stop
+  // hides scroll up into view.
+  await menu.evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await expect(menu.getByRole('button', { name: '工作区设置', exact: true })).toBeInViewport();
+  // The last row stays in place while the panel opens above it, and nothing
+  // jumps when the panel comes to rest.
+  const path = await menu.evaluate(async el => {
+    const last = [...el.querySelectorAll('button')].at(-1)!, bottoms: number[] = [];
+    (document.querySelector('.feel-nav-peek') as HTMLElement).click();
+    const drawer = document.querySelector<HTMLElement>('.feel-nav-drawer')!;
+    for (let i = 0; i < 90 && drawer.dataset.drawerStop !== 'open'; i++) { await new Promise(requestAnimationFrame); bottoms.push(last.getBoundingClientRect().bottom); }
+    for (let i = 0; i < 5; i++) { await new Promise(requestAnimationFrame); bottoms.push(last.getBoundingClientRect().bottom); }
+    return { bottoms, scrollTop: el.scrollTop, stop: drawer.dataset.drawerStop };
+  });
+  expect(path.stop).toBe('open');
+  expect(path.scrollTop).toBe(0);
+  // Only the magnet's swing of a few px at the open stop, never the ~200px
+  // a clamped scroll position would jump.
+  const spread = Math.max(...path.bottoms) - Math.min(...path.bottoms);
+  expect(spread).toBeLessThan(8);
+  await context.close();
+});
+
+test('a moving drawer writes nothing that rows inherit, so a rising card restyles alone', async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: String(test.info().project.use.baseURL), viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await page.goto('/demo.html');
+  const card = page.locator('.clients-panel'), surface = page.locator('.feel-nav-drawer');
+  await card.scrollIntoViewIfNeeded(); await waitForReveal(card);
+  const halfTop = await halfStopTop(surface);
+  await card.evaluate((el, bottom) => window.scrollBy({ top: el.getBoundingClientRect().bottom - bottom, behavior: 'instant' }), halfTop - ABOVE_HALF_STOP);
+  // The name of every inline style property that changes while the panel moves.
+  await page.evaluate(() => {
+    const names = new Set<string>();
+    const parse = (text: string | null) => new Map((text || '').split(';').map(part => part.split(':')).filter(pair => pair.length > 1).map(([name, ...value]) => [name.trim(), value.join(':').trim()]));
+    new MutationObserver(records => {
+      for (const record of records) {
+        const before = parse(record.oldValue), after = parse((record.target as Element).getAttribute('style'));
+        for (const name of new Set([...before.keys(), ...after.keys()])) if (before.get(name) !== after.get(name)) names.add(name);
+      }
+    }).observe(document.body, { attributes: true, attributeFilter: ['style'], attributeOldValue: true, subtree: true });
+    (window as unknown as { __styleNames: Set<string> }).__styleNames = names;
+  });
+  const cdp = await context.newCDPSession(page), peek = await box(page.locator('.feel-nav-peek'));
+  const travel = await surface.evaluate(el => parseFloat((el as HTMLElement).style.getPropertyValue('--nav-open-height')) - 84);
+  const x = peek.x + peek.width / 2, y = peek.y + peek.height / 2;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  for (let index = 1; index <= 10; index++) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - index * travel * .05 }] });
+    await page.waitForTimeout(18);
+  }
+  await expect.poll(() => card.evaluate(avoidY)).toBeLessThan(-(CARD_RISE - .1));
+  // Registered and not inherited: the card's own offset never reaches its rows.
+  const [own, inner] = await card.evaluate(el => [getComputedStyle(el).getPropertyValue('--feel-avoid-y'), getComputedStyle(el.firstElementChild!).getPropertyValue('--feel-avoid-y')]);
+  expect(parseFloat(own)).toBeLessThan(-(CARD_RISE - .1)); expect(inner).toBe('0px');
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await expect(surface).toHaveAttribute('data-drawer-stop', 'half');
+  const names = await page.evaluate(() => [...(window as unknown as { __styleNames: Set<string> }).__styleNames].sort());
+  // Transforms, opacity and the registered offsets; once per stop the menu's
+  // box and spacer, and the page's scroll lock when the menu opens.
+  const allowed = new Set(['transform', 'opacity', 'translate', 'rotate', 'scale', 'bottom', 'height', '--feel-avoid-y', '--feel-item-x', '--feel-item-y', '--feel-item-scale', '--nav-open-height', 'overflow', 'padding-right']);
+  expect(names.filter(name => !allowed.has(name))).toEqual([]);
+  await context.close();
+});
+
+test('records in a card inside a group move with the group as it makes room', async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: String(test.info().project.use.baseURL), viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await page.goto('/demo.html');
+  const surface = page.locator('.feel-nav-drawer');
+  // The menu's size sets the stops; measure them once the page has settled.
+  await expect(page.locator('.clients-panel')).toBeVisible();
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  const halfTop = await halfStopTop(surface);
+  // A group whose bottom sits 16px into the half-open panel rises its full
+  // 32px; the record inside its card stays 56px above the card's bottom edge.
+  await page.evaluate(halfTop => {
+    const group = document.createElement('div');
+    group.id = 'feel-group-fixture'; group.dataset.feelGroup = '';
+    group.style.cssText = `position:fixed;left:16px;width:358px;top:${halfTop + 16 - 116}px;height:116px;z-index:20`;
+    group.innerHTML = '<section data-feel-card style="box-sizing:border-box;height:116px;padding:20px 16px 0;background:white"><div data-feel-item="row" style="height:40px">嵌套卡片里的记录</div></section>';
+    document.querySelector('.app-shell')!.append(group);
+  }, halfTop);
+  const group = page.locator('#feel-group-fixture'), row = group.locator('[data-feel-item]');
+  const cdp = await context.newCDPSession(page), peek = await box(page.locator('.feel-nav-peek'));
+  const travel = await surface.evaluate(el => parseFloat((el as HTMLElement).style.getPropertyValue('--nav-open-height')) - 84);
+  const x = peek.x + peek.width / 2, y = peek.y + peek.height / 2;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  for (let index = 1; index <= 10; index++) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - index * travel * .05 }] });
+    await page.waitForTimeout(18);
+  }
+  // Held at the half stop, everything settles under the finger.
+  await expect.poll(() => group.evaluate(avoidY)).toBeLessThan(-31.9);
+  await page.waitForTimeout(1200);
+  const seen = await row.evaluate(el => {
+    const style = (el as HTMLElement).style, rect = el.getBoundingClientRect(), y = parseFloat(style.getPropertyValue('--feel-item-y')) || 0;
+    const scale = parseFloat(style.getPropertyValue('--feel-item-scale')) || 1;
+    return { y, bottom: rect.bottom - y + rect.height * (1 / scale - 1) / 2, sheet: document.querySelector('.feel-nav-drawer')!.getBoundingClientRect().top };
+  });
+  // The response for where the record really is (feel-physics itemRepulsion,
+  // mobile rows), not for where it was before the group rose 32px.
+  const response = (distance: number) => { const t = Math.max(0, 1 - distance / 144); return -7 * t * t * (3 - 2 * t); };
+  const expected = response(seen.sheet - seen.bottom), stale = response(seen.sheet - seen.bottom - 32);
+  expect(Math.abs(expected - stale)).toBeGreaterThan(1);
+  expect(Math.abs(seen.y - expected)).toBeLessThan(0.35);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await context.close();
 });
 
@@ -596,27 +715,30 @@ for (const viewport of [{ width: 320, height: 740 }, { width: 390, height: 844 }
     await quick.getByRole('link', { name: '总览', exact: true }).click(); await expect(page).toHaveURL(/#overview$/);
     await expect(quick.getByRole('link', { name: '总览', exact: true })).toHaveAttribute('aria-current', 'page');
     await page.waitForTimeout(500); // Let the newly selected page finish its entry motion before captures.
-    // One surface, centred 12px above the bottom edge, that widens a little as it
-    // opens: min(100vw - 24px + 4px·p, 396px + 124px·p) for progress p.
-    const expectedWidth = (progress: number) => Math.min(viewport.width - 24 + 4 * progress, 396 + 124 * progress);
-    const expectAt = (rect: { x: number; y: number; width: number; height: number }, progress: number) => {
-      expect(Math.abs(rect.width - expectedWidth(progress))).toBeLessThan(.5);
+    // One panel of fixed size, min(100vw, 520px) wide and centred, that only
+    // slides: closed it shows 84px (the grip strip and the tab bar), open the
+    // whole menu, and the tab bar never leaves the bottom edge.
+    const openHeight = await surface.evaluate(el => parseFloat((el as HTMLElement).style.getPropertyValue('--nav-open-height')));
+    const expectAt = async (rect: { x: number; y: number; width: number; height: number }) => {
+      expect(Math.abs(rect.width - Math.min(520, viewport.width))).toBeLessThan(.5);
       expect(Math.abs(rect.x + rect.width / 2 - viewport.width / 2)).toBeLessThan(.5);
-      expect(Math.abs(rect.y + rect.height - (viewport.height - 12))).toBeLessThan(.5);
+      expect(Math.abs(rect.height - (openHeight + 48))).toBeLessThan(.5);
+      const bar = await box(quick); expect(Math.abs(bar.y + bar.height - viewport.height)).toBeLessThan(.5);
     };
     const node = await surface.elementHandle(), closed = await box(surface);
-    expectAt(closed, 0); expect(Math.round(closed.height)).toBe(84);
+    await expectAt(closed); expect(Math.round(viewport.height - closed.y)).toBe(84);
     await page.screenshot({ path: `evidence/magnetic-${viewport.width}-closed.png` });
     // A tap springs from rest: nothing moves in the frame of the tap itself.
     const immediate = await trigger.evaluate(button => { const surface = button.closest('.feel-nav-drawer')!; const before = surface.getBoundingClientRect().top; (button as HTMLButtonElement).click(); return { before, after: surface.getBoundingClientRect().top }; });
     expect(immediate.after).toBe(immediate.before);
     await expect(surface).toHaveAttribute('data-drawer-stop', 'half');
-    const half = await box(surface); expectAt(half, .5);
+    const half = await box(surface); await expectAt(half);
     await page.screenshot({ path: `evidence/magnetic-${viewport.width}-half.png` });
     await trigger.click(); await expect(surface).toHaveAttribute('data-drawer-stop', 'open');
-    const opened = await box(surface); expectAt(opened, 1);
-    expect(closed.y - half.y).toBeCloseTo(half.y - opened.y, 1);
-    expect(opened.y).toBeGreaterThanOrEqual(11.5);
+    const opened = await box(surface); await expectAt(opened);
+    expect(Math.abs((closed.y - half.y) - (half.y - opened.y))).toBeLessThanOrEqual(1);
+    expect(Math.round(viewport.height - opened.y)).toBe(openHeight);
+    expect(opened.y).toBeGreaterThanOrEqual(23.5);
     expect(await node!.evaluate(el => el === document.querySelector('.feel-nav-drawer'))).toBe(true);
     const full = page.getByRole('navigation', { name: '页面导航', exact: true });
     for (const id of ['devices', 'history']) await expect(full.locator(`a[href="#${id}"]`)).toHaveCount(1);
@@ -680,8 +802,8 @@ test('the tab bar\'s 更多 button opens the whole menu, the scrim closes it and
 });
 
 test('a closing magnetic drawer can be tapped open again and still accepts keyboard and navigation', async ({ page }) => {
-  // The grip travels with the closing surface. A paused clock holds the
-  // spring still, so a real tap can land on the grip while it is moving.
+  // The grip travels with the closing panel. A paused clock holds the panel
+  // still between frames, so a real tap can land on the grip while it moves.
   await page.clock.install();
   await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/demo.html#overview');
   const surface = page.locator('.feel-nav-drawer'), trigger = page.locator('[data-mobile-navigation-trigger]');
@@ -689,7 +811,10 @@ test('a closing magnetic drawer can be tapped open again and still accepts keybo
   await page.keyboard.press('Escape');
   await page.clock.pauseAt(await page.evaluate(() => Date.now() + 60));
   await expect(surface).toHaveAttribute('data-drawer-moving', 'true');
-  const open = parseFloat(await surface.evaluate(el => (el as HTMLElement).style.getPropertyValue('--drawer-progress')));
+  const open = await surface.evaluate(el => {
+    const closed = parseFloat((el as HTMLElement).style.getPropertyValue('--nav-open-height')) - 84;
+    return 1 - new DOMMatrixReadOnly(getComputedStyle(el).transform).m42 / closed;
+  });
   expect(open).toBeGreaterThan(.05); expect(open).toBeLessThan(1);
   const grip = await box(trigger);
   await page.mouse.click(grip.x + grip.width / 2, grip.y + grip.height / 2);

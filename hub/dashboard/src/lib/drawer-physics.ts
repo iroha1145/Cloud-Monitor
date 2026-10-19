@@ -1,72 +1,117 @@
 /*
- * The phone menu's motion, after game-manage (frontend/src/floating-navigation.js).
- * One number, progress, runs from 0 (the tab bar) to 1 (the open menu), with
- * a half-open stop between. A tap springs from rest towards the next stop; a
- * release keeps its velocity, and the stop is chosen from where it would coast.
+ * The phone menu's motion: Feel's magnetic drawer (diip3sh/feel,
+ * runtime/feel.js and components/magnetic-drawer.js, MIT). The panel is a
+ * body with no target. Its position is its translateY in px, 0 at the open
+ * stop. Every stop is a magnet with a long weak reach and a strong pull within
+ * 22px (the click); between stops the panel coasts on its own momentum against
+ * damping, and whichever magnet it ends up near catches it. Past either end a
+ * stiff wall pushes back, damped only while the panel presses into it, which
+ * is the rubber band. A finger holds the panel through a spring, so it lags a
+ * little and the magnets are felt as detents under the finger.
  */
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-
-/** Closed tab bar, half-open menu, open menu. */
-export const DRAWER_STOPS = { closed: 0, half: 0.5, open: 1 } as const;
-export type DrawerStop = keyof typeof DRAWER_STOPS;
-
-/** Finger travel becomes progressively less effective past either end: at
- * most `upperLimit` px above the open stop and 8 px below the closed one. */
-export function resistDrawerProgress(value: number, travel: number, upperLimit = 40) {
-  const edge = clamp(value, 0, 1);
-  const distance = (value - edge) * Math.max(1, travel);
-  const limit = distance < 0 ? 8 : upperLimit;
-  return edge + Math.sign(distance) * limit * (1 - Math.exp(-Math.abs(distance) * 0.55 / limit)) / Math.max(1, travel);
-}
-
-/** The progress a resisted position came from, so a new drag continues from
- * the surface where it is (the inverse of resistDrawerProgress). */
-export function unresistDrawerProgress(progress: number, travel: number, upperLimit = 40) {
-  const edge = clamp(progress, 0, 1);
-  const limit = progress < 0 ? 8 : upperLimit;
-  const excess = Math.min(0.999, Math.abs(progress - edge) * Math.max(1, travel) / limit);
-  return edge + Math.sign(progress - edge) * (-limit * Math.log(1 - excess) / 0.55) / Math.max(1, travel);
-}
-
+const TAU = Math.PI * 2;
 const H = 1 / 240;
-const MAGNET_RADIUS = 0.22;
-/** A magnetic drawer spring after Feel (runtime/feel.js magnets + wall):
- * a smoothstep magnetic well around the target stop pulls the sheet in and
- * increases local damping so it locks in after a crisp overshoot without
- * tail ringing, while a directional boundary wall cushions overshoots outside
- * [0, 1]. 240Hz RK4 sub-steps keep integration accurate at any frame rate. */
-export function stepDrawerSpring(position: number, velocity: number, target: number, dt: number): [number, number] {
-  const steps = Math.max(1, Math.min(24, Math.round(dt / H)));
-  const h = dt / steps;
-  let x = position, v = velocity;
-  const accel = (px: number, pv: number) => {
-    const dist = target - px;
-    const t = clamp(1 - Math.abs(dist) / MAGNET_RADIUS, 0, 1);
-    const magnet = t * t * (3 - 2 * t);
-    const wall = px - clamp(px, 0, 1);
-    const wallDamp = (px < 0 && pv < 0) || (px > 1 && pv > 0) ? pv * 14 : 0;
-    return dist * (228 + 36 * magnet) - pv * (18.2 + 6.8 * magnet) - wall * 180 - wallDamp;
-  };
-  for (let i = 0; i < steps; i++) {
-    const a1 = accel(x, v);
-    const v2 = v + 0.5 * h * a1, a2 = accel(x + 0.5 * h * v, v2);
-    const v3 = v + 0.5 * h * a2, a3 = accel(x + 0.5 * h * v2, v3);
-    const v4 = v + h * a3, a4 = accel(x + h * v3, v4);
-    x += (h / 6) * (v + 2 * v2 + 2 * v3 + v4);
-    v += (h / 6) * (a1 + 2 * a2 + 2 * a3 + a4);
-  }
-  return [x, v];
+
+/** Feel's "magnetic" drawer: the neutral body (mass 1, 2.2Hz, damping ratio
+ * 0.8) with magnets of strength 1 (reach 0.6 + 0.5 Hz, click 3 + 4 Hz), walls
+ * at 8Hz damped 0.9, a 6Hz hand, at rest under 4px/s within 0.25px. */
+export const DRAWER_FEEL = {
+  mass: 1,
+  damping: 2 * 0.8 * TAU * 2.2,
+  reach: (TAU * 1.1) ** 2,
+  click: (TAU * 7) ** 2,
+  clickRadius: 22,
+  wall: (TAU * 8) ** 2,
+  wallDamping: 2 * 0.9 * TAU * 8,
+  hand: (TAU * 6) ** 2,
+  handDamping: 2 * TAU * 6,
+  restSpeed: 4,
+  restDistance: 0.25,
+} as const;
+
+export type DrawerStop = 'closed' | 'half' | 'open';
+/** Stop offsets in px: open 0, closed the largest. */
+export type DrawerStops = Record<DrawerStop, number>;
+export type DrawerHand = { x: number; v: number; t: number };
+export type DrawerBody = { x: number; v: number; hand: DrawerHand | null };
+/** From the tab bar up to the open menu. */
+export const DRAWER_STOP_ORDER: readonly DrawerStop[] = ['closed', 'half', 'open'];
+
+/** A panel `height` px tall that shows `peek` px when closed travels
+ * height − peek; the half stop is the middle of that. */
+export function drawerStops(height: number, peek: number): DrawerStops {
+  const closed = Math.max(0, Math.round(height - peek));
+  return { open: 0, half: Math.round(closed / 2), closed };
 }
 
-/** A release keeps 160ms of its velocity and lands on the nearest stop, so a
- * slow drag rests on the half stop and a flick carries past it. */
-export function chooseDrawerStop(progress: number, velocity: number): DrawerStop {
-  const projected = progress + clamp(velocity, -6, 6) * 0.16;
-  let best: DrawerStop = 'closed';
-  for (const stop of Object.keys(DRAWER_STOPS) as DrawerStop[]) {
-    if (Math.abs(DRAWER_STOPS[stop] - projected) < Math.abs(DRAWER_STOPS[best] - projected)) best = stop;
-  }
+/** The stop nearest x: where the panel rests from there when nothing moves it. */
+export function nearestStop(x: number, stops: DrawerStops): DrawerStop {
+  let best: DrawerStop = 'open';
+  for (const stop of DRAWER_STOP_ORDER) if (Math.abs(stops[stop] - x) < Math.abs(stops[best] - x)) best = stop;
   return best;
+}
+
+const smooth = (e: number) => (e <= 0 ? 0 : e >= 1 ? 1 : e * e * (3 - 2 * e));
+
+/** Every force on the panel at (x, v), the finger's included. */
+export function drawerForce(x: number, v: number, stops: DrawerStops, hand: DrawerHand | null = null) {
+  const f = DRAWER_FEEL;
+  const u = x - stops[nearestStop(x, stops)];
+  let force = -f.damping * v - f.reach * u - f.click * u * smooth(1 - Math.abs(u) / f.clickRadius);
+  if (x < stops.open) force += -f.wall * (x - stops.open) - (v < 0 ? f.wallDamping * v : 0);
+  if (x > stops.closed) force += -f.wall * (x - stops.closed) - (v > 0 ? f.wallDamping * v : 0);
+  if (hand) force += f.hand * (hand.x - x) + f.handDamping * (hand.v - v);
+  return force;
+}
+
+/** Advances the panel by dt seconds in 240Hz RK4 sub-steps. */
+export function stepDrawer(body: DrawerBody, stops: DrawerStops, dt: number) {
+  const steps = Math.max(1, Math.ceil(dt / H - 1e-9)), h = dt / steps, m = DRAWER_FEEL.mass;
+  const a = (x: number, v: number) => drawerForce(x, v, stops, body.hand) / m;
+  for (let i = 0; i < steps; i++) {
+    const { x, v } = body;
+    const k1x = v, k1v = a(x, v);
+    const k2x = v + h / 2 * k1v, k2v = a(x + h / 2 * k1x, v + h / 2 * k1v);
+    const k3x = v + h / 2 * k2v, k3v = a(x + h / 2 * k2x, v + h / 2 * k2v);
+    const k4x = v + h * k3v, k4v = a(x + h * k3x, v + h * k3v);
+    body.x = x + h / 6 * (k1x + 2 * k2x + 2 * k3x + k4x);
+    body.v = v + h / 6 * (k1v + 2 * k2v + 2 * k3v + k4v);
+  }
+}
+
+/** Free, slow and on a stop: the panel can snap there and stop simulating. */
+export function drawerAtRest(body: DrawerBody, stops: DrawerStops) {
+  return !body.hand && Math.abs(body.v) < DRAWER_FEEL.restSpeed && Math.abs(body.x - stops[nearestStop(body.x, stops)]) < DRAWER_FEEL.restDistance;
+}
+
+/** Where a free panel at (x, v) comes to rest. */
+export function predictStop(x: number, v: number, stops: DrawerStops): DrawerStop {
+  const ghost: DrawerBody = { x, v, hand: null };
+  for (let t = 0; t < 6 && !drawerAtRest(ghost, stops); t += 1 / 60) stepDrawer(ghost, stops, 1 / 60);
+  return nearestStop(ghost.x, stops);
+}
+
+/** The velocity change that lands the panel on `target`: a push, never a
+ * timed slide. First exactly the push that coasts it there on damping alone
+ * (Δx·c/m), which every stop pair at phone heights accepts; failing that,
+ * Feel's search for the smallest push the magnets let through, plus 15%. */
+export function pushToStop(x: number, v: number, target: DrawerStop, stops: DrawerStops) {
+  const goal = stops[target];
+  const coast = (goal - x) * DRAWER_FEEL.damping / DRAWER_FEEL.mass - v;
+  if (predictStop(x, v + coast, stops) === target) return coast;
+  const direction = Math.sign(goal - x) || 1;
+  for (let push = 40; push < 40000; push *= 1.18) {
+    if (predictStop(x, v + direction * push, stops) !== target) continue;
+    return direction * (predictStop(x, v + direction * push * 1.15, stops) === target ? push * 1.15 : push);
+  }
+  return coast;
+}
+
+/** A finger sample: the hand keeps 35% of its old velocity and takes 65% of
+ * the new one, so touch jitter just before lift-off does not kill a flick. */
+export function moveHand(hand: DrawerHand, x: number, t: number): DrawerHand {
+  const dt = (t - hand.t) / 1000;
+  return { x, t, v: dt > 0 ? hand.v * 0.35 + (x - hand.x) / dt * 0.65 : hand.v };
 }
 
 /** The stop a tap on the grip moves to: closed, half, open, then closed. */

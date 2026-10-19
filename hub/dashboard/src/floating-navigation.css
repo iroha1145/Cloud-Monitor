@@ -1,7 +1,8 @@
 /* The floating menu after game-manage (floating-navigation.css there): a
    compact frosted panel on desktop that can be thrown to any corner, and on
-   phones a frosted tab bar that grows into the menu as one surface. The
-   controllers in FloatingNavigation.tsx write position and progress per frame. */
+   phones a tab bar with the menu in a panel that slides up behind it (Feel's
+   magnetic drawer). The controllers in FloatingNavigation.tsx write only
+   transforms and opacity per frame. */
 
 /* ── Desktop ──────────────────────────────────────────────────────── */
 .feel-navigation {
@@ -26,8 +27,7 @@
   transition: none;
 }
 /* A faint light from below keeps the glass from reading as a flat sheet. */
-.feel-navigation::before,
-.feel-nav-drawer::before {
+.feel-navigation::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -36,7 +36,7 @@
   border-radius: inherit;
   background: radial-gradient(ellipse at 50% 100%, rgb(23 23 23 / 0.04), transparent 70%);
 }
-.dark :is(.feel-navigation, .feel-nav-drawer)::before {
+.dark .feel-navigation::before {
   background: radial-gradient(ellipse at 50% 100%, rgb(255 255 255 / 0.05), transparent 70%);
 }
 .feel-navigation[data-dragging="true"] { box-shadow: var(--shadow-float); }
@@ -116,18 +116,24 @@
 .feel-nav-content .nav-item:active { transform: translateY(1px); }
 .feel-nav-content .sidebar-bottom { margin-top: 14px; padding-top: 12px; }
 .feel-nav-content .sidebar-connection { padding: 12px 8px; }
-.feel-nav-content .sidebar-setting { min-height: 36px; border-radius: 11px; }
+.feel-nav-content .sidebar-setting { min-height: 36px; border-radius: var(--r-segment); }
 @media (min-width: 961px) and (max-width: 1250px) {
   .feel-navigation { width: 196px; }
 }
 
-/* ── Phones: the tab bar and the menu are one surface ─────────────── */
+/* ── Phones: a docked panel that slides up behind the tab bar ──────── */
+/* Feel's magnetic drawer: one panel of fixed height, docked to the bottom
+   edge with its top corners rounded, that only ever moves by translateY. Per
+   frame the controller writes that transform, the tab bar's equal and
+   opposite one (so the bar stays put) and the scrim's opacity, and nothing
+   the rows inherit. The panel reaches --nav-overhang below the screen, so a
+   pull past the open stop never shows the page beneath it. */
 .feel-nav-backdrop {
   position: fixed;
   inset: 0;
   z-index: 39;
-  background: rgb(16 16 20 / 0.22);
-  opacity: var(--drawer-progress, 0);
+  background: rgb(0 0 0 / 0.22);
+  opacity: 0;
   pointer-events: none;
   touch-action: none;
   contain: strict;
@@ -136,49 +142,28 @@
 }
 .feel-nav-backdrop[data-active="true"] { z-index: 50; pointer-events: auto; }
 .feel-nav-drawer {
-  --drawer-progress: 0;
-  --bar-height: 84px;
-  --quick-bar-height: 64px;
-  --drawer-extra-height: calc(var(--nav-open-height, 560px) - var(--bar-height));
+  --nav-overhang: 48px;
+  --nav-bar-height: calc(64px + env(safe-area-inset-bottom, 0px));
   position: fixed;
-  left: 50%;
-  bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  right: 0;
+  bottom: calc(0px - var(--nav-overhang));
+  left: 0;
   z-index: 40;
-  width: min(calc(100vw - 24px + 4px * var(--drawer-progress)), calc(396px + 124px * var(--drawer-progress)));
-  height: calc(var(--bar-height) + var(--drawer-extra-height) * var(--drawer-progress) + var(--drawer-stretch, 0px));
-  max-height: calc(100dvh - max(12px, env(safe-area-inset-bottom, 0px)) - 8px);
-  overflow: hidden;
-  border: 1px solid var(--glass-border);
-  border-radius: calc(32px - 4px * var(--drawer-progress));
-  background: var(--glass);
-  -webkit-backdrop-filter: var(--glass-filter);
-  backdrop-filter: var(--glass-filter);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.9),
-    0 2px 6px rgb(16 16 20 / 0.04),
-    0 -8px 26px rgb(16 16 20 / calc(0.04 + var(--drawer-progress) * 0.09)),
-    0 14px 36px -12px rgb(16 16 20 / calc(0.15 + var(--drawer-progress) * 0.07));
+  width: min(100%, 520px);
+  height: calc(var(--nav-open-height, 560px) + var(--nav-overhang));
+  margin-inline: auto;
+  border: 1px solid var(--card-border);
+  border-bottom: 0;
+  border-radius: var(--r-card) var(--r-card) 0 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-sheet);
   color: var(--ink);
-  transform: translate3d(-50%, var(--drawer-shift, 0px), 0);
-  contain: layout paint style;
-  isolation: isolate;
+  /* Closed until the controller takes over: the grip strip above the bar. */
+  transform: translate3d(0, calc(var(--nav-open-height, 560px) - 20px - var(--nav-bar-height)), 0);
+  will-change: transform;
+  contain: layout style;
   outline: none;
   transition: none;
-}
-.dark .feel-nav-drawer {
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.04),
-    0 -10px 28px rgb(0 0 0 / calc(0.18 + var(--drawer-progress) * 0.24)),
-    0 14px 36px -10px rgb(0 0 0 / calc(0.32 + var(--drawer-progress) * 0.2));
-}
-/* While expanding or open, use the solid sheet surface so resizing height
-   never re-allocates a fullscreen backdrop-filter blur texture per frame. */
-.feel-nav-drawer[data-drawer-moving="true"],
-.feel-nav-drawer[data-state="open"] {
-  border-color: var(--card-border);
-  background: var(--surface);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
 }
 .feel-nav-drawer[data-state="open"] { z-index: 51; }
 .feel-sheet-close {
@@ -192,35 +177,28 @@
   height: 44px;
   border-radius: var(--r-control);
   color: var(--ink-2);
-  opacity: clamp(0, calc(var(--drawer-progress) * 4), 1);
 }
 .feel-nav-drawer[data-drawer-stop="closed"] .feel-sheet-close { visibility: hidden; }
 @media (hover: hover) and (pointer: fine) {
   .feel-sheet-close:hover { background: var(--hover); color: var(--ink); }
 }
-/* The menu scrolls in the room between the grip and the 64px bar: a half-open
-   drawer shows the pages and scrolls to the rest, a full one fits it all.
-   The box follows the sheet while it moves, so a scrolled menu keeps its
-   place; the stable gutter keeps its width when the scrollbar comes and goes. */
+/* The menu's box spans the panel between the grip and the bar; at the half
+   stop the controller lifts its bottom to the bar, so the rows it hides can
+   be scrolled up (FloatingNavigation.tsx restScroll). */
 .feel-nav-drawer > .feel-nav-content {
   position: absolute;
   top: 28px;
-  left: 0;
   right: 0;
-  bottom: var(--quick-bar-height);
+  bottom: calc(var(--nav-overhang) + var(--nav-bar-height));
+  left: 0;
   padding: 4px max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px));
   scrollbar-gutter: stable;
-  opacity: clamp(0, calc(var(--drawer-progress) * 2.2 - 0.08), 1);
-  transform: translate3d(0, calc(8px * (1 - var(--drawer-progress))), 0);
   pointer-events: none;
-  contain: layout style;
-}
-.feel-nav-drawer[data-drawer-moving="true"] > .feel-nav-content {
-  will-change: transform, opacity;
 }
 .feel-nav-drawer[data-state="open"] > .feel-nav-content { pointer-events: auto; }
 .feel-nav-drawer[data-drawer-stop="closed"] > .feel-nav-content { visibility: hidden; }
 .feel-nav-inner { display: flex; flex-direction: column; }
+.feel-nav-spacer { flex: none; }
 .feel-nav-drawer .feel-nav-content .app-brand {
   position: sticky;
   top: -4px;
@@ -231,26 +209,37 @@
   font-weight: 600;
   letter-spacing: -0.02em;
 }
-.feel-nav-drawer .feel-nav-content .nav-label { margin: 6px 4px 6px; font-weight: 600; }
-.feel-nav-drawer .feel-nav-content .nav-list { gap: 6px; }
-/* Tactile inset option rows after Feel's 02 · Magnetic drawer (.fd-row). */
-.feel-nav-drawer .feel-nav-content .nav-item {
+.feel-nav-drawer .feel-nav-content .nav-label { margin: 6px 6px; font-weight: 600; }
+.feel-nav-drawer .feel-nav-content .nav-list { gap: 2px; }
+/* Options as in Feel's drawer: a 30px icon tile beside the label and no row
+   fill; the current page tints its tile. */
+.feel-nav-drawer .feel-nav-content :is(.nav-item, .sidebar-setting) {
+  gap: 12px;
   min-height: 46px;
-  padding: 0 12px;
-  border: 1px solid var(--line-soft);
+  padding: 0 6px;
   border-radius: var(--r-well);
-  background: var(--inset);
+  background: transparent;
   color: var(--ink);
+  font-size: var(--fs-strong);
   font-weight: 500;
 }
-.feel-nav-drawer .feel-nav-content .nav-item > svg { color: var(--ink-2); }
-.feel-nav-drawer .feel-nav-content .nav-item.active {
-  border-color: color-mix(in srgb, var(--primary) 22%, var(--line));
-  background: var(--accent-tint);
-  color: var(--primary);
-  font-weight: 600;
+.feel-nav-drawer .feel-nav-content :is(.nav-item, .sidebar-setting) > svg {
+  box-sizing: content-box;
+  flex: none;
+  padding: 5.5px;
+  border-radius: var(--r-segment);
+  background: var(--inset);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink-2);
 }
-.feel-nav-drawer .feel-nav-content .nav-item.active > svg { color: var(--primary); }
+/* Settings icons are 16px; the tile stays 30px. */
+.feel-nav-drawer .feel-nav-content .sidebar-setting > svg { padding: 7px; }
+.feel-nav-drawer .feel-nav-content .nav-item.active { color: var(--primary); font-weight: 600; }
+.feel-nav-drawer .feel-nav-content .nav-item.active > svg {
+  background: var(--accent-tint);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 22%, transparent);
+  color: var(--primary);
+}
 .feel-nav-drawer .feel-nav-content .nav-active { display: none; }
 .feel-nav-drawer .feel-nav-content .nav-count {
   padding: 1px 8px;
@@ -263,7 +252,7 @@
 .feel-nav-drawer .sidebar-bottom {
   flex-shrink: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: 2px 6px;
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--line-soft);
@@ -271,19 +260,8 @@
 .feel-nav-drawer .feel-nav-content .sidebar-connection {
   grid-column: 1 / -1;
   margin: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-well);
-  background: var(--inset);
-}
-.feel-nav-drawer .feel-nav-content .sidebar-setting {
-  min-height: 46px;
-  padding: 0 12px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-well);
-  background: var(--inset);
-  color: var(--ink);
-  font-weight: 500;
+  padding: 6px 6px 10px;
+  border: 0;
 }
 .feel-nav-drawer .feel-nav-content .sidebar-setting:only-of-type {
   grid-column: 1 / -1;
@@ -291,31 +269,30 @@
 
 .feel-quick-navigation {
   position: absolute;
-  left: 0;
   right: 0;
-  bottom: 0;
-  z-index: 3;
+  bottom: var(--nav-overhang);
+  left: 0;
+  /* above the grip's lower edge and the close button, which slide under it */
+  z-index: 7;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 2px;
-  height: var(--quick-bar-height);
-  padding: 6px;
-  /* The bar has its own surface, so a half-open menu passes cleanly under it. */
-  background: var(--glass);
-}
-.feel-nav-drawer[data-drawer-moving="true"] .feel-quick-navigation,
-.feel-nav-drawer[data-state="open"] .feel-quick-navigation {
+  height: var(--nav-bar-height);
+  padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
   background: var(--surface);
+  will-change: transform;
 }
-/* A hairline between the menu and the bar appears as the drawer opens. */
+/* A hairline between the menu and the bar, shown with the menu. */
 .feel-quick-navigation::before {
   content: "";
   position: absolute;
   inset: -1px 16px auto;
   height: 1px;
   background: var(--line);
-  opacity: var(--drawer-progress);
+  opacity: 0;
+  transition: opacity var(--duration-quick) var(--ease-smooth-out);
 }
+.feel-nav-drawer:not([data-drawer-stop="closed"]) .feel-quick-navigation::before { opacity: 1; }
 .feel-quick-navigation > :is(a, button) {
   display: flex;
   flex-direction: column;
@@ -353,6 +330,13 @@
    transition for every property, and the controller would read back the old
    geometry (device cards keep their own border-colour transition). */
 [data-feel-card]:not(.sv-device-card), [data-feel-group] { transition-property: none; }
+/* Registered and not inherited, so a write restyles only the card or record
+   it is on. Unregistered, every write made each row and cell inside it
+   recompute its style, 110 to 650 elements a frame while the menu moved. */
+@property --feel-avoid-y { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --feel-item-x { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --feel-item-y { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --feel-item-scale { syntax: "<number>"; inherits: false; initial-value: 1; }
 :is([data-feel-card], [data-feel-group])[data-menu-avoidance="mobile"] { translate: 0 var(--feel-avoid-y, 0px); }
 :is([data-feel-card], [data-feel-group])[data-menu-avoidance="mobile"][data-feel-moving] { will-change: translate; }
 [data-feel-item][data-feel-item-active] { translate: var(--feel-item-x, 0px) var(--feel-item-y, 0px); scale: var(--feel-item-scale, 1); }
@@ -360,5 +344,4 @@
 
 @media (prefers-reduced-motion: reduce) {
   .feel-navigation, .feel-navigation *, .feel-nav-drawer, .feel-nav-drawer *, .feel-nav-backdrop { transition: none !important; animation: none !important; }
-  .feel-nav-drawer > .feel-nav-content { transform: none; }
 }
