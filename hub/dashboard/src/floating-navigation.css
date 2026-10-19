@@ -69,7 +69,17 @@
   border-radius: 999px;
   background: currentColor;
   opacity: 0.35;
-  transition: opacity var(--duration-quick) var(--ease-smooth-out);
+  transition: opacity var(--duration-quick) var(--ease-smooth-out), transform var(--duration-quick) var(--ease-smooth-out);
+}
+.feel-sheet-handle > span:first-child {
+  width: 38px;
+  height: 5px;
+  opacity: 0.26;
+}
+.feel-nav-drawer[data-drawer-moving="true"] .feel-sheet-handle > span:first-child,
+.feel-sheet-handle:active > span:first-child {
+  opacity: 0.52;
+  transform: scaleX(1.06);
 }
 /* A pointer press never draws the keyboard ring; Tab still does. */
 :is(.feel-nav-handle, .feel-sheet-handle):focus:not(:focus-visible) { outline: none; }
@@ -116,16 +126,19 @@
   position: fixed;
   inset: 0;
   z-index: 39;
-  background: rgb(0 0 0 / 0.22);
+  background: rgb(16 16 20 / 0.22);
   opacity: var(--drawer-progress, 0);
   pointer-events: none;
   touch-action: none;
+  contain: strict;
+  will-change: opacity;
   transition: none;
 }
 .feel-nav-backdrop[data-active="true"] { z-index: 50; pointer-events: auto; }
 .feel-nav-drawer {
   --drawer-progress: 0;
   --bar-height: 84px;
+  --quick-bar-height: 64px;
   --drawer-extra-height: calc(var(--nav-open-height, 560px) - var(--bar-height));
   position: fixed;
   left: 50%;
@@ -140,17 +153,37 @@
   background: var(--glass);
   -webkit-backdrop-filter: var(--glass-filter);
   backdrop-filter: var(--glass-filter);
-  box-shadow: var(--shadow-bar);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.9),
+    0 2px 6px rgb(16 16 20 / 0.04),
+    0 -8px 26px rgb(16 16 20 / calc(0.04 + var(--drawer-progress) * 0.09)),
+    0 14px 36px -12px rgb(16 16 20 / calc(0.15 + var(--drawer-progress) * 0.07));
   color: var(--ink);
-  transform: translate(-50%, var(--drawer-shift, 0px));
+  transform: translate3d(-50%, var(--drawer-shift, 0px), 0);
+  contain: layout paint style;
   isolation: isolate;
   outline: none;
   transition: none;
 }
-.feel-nav-drawer[data-state="open"] { z-index: 51; box-shadow: var(--shadow-float); }
+.dark .feel-nav-drawer {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.04),
+    0 -10px 28px rgb(0 0 0 / calc(0.18 + var(--drawer-progress) * 0.24)),
+    0 14px 36px -10px rgb(0 0 0 / calc(0.32 + var(--drawer-progress) * 0.2));
+}
+/* While expanding or open, use the solid sheet surface so resizing height
+   never re-allocates a fullscreen backdrop-filter blur texture per frame. */
+.feel-nav-drawer[data-drawer-moving="true"],
+.feel-nav-drawer[data-state="open"] {
+  border-color: var(--card-border);
+  background: var(--surface);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.feel-nav-drawer[data-state="open"] { z-index: 51; }
 .feel-sheet-close {
   position: absolute;
-  top: 12px;
+  top: 26px;
   right: 12px;
   z-index: 6;
   display: grid;
@@ -165,27 +198,98 @@
 @media (hover: hover) and (pointer: fine) {
   .feel-sheet-close:hover { background: var(--hover); color: var(--ink); }
 }
-/* The menu scrolls in the room between the grip and the bar: a half-open
-   drawer shows the pages and scrolls to the rest, a full one fits it all. */
+/* The menu scrolls in the room between the grip and the 64px bar: a half-open
+   drawer shows the pages and scrolls to the rest, a full one fits it all.
+   While moving, height is locked to its full open slot so children never
+   reflow or recalculate scrollbars on every animation frame. */
 .feel-nav-drawer > .feel-nav-content {
   position: absolute;
   top: 28px;
   left: 0;
   right: 0;
-  bottom: var(--bar-height);
-  padding: 4px max(18px, env(safe-area-inset-right, 0px)) 12px max(18px, env(safe-area-inset-left, 0px));
-  scrollbar-gutter: stable;
-  opacity: clamp(0, calc(var(--drawer-progress) * 2.4 - 0.2), 1);
-  transform: translateY(calc(12px * (1 - var(--drawer-progress))));
+  bottom: var(--quick-bar-height);
+  padding: 4px max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px));
+  opacity: clamp(0, calc(var(--drawer-progress) * 2.2 - 0.08), 1);
+  transform: translate3d(0, calc(8px * (1 - var(--drawer-progress))), 0);
   pointer-events: none;
+  contain: layout style;
+}
+.feel-nav-drawer[data-drawer-moving="true"] > .feel-nav-content {
+  bottom: auto;
+  height: max(0px, calc(var(--nav-open-height, 560px) - 28px - var(--quick-bar-height)));
+  overflow-y: hidden;
+  will-change: transform, opacity;
 }
 .feel-nav-drawer[data-state="open"] > .feel-nav-content { pointer-events: auto; }
 .feel-nav-drawer[data-drawer-stop="closed"] > .feel-nav-content { visibility: hidden; }
 .feel-nav-inner { display: flex; flex-direction: column; }
-.feel-nav-drawer .feel-nav-content .app-brand { padding-right: 52px; }
-.feel-nav-drawer .feel-nav-content .nav-item,
-.feel-nav-drawer .feel-nav-content .sidebar-setting { min-height: 46px; }
-.feel-nav-drawer .sidebar-bottom { flex-shrink: 0; }
+.feel-nav-drawer .feel-nav-content .app-brand {
+  position: sticky;
+  top: -4px;
+  z-index: 4;
+  margin: -4px -4px 0;
+  padding: 6px 48px 8px 8px;
+  background: var(--surface);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.feel-nav-drawer .feel-nav-content .nav-label { margin: 6px 4px 6px; font-weight: 600; }
+.feel-nav-drawer .feel-nav-content .nav-list { gap: 6px; }
+/* Tactile inset option rows after Feel's 02 · Magnetic drawer (.fd-row). */
+.feel-nav-drawer .feel-nav-content .nav-item {
+  min-height: 46px;
+  padding: 0 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 13px;
+  background: var(--inset);
+  color: var(--ink);
+  font-weight: 500;
+}
+.feel-nav-drawer .feel-nav-content .nav-item > svg { color: var(--ink-2); }
+.feel-nav-drawer .feel-nav-content .nav-item.active {
+  border-color: color-mix(in srgb, var(--primary) 22%, var(--line));
+  background: var(--accent-tint);
+  color: var(--primary);
+  font-weight: 600;
+}
+.feel-nav-drawer .feel-nav-content .nav-item.active > svg { color: var(--primary); }
+.feel-nav-drawer .feel-nav-content .nav-active { display: none; }
+.feel-nav-drawer .feel-nav-content .nav-count {
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.feel-nav-drawer .sidebar-bottom {
+  flex-shrink: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+.feel-nav-drawer .feel-nav-content .sidebar-connection {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 13px;
+  background: var(--inset);
+}
+.feel-nav-drawer .feel-nav-content .sidebar-setting {
+  min-height: 46px;
+  padding: 0 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 13px;
+  background: var(--inset);
+  color: var(--ink);
+  font-weight: 500;
+}
+.feel-nav-drawer .feel-nav-content .sidebar-setting:only-of-type {
+  grid-column: 1 / -1;
+}
 
 .feel-quick-navigation {
   position: absolute;
@@ -196,16 +300,20 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 2px;
-  height: 64px;
+  height: var(--quick-bar-height);
   padding: 6px;
-  /* The bar has its own glass, so a half-open menu passes under it. */
+  /* The bar has its own surface, so a half-open menu passes cleanly under it. */
   background: var(--glass);
+}
+.feel-nav-drawer[data-drawer-moving="true"] .feel-quick-navigation,
+.feel-nav-drawer[data-state="open"] .feel-quick-navigation {
+  background: var(--surface);
 }
 /* A hairline between the menu and the bar appears as the drawer opens. */
 .feel-quick-navigation::before {
   content: "";
   position: absolute;
-  inset: -1px 18px auto;
+  inset: -1px 16px auto;
   height: 1px;
   background: var(--line);
   opacity: var(--drawer-progress);

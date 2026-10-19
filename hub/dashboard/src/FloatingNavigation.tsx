@@ -11,6 +11,7 @@ export const MOBILE_NAV_QUERY = '(max-width: 760px), (max-width: 960px) and (max
 const STORAGE_KEY = 'cloud-monitor-navigation-corner';
 /** The phone tab bar: a 64px row of pages under a 20px strip for the grip. */
 const BAR_HEIGHT = 84;
+const QUICK_BAR_HEIGHT = 64;
 const GRIP_HEIGHT = 28;
 type Props = { children: ReactNode; open: boolean; onOpenChange: (open: boolean) => void; pageName: string; currentPage: PageId; onNavigate: (page: PageId) => void };
 type HandleController = { down(event: React.PointerEvent<HTMLElement>): void; key(event: React.KeyboardEvent<HTMLElement>): void; click(event: React.MouseEvent<HTMLElement>): void };
@@ -57,15 +58,16 @@ function DesktopNavigation({ children }: { children: ReactNode }) {
     const cards = createFeelCards(document.querySelector<HTMLElement>('.app-shell') || document.body);
     let frame = 0, last = 0, disposed = false, suppressed = 0, springing = false, corner: Corner = 'top-left';
     try { const saved = localStorage.getItem(STORAGE_KEY); if (CORNERS.includes(saved as Corner)) corner = saved as Corner; } catch { /* Optional preference. */ }
-    let x = 16, y = 16, vx = 0, vy = 0, tx = x, ty = y;
+    let x = 16, y = 16, vx = 0, vy = 0, tx = x, ty = y, navW = 216, navH = 60;
     let gesture: { id: number; handle: HTMLElement; startX: number; startY: number; x: number; y: number; lastX: number; lastY: number; at: number; moved: boolean; corner: Corner } | null = null;
-    const bounds = () => navigationBounds(win.innerWidth, win.innerHeight, surface.current?.offsetWidth || 216, surface.current?.offsetHeight || 60);
+    const measureSize = () => { navW = surface.current?.offsetWidth || 216; navH = surface.current?.offsetHeight || 60; };
+    const bounds = () => navigationBounds(win.innerWidth, win.innerHeight, navW, navH);
     function paint() {
       const el = surface.current; if (!el) return;
       const b = bounds(); x = clamp(x, b.left, b.right); y = clamp(y, b.top, b.bottom);
       el.style.transform = `translate3d(${x.toFixed(2)}px,${y.toFixed(2)}px,0)`;
       el.dataset.dragging = String(Boolean(gesture?.moved));
-      cards.update(el.getBoundingClientRect(), 'desktop', Boolean(gesture?.moved) || springing);
+      cards.update({ left: x, top: y, right: x + navW, bottom: y + navH, width: navW, height: navH }, 'desktop', Boolean(gesture?.moved) || springing);
     }
     function stop() { win.cancelAnimationFrame(frame); frame = 0; last = 0; }
     function settle() { stop(); springing = false; x = tx; y = ty; vx = vy = 0; paint(); }
@@ -118,9 +120,9 @@ function DesktopNavigation({ children }: { children: ReactNode }) {
       },
       click(event) { if (event.detail !== 0 && performance.now() < suppressed) { event.preventDefault(); event.stopPropagation(); } },
     };
-    const resize = () => { if (gesture) end(undefined, true); stop(); ({ x: tx, y: ty } = cornerPosition(corner, bounds())); settle(); };
+    const resize = () => { measureSize(); if (gesture) end(undefined, true); stop(); ({ x: tx, y: ty } = cornerPosition(corner, bounds())); settle(); };
     // A taller or shorter menu moves its corner target; it glides there.
-    const refit = () => { ({ x: tx, y: ty } = cornerPosition(corner, bounds())); start(); };
+    const refit = () => { measureSize(); ({ x: tx, y: ty } = cornerPosition(corner, bounds())); start(); };
     const cancel = (event: PointerEvent) => end(event, true), up = (event: PointerEvent) => end(event), blur = () => end(undefined, true);
     const reducedChanged = () => { if (reduced.matches) settle(); }, sizes = new ResizeObserver(refit);
     if (surface.current) sizes.observe(surface.current);
@@ -157,14 +159,18 @@ function MobileDrawer({ children, open, onOpenChange, currentPage, onNavigate }:
   useLayoutEffect(() => {
     const win = window, el = surface.current!, menu = content.current!, list = inner.current!, reduced = win.matchMedia('(prefers-reduced-motion: reduce)');
     const cards = createFeelCards(document.querySelector<HTMLElement>('.app-shell') || document.body);
+    let insetBottom = 12;
     // The open stop fits the whole menu when the screen allows; the scroll box
     // between the grip and the bar shows what a lower stop leaves room for.
     const openHeight = () => {
       const style = win.getComputedStyle(menu), edge = win.getComputedStyle(el);
+      insetBottom = parseFloat(edge.bottom) || 12;
       const natural = list.offsetHeight + (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
       // The surface's own border sits inside its height.
       const borders = (parseFloat(edge.borderTopWidth) || 0) + (parseFloat(edge.borderBottomWidth) || 0);
-      return Math.max(BAR_HEIGHT, Math.min(win.innerHeight - 24, natural + GRIP_HEIGHT + BAR_HEIGHT + borders));
+      const next = Math.max(BAR_HEIGHT, Math.min(win.innerHeight - 24, natural + GRIP_HEIGHT + QUICK_BAR_HEIGHT + borders));
+      el.style.setProperty('--nav-open-height', `${next}px`);
+      return next;
     };
     let height = openHeight();
     const travel = () => Math.max(1, height - BAR_HEIGHT);
@@ -174,15 +180,25 @@ function MobileDrawer({ children, open, onOpenChange, currentPage, onNavigate }:
     let gesture: { id: number; startY: number; lastY: number; time: number; raw: number; moved: boolean; stop: DrawerStop } | null = null;
     function announce(value: boolean) { if (logicalOpen !== value) { logicalOpen = value; latest.current.onOpenChange(value); } }
     function paint() {
-      const shown = clamp(progress, 0, 1);
-      for (const node of [el, backdrop.current]) node?.style.setProperty('--drawer-progress', shown.toFixed(4));
-      el.style.setProperty('--nav-open-height', `${height}px`);
+      const shown = clamp(progress, 0, 1), progressText = shown.toFixed(4);
+      el.style.setProperty('--drawer-progress', progressText);
+      backdrop.current?.style.setProperty('--drawer-progress', progressText);
       // Past the open stop the surface stretches a little (at most 40px, less
       // when the screen has no room); past the closed one it sinks at most 8px.
-      el.style.setProperty('--drawer-stretch', `${clamp((progress - 1) * travel(), 0, stretchLimit()).toFixed(2)}px`);
-      el.style.setProperty('--drawer-shift', `${clamp(-progress * travel(), 0, 8).toFixed(2)}px`);
-      const rect = el.getBoundingClientRect();
-      cards.update(shown > .001 ? { left: rect.left, right: rect.right, top: Math.max(0, rect.top), bottom: Math.min(win.innerHeight, rect.bottom), width: rect.width, height: Math.min(win.innerHeight, rect.bottom) - Math.max(0, rect.top) } : null, 'mobile', Boolean(gesture?.moved) || springing);
+      const tr = travel(), stretch = clamp((progress - 1) * tr, 0, stretchLimit()), shift = clamp(-progress * tr, 0, 8);
+      el.style.setProperty('--drawer-stretch', `${stretch.toFixed(2)}px`);
+      el.style.setProperty('--drawer-shift', `${shift.toFixed(2)}px`);
+      if (shown > .001) {
+        const vw = win.innerWidth, vh = win.innerHeight;
+        const width = Math.min(vw - 24 + 4 * shown, 396 + 124 * shown);
+        const h = Math.min(vh - insetBottom - 8, BAR_HEIGHT + (height - BAR_HEIGHT) * shown + stretch);
+        const bottom = Math.min(vh, vh - insetBottom + shift);
+        const top = Math.max(0, bottom - h);
+        const left = (vw - width) / 2;
+        cards.update({ left, right: left + width, top, bottom, width, height: bottom - top }, 'mobile', Boolean(gesture?.moved) || springing);
+      } else {
+        cards.update(null, 'mobile', Boolean(gesture?.moved) || springing);
+      }
     }
     function settle() {
       win.cancelAnimationFrame(frame); frame = 0; last = 0; springing = false;
@@ -220,9 +236,10 @@ function MobileDrawer({ children, open, onOpenChange, currentPage, onNavigate }:
       if (!g.moved) { g.moved = true; el.dataset.drawerMoving = 'true'; el.dataset.drawerStop = 'moving'; }
       const now = performance.now(), dt = Math.max(.008, (now - g.time) / 1000), previous = progress;
       progress = resistDrawerProgress(g.raw - dy / travel(), travel(), stretchLimit());
-      // The resisted surface velocity, not the finger's: a long over-pull must
-      // not launch the drawer past its usable room.
-      velocity = clamp((progress - previous) / dt, -6, 6);
+      // The resisted surface velocity, smoothed as in Feel (0.35 old + 0.65 new)
+      // so touch-sample jitter right before liftoff does not kill a flick.
+      const inst = clamp((progress - previous) / dt, -6, 6);
+      velocity = velocity ? clamp(velocity * 0.35 + inst * 0.65, -6, 6) : inst;
       g.lastY = event.clientY; g.time = now;
       if (progress > .03) announce(true);
       paint();

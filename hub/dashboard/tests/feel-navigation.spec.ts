@@ -558,8 +558,31 @@ test('the tab bar\'s 更多 button opens the whole menu, the scrim closes it and
   const moreBox = await box(more);
   expect(moreBox.width).toBeGreaterThanOrEqual(44); expect(moreBox.height).toBeGreaterThanOrEqual(44);
   await expect(more).toHaveAttribute('aria-expanded', 'false');
+  await page.evaluate(() => {
+    const drawer = document.querySelector('.feel-nav-drawer')!;
+    let drawerReads = 0;
+    const orig = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function () {
+      if (this === drawer) drawerReads++;
+      return orig.call(this);
+    };
+    (window as unknown as { __drawerReads: () => number }).__drawerReads = () => {
+      Element.prototype.getBoundingClientRect = orig;
+      return drawerReads;
+    };
+  });
   await more.click();
+  const movingStyle = await surface.evaluate(el => {
+    const content = el.querySelector('.feel-nav-content')!;
+    return {
+      moving: el.dataset.drawerMoving,
+      backdropFilter: getComputedStyle(el).backdropFilter,
+      overflowY: getComputedStyle(content).overflowY,
+    };
+  });
+  expect(movingStyle).toEqual({ moving: 'true', backdropFilter: 'none', overflowY: 'hidden' });
   await expect(surface).toHaveAttribute('data-drawer-stop', 'open');
+  expect(await page.evaluate(() => (window as unknown as { __drawerReads: () => number }).__drawerReads())).toBe(0);
   await expect(dialog).toBeVisible(); await expect(more).toHaveAttribute('aria-expanded', 'true');
   await more.click();
   await expect(surface).toHaveAttribute('data-drawer-stop', 'closed');
