@@ -5,21 +5,32 @@ import { cardAvoidance, mobileCardAvoidance, itemRepulsion, clamp, springStep, S
 // press feedback and records.
 const SELECTOR = '[data-feel-card], [data-feel-group]';
 const LAYOUT_PROPERTIES = ['width', 'margin-left', 'margin-right', 'grid-template-columns'];
-type Card = { el: HTMLElement; slot: Rectangle; saved: [string, string][]; ml: number; mr: number; cols: number; loss: number; inset: number; vl: number; vi: number; side: AvoidanceSide; target: CardAvoidance; ay: number; av: number; mobileTarget: number; mobileLimit: number; blockers: Element[] };
+type Card = { el: HTMLElement; slot: Rectangle; base: Rectangle; precedingBottom: number | null; saved: [string, string][]; ml: number; mr: number; cols: number; loss: number; inset: number; vl: number; vi: number; side: AvoidanceSide; target: CardAvoidance; ay: number; av: number; mobileTarget: number; mobileLimit: number; blockers: Element[] };
 
 type InnerItem = {
   el: HTMLElement; kind: 'row' | 'cell'; parent: HTMLElement | null;
+  /** The card or group that makes room as one block around this record. */
+  outer: HTMLElement | null;
+  base: Rectangle | null; epoch: number;
   x: number; y: number; scale: number; vx: number; vy: number; vs: number;
   tx: number; ty: number; ts: number;
 };
 const ITEM_PROPERTIES = ['--feel-item-x', '--feel-item-y', '--feel-item-scale'];
 
+/** The outermost card or group around `el`: the only level that rises. */
+function outermostBlock(el: HTMLElement) {
+  let outer: HTMLElement | null = null;
+  for (let node = el.parentElement?.closest<HTMLElement>(SELECTOR); node; node = node.parentElement?.closest<HTMLElement>(SELECTOR) ?? null) outer = node;
+  return outer;
+}
+
 /** Only intersecting items are considered; stationary menus do no per-frame
- * scans. Reading targets and painting springs are separate batch phases. */
-function createFeelItems(root: HTMLElement, schedule: () => void) {
+ * scans. Base rectangles are cached per layout epoch so active menu/drawer
+ * springs compute repulsion targets without per-frame DOM reflows. */
+function createFeelItems(root: HTMLElement, schedule: () => void, cardByEl: Map<HTMLElement, Card>) {
   const win = root.ownerDocument.defaultView!;
   const records = new Map<HTMLElement, InnerItem>(), visible = new Set<InnerItem>(), active = new Set<InnerItem>();
-  let scan = true, targetsDirty = true, disposed = false;
+  let scan = true, targetsDirty = true, boxEpoch = 1, disposed = false;
   const restore = (item: InnerItem) => {
     ITEM_PROPERTIES.forEach(key => item.el.style.removeProperty(key));
     delete item.el.dataset.feelItemActive; delete item.el.dataset.feelItemMoving;
@@ -30,11 +41,31 @@ function createFeelItems(root: HTMLElement, schedule: () => void) {
     if (disposed) return;
     for (const entry of entries) {
       const item = records.get(entry.target as HTMLElement); if (!item) continue;
+      item.epoch = 0;
       if (entry.isIntersecting) visible.add(item); else { visible.delete(item); restore(item); }
     }
     targetsDirty = true; schedule();
   }, { rootMargin: '0px', threshold: 0 });
-  function refresh() { scan = true; targetsDirty = true; }
+  function refresh() { scan = true; boxEpoch++; targetsDirty = true; }
+  function invalidateBoxes() { boxEpoch++; targetsDirty = true; }
+  // A card inside a group is no block of its own: its box is cached like the
+  // records' boxes, without the group's rise, which is added back on use.
+  const nestedBoxes = new WeakMap<HTMLElement, { box: Rectangle; epoch: number }>();
+  function parentBox(parent: HTMLElement, rise: number): Rectangle {
+    const card = cardByEl.get(parent);
+    if (card) {
+      const b = card.base;
+      return { left: b.left + card.inset, right: b.right - (card.loss - card.inset), top: b.top + card.ay, bottom: b.bottom + card.ay, width: b.width - card.loss, height: b.height };
+    }
+    let cached = nestedBoxes.get(parent);
+    if (!cached || cached.epoch !== boxEpoch) {
+      const r = parent.getBoundingClientRect();
+      cached = { box: { left: r.left, right: r.right, top: r.top - rise, bottom: r.bottom - rise, width: r.width, height: r.height }, epoch: boxEpoch };
+      nestedBoxes.set(parent, cached);
+    }
+    const b = cached.box;
+    return rise ? { ...b, top: b.top + rise, bottom: b.bottom + rise } : b;
+  }
   function read(menu: Rectangle | null, mobile: boolean, safeTop: number, reduced: boolean, menuMoving: boolean) {
     if (scan) {
       const found = new Set([...root.querySelectorAll<HTMLElement>('[data-feel-item]')]
@@ -42,7 +73,7 @@ function createFeelItems(root: HTMLElement, schedule: () => void) {
       for (const [el, item] of records) if (!found.has(el)) { observer.unobserve(el); restore(item); visible.delete(item); records.delete(el); }
       for (const el of found) if (!records.has(el)) {
         const item: InnerItem = { el, kind: el.dataset.feelItem === 'cell' ? 'cell' : 'row', parent: el.parentElement?.closest<HTMLElement>('[data-feel-card]') || null,
-          x: 0, y: 0, scale: 1, vx: 0, vy: 0, vs: 0, tx: 0, ty: 0, ts: 1 };
+          outer: outermostBlock(el), base: null, epoch: 0, x: 0, y: 0, scale: 1, vx: 0, vy: 0, vs: 0, tx: 0, ty: 0, ts: 1 };
         records.set(el, item); observer.observe(el);
       }
       scan = false;
@@ -55,29 +86,44 @@ function createFeelItems(root: HTMLElement, schedule: () => void) {
       for (const item of active) { item.tx = item.ty = 0; item.ts = 1; if (reduced) restore(item); }
       return;
     }
-    const parentBoxes = new Map<HTMLElement, DOMRect>();
+    const parents = new Map<HTMLElement, Rectangle>();
     const samples: { item: InnerItem; x: number; y: number; scale: number }[] = [];
     for (const item of visible) {
-      let parent: DOMRect | undefined;
+      let parent: Rectangle | undefined;
+      // Cached boxes leave out the rise of the block that moves; it is added
+      // back here, so records follow a rising group without a reflow.
+      const rise = (item.outer && cardByEl.get(item.outer)?.ay) || 0;
       if (item.parent) {
-        parent = parentBoxes.get(item.parent);
-        if (!parent) { parent = item.parent.getBoundingClientRect(); parentBoxes.set(item.parent, parent); }
+        parent = parents.get(item.parent);
+        if (!parent) { parent = parentBox(item.parent, rise); parents.set(item.parent, parent); }
         const reach = item.kind === 'cell' ? 80 : 144;
         if (parent.right < menu.left - reach || parent.left > menu.right + reach || parent.bottom < menu.top - reach || parent.top > menu.bottom + reach) {
           if (active.has(item)) samples.push({ item, x: 0, y: 0, scale: 1 });
           continue;
         }
       }
-      const rect = item.el.getBoundingClientRect();
-      if (!rect.width || !rect.height || rect.bottom <= safeTop || rect.top >= win.innerHeight) {
+      if (item.epoch !== boxEpoch || !item.base) {
+        const rect = item.el.getBoundingClientRect();
+        if (!rect.width || !rect.height) {
+          item.base = null; item.epoch = boxEpoch;
+          if (active.has(item)) samples.push({ item, x: 0, y: 0, scale: 1 });
+          continue;
+        }
+        const width = rect.width / item.scale, height = rect.height / item.scale;
+        const left = rect.left - item.x - (width - rect.width) / 2, top = rect.top - item.y - rise - (height - rect.height) / 2;
+        item.base = { left, top, right: left + width, bottom: top + height, width, height };
+        item.epoch = boxEpoch;
+      }
+      const unshifted = item.base;
+      const base = rise
+        ? { left: unshifted.left, right: unshifted.right, top: unshifted.top + rise, bottom: unshifted.bottom + rise, width: unshifted.width, height: unshifted.height }
+        : unshifted;
+      if (base.bottom <= safeTop || base.top >= win.innerHeight) {
         if (active.has(item)) samples.push({ item, x: 0, y: 0, scale: 1 });
         continue;
       }
-      const width = rect.width / item.scale, height = rect.height / item.scale;
-      const left = rect.left - item.x - (width - rect.width) / 2, top = rect.top - item.y - (height - rect.height) / 2;
-      const base = { left, top, right: left + width, bottom: top + height, width, height };
       const response = itemRepulsion(base, menu, item.kind, mobile);
-      const insetX = width * (1 - response.scale) / 2, insetY = height * (1 - response.scale) / 2;
+      const insetX = base.width * (1 - response.scale) / 2, insetY = base.height * (1 - response.scale) / 2;
       const clip = { left: parent?.left || 0, right: parent?.right || win.innerWidth, top: Math.max(safeTop, parent?.top || 0), bottom: Math.min(win.innerHeight, parent?.bottom || win.innerHeight) };
       response.x = clamp(response.x, Math.min(0, clip.left - base.left - insetX), Math.max(0, clip.right - base.right + insetX));
       response.y = clamp(response.y, Math.min(0, clip.top - base.top - insetY), Math.max(0, clip.bottom - base.bottom + insetY));
@@ -107,7 +153,7 @@ function createFeelItems(root: HTMLElement, schedule: () => void) {
     }
     return moving;
   }
-  return { refresh, invalidate() { targetsDirty = true; }, read, paint, destroy() { disposed = true; observer.disconnect(); records.forEach(restore); records.clear(); visible.clear(); } };
+  return { refresh, invalidate() { targetsDirty = true; }, invalidateBoxes, read, paint, destroy() { disposed = true; observer.disconnect(); records.forEach(restore); records.clear(); visible.clear(); } };
 }
 
 /** The column count of a grid whose columns are all the same width, or 0. */
@@ -126,8 +172,9 @@ function equalColumns(el: HTMLElement, style: CSSStyleDeclaration) {
 export function createFeelCards(root: HTMLElement) {
   const win = root.ownerDocument.defaultView!, doc = root.ownerDocument;
   const reduced = win.matchMedia('(prefers-reduced-motion: reduce)');
-  let cards: Card[] = [], dirty = true, mode: 'desktop' | 'mobile' = 'desktop', menu: Rectangle | null = null, menuMoving = false, frame = 0, time = 0, destroyed = false;
-  const items = createFeelItems(root, schedule);
+  let cards: Card[] = [], dirty = true, layoutDirty = true, safeTop = 12, mode: 'desktop' | 'mobile' = 'desktop', menu: Rectangle | null = null, menuMoving = false, frame = 0, time = 0, destroyed = false;
+  const cardByEl = new Map<HTMLElement, Card>();
+  const items = createFeelItems(root, schedule, cardByEl);
   const heights = new WeakMap<Element, number>();
   const sizes = new ResizeObserver(entries => {
     let changed = false;
@@ -135,13 +182,16 @@ export function createFeelCards(root: HTMLElement) {
       const height = target.getBoundingClientRect().height, previous = heights.get(target); heights.set(target, height);
       if (previous !== height) changed = true;
     }
-    if (changed) { items.invalidate(); schedule(); }
+    if (changed) { layoutDirty = true; items.invalidateBoxes(); schedule(); }
   });
-  function restoreLayout(card: Card) {
+  /** `keepRise` leaves a phone rise in place: it is a transform that layout
+   * ignores, so a re-measure reads the card where it is and takes the rise out. */
+  function restoreLayout(card: Card, keepRise = false) {
     LAYOUT_PROPERTIES.forEach((key, index) => {
       const [value, priority] = card.saved[index];
       if (value) card.el.style.setProperty(key, value, priority); else card.el.style.removeProperty(key);
     });
+    if (keepRise) return;
     card.el.style.removeProperty('--feel-avoid-y');
     delete card.el.dataset.menuAvoidance; delete card.el.dataset.feelMoving;
   }
@@ -156,48 +206,67 @@ export function createFeelCards(root: HTMLElement) {
   }
   function measure() {
     const previous = new Map(cards.map(card => [card.el, card]));
-    cards.forEach(restoreLayout); sizes.disconnect();
+    // Width and margins go back to measure the slot; a rise stays, so the
+    // `- old.ay` below and records read in this frame see the same card.
+    cards.forEach(card => restoreLayout(card, true)); sizes.disconnect(); cardByEl.clear();
     cards = [...root.querySelectorAll<HTMLElement>(SELECTOR)]
       .filter(el => !el.parentElement?.closest(SELECTOR) && !el.closest('[role="dialog"], [hidden]'))
       .flatMap(el => {
         const rect = el.getBoundingClientRect(); if (!rect.width || !rect.height) return [];
         const old = previous.get(el), style = win.getComputedStyle(el);
-        return [{ el, slot: { left: rect.left, right: rect.right, width: rect.width, top: rect.top - (old?.ay || 0), bottom: rect.bottom - (old?.ay || 0), height: rect.height },
+        const slot = { left: rect.left, right: rect.right, width: rect.width, top: rect.top - (old?.ay || 0), bottom: rect.bottom - (old?.ay || 0), height: rect.height };
+        const card: Card = { el, slot, base: slot, precedingBottom: null,
           saved: LAYOUT_PROPERTIES.map(key => [el.style.getPropertyValue(key), el.style.getPropertyPriority(key)] as [string, string]),
           ml: parseFloat(style.marginLeft) || 0, mr: parseFloat(style.marginRight) || 0, cols: equalColumns(el, style),
           loss: old?.loss || 0, inset: old?.inset || 0, vl: old?.vl || 0, vi: old?.vi || 0,
-          side: old?.side || null, ay: old?.ay || 0, av: old?.av || 0, mobileTarget: 0, mobileLimit: 0, blockers: precedingBlocks(el), target: cardAvoidance(rect, null, { left: 0, right: win.innerWidth }) }];
+          side: old?.side || null, ay: old?.ay || 0, av: old?.av || 0, mobileTarget: 0, mobileLimit: 0, blockers: precedingBlocks(el), target: cardAvoidance(rect, null, { left: 0, right: win.innerWidth }) };
+        cardByEl.set(el, card);
+        return [card];
       });
-    cards.forEach(card => sizes.observe(card.el)); dirty = false;
+    for (const [el, card] of previous) if (!cardByEl.has(el)) restoreLayout(card);
+    cards.forEach(card => sizes.observe(card.el)); dirty = false; layoutDirty = true;
+  }
+  function refreshLayout() {
+    const topbar = root.querySelector('.app-topbar')?.getBoundingClientRect();
+    safeTop = Math.max(12, topbar && topbar.top < win.innerHeight && topbar.bottom > 0 ? topbar.bottom + 4 : 0);
+    const blockerRects = new Map<Element, { left: number; right: number; bottom: number; valid: boolean }>();
+    for (const card of cards) {
+      const actual = card.el.getBoundingClientRect();
+      card.base = { ...card.slot, top: actual.top - card.ay, bottom: actual.bottom - card.ay, height: actual.height };
+      blockerRects.set(card.el, { left: card.base.left, right: card.base.right, bottom: card.base.bottom, valid: Boolean(actual.width && actual.height) });
+    }
+    for (const card of cards) {
+      let precedingBottom: number | null = null;
+      for (const blocker of card.blockers) {
+        let info = blockerRects.get(blocker);
+        if (!info) {
+          const rect = blocker.getBoundingClientRect();
+          const ownShift = blocker instanceof HTMLElement ? parseFloat(blocker.style.getPropertyValue('--feel-avoid-y')) || 0 : 0;
+          info = { left: rect.left, right: rect.right, bottom: rect.bottom - ownShift, valid: Boolean(rect.width && rect.height) };
+          blockerRects.set(blocker, info);
+        }
+        if (info.valid && info.right > card.base.left && info.left < card.base.right && info.bottom > safeTop && info.bottom <= card.base.top + .5) {
+          precedingBottom = Math.max(precedingBottom ?? 0, info.bottom);
+        }
+      }
+      card.precedingBottom = precedingBottom;
+    }
+    layoutDirty = false;
   }
   function tick(now: number) {
     frame = 0;
     const dt = time ? (now - time) / 1000 : 1 / 60; time = now;
     if (dirty) measure();
+    if (layoutDirty) refreshLayout();
     const viewport = { left: 0, right: doc.documentElement.clientWidth || win.innerWidth };
-    const topbar = root.querySelector('.app-topbar')?.getBoundingClientRect();
-    const safeTop = Math.max(12, topbar && topbar.top < win.innerHeight && topbar.bottom > 0 ? topbar.bottom + 4 : 0);
-    // Read all live vertical positions before any width writes. Only horizontal
-    // geometry is pinned to each card's original slot; wrapped content may grow.
     for (const card of cards) {
-      const actual = card.el.getBoundingClientRect();
-      const base = { ...card.slot, top: actual.top - card.ay, bottom: actual.bottom - card.ay, height: actual.height };
-      card.target = cardAvoidance(base, mode === 'desktop' ? menu : null, viewport, card.side);
+      card.target = cardAvoidance(card.base, mode === 'desktop' ? menu : null, viewport, card.side);
       card.side = card.target.side;
-      let precedingBottom: number | null = null;
-      if (mode === 'mobile') {
-        for (const blocker of card.blockers) {
-          const rect = blocker.getBoundingClientRect();
-          const ownShift = blocker instanceof HTMLElement ? parseFloat(blocker.style.getPropertyValue('--feel-avoid-y')) || 0 : 0;
-          const bottom = rect.bottom - ownShift;
-          if (rect.width && rect.height && rect.right > base.left && rect.left < base.right && bottom > safeTop && bottom <= base.top + .5) precedingBottom = Math.max(precedingBottom ?? 0, bottom);
-        }
-      }
-      const mobileResponse = mode === 'mobile' ? mobileCardAvoidance(base, menu, safeTop, precedingBottom) : { y: 0, available: 0 };
+      const mobileResponse = mode === 'mobile' ? mobileCardAvoidance(card.base, menu, safeTop, card.precedingBottom) : { y: 0, available: 0 };
       card.mobileTarget = mobileResponse.y; card.mobileLimit = mobileResponse.available;
     }
     items.read(menu, mode === 'mobile', safeTop, reduced.matches, menuMoving);
-    let moving = false, outerChanged = false;
+    let moving = false, outerChanged = false, widthChanged = false;
     for (const card of cards) {
       const beforeLoss = card.loss, beforeInset = card.inset, beforeY = card.ay;
       let cardMoving = false;
@@ -232,21 +301,24 @@ export function createFeelCards(root: HTMLElement) {
         if (cardMoving && !reduced.matches) card.el.dataset.feelMoving = 'true'; else delete card.el.dataset.feelMoving;
       }
       if (cardMoving) moving = true;
-      if (Math.abs(card.loss - beforeLoss) + Math.abs(card.inset - beforeInset) + Math.abs(card.ay - beforeY) > .001) outerChanged = true;
+      const dWidth = Math.abs(card.loss - beforeLoss) + Math.abs(card.inset - beforeInset);
+      if (dWidth > .001) widthChanged = true;
+      if (dWidth + Math.abs(card.ay - beforeY) > .001) outerChanged = true;
     }
     const innerMoving = items.paint(dt, reduced.matches);
-    if (outerChanged) items.invalidate();
+    if (widthChanged) { layoutDirty = true; items.invalidateBoxes(); }
+    else if (outerChanged) items.invalidate();
     if (moving || innerMoving || outerChanged) frame = win.requestAnimationFrame(tick); else time = 0;
   }
   function schedule() { if (!destroyed && !frame) frame = win.requestAnimationFrame(tick); }
-  const scroll = () => { items.invalidate(); if (menu) schedule(); };
-  const changed = () => { dirty = true; items.refresh(); schedule(); };
+  const scroll = () => { layoutDirty = true; items.invalidateBoxes(); if (menu) schedule(); };
+  const changed = () => { dirty = true; layoutDirty = true; items.refresh(); schedule(); };
   // Re-measure when cards come or go, and when a scroll-revealed card drops
   // its entrance transform: a slot measured mid-rise would be off by its scale.
   const observer = new MutationObserver(changes => {
     if (changes.some(change => change.type === 'attributes' || [...change.addedNodes, ...change.removedNodes].some(node => node.nodeType === 1))) changed();
   });
-  observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-reveal'] });
+  observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-reveal', 'open'] });
   doc.addEventListener('scroll', scroll, { passive: true, capture: true });
   reduced.addEventListener('change', changed); win.addEventListener('resize', changed);
   return {
@@ -256,7 +328,7 @@ export function createFeelCards(root: HTMLElement) {
       menu = rect; mode = nextMode; menuMoving = moving; schedule();
     },
     destroy() {
-      destroyed = true; win.cancelAnimationFrame(frame); observer.disconnect(); sizes.disconnect(); items.destroy(); cards.forEach(restoreLayout);
+      destroyed = true; win.cancelAnimationFrame(frame); observer.disconnect(); sizes.disconnect(); items.destroy(); cards.forEach(card => restoreLayout(card));
       doc.removeEventListener('scroll', scroll, true); reduced.removeEventListener('change', changed); win.removeEventListener('resize', changed);
     },
   };

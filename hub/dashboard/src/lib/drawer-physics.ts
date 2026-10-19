@@ -29,14 +29,24 @@ export function unresistDrawerProgress(progress: number, travel: number, upperLi
 }
 
 const H = 1 / 240;
-/** A lightly damped spring (stiffness 240, damping 19, mass 1) that carries
- * momentum through a stop and returns, with a stiffer wall (160) outside
- * [0, 1]. 240Hz RK4 sub-steps keep it stable at any frame rate. */
+const MAGNET_RADIUS = 0.22;
+/** A magnetic drawer spring after Feel (runtime/feel.js magnets + wall):
+ * a smoothstep magnetic well around the target stop pulls the sheet in and
+ * increases local damping so it locks in after a crisp overshoot without
+ * tail ringing, while a directional boundary wall cushions overshoots outside
+ * [0, 1]. 240Hz RK4 sub-steps keep integration accurate at any frame rate. */
 export function stepDrawerSpring(position: number, velocity: number, target: number, dt: number): [number, number] {
   const steps = Math.max(1, Math.min(24, Math.round(dt / H)));
   const h = dt / steps;
   let x = position, v = velocity;
-  const accel = (px: number, pv: number) => (target - px) * 240 - pv * 19 - (px - clamp(px, 0, 1)) * 160;
+  const accel = (px: number, pv: number) => {
+    const dist = target - px;
+    const t = clamp(1 - Math.abs(dist) / MAGNET_RADIUS, 0, 1);
+    const magnet = t * t * (3 - 2 * t);
+    const wall = px - clamp(px, 0, 1);
+    const wallDamp = (px < 0 && pv < 0) || (px > 1 && pv > 0) ? pv * 14 : 0;
+    return dist * (228 + 36 * magnet) - pv * (18.2 + 6.8 * magnet) - wall * 180 - wallDamp;
+  };
   for (let i = 0; i < steps; i++) {
     const a1 = accel(x, v);
     const v2 = v + 0.5 * h * a1, a2 = accel(x + 0.5 * h * v, v2);

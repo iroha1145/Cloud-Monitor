@@ -1,4 +1,4 @@
-import { test, expect, type Locator, type Page } from '@playwright/test';
+import { test, expect, type CDPSession, type Locator, type Page } from '@playwright/test';
 import { waitForReveal } from './motion-helpers';
 
 const box = async (locator: Locator) => (await locator.boundingBox())!;
@@ -271,6 +271,93 @@ test('dragging only the mobile sheet actively repels cards, preserves control ga
   }
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(beforeScroll + 20);
+  await context.close();
+});
+
+/** Touch-drag from the middle of `target` up by `distance` px without letting go. */
+async function pressAndDrag(page: Page, cdp: CDPSession, target: Locator, distance: number, steps: number) {
+  const grip = await box(target), x = grip.x + grip.width / 2, y = grip.y + grip.height / 2;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  for (let index = 1; index <= steps; index++) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - distance * index / steps }] });
+    await page.waitForTimeout(18);
+  }
+}
+/** Lift the finger after holding still, so the release picks the nearest stop. */
+async function releaseStill(page: Page, cdp: CDPSession) {
+  await page.waitForTimeout(110);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+}
+
+test('a nudge on the half-open sheet keeps the menu where it was scrolled', async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: String(test.info().project.use.baseURL), viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await page.goto('/demo.html');
+  const surface = page.locator('.feel-nav-drawer'), menu = surface.locator('.feel-nav-content');
+  const cdp = await context.newCDPSession(page);
+  const travel = await surface.evaluate(el => parseFloat((el as HTMLElement).style.getPropertyValue('--nav-open-height')) - 84);
+  await pressAndDrag(page, cdp, page.locator('.feel-nav-peek'), travel * .45, 10);
+  await releaseStill(page, cdp);
+  await expect(surface).toHaveAttribute('data-drawer-stop', 'half');
+  await expect(surface).not.toHaveAttribute('data-drawer-moving', 'true');
+  expect(await menu.evaluate(el => el.scrollHeight - el.clientHeight)).toBeGreaterThan(120);
+  await menu.evaluate(el => { el.scrollTop = 120; });
+  await pressAndDrag(page, cdp, surface.locator('.feel-sheet-handle'), 6, 3);
+  await expect(surface).toHaveAttribute('data-drawer-moving', 'true');
+  // The list does not jump while the sheet moves, and stays put once it rests.
+  expect(await menu.evaluate(el => el.scrollTop)).toBe(120);
+  await releaseStill(page, cdp);
+  await expect(surface).toHaveAttribute('data-drawer-stop', 'half');
+  await expect(surface).not.toHaveAttribute('data-drawer-moving', 'true');
+  expect(await menu.evaluate(el => el.scrollTop)).toBe(120);
+  await context.close();
+});
+
+test('records inside a rising card group answer from where they are, not where they were', async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: String(test.info().project.use.baseURL), viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await page.goto('/demo.html#devices');
+  const group = page.locator('.sv-device-grid'), surface = page.locator('.feel-nav-drawer');
+  await expect(group.locator('[data-feel-item]').first()).toBeVisible();
+  await group.scrollIntoViewIfNeeded(); await waitForReveal(group);
+  const halfTop = await halfStopTop(surface);
+  await group.evaluate((el, bottom) => window.scrollBy({ top: el.getBoundingClientRect().bottom - bottom, behavior: 'instant' }), halfTop - ABOVE_HALF_STOP);
+  await expect.poll(() => group.evaluate(avoidY)).toBe(0);
+  // Cards that scrolled into view finish rising first: each step of a reveal
+  // re-measures everything, which would refresh stale boxes on its own.
+  await expect.poll(() => page.evaluate(() => !document.querySelector('[data-reveal="shown"]')
+    && [...document.querySelectorAll('[data-reveal="pending"]')].every(el => el.getBoundingClientRect().top >= innerHeight * .9))).toBe(true);
+  const cdp = await context.newCDPSession(page);
+  const travel = await surface.evaluate(el => parseFloat((el as HTMLElement).style.getPropertyValue('--nav-open-height')) - 84);
+  // Hold the sheet just short of the half stop: the group rises after its
+  // records first answered the sheet.
+  await pressAndDrag(page, cdp, page.locator('.feel-nav-peek'), travel * .45, 10);
+  const snapshot = () => group.evaluate(el => ({
+    rise: parseFloat((el as HTMLElement).style.getPropertyValue('--feel-avoid-y')) || 0,
+    records: [...el.querySelectorAll<HTMLElement>('[data-feel-item]')].map(item => ['--feel-item-x', '--feel-item-y', '--feel-item-scale'].map(key => parseFloat(item.style.getPropertyValue(key)) || 0)),
+  }));
+  const settled = async () => {
+    let previous = JSON.stringify(await snapshot());
+    for (let attempt = 0; attempt < 20; attempt++) {
+      await page.waitForTimeout(150);
+      const next = JSON.stringify(await snapshot());
+      if (next === previous) return JSON.parse(next) as Awaited<ReturnType<typeof snapshot>>;
+      previous = next;
+    }
+    throw new Error('records kept moving');
+  };
+  const held = await settled();
+  expect(held.rise).toBeLessThan(-(CARD_RISE - .1));
+  expect(held.records.some(([, y]) => y < -.5)).toBe(true);
+  const unchanged = (next: typeof held) => next.records.forEach((record, index) => record.forEach((value, axis) => expect(Math.abs(value - held.records[index][axis])).toBeLessThan(.05)));
+  // A scroll event reads every box again: records that followed the group's
+  // rise keep the same answer.
+  await page.evaluate(() => document.dispatchEvent(new Event('scroll')));
+  unchanged(await settled());
+  // So does a full re-measure (a card added or removed) while the group is up.
+  await page.evaluate(() => { const probe = document.createElement('i'); document.querySelector('.app-shell')!.append(probe); probe.remove(); });
+  unchanged(await settled());
+  await releaseStill(page, cdp);
   await context.close();
 });
 
@@ -558,8 +645,27 @@ test('the tab bar\'s 更多 button opens the whole menu, the scrim closes it and
   const moreBox = await box(more);
   expect(moreBox.width).toBeGreaterThanOrEqual(44); expect(moreBox.height).toBeGreaterThanOrEqual(44);
   await expect(more).toHaveAttribute('aria-expanded', 'false');
+  await page.evaluate(() => {
+    const drawer = document.querySelector('.feel-nav-drawer')!;
+    let drawerReads = 0;
+    const orig = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function () {
+      if (this === drawer) drawerReads++;
+      return orig.call(this);
+    };
+    (window as unknown as { __drawerReads: () => number }).__drawerReads = () => {
+      Element.prototype.getBoundingClientRect = orig;
+      return drawerReads;
+    };
+  });
   await more.click();
+  const movingStyle = await surface.evaluate(el => ({
+    moving: el.dataset.drawerMoving,
+    backdropFilter: getComputedStyle(el).backdropFilter,
+  }));
+  expect(movingStyle).toEqual({ moving: 'true', backdropFilter: 'none' });
   await expect(surface).toHaveAttribute('data-drawer-stop', 'open');
+  expect(await page.evaluate(() => (window as unknown as { __drawerReads: () => number }).__drawerReads())).toBe(0);
   await expect(dialog).toBeVisible(); await expect(more).toHaveAttribute('aria-expanded', 'true');
   await more.click();
   await expect(surface).toHaveAttribute('data-drawer-stop', 'closed');

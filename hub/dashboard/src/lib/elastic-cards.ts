@@ -85,7 +85,7 @@ export function createElasticCards(root: HTMLElement, { selector = CARD } = {}) 
       previousTime = time;
       const axes: Axis[] = [['x', 'vx', 0], ['y', 'vy', 0], ['scale', 'vs', 1]];
       for (const [position, velocity, target] of axes) stepSpring(gesture, position, velocity, target, 330, 29, dt);
-      if (Math.abs(gesture.x) + Math.abs(gesture.y) < 0.025 && Math.abs(1 - gesture.scale) < 0.0001 && Math.hypot(gesture.vx, gesture.vy) < 0.5) { reset(); return; }
+      if (Math.abs(gesture.x) + Math.abs(gesture.y) < 0.08 && Math.abs(1 - gesture.scale) < 0.0005 && Math.hypot(gesture.vx, gesture.vy) < 1.2) { reset(); return; }
       paint();
       if (gesture) frame = view.requestAnimationFrame(spring);
     };

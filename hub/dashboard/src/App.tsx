@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppErrorBoundary, DialogErrorNotice, lazyWithReload } from "./chunkLoad";
 import {
   AnimatePresence,
@@ -315,20 +315,20 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     setSettings(false);
     setToast("已切换为示例工作区。");
   };
-  const openSettings = (event: React.MouseEvent<HTMLElement>) => {
+  const openSettings = useCallback((event: React.MouseEvent<HTMLElement>) => {
     rememberDialogOpener(event.currentTarget);
     setMobile(false);
     setSettings(true);
-  };
-  const openDesign = (event: React.MouseEvent<HTMLElement>) => {
+  }, []);
+  const openDesign = useCallback((event: React.MouseEvent<HTMLElement>) => {
     rememberDialogOpener(event.currentTarget);
     setMobile(false);
     setDesign(true);
-  };
-  const openModel = (model: UsageEntity, opener: HTMLButtonElement) => {
+  }, []);
+  const openModel = useCallback((model: UsageEntity, opener: HTMLButtonElement) => {
     rememberDialogOpener(opener);
     setSelected(model);
-  };
+  }, []);
   const exportModels = () => {
     const rows = [
       ["模型", "周期", "总词元", "缓存读取", "缓存占比", "费用美元"],
@@ -351,7 +351,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
     generated.toLocaleString("zh-CN", options);
   const time = zoned({ hour: "2-digit", minute: "2-digit" });
   const date = zoned({ month: "long", day: "numeric" });
-  const nav = (
+  const nav = useMemo(() => (
     <>
       <a className="app-brand" href="#overview" aria-label="Cloud Monitor 首页">
         <BrandMark />
@@ -421,7 +421,73 @@ export default function App({ initialData, initialToken = "", hosted = false, is
         </button>
       </div>
     </>
-  );
+  ), [data.mode, data.devices.length, page, hosted, isolatedDemo, openSettings, openDesign]);
+  const pageStage = useMemo(() => (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={page}
+        className={navigated ? "page-stage" : undefined}
+        id="period-summary"
+        role={
+          page === "overview" || page === "models"
+            ? "tabpanel"
+            : undefined
+        }
+        aria-labelledby={
+          page === "overview" || page === "models"
+            ? `period-${period}`
+            : undefined
+        }
+        initial={{ opacity: 0 }}
+        animate={{
+          opacity: 1,
+          transition: { duration: reduce ? 0 : DURATION.fast, ease: EASE_SMOOTH_OUT },
+        }}
+        exit={{
+          opacity: 0,
+          transition: { duration: reduce ? 0 : DURATION.quick, ease: EASE_SMOOTH_OUT },
+        }}
+      >
+        {page === "overview" ? (
+          <Overview
+            data={data}
+            period={period}
+            onModel={openModel}
+          />
+        ) : page === "models" ? (
+          <>
+            <Stats data={data} period={period} />
+            <ModelTable per={per} full onSelect={openModel} />
+            <AppErrorBoundary title="模型矩阵已更新，请刷新。">
+              <Suspense fallback={<PageSkeleton label="正在加载矩阵…" columns={1} height={320} />}>
+                <ModelMatrixView per={per} />
+              </Suspense>
+            </AppErrorBoundary>
+            <AppErrorBoundary title="项目用量已更新，请刷新。">
+              <Suspense fallback={<PageSkeleton label="正在加载项目用量…" columns={1} height={280} />}>
+                <ProjectUsageView data={data} period={period} />
+              </Suspense>
+            </AppErrorBoundary>
+          </>
+        ) : (
+          <AppErrorBoundary>
+            <Suspense fallback={<PageSkeleton label="正在加载…" summary />}>
+              {page === "devices" ? (
+                <DevicesView data={data} />
+              ) : page === "quota" ? (
+                <QuotaView data={data} />
+              ) : (
+                <>
+                  <HistoryView data={data} />
+                  <ArchivePanel accessToken={token.current} dataMode={data.mode} fallbackData={data} historyAvailable={data.features?.history_daily} onAuthExpired={onSignOut} />
+                </>
+              )}
+            </Suspense>
+          </AppErrorBoundary>
+        )}
+      </motion.div>
+    </AnimatePresence>
+  ), [page, navigated, period, reduce, data, per, openModel, onSignOut]);
   return (
     <MotionConfig reducedMotion="user">
       <a className="skip-link" href="#main-content">
@@ -546,70 +612,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
                 </button>
               </div>
             )}
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={page}
-                className={navigated ? "page-stage" : undefined}
-                id="period-summary"
-                role={
-                  page === "overview" || page === "models"
-                    ? "tabpanel"
-                    : undefined
-                }
-                aria-labelledby={
-                  page === "overview" || page === "models"
-                    ? `period-${period}`
-                    : undefined
-                }
-                initial={{ opacity: 0 }}
-                animate={{
-                  opacity: 1,
-                  transition: { duration: reduce ? 0 : DURATION.fast, ease: EASE_SMOOTH_OUT },
-                }}
-                exit={{
-                  opacity: 0,
-                  transition: { duration: reduce ? 0 : DURATION.quick, ease: EASE_SMOOTH_OUT },
-                }}
-              >
-                {page === "overview" ? (
-                  <Overview
-                    data={data}
-                    period={period}
-                    onModel={openModel}
-                  />
-                ) : page === "models" ? (
-                  <>
-                    <Stats data={data} period={period} />
-                    <ModelTable per={per} full onSelect={openModel} />
-                    <AppErrorBoundary title="模型矩阵已更新，请刷新。">
-                      <Suspense fallback={<PageSkeleton label="正在加载矩阵…" columns={1} height={320} />}>
-                        <ModelMatrixView per={per} />
-                      </Suspense>
-                    </AppErrorBoundary>
-                    <AppErrorBoundary title="项目用量已更新，请刷新。">
-                      <Suspense fallback={<PageSkeleton label="正在加载项目用量…" columns={1} height={280} />}>
-                        <ProjectUsageView data={data} period={period} />
-                      </Suspense>
-                    </AppErrorBoundary>
-                  </>
-                ) : (
-                  <AppErrorBoundary>
-                    <Suspense fallback={<PageSkeleton label="正在加载…" summary />}>
-                      {page === "devices" ? (
-                        <DevicesView data={data} />
-                      ) : page === "quota" ? (
-                        <QuotaView data={data} />
-                      ) : (
-                        <>
-                          <HistoryView data={data} />
-                          <ArchivePanel accessToken={token.current} dataMode={data.mode} fallbackData={data} historyAvailable={data.features?.history_daily} onAuthExpired={onSignOut} />
-                        </>
-                      )}
-                    </Suspense>
-                  </AppErrorBoundary>
-                )}
-              </motion.div>
-            </AnimatePresence>
+            {pageStage}
             <footer className="page-footer" data-feel-card>
               <span>
                 Cloud Monitor
