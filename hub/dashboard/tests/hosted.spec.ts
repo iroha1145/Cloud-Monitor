@@ -415,16 +415,17 @@ test("built production and Pages menus stay at the viewport edge without changin
       // transform, so this must run against built assets as well as Vite dev.
       for (const viewport of [{ width: 320, height: 740 }, { width: 390, height: 844 }, { width: 430, height: 932 }, { width: 844, height: 390 }]) {
         await page.setViewportSize(viewport);
-        // One floating surface, centred and anchored 12px above the bottom
-        // edge, min(100vw - 20px, 520px) wide when fully open and never
-        // closer than 12px to the top.
+        // One panel docked to the bottom edge: centred, min(100vw, 520px)
+        // wide, reaching 48px below the screen with its top never closer
+        // than 24px to the top, and the tab bar on the bottom edge.
         await expect.poll(async () => {
           const box = await drawer.boundingBox();
-          return Boolean(box && Math.abs(box.x - (viewport.width - box.width) / 2) < 1
-            && Math.abs(box.y + box.height - (viewport.height - 12)) < 1
-            && box.y >= 11.5 && box.height <= viewport.height - 23.5
-            && box.width > 240 && Math.abs(box.width - Math.min(520, viewport.width - 20)) < 1
-            && box.x >= 0 && box.x + box.width <= viewport.width);
+          const bar = await drawer.getByRole("navigation", { name: "常用页面", exact: true }).boundingBox();
+          return Boolean(box && bar && Math.abs(box.x - (viewport.width - box.width) / 2) < 1
+            && Math.abs(box.y + box.height - (viewport.height + 48)) < 1 && box.y >= 23.5
+            && box.width > 240 && Math.abs(box.width - Math.min(520, viewport.width)) < 1
+            && box.x >= 0 && box.x + box.width <= viewport.width
+            && Math.abs(bar.y + bar.height - viewport.height) < 1);
         }).toBe(true);
         const close = drawer.getByRole("button", { name: "关闭导航", exact: true });
         await expect(close).toBeInViewport();

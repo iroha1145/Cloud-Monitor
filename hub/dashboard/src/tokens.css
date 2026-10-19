@@ -120,12 +120,13 @@
   /* menus, dialogs, tooltips and the menu while it is dragged */
   --shadow-float: inset 0 1px 0 rgb(255 255 255 / 0.92), 0 3px 8px rgb(23 23 23 / 0.045), 0 24px 64px -14px rgb(23 23 23 / 0.2);
   --shadow-overlay: var(--shadow-float);
-  /* the resting menu and the phone tab bar */
+  /* the resting desktop menu */
   --shadow-sidebar: inset 0 1px 0 rgb(255 255 255 / 0.95), 0 2px 6px rgb(23 23 23 / 0.035), 0 16px 42px -14px rgb(23 23 23 / 0.18);
-  --shadow-bar: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 2px 6px rgb(23 23 23 / 0.035), 0 12px 32px -12px rgb(23 23 23 / 0.15);
+  /* the phone menu panel, docked to the bottom edge: its shadow falls upward */
+  --shadow-sheet: 0 -1px 2px rgb(23 23 23 / 0.03), 0 -10px 28px -6px rgb(23 23 23 / 0.12);
   /* a segmented control's thumb: a white slip on the grey track */
   --shadow-thumb: 0 1px 2px rgb(23 23 23 / 0.06);
-  /* Only the floating menu and the phone tab bar frost what scrolls beneath. */
+  /* Only the desktop floating menu frosts what scrolls beneath. */
   --glass: rgb(255 255 255 / 0.96);
   --glass-border: #ffffff;
   --glass-filter: blur(16px);
@@ -217,7 +218,7 @@
   --shadow-panel: inset 0 1px 0 rgb(255 255 255 / 0.025), var(--shadow-panel-lift);
   --shadow-float: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 4px 12px rgb(0 0 0 / 0.2), 0 24px 64px -12px rgb(0 0 0 / 0.55);
   --shadow-sidebar: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 2px 6px rgb(0 0 0 / 0.12), 0 16px 42px -14px rgb(0 0 0 / 0.5);
-  --shadow-bar: 0 4px 18px rgb(0 0 0 / 0.3);
+  --shadow-sheet: 0 -10px 28px -6px rgb(0 0 0 / 0.45);
   --shadow-thumb: 0 1px 2px rgb(0 0 0 / 0.3);
   --glass: rgb(23 23 23 / 0.96);
   --glass-border: rgb(255 255 255 / 0.06);

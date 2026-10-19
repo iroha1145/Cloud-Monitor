@@ -10,18 +10,19 @@ async function expectDrawerAtViewportEdge(page: Page) {
   await expect
     .poll(async () => {
       const box = await drawer.boundingBox();
+      const bar = await drawer.getByRole("navigation", { name: "常用页面", exact: true }).boundingBox();
       const viewport = page.viewportSize()!;
-      // One floating surface, centred and anchored 12px above the bottom
-      // edge, min(100vw - 20px, 520px) wide once fully open and never
-      // closer than 12px to the top.
+      // One panel docked to the bottom edge: centred, min(100vw, 520px)
+      // wide, reaching 48px below the screen with its top never closer than
+      // 24px to the top, and the tab bar on the bottom edge.
       return Boolean(
-        box &&
+        box && bar &&
         Math.abs(box.x - (viewport.width - box.width) / 2) < 1 &&
-        Math.abs(box.y + box.height - (viewport.height - 12)) < 1 &&
-        box.y >= 11.5 &&
-        box.height <= viewport.height - 23.5 &&
+        Math.abs(box.y + box.height - (viewport.height + 48)) < 1 &&
+        box.y >= 23.5 &&
         box.width > 240 &&
-        Math.abs(box.width - Math.min(520, viewport.width - 20)) < 1,
+        Math.abs(box.width - Math.min(520, viewport.width)) < 1 &&
+        Math.abs(bar.y + bar.height - viewport.height) < 1,
       );
     })
     .toBe(true);
