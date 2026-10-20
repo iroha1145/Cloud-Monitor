@@ -44,7 +44,7 @@
   }
   .topbar-actions {
     flex-shrink: 0;
-    gap: 2px;
+    gap: 6px;
   }
   .app-topbar .icon-button,
   .command-search {
@@ -341,9 +341,14 @@
   .cache-rate,
   .full-models .cache-rate {
     min-height: 44px;
+    justify-content: flex-start;
     flex-wrap: wrap;
     gap: 5px;
     font-size: 14px;
+  }
+  .cache-rate > span:last-child {
+    min-width: 0;
+    text-align: left;
   }
   .cache-track,
   .full-models .cache-track {
@@ -378,6 +383,7 @@
   }
   .search-field {
     flex-basis: 100%;
+    max-width: none;
   }
   .model-filters [data-slot="select-trigger"] {
     flex: 1;

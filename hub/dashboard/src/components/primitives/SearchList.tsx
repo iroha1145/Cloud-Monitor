@@ -76,7 +76,8 @@ export default function SearchList({
                 setQuery("");
                 setActiveIndex(0);
               }}
-              className="flex size-6 items-center justify-center rounded-chip text-ink-3
+              className="relative flex size-7 items-center justify-center rounded-chip text-ink-3
+                before:absolute before:-inset-2 before:content-['']
                 transition-colors duration-100 hover:bg-line/70 hover:text-ink"
               style={{ animation: "fade-in 150ms ease-out both" }}
             >
@@ -101,7 +102,7 @@ export default function SearchList({
           </div>
         ) : (
           <div className="p-1">
-            <GlideMenu className="flex flex-col gap-px" highlightClassName="inset-x-0 rounded-[var(--r-segment)] bg-hover">
+            <GlideMenu className="flex flex-col gap-px" highlightClassName="inset-x-0 rounded-[var(--r-dropdown-item)] bg-hover">
               {results.map((item, index) => (
                 <button
                   key={item}
@@ -113,7 +114,7 @@ export default function SearchList({
                     setActiveIndex(0);
                     onSelect?.(item);
                   }}
-                  className={`relative z-10 flex h-8 w-full items-center rounded-[var(--r-segment)] px-2 text-left text-[13px] text-ink ${
+                  className={`relative z-10 flex h-8 w-full items-center rounded-[var(--r-dropdown-item)] px-2 text-left text-[13px] text-ink focus-visible:outline-2 focus-visible:outline-[var(--primary)] focus-visible:-outline-offset-2 ${
                     index === currentIndex ? "bg-hover/60" : ""
                   }`}
                   // Rows cascade by 20ms (capped) instead of appearing all at once.

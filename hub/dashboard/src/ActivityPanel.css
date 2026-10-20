@@ -11,7 +11,7 @@
   padding: 18px 20px;
   border-bottom: 1px solid var(--line);
 }
-.cm-activity-head h2 { margin: 0; color: var(--ink); font-size: 14px; font-weight: 500; }
+.cm-activity-head h2 { margin: 0; color: var(--ink); font-size: var(--fs-section); font-weight: 600; }
 .cm-activity-head p { margin: 6px 0 0; color: var(--ink-2); font-size: var(--fs-meta); line-height: 1.5; }
 .cm-activity-tabs { display: flex; flex-shrink: 0; padding: 3px; gap: 2px; border-radius: var(--r-control); background: var(--canvas); }
 .cm-activity-tabs button { min-width: 30px; min-height: 30px; padding: 4px 8px; border-radius: var(--r-segment); color: var(--ink-2); font-size: var(--fs-meta); }
@@ -21,7 +21,7 @@
 .cm-activity-tabs > [data-sliding-indicator] { border-radius: var(--r-segment); background: var(--surface); box-shadow: var(--shadow-thumb); }
 .cm-activity-tabs[data-indicator="ready"] button[aria-selected="true"] { background: transparent; box-shadow: none; }
 .dark .cm-activity-tabs > [data-sliding-indicator] { background: var(--hover-2); }
-.cm-activity-tabs button { transition: color var(--duration-fast) var(--ease-smooth-out); }
+.cm-activity-tabs button { transition: color var(--duration-quick) var(--ease-smooth-out); }
 .cm-activity-body { padding: 18px 20px 14px; }
 .cm-activity-grid { display: grid; gap: 4px; min-width: 0; }
 .cm-activity-grid-month { grid-template-columns: repeat(7, minmax(0, 1fr)); }

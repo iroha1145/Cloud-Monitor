@@ -112,6 +112,7 @@ Rare UI 通知铃依赖 `motion` 和 `@/lib/utils` 的 cn；告警数量变化�
 - shadcn/ui 对话框：https://ui.shadcn.com/docs/components/base/dialog
 - shadcn/ui 标签页：https://ui.shadcn.com/docs/components/base/tabs
 - Stripe 色彩系统：https://stripe.com/blog/accessible-color-systems
+- TypeUI UI Foundations：https://www.typeui.sh/ui-foundations/configurator
 
 ## 许可
 

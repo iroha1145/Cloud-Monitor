@@ -401,7 +401,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
       <div className="sidebar-bottom">
         <div className="sidebar-connection">
           <span className="sidebar-connection-state">
-            <i className={`status-dot ${data.mode === "demo" ? "muted" : ""}`} />
+            <i className={`status-dot ${data.mode === "demo" ? "muted" : ""}`} aria-hidden="true" />
             {hosted ? "已连接云端服务" : isolatedDemo ? "演示工作区" : data.mode === "demo" ? "示例数据 · 本地预览" : "真实数据 · 本地预览"}
           </span>
           {!hosted && !isolatedDemo && (
@@ -552,7 +552,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
               </div>
               <div className="heading-actions">
                 <span className="sync-status">
-                  <i className={`status-dot ${freshData ? "is-fresh" : ""}`} key={data.generatedAt} />
+                  <i className={`status-dot ${freshData ? "is-fresh" : ""}`} key={data.generatedAt} aria-hidden="true" />
                   更新于 {time}
                 </span>
                 <StatefulButton

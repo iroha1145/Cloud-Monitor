@@ -370,6 +370,11 @@ export default function AppDialogs({
             {[
               ["Stripe", "https://stripe.com", "排版、空间与信息层次"],
               [
+                "TypeUI",
+                "https://www.typeui.sh/ui-foundations/configurator",
+                "字阶、表格对齐、同心圆角与控件高度规范",
+              ],
+              [
                 "Beautiful UI",
                 "https://www.beautifului.dev",
                 "趋势曲线、快速搜索与导航反馈",

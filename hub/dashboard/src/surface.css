@@ -31,30 +31,41 @@
 .app-shell h2 { font-weight: 600; letter-spacing: -0.02em; }
 .app-shell .panel-head h2,
 .app-shell .ledger-composition-head h2,
-.app-shell .insight-trend-heading h2 { font-size: 16px; line-height: 24px; }
+.app-shell .insight-trend-heading h2,
+.app-shell .cm-activity-head h2,
+.app-shell .archive-header h2,
+.app-shell .system-update-header h2 { font-size: var(--fs-section); line-height: 24px; font-weight: 600; }
 .app-shell .sv-section-head h2 { font-size: 18px; line-height: 26px; }
 .app-shell .page-heading { align-items: center; padding: 20px 0 22px; }
 .app-shell .heading-kicker { margin-bottom: 8px; font-size: 13px; }
 .app-shell .heading-mode { margin-top: 6px; font-size: 13px; color: var(--ink-3); }
 
 /* ── Controls: rounded rectangles with a hairline, a 1px press ───── */
-.app-shell :is(.plain-button, .sv-button, .archive-button),
+.app-shell :is(.plain-button, .sv-button, .archive-button, .system-update-button:not(.system-update-primary)),
 .app-shell .refresh-button,
 [data-slot="dialog-content"] .plain-button {
-  min-height: 40px;
+  min-height: var(--control-h);
   border: 1px solid var(--line) !important;
   border-radius: var(--r-control) !important;
   background: var(--surface) !important;
   box-shadow: none !important;
   color: var(--ink) !important;
-  font-size: 13px !important;
+  font-size: var(--fs-body) !important;
   font-weight: 500;
 }
-.app-shell .refresh-button { height: 40px !important; padding: 0 15px !important; }
-.app-shell :is(.plain-button, .sv-button, .archive-button, .refresh-button):not(:disabled):active,
-[data-slot="dialog-content"] .plain-button:not(:disabled):active { transform: translateY(1px); }
+/* Optical button padding: slightly less space on the icon side so the label
+   appears centered (TypeUI button-padding & color-weight). */
+.app-shell :is(.plain-button, .sv-button, .archive-button, .system-update-button):has(> svg:first-child) {
+  padding-inline: 12px 15px;
+}
+.app-shell :is(.plain-button, .sv-button, .archive-button, .system-update-button:not(.system-update-primary)) > svg {
+  color: var(--ink-2);
+}
+.app-shell .refresh-button { height: var(--control-h) !important; padding: 0 13px 0 15px !important; }
+.app-shell :is(.plain-button, .sv-button, .archive-button, .refresh-button, .system-update-button):not(:disabled):active,
+[data-slot="dialog-content"] .plain-button:not(:disabled):active { transform: translateY(1px) scale(0.98); }
 @media (hover: hover) and (pointer: fine) {
-  .app-shell :is(.plain-button, .sv-button, .archive-button, .refresh-button):not(:disabled):hover,
+  .app-shell :is(.plain-button, .sv-button, .archive-button, .refresh-button, .system-update-button:not(.system-update-primary)):not(:disabled):hover,
   [data-slot="dialog-content"] .plain-button:not(:disabled):hover {
     background: var(--inset) !important;
     border-color: var(--line-strong) !important;
@@ -65,16 +76,16 @@
 .app-shell .topbar-left { display: flex; flex: 1 1 auto; align-items: center; min-width: 0; }
 .app-shell .command-search {
   width: min(340px, 100%);
-  height: 40px;
+  height: var(--control-h);
   padding: 0 10px 0 13px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-border);
   border-radius: var(--r-control);
-  background: var(--surface);
+  background: var(--field);
 }
 .app-shell .command-search > span { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell .command-search kbd { border: 1px solid var(--line); border-radius: 5px; background: var(--surface); }
 @media (hover: hover) and (pointer: fine) {
-  .app-shell .command-search:hover { border-color: var(--line-strong); background: var(--surface); }
+  .app-shell .command-search:hover { border-color: var(--line-strong); background: var(--hover-2); }
 }
 .app-shell :is(.top-avatar, .icon-button, .theme-menu-trigger) { border-radius: var(--r-control); }
 
@@ -135,13 +146,15 @@
 .app-shell .ledger-figure + .ledger-figure { border-left: 1px solid var(--card-border); }
 /* The lead figure is the one tinted card, like game-manage's hero tone. Its
    tinted border holds at every width, and it drops the white top highlight,
-   which would read as a pale line on the tint. */
-.app-shell .ledger-lead { --lead-border: color-mix(in srgb, var(--primary) 10%, var(--card-border)); background: var(--accent-tint); border-color: var(--lead-border); box-shadow: var(--shadow-panel-lift); }
+   which would read as a pale line on the tint. Secondary text uses a related
+   hue-family tint (TypeUI tinted-text). */
+.app-shell .ledger-lead { --lead-border: color-mix(in srgb, var(--primary) 12%, var(--card-border)); background: var(--accent-tint); border-color: var(--lead-border); box-shadow: var(--shadow-panel-lift); }
+.app-shell .ledger-lead :is(.ledger-label, .ledger-label small, .ledger-note, .ledger-unit) { color: var(--accent-muted); }
 .app-shell .ledger-label { font-size: 13px; color: var(--ink-2); white-space: normal; flex-wrap: wrap; }
 .app-shell .ledger-value { font-weight: 500; letter-spacing: -0.04em; }
 .app-shell .ledger-lead .ledger-value { font-size: var(--fs-lead); font-weight: 500; letter-spacing: -0.05em; }
 .app-shell .ledger-note { white-space: normal; line-height: 18px; }
-.app-shell .ledger-composition { padding: 22px; border-top: 1px solid var(--card-border); }
+.app-shell .ledger-composition { padding: 22px; }
 .app-shell .ledger-composition-head p { font-size: 12px; }
 .app-shell .ledger-composition .composition-legend { gap: 8px; }
 .app-shell .ledger-composition .composition-legend > div { padding: 10px 12px; }
@@ -201,11 +214,19 @@
 .app-shell :is(.cache-track, .client-track):not(.is-incomplete)::after { background: var(--inset); }
 
 /* ── Tables: square model rows, rounded session rows ──────────────── */
-.app-shell .model-filters { padding: 14px 22px; gap: 8px; border-block: 1px solid var(--line-soft); background: transparent; }
+.app-shell .model-filters { padding: 14px 22px; gap: 10px; border-bottom: 1px solid var(--line-soft); background: transparent; }
+/* TypeUI input-contrast & control-heights: field surface != parent surface,
+   and inputs/selects share the 40px control height with adjacent buttons. */
 .app-shell .model-filters .search-field,
 .app-shell .sv-search input {
-  border: 1px solid var(--line);
+  min-height: var(--control-h);
+  border: 1px solid var(--field-border);
   border-radius: var(--r-control);
+  background: var(--field);
+}
+.app-shell .model-filters .search-field:focus-within,
+.app-shell .sv-search input:focus {
+  border-color: var(--primary);
   background: var(--surface);
 }
 .app-shell .model-table th,
@@ -214,7 +235,7 @@
 .app-shell .model-open strong { font-weight: 500; }
 .app-shell .table-foot { padding: 14px 22px; background: transparent; border-top: 1px solid var(--line-soft); }
 .app-shell .sv-history-sessions .sv-table-footer { padding-block: 14px; background: transparent; border-top: 1px solid var(--line-soft); }
-.app-shell .matrix-scroll { padding: 16px 22px; border-block: 1px solid var(--line-soft); background: transparent; }
+.app-shell .matrix-scroll { padding: 16px 22px; background: transparent; }
 .app-shell .matrix-panel .matrix-note { padding: 14px 22px; }
 @media (min-width: 761px) and (min-height: 501px), (min-width: 961px) {
   .app-shell :is(.model-table-scroll, .sv-table-wrap) { padding-inline: 16px; }
@@ -371,7 +392,7 @@
   .app-shell .archive-panel { padding: 18px 16px; }
   .app-shell .archive-day summary { padding: 14px 12px; }
   .app-shell .archive-day-detail { padding: 0 12px 14px; }
-  .app-shell :is(.plain-button, .sv-button, .archive-button, .sv-device-toggle, .period-tabs [role="tab"], .small-tabs [role="tab"]) { min-height: 44px; }
+  .app-shell :is(.plain-button, .sv-button, .archive-button, .sv-device-toggle, .period-tabs [role="tab"], .small-tabs [role="tab"], .model-filters .search-field) { min-height: 44px; }
   .app-shell .period-tabs { height: auto !important; }
 }
 @media (max-width: 480px) {

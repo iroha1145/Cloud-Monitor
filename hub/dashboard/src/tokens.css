@@ -6,17 +6,23 @@
 :root {
   color-scheme: light;
 
-  /* Type scale after game-manage: nothing under 12px; body 13, emphasis 14,
-     card titles 16, page title 28; figures 28 up to 44 for the lead. Titles
+  /* Type scale after game-manage & TypeUI Foundations: nothing under 12px
+     (0.75rem); body 13 (0.8125rem), emphasis 14 (0.875rem), card titles 16
+     (1rem), page title 28 (1.75rem); figures 28 up to 44 for the lead. Titles
      and strong text take 600, controls and figures 500, reading text 400. */
-  --fs-meta: 12px;
-  --fs-label: 12px;
-  --fs-body: 13px;
-  --fs-strong: 14px;
-  --fs-section: 16px;
-  --fs-page: 28px;
-  --fs-figure: 28px;
-  --fs-lead: clamp(34px, 1.9vw + 12px, 44px);
+  --fs-meta: 0.75rem;
+  --fs-label: 0.75rem;
+  --fs-body: 0.8125rem;
+  --fs-strong: 0.875rem;
+  --fs-section: 1rem;
+  --fs-page: 1.75rem;
+  --fs-figure: 1.75rem;
+  --fs-lead: clamp(2.125rem, 1.9vw + 0.75rem, 2.75rem);
+
+  /* Shared control height (TypeUI control-heights & recognizable-buttons:
+     input height = adjacent button/select/segmented-control height = 40px). */
+  --control-h: 40px;
+  --control-h-sm: 36px;
 
   /* --radius-* belong to Tailwind's @theme (styles.css); these are the
      dashboard's own corner steps. The game-manage scale: the floating menu
@@ -32,6 +38,8 @@
   --r-control: 14px;
   /* an item inside a segmented track, concentric with the track's 3px inset */
   --r-segment: 11px;
+  /* an item inside a 14px dropdown menu with 4px padding (14 - 4 = 10px) */
+  --r-dropdown-item: 10px;
   --r-chip: 7px;
 
   /* A white page under white cards: each card has a hairline and a soft
@@ -56,11 +64,13 @@
   --line: #e8e8e8;
   --line-strong: #d9d9d9;
   --line-soft: #f0f0f0;
+  --field-border: #d6d6d6;
   --border: var(--line);
 
   --primary: #1f5fae;
   --accent: var(--primary);
   --accent-ink: #1b5499;
+  --accent-muted: #35547a;
   --accent-tint: #edf3fb;
   /* a step darker than --hover, so a hovered item never reads as current */
   --nav-active: #ebebeb;
@@ -113,13 +123,18 @@
 
 
   /* Depth stays faint: cards sit on a hairline with a near contact shadow
-     and a soft far one; only floating layers cast a real shadow. */
+     and a soft far one; only floating layers cast a real shadow.
+     TypeUI layering: base (0) < raised card (3) < dropdown (2) < toast (5) < modal overlay. */
   --card-border: #ebebeb;
   --shadow-panel-lift: 0 1px 2px rgb(23 23 23 / 0.025), 0 8px 24px -16px rgb(23 23 23 / 0.16);
   --shadow-panel: inset 0 1px 0 rgb(255 255 255 / 0.9), var(--shadow-panel-lift);
+  --shadow-dropdown: inset 0 1px 0 rgb(255 255 255 / 0.94), 0 2px 6px rgb(23 23 23 / 0.05), 0 14px 34px -10px rgb(23 23 23 / 0.16);
   /* menus, dialogs, tooltips and the menu while it is dragged */
   --shadow-float: inset 0 1px 0 rgb(255 255 255 / 0.92), 0 3px 8px rgb(23 23 23 / 0.045), 0 24px 64px -14px rgb(23 23 23 / 0.2);
-  --shadow-overlay: var(--shadow-float);
+  --shadow-toast: inset 0 1px 0 rgb(255 255 255 / 0.94), 0 4px 12px rgb(23 23 23 / 0.06), 0 20px 48px -12px rgb(23 23 23 / 0.22);
+  --shadow-modal: inset 0 1px 0 rgb(255 255 255 / 0.95), 0 4px 14px rgb(23 23 23 / 0.06), 0 28px 72px -12px rgb(23 23 23 / 0.26);
+  --shadow-overlay: var(--shadow-dropdown);
+  --scrim-bg: rgb(15 18 24 / 0.42);
   /* the resting desktop menu */
   --shadow-sidebar: inset 0 1px 0 rgb(255 255 255 / 0.95), 0 2px 6px rgb(23 23 23 / 0.035), 0 16px 42px -14px rgb(23 23 23 / 0.18);
   /* the phone menu panel, docked to the bottom edge: its shadow falls upward */
@@ -176,9 +191,11 @@
   --line: #262626;
   --line-strong: #343434;
   --line-soft: #1f1f1f;
+  --field-border: #323232;
 
   --primary: #8bb9f2;
   --accent-ink: #a9cbf6;
+  --accent-muted: #9dc0ee;
   --accent-tint: #172437;
   --nav-active: #292929;
 
@@ -216,7 +233,12 @@
   --card-border: rgb(255 255 255 / 0.06);
   --shadow-panel-lift: 0 1px 2px rgb(0 0 0 / 0.12), 0 8px 24px -16px rgb(0 0 0 / 0.45);
   --shadow-panel: inset 0 1px 0 rgb(255 255 255 / 0.025), var(--shadow-panel-lift);
+  --shadow-dropdown: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 4px 12px rgb(0 0 0 / 0.28), 0 18px 42px -10px rgb(0 0 0 / 0.55);
   --shadow-float: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 4px 12px rgb(0 0 0 / 0.2), 0 24px 64px -12px rgb(0 0 0 / 0.55);
+  --shadow-toast: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 6px 16px rgb(0 0 0 / 0.32), 0 24px 56px -12px rgb(0 0 0 / 0.6);
+  --shadow-modal: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 8px 24px rgb(0 0 0 / 0.36), 0 32px 80px -12px rgb(0 0 0 / 0.68);
+  --shadow-overlay: var(--shadow-dropdown);
+  --scrim-bg: rgb(0 0 0 / 0.64);
   --shadow-sidebar: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 2px 6px rgb(0 0 0 / 0.12), 0 16px 42px -14px rgb(0 0 0 / 0.5);
   --shadow-sheet: 0 -10px 28px -6px rgb(0 0 0 / 0.45);
   --shadow-thumb: 0 1px 2px rgb(0 0 0 / 0.3);

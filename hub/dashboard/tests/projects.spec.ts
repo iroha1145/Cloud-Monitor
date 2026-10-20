@@ -71,6 +71,8 @@ test("live projects keep their own breakdown and flag an incomplete period", asy
   await expect(main.locator(".project-share-legend")).toHaveText(/gpt-5\.2\s*65\.0%.*opus-4\.5\s*13\.3%.*无模型明细\s*21\.7%/s);
   // A project from an older client has no model parts: all of it is unattributed.
   await expect(card.locator(".project-row").filter({ hasText: "notes" }).locator(".project-share-legend")).toHaveText(/无模型明细\s*100\.0%/);
+  // Hovering a card that is still scrolling in lets the scroll close the tooltip mid-check.
+  await scrollIntoViewAndReveal(main.locator(".metric-bar-trigger"));
   await main.locator(".metric-bar-trigger").hover();
   const tooltip = page.getByRole("tooltip");
   await expect(tooltip).toContainText("cloud-monitor · 按模型");

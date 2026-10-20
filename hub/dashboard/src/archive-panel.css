@@ -65,7 +65,7 @@
 .archive-context {
   margin: 18px 0 14px;
   padding: 12px 14px;
-  border-radius: 7px;
+  border-radius: var(--r-well);
   background: var(--inset);
   overflow-wrap: anywhere;
 }
@@ -76,7 +76,7 @@
   color: var(--orange);
 }
 .archive-day {
-  border-bottom: 1px solid var(--line);
+  border-bottom: 0;
 }
 .archive-columns,
 .archive-day summary {
