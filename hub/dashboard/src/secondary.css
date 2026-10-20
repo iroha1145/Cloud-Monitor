@@ -1357,13 +1357,7 @@
   overflow-wrap: anywhere;
 }
 .sv-quota-extras p { margin: 0; }
-.sv-quota-action {
-  padding: 6px 10px;
-  border-left: 3px solid var(--danger);
-  border-radius: 0 var(--r-xs) var(--r-xs) 0;
-  background: var(--red-tint);
-  color: var(--danger);
-}
+.sv-quota-action { color: var(--danger); }
 .sv-quota-reset { display: grid; gap: 2px; }
 .sv-quota-reset strong { color: var(--ink); font-weight: 500; }
 .sv-quota-extras summary { cursor: pointer; min-height: 36px; display: flex; align-items: center; }

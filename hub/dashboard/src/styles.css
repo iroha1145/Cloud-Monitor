@@ -184,13 +184,13 @@ input[type="search"]::-webkit-search-decoration {
 /* Interactive option labels, tabs, disclosures and chips should not highlight
    as text during clicks or drags (TypeUI label-selection). */
 button,
-summary,
 [role="tab"],
 [data-slot="select-trigger"],
 [data-slot="select-item"],
 .preview-badge,
 .count-badge,
 .sv-status {
+  -webkit-user-select: none;
   user-select: none;
 }
 /* Lucide draws at 2px; a slightly finer line sits with regular-weight text. */
@@ -1611,7 +1611,7 @@ summary,
 }
 [data-slot="select-trigger"]:hover,
 [data-slot="select-trigger"][data-state="open"] {
-  background: var(--hover);
+  background: var(--hover-2);
 }
 [data-slot="select-trigger"] > svg {
   width: 16px;
@@ -1867,7 +1867,6 @@ summary,
   gap: 11px;
   padding: 14px;
   border: 1px solid var(--line);
-  border-left: 3px solid var(--orange);
   border-radius: var(--r-well);
   background: var(--inset);
   font-size: var(--fs-body);

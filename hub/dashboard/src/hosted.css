@@ -244,8 +244,7 @@
 .workspace-notices ul {
   max-width: 68ch;
   margin: 8px 0 0;
-  padding: 4px 0 4px 20px;
-  border-left: 3px solid var(--primary);
+  padding-left: 18px;
   line-height: 1.8;
 }
 .workspace-notices ul li + li {

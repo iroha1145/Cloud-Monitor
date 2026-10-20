@@ -55,7 +55,7 @@
 }
 /* Optical button padding: slightly less space on the icon side so the label
    appears centered (TypeUI button-padding & color-weight). */
-.app-shell :is(.plain-button, .sv-button, .archive-button, .system-update-button) {
+.app-shell :is(.plain-button, .sv-button, .archive-button, .system-update-button):has(> svg:first-child) {
   padding-inline: 12px 15px;
 }
 .app-shell :is(.plain-button, .sv-button, .archive-button, .system-update-button:not(.system-update-primary)) > svg {
@@ -85,7 +85,7 @@
 .app-shell .command-search > span { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell .command-search kbd { border: 1px solid var(--line); border-radius: 5px; background: var(--surface); }
 @media (hover: hover) and (pointer: fine) {
-  .app-shell .command-search:hover { border-color: var(--line-strong); background: var(--hover); }
+  .app-shell .command-search:hover { border-color: var(--line-strong); background: var(--hover-2); }
 }
 .app-shell :is(.top-avatar, .icon-button, .theme-menu-trigger) { border-radius: var(--r-control); }
 
@@ -392,7 +392,7 @@
   .app-shell .archive-panel { padding: 18px 16px; }
   .app-shell .archive-day summary { padding: 14px 12px; }
   .app-shell .archive-day-detail { padding: 0 12px 14px; }
-  .app-shell :is(.plain-button, .sv-button, .archive-button, .sv-device-toggle, .period-tabs [role="tab"], .small-tabs [role="tab"]) { min-height: 44px; }
+  .app-shell :is(.plain-button, .sv-button, .archive-button, .sv-device-toggle, .period-tabs [role="tab"], .small-tabs [role="tab"], .model-filters .search-field) { min-height: 44px; }
   .app-shell .period-tabs { height: auto !important; }
 }
 @media (max-width: 480px) {

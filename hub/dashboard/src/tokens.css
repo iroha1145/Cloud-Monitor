@@ -64,7 +64,7 @@
   --line: #e8e8e8;
   --line-strong: #d9d9d9;
   --line-soft: #f0f0f0;
-  --field-border: #d6d6da;
+  --field-border: #d6d6d6;
   --border: var(--line);
 
   --primary: #1f5fae;
@@ -191,7 +191,7 @@
   --line: #262626;
   --line-strong: #343434;
   --line-soft: #1f1f1f;
-  --field-border: #323236;
+  --field-border: #323232;
 
   --primary: #8bb9f2;
   --accent-ink: #a9cbf6;

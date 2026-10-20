@@ -91,7 +91,7 @@
 .session-usage-card[open] .session-card-body { animation: detail-reveal 230ms var(--ease-smooth-out); }
 .session-current-line, .session-scope-note { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 17px; color: var(--ink-3); font-size: 12px; line-height: 1.7; }
 .session-current-line { padding: 9px 12px; border-radius: var(--r-md); background: var(--hover); }
-.session-scope-note { padding: 11px 13px; border-left: 3px solid var(--primary); border-radius: var(--r-md); background: var(--inset); }
+.session-scope-note { padding: 11px 13px; border-radius: var(--r-md); background: var(--inset); }
 .session-scope-note svg { flex-shrink: 0; }
 .session-token-breakdown { padding-top: 5px; border-top: 0; }
 .session-token-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0 0; }

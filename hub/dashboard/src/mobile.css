@@ -54,11 +54,11 @@
     justify-content: center;
     padding: 0;
   }
-  /* The bell is already 44px on mobile; keep its hit area matched to its box. */
+  /* The bell draws at 34px; its touch area matches the 44px buttons. */
   .topbar-bell::before {
     content: "";
     position: absolute;
-    inset: 0;
+    inset: -5px;
   }
   .page-heading {
     min-height: 0;
@@ -383,6 +383,7 @@
   }
   .search-field {
     flex-basis: 100%;
+    max-width: none;
   }
   .model-filters [data-slot="select-trigger"] {
     flex: 1;
