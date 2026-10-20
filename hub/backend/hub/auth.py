@@ -57,32 +57,3 @@ def resolve_access_binding(
 
 def require_access_token(request: Request, settings: Settings) -> None:
     resolve_access_binding(request, settings, allow_tenants=False)
-
-
-@dataclass(frozen=True)
-class WriteBinding:
-    """写入鉴权结果：admin 可写任意设备；device 绑定单一设备。"""
-
-    role: str  # "admin" | "device"
-    device_id: str | None = None
-
-
-def resolve_write_binding(request: Request, settings: Settings) -> WriteBinding:
-    token = _bearer_token(request)
-    if not token:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    if settings.api_key and constant_eq(token, settings.api_key):
-        return WriteBinding(role="admin")
-    for device_id, key in settings.device_keys.items():
-        if constant_eq(token, key):
-            return WriteBinding(role="device", device_id=device_id)
-    raise HTTPException(status_code=401, detail="Unauthorized")
-
-
-def enforce_device_binding(binding: WriteBinding, payload_device_id: str) -> None:
-    """设备密钥只能以其绑定的 device.id 推送，防止设备间冒充。"""
-    if binding.role == "device" and binding.device_id != payload_device_id:
-        raise HTTPException(
-            status_code=403,
-            detail=f"该写入密钥仅允许设备 {binding.device_id} 使用",
-        )

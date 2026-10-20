@@ -7,7 +7,6 @@
 
 路径限额（P1-6 统一中间件）：
 - /api/ingest、/api/subscriptions：1 MiB（与官方 hub 一致）
-- /api/v1/sync/push：可配置（MAX_SYNC_BODY_BYTES，默认 2 MiB）
 - /api/v1/system/update：4 KiB（在 main.py 配置，只接收目标 ref）
 """
 

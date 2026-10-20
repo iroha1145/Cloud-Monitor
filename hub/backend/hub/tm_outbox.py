@@ -29,7 +29,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional
 
 from .db import Database
-from .services import utc_now
+from .time_utils import utc_now
 from .tm_snapshots import norm_ts, now_z, resolve_local_day, utc_z
 from .tm_validate import is_limits_only_update
 

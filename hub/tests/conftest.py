@@ -34,7 +34,7 @@ from hub.config import Settings  # noqa: E402
 from hub.main import create_app  # noqa: E402
 
 TM_SECRET = "unit-tm-secret-0123456789abcdef0000"
-API_KEY = "a" * 32
+UNREGISTERED_KEY = "a" * 32
 READ_KEY = "b" * 32
 
 NODE_AVAILABLE = shutil.which("node") is not None
@@ -44,11 +44,9 @@ requires_node = pytest.mark.skipif(not NODE_AVAILABLE, reason="本机无 node，
 def make_settings(tmp_path, **overrides) -> Settings:
     """共享的 Settings 构造：后台线程默认关闭，各文件只声明自己的覆盖项。"""
     values = dict(
-        api_key=API_KEY,
         access_token=READ_KEY,
         database_path=tmp_path / "hub.sqlite3",
         frontend_dir=tmp_path / "frontend",
-        max_records_per_push=500,
         tm_background_enabled=False,
     )
     values.update(overrides)
@@ -166,11 +164,9 @@ def make_cloud_app(
     background: bool = False,
 ) -> TestClient:
     settings = Settings(
-        api_key=API_KEY,
         access_token=READ_KEY,
         database_path=database_path or (tmp_path / "hub.sqlite3"),
         frontend_dir=tmp_path,
-        max_records_per_push=500,
         tm_ingest_secret=TM_SECRET,
         tm_core_url=node_url,
         tm_outbox_max_pending=outbox_max,
@@ -374,11 +370,9 @@ def live_stack(tmp_path_factory):
     node = NodeHub(tmp / "devices.json")
     port = free_port()
     settings = Settings(
-        api_key=API_KEY,
         access_token=READ_KEY,
         database_path=tmp / "hub.sqlite3",
         frontend_dir=tmp,
-        max_records_per_push=500,
         tm_ingest_secret=TM_SECRET,
         tm_core_url=node.url,
     )

@@ -17,7 +17,7 @@ def test_main_update_respects_tenant_key_lock_and_preserves_configuration(tmp_pa
     tenants_line = "TENANTS_JSON='" + json.dumps({
         "alice": {"tm_secret": "a" * 64, "access_token": "b" * 64, "role": "user"},
     }) + "'\n"
-    original = "API_KEY=" + "c" * 64 + "\n" + tenants_line
+    original = "ACCESS_TOKEN=" + "c" * 64 + "\n" + tenants_line
     env_path.write_text(original)
     queued = service.apply("main")
     script = ROOT / "hub/scripts/self-update.sh"

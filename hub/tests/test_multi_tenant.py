@@ -8,7 +8,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from conftest import API_KEY, READ_KEY, TM_SECRET, NodeHub, official_payload, requires_node
+from conftest import READ_KEY, TM_SECRET, NodeHub, official_payload, requires_node
 from hub.config import ConfigError, Settings, TenantConfig, load_settings, parse_tenants
 from hub.main import create_app
 
@@ -60,7 +60,6 @@ def test_parse_tenants_and_distinct_secrets(monkeypatch, tmp_path: Path):
         )
 
     # 同一租户内 tm_secret == access_token 必须在 load_settings 被拦截
-    monkeypatch.setenv("API_KEY", API_KEY)
     monkeypatch.setenv("ACCESS_TOKEN", READ_KEY)
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "hub.sqlite3"))
     monkeypatch.setenv(
@@ -96,11 +95,11 @@ def test_multi_tenant_physical_isolation_and_same_device_id(tmp_path: Path):
     node = NodeHub(tmp_path / "devices.json", tenants=TENANTS)
     try:
         settings = Settings(
-            api_key=API_KEY,
+
             access_token=READ_KEY,
             database_path=tmp_path / "hub.sqlite3",
             frontend_dir=tmp_path,
-            max_records_per_push=500,
+
             tm_ingest_secret=TM_SECRET,
             tm_core_url=node.url,
             tm_background_enabled=False,
@@ -304,12 +303,12 @@ def test_multi_tenant_physical_isolation_and_same_device_id(tmp_path: Path):
             assert len(ov_bob_after["devices"]) == 1
             assert ov_bob_after["totals"]["today"]["totalTokens"] == 95000
 
-            # 租户只读密钥无权访问根 OpenWebUI 数据库路由
+            # Removed record-sync endpoints are absent for every tenant.
             r_owui = client.get(
                 "/api/v1/usage",
                 headers={"Authorization": f"Bearer {ALICE_READ}"},
             )
-            assert r_owui.status_code == 401
+            assert r_owui.status_code == 404
     finally:
         node.stop()
 
@@ -342,11 +341,9 @@ def test_multi_tenant_system_update_role_enforcement(tmp_path: Path):
     )
 
     settings = Settings(
-        api_key=API_KEY,
         access_token=READ_KEY,
         database_path=tmp_path / "hub.sqlite3",
         frontend_dir=tmp_path,
-        max_records_per_push=500,
         tm_background_enabled=False,
         cm_update_dir=update_dir,
         cm_update_runtime_dir=runtime_dir,
@@ -420,11 +417,11 @@ def test_pure_multi_tenant_without_root_tm_secret(tmp_path: Path):
     node = NodeHub(tmp_path / "devices.json", tenants={"alice": TENANTS["alice"]}, tm_secret="")
     try:
         settings = Settings(
-            api_key=API_KEY,
+
             access_token=READ_KEY,
             database_path=tmp_path / "hub.sqlite3",
             frontend_dir=tmp_path,
-            max_records_per_push=500,
+
             tm_ingest_secret="",
             tm_core_url=node.url,
             tm_background_enabled=True,

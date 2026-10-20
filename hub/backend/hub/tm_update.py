@@ -31,7 +31,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .auth import resolve_access_binding
 from .config import Settings
-from .services import parse_iso_datetime
+from .time_utils import parse_iso_datetime
 from .tm_snapshots import utc_seconds_z
 
 log = logging.getLogger("tm-update")

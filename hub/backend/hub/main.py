@@ -5,34 +5,18 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from pydantic import ValidationError
-from starlette.concurrency import run_in_threadpool
 from starlette.responses import PlainTextResponse
 from starlette.staticfiles import StaticFiles as StarletteStaticFiles
 
-from .auth import (
-    CodedHTTPException,
-    WriteBinding,
-    enforce_device_binding,
-    require_access_token,
-    resolve_write_binding,
-)
+from .auth import CodedHTTPException
 from .body_limit import DEFAULT_LIMITED_PATHS, TmBodyLimitMiddleware
 from .compression import NegotiatedGZipMiddleware
 from .config import Settings, load_settings
 from .db import Database
-from .models import SyncPushRequest
-from .services import (
-    apply_sync_push,
-    list_devices,
-    list_usage_page,
-    list_users,
-    usage_report,
-)
 from .tm_forwarding import forwarding_queue
 from .tm_outbox import ensure_schema as ensure_outbox_schema, set_overview_invalidator, snapshot_health
 from .tm_overview import OverviewCache, build_tm_overview_router
@@ -55,21 +39,12 @@ def _cache_control_for(path: str) -> str:
     return "no-cache"
 
 
-def _validation_details(errors, *, under_body: bool = False) -> list[dict]:
-    """校验错误只回传诊断元数据（type/loc/msg），不回传提交的输入。
-
-    under_body：请求体模型在路由里手动校验时，loc 不带 "body" 前缀，补上以与
-    FastAPI 自动校验的形状一致。
-    """
-    details = []
-    for error in errors:
-        item = {key: error[key] for key in ("type", "loc", "msg") if key in error}
-        if under_body:
-            loc = item.get("loc")
-            if isinstance(loc, (list, tuple)) and (not loc or loc[0] != "body"):
-                item["loc"] = ["body", *loc]
-        details.append(item)
-    return details
+def _validation_details(errors) -> list[dict]:
+    """Only return diagnostic metadata, never submitted input or context."""
+    return [
+        {key: error[key] for key in ("type", "loc", "msg") if key in error}
+        for error in errors
+    ]
 
 
 class SafeStaticFiles(StarletteStaticFiles):
@@ -192,13 +167,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app.state.update_service = UpdateService(settings)
     app.include_router(build_update_router(settings, app.state.update_service))
 
-    # ASGI receive 层实测限流：TM 写入端点 1MiB（官方上限），
-    # /api/v1/sync/push 为可配置实际字节上限（P1-6，统一覆盖所有写接口）
+    # Bound actual Token Monitor request bytes before parsing or authentication.
     app.add_middleware(
         TmBodyLimitMiddleware,
         limits={
             **DEFAULT_LIMITED_PATHS,
-            "/api/v1/sync/push": settings.max_sync_body_bytes,
             "/api/v1/system/update": 4096,
         },
     )
@@ -283,26 +256,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             content={"error": "请求体校验失败", "details": _validation_details(exc.errors())},
         )
 
-    def settings_dep() -> Settings:
-        return app.state.settings
-
-    def db_dep() -> Database:
-        return app.state.db
-
-    def ingest_auth(
-        request: Request, cfg: Settings = Depends(settings_dep)
-    ) -> WriteBinding:
-        return resolve_write_binding(request, cfg)
-
-    def read_auth(request: Request, cfg: Settings = Depends(settings_dep)) -> None:
-        require_access_token(request, cfg)
-
     @app.get("/api/v1/health")
     def health() -> dict:
         return {
             "ok": True,
             "role": "cloud-hub",
-            "protocol_version": settings.protocol_version,
+            "token_monitor": "enabled" if settings.tm_ingest_secret or settings.tenants else "disabled",
         }
 
     @app.get("/api/v1/health/live")
@@ -361,100 +320,6 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             status_code=200 if ok else 503,
             content={"ok": ok, "role": "cloud-hub", "components": components},
         )
-
-    @app.post("/api/v1/sync/push")
-    async def sync_push(
-        request: Request,
-        db: Database = Depends(db_dep),
-        binding: WriteBinding = Depends(ingest_auth),
-    ) -> dict:
-        try:
-            raw = await request.json()
-        except (ValueError, UnicodeDecodeError, RecursionError) as exc:
-            # json.loads 对深层嵌套抛 RecursionError，仍是客户端正文问题。
-            raise HTTPException(status_code=400, detail="请求体不是合法 JSON") from exc
-
-        def _sync_push() -> dict:
-            try:
-                payload = SyncPushRequest.model_validate(raw)
-            except ValidationError as exc:
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "error": "请求体校验失败",
-                        "details": _validation_details(exc.errors(), under_body=True),
-                    },
-                )
-            enforce_device_binding(binding, payload.device.id)
-            if len(payload.records) > settings.max_records_per_push:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"records 单次最多 {settings.max_records_per_push} 条",
-                )
-            try:
-                return apply_sync_push(
-                    db, payload, protocol_version=settings.protocol_version
-                )
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-        return await run_in_threadpool(_sync_push)
-
-    @app.get("/api/v1/usage", dependencies=[Depends(read_auth)])
-    def get_usage(
-        db: Database = Depends(db_dep),
-        start_time: Optional[str] = Query(default=None),
-        end_time: Optional[str] = Query(default=None),
-        device_id: Optional[str] = Query(default=None),
-    ) -> dict:
-        try:
-            return usage_report(
-                db, start_time=start_time, end_time=end_time, device_id=device_id
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.get("/api/v1/users", dependencies=[Depends(read_auth)])
-    def get_users(
-        db: Database = Depends(db_dep),
-        start_time: Optional[str] = Query(default=None),
-        end_time: Optional[str] = Query(default=None),
-    ) -> dict:
-        try:
-            users = list_users(db, start_time=start_time, end_time=end_time)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return {"users": users, "total": len(users)}
-
-    @app.get("/api/v1/records", dependencies=[Depends(read_auth)])
-    def get_records(
-        db: Database = Depends(db_dep),
-        start_time: Optional[str] = Query(default=None),
-        end_time: Optional[str] = Query(default=None),
-        user_id: Optional[str] = Query(default=None),
-        model_name: Optional[str] = Query(default=None),
-        device_id: Optional[str] = Query(default=None),
-        page: int = Query(default=1, ge=1),
-        page_size: int = Query(default=20, ge=1, le=200),
-    ) -> dict:
-        try:
-            return list_usage_page(
-                db,
-                start_time=start_time,
-                end_time=end_time,
-                user_id=user_id,
-                model_name=model_name,
-                device_id=device_id,
-                page=page,
-                page_size=page_size,
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.get("/api/v1/devices", dependencies=[Depends(read_auth)])
-    def get_devices(db: Database = Depends(db_dep)) -> dict:
-        devices = list_devices(db)
-        return {"devices": devices, "total": len(devices)}
 
     frontend_dir: Path = settings.frontend_dir
     # Release images ship the built dashboard in frontend/app. A source checkout

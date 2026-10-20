@@ -15,12 +15,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .models import MAX_INT
-from .services import iso_to_utc
+from .constants import MAX_INT
+from .time_utils import iso_to_utc
 
 MIN_TIMESTAMP = datetime(2000, 1, 1, tzinfo=timezone.utc)
 MAX_COST = 1e12
-# 与 models.MAX_FUTURE_SKEW（v1 记录，48 小时）不是同一个限额
 MAX_INGEST_FUTURE_SKEW = timedelta(hours=24)
 # 配额窗口 resetsAt 常为数天到数周后（周/月重置），不能套用 ingest 时钟的 24h 上限。
 MAX_RESET_SKEW = timedelta(days=400)

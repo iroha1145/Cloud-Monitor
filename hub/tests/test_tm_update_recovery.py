@@ -29,9 +29,9 @@ from hub import tm_update
 
 control = Path(sys.argv[1])
 settings = Settings(
-    api_key="a" * 32, access_token="b" * 32,
+    access_token="b" * 32,
     database_path=control / "unused.sqlite3", frontend_dir=control,
-    max_records_per_push=500, cm_update_dir=control,
+    cm_update_dir=control,
 )
 real_write = tm_update._atomic_write
 def publish_then_exit(path, data):

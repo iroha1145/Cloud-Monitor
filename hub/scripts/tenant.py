@@ -24,15 +24,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from hub.config import (  # noqa: E402
     ConfigError,
     TENANT_ID_RE,
-    parse_device_keys,
     parse_tenants,
     validate_secret,
 )
 
 
 ENV_KEYS = {
-    "API_KEY", "ACCESS_TOKEN", "TOKEN_MONITOR_SECRET", "DEVICE_KEYS_JSON",
-    "ALLOW_SHARED_TOKEN", "TENANTS_JSON",
+    "ACCESS_TOKEN", "TOKEN_MONITOR_SECRET", "TENANTS_JSON",
 }
 ASSIGNMENT = re.compile(r"^(\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*)(.*)$")
 
@@ -161,24 +159,11 @@ class EnvFile:
 
     def validate(self) -> dict[str, str]:
         tenants = parse_tenants(json.dumps(self.tenants))
-        api_key = self.values.get("API_KEY", "").strip()
         access_token = self.values.get("ACCESS_TOKEN", "").strip()
-        shared = self.values.get("ALLOW_SHARED_TOKEN", "").strip().lower() in ("1", "true", "yes", "on")
-        validate_secret("API_KEY", api_key)
-        if not access_token and shared:
-            access_token = api_key
-        validate_secret("ACCESS_TOKEN", access_token)
-        keys = {"API_KEY": api_key}
-        if access_token != api_key or not shared:
-            keys["ACCESS_TOKEN"] = access_token
+        keys = {"ACCESS_TOKEN": access_token}
         tm_secret = self.values.get("TOKEN_MONITOR_SECRET", "").strip()
         if tm_secret:
             keys["TOKEN_MONITOR_SECRET"] = tm_secret
-        raw_devices = self.values.get("DEVICE_KEYS_JSON", "")
-        if raw_devices:
-            json.loads(raw_devices, object_pairs_hook=unique_object)
-        for device, key in parse_device_keys(raw_devices).items():
-            keys[f"DEVICE_KEYS_JSON[{device}]"] = key
         for tenant_id, tenant in tenants.items():
             keys[f"TENANTS_JSON[{tenant_id}].tm_secret"] = tenant.tm_secret
             keys[f"TENANTS_JSON[{tenant_id}].access_token"] = tenant.access_token

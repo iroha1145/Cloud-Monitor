@@ -19,7 +19,7 @@ spec = importlib.util.spec_from_file_location("tenant_cli", SCRIPT)
 tenant = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tenant)
 
-API_KEY, ACCESS_KEY, TM_KEY, DEVICE_KEY = (character * 64 for character in "abcd")
+ACCESS_KEY, TM_KEY = (character * 64 for character in "bc")
 
 
 def entry(tm="e" * 64, access="f" * 64, **extra):
@@ -33,10 +33,8 @@ def env_file(tmp_path):
     path = directory / ".env"
     path.write_bytes((
         '# existing settings and comments stay byte-for-byte\r\n'
-        f'API_KEY={API_KEY}\r\n'
         f"export ACCESS_TOKEN='{ACCESS_KEY}' # owner key\r\n"
         f'TOKEN_MONITOR_SECRET={TM_KEY}\r\n'
-        f'DEVICE_KEYS_JSON={{"device-one":"{DEVICE_KEY}"}}\r\n'
         'OTHER_SETTING="${KEEP_THIS}"\r\n'
         '# tenant credentials\r\n'
         'TENANTS_JSON= # keep this comment\r\n'
@@ -71,7 +69,7 @@ def test_add_list_show_rotate_remove_keep_other_settings_and_data(env_file):
     assert alice["role"] == "user"
     keys = [alice[name] for name in ("tm_secret", "access_token")]
     assert all(re.fullmatch("[0-9a-f]{64}", value) for value in keys)
-    assert len(set(keys + [API_KEY, ACCESS_KEY, TM_KEY, DEVICE_KEY])) == 6
+    assert len(set(keys + [ACCESS_KEY, TM_KEY])) == 4
     assert all(value in added.stdout for value in keys)
     assert "docker compose up -d --force-recreate" in added.stdout
     written = env_file.read_bytes()
@@ -83,7 +81,7 @@ def test_add_list_show_rotate_remove_keep_other_settings_and_data(env_file):
     listed = run_cli(env_file, "list")
     assert listed.returncode == 0, listed.stderr
     assert listed.stdout.strip() == "alice\tuser"
-    assert not any(value in listed.stdout for value in keys + [API_KEY, ACCESS_KEY, TM_KEY])
+    assert not any(value in listed.stdout for value in keys + [ACCESS_KEY, TM_KEY])
     shown = run_cli(env_file, "show", "alice")
     assert shown.returncode == 0 and all(value in shown.stdout for value in keys)
     assert env_file.read_bytes() == written
@@ -135,8 +133,8 @@ def test_json_apostrophes_and_dollars_stay_literal_in_compose_single_quotes(env_
     '{"alice":' + json.dumps(entry()) + ',"alice":' + json.dumps(entry()) + '}',
     json.dumps({"alice": entry(), " alice ": entry("1" * 64, "2" * 64)}),
     json.dumps({"alice": entry(role="owner")}),
-    json.dumps({"alice": entry(access=API_KEY)}),
-    json.dumps({"alice": entry(tm=DEVICE_KEY)}),
+    json.dumps({"alice": entry(access=ACCESS_KEY)}),
+    json.dumps({"alice": entry(tm=TM_KEY)}),
     json.dumps({"alice": entry(tm="too-short")}),
     '{"alice":',
     '[]',
@@ -148,7 +146,7 @@ def test_invalid_or_conflicting_config_is_never_rewritten(env_file, raw):
     assert result.returncode == 1 and result.stderr.startswith("错误：")
     assert env_file.read_bytes() == before
     assert not list(env_file.parent.glob(".tenant-env-*"))
-    assert not any(key in result.stderr for key in (API_KEY, ACCESS_KEY, TM_KEY, DEVICE_KEY))
+    assert not any(key in result.stderr for key in (ACCESS_KEY, TM_KEY))
 
 
 @pytest.mark.parametrize("command,args", [
@@ -176,7 +174,7 @@ def test_duplicate_env_assignment_and_duplicate_add_are_rejected(env_file):
 def test_generation_retries_all_global_collisions(env_file, monkeypatch):
     set_tenants(env_file, json.dumps({"bob": entry()}))
     config = tenant.EnvFile(env_file)
-    sequence = iter([API_KEY, DEVICE_KEY, "e" * 64, "1" * 64, "1" * 64, "2" * 64])
+    sequence = iter([ACCESS_KEY, TM_KEY, "e" * 64, "1" * 64, "1" * 64, "2" * 64])
     monkeypatch.setattr(tenant.secrets, "token_hex", lambda count: next(sequence))
     assert config.new_keys() == {"tm_secret": "1" * 64, "access_token": "2" * 64}
 

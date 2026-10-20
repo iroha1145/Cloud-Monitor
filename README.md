@@ -6,18 +6,15 @@
 
 官方 hub 按固定提交 `cbed591`（v0.74.0）原样放进 tm-core 容器，协议行为跟官方一致。前面是 Python 网关：鉴权、校验、1MiB 实测限流，并把快照写入 SQLite。官方 `devices.json` 只留每台设备最新状态，没有历史点；长期趋势和日归档是我们自己补的。
 
-另有一条 [OpenWebUI-Monitor](https://github.com/iroha1145/OpenWebUI-Monitor) 记录同步（纯 API，没有独立页面）。两条链路密钥分开，互碰不到。
-
 ```
 ┌───────────── 本机 ─────────────┐      ┌────────── 云端（docker compose）──────────┐
 │ token-monitor widget           │ 原生  │ ┌────────────────────────────────────┐   │
-│  hub = 服务器                  │──────►│ │ tm-core（官方 hub @ac4eeb2，未改） │   │
+│  hub = 服务器                  │──────►│ │ tm-core（官方 hub @cbed591，未改） │   │
 │  密钥 = TOKEN_MONITOR_SECRET   │ 协议  │ │ 规范化 / 合并 / 聚合 / 过期 / SSE  │   │
 │  widget：实时 / 10 / 20 / 30 分 │      │ │ devices.json（官方原生持久化）     │   │
 │  headless agent 默认 5 分钟     │      │ └──────────────△─────────────────────┘   │
 └────────────────────────────────┘      │ Python 网关：鉴权 + 校验 + 1MiB 限流      │
                                         │ SQLite 5 分钟桶 + 用量面板                │
-                                        │ OpenWebUI 记录链路（另一套密钥）          │
                                         └──────────────────────────────────────────┘
 ```
 
@@ -45,6 +42,8 @@
 curl -fsSL https://raw.githubusercontent.com/iroha1145/Cloud-Monitor/main/install.sh | sudo bash -s -- --mode demo
 ```
 
+新安装会生成两把强随机密钥；再次运行保留已有面板密钥、同步密钥和租户配置。已有同步密钥留空时保持停用。升级保留已有数据库和历史表，不进行数据删除。
+
 再跑一次同一脚本，改 `--mode live`（或在服务器上交互选「实机」），就会关掉演示，改用 `ACCESS_TOKEN` 登录。
 
 已经克隆过仓库：
@@ -61,9 +60,9 @@ sudo ./install.sh --mode live
 git clone https://github.com/iroha1145/Cloud-Monitor.git
 cd Cloud-Monitor/hub
 cp .env.example .env
-# 三个互不相同、各不少于 32 个随机字符的密钥：
-#   API_KEY / ACCESS_TOKEN（OpenWebUI 链路）
-#   TOKEN_MONITOR_SECRET（token-monitor 链路）
+# 两个互不相同、各不少于 32 个随机字符的密钥：
+#   ACCESS_TOKEN（面板登录）
+#   TOKEN_MONITOR_SECRET（Token Monitor 同步；留空停用）
 # 演示预览设 CM_DEMO=true，实机保持 false
 docker compose up -d --build
 curl http://127.0.0.1:7878/api/health
@@ -129,7 +128,7 @@ Cursor 的 Auto/default 模型按官方规则归并到 cursor-auto，同时保�
 
 网关多出来的是防护和面板用的数据：
 
-- `TOKEN_MONITOR_SECRET` 与 OpenWebUI 链路密钥隔离（TM 密钥写不了记录，反过来也不行）
+- `TOKEN_MONITOR_SECRET` 用于同步，`ACCESS_TOKEN` 用于面板登录；两把密钥必须不同
 - 转发前校验：负数、bool、NaN、Infinity、超 64 位、非法 IANA 时区、原型污染键、数量超限、过度未来时间一律 400。官方只卡 1MiB 体积
 - ASGI receive 层按实际字节限 1MiB（分块、没有或伪造 Content-Length 也算）
 - SQLite 5 分钟桶时间序列，以及上面的 `/api/v1/tm/*` 接口
@@ -148,32 +147,16 @@ Cursor 的 Auto/default 模型按官方规则归并到 cursor-auto，同时保�
 - **隐私：** `devices.json` 可能带 limits 里的账户邮箱、计划名、订阅金额（官方字段，在 TM 密钥后面）。SQLite 快照只存 token / 成本聚合和客户端、模型名，不含账户身份。面板用 `ACCESS_TOKEN`
 - **备份：** `hub/scripts/backup.sh <目录>` 备份 `tm-core-data`（devices.json）和 `cloud-hub-data`（SQLite），包含主用户及所有已落盘的租户，SQLite 使用在线一致性备份。恢复用 `hub/scripts/restore.sh <备份目录>`；恢复会短暂停止整套服务。旧版单用户备份仍可恢复，且不会删除现有租户数据。密钥配置 `hub/.env` 需另外安全保存，业务数据备份不包含密钥
 
-## OpenWebUI-Monitor 记录同步
-
-这是第二条链路，跟上面的 token-monitor 主路径无关。
-
-```bash
-cd Cloud-Monitor/agent
-cp .env.example .env
-# LOCAL_MONITOR_URL / LOCAL_API_KEY   本地 monitor 与只读密钥
-# CLOUD_HUB_URL / CLOUD_API_KEY       云端地址（公网必须 HTTPS）与写入密钥
-docker compose up -d --build
-```
-
-本地 monitor 需要 `/api/v1/sync/meta` 和 `/api/v1/sync/records` 游标接口（本地仓库已含提交 `19134c7`，或打 `docs/patches/openwebui-monitor-sync-api.patch`）。旧版会退回时间窗口模式。agent 还有一个可选的反向桥接，把 OpenWebUI 用量摘要以 `openwebui:<device>` 身份推给任意 token-monitor hub，细节见 `docs/ARCHITECTURE.md`。走上面主路径时不需要它。
-
 ## 环境变量（hub）
 
 | 变量 | 说明 | 默认 |
 |---|---|---|
-| `API_KEY` | 记录写入密钥（弱值拒绝启动） | — |
-| `ACCESS_TOKEN` | 只读密钥（面板 / 查询），须与 API_KEY 不同 | — |
+| `ACCESS_TOKEN` | 面板访问密钥，须与同步密钥不同 | — |
 | `TOKEN_MONITOR_SECRET` | token-monitor 接入密钥（空 = 停用） | 空 |
 | `TOKEN_MONITOR_SYNC_SESSION_TITLES` | `true` 时允许同步会话标题（透传给 tm-core） | `false` |
+| `TENANTS_JSON` | 多用户配置，每人独立同步与访问密钥 | 空 |
 | `CM_DEMO` | `true` 时 `/` 直接进演示面板 | `false` |
-| `DEVICE_KEYS_JSON` | 每设备写密钥（记录链路） | 空 |
 | `CORS_ORIGINS` / `DOCS_ENABLED` | 默认都关 | 关 |
-| `MAX_RECORDS_PER_PUSH` | 记录单批上限 | `500` |
 | `DASHBOARD_TIME_ZONE` | 未提供客户端时区时的面板回退时区 | `Asia/Tokyo` |
 | `PROVIDER_STATUS_ENABLED` | 官方状态页 | `true` |
 | `PROVIDER_STATUS_CACHE_SECONDS` | 状态页缓存 TTL（SWR） | `300` |
@@ -183,7 +166,6 @@ docker compose up -d --build
 | `GITHUB_TOKEN` | 可选，提高 GitHub API 限额 | 空 |
 | `CM_UPDATE_DIR` | 容器内更新请求目录（需挂载到宿主机） | `/update` |
 
-agent 变量见 `agent/.env.example`。
 
 ## 在线更新
 
@@ -202,7 +184,7 @@ agent 变量见 `agent/.env.example`。
 
 所有人使用同一个 HTTPS 地址，由不同密钥区分用户。每人有独立的设备、订阅、同步设置、历史数据库和缓存；主用户与朋友的数据也分开保存。整套服务共用 Python 和 Node 两个容器，更新或重启会一起影响所有人。
 
-先通过安装脚本配置主实例及其三把密钥，再在项目根目录创建朋友：
+先通过安装脚本配置主实例及其两把密钥，再在项目根目录创建朋友：
 
 ```bash
 sudo python3 hub/scripts/tenant.py add alice
@@ -229,7 +211,7 @@ sudo python3 hub/scripts/tenant.py remove alice  # 撤销配置，保留历史�
 
 朋友默认是 `role=user`，可以维护自己的数据，不能触发或取消服务器更新。主人使用主实例的 `ACCESS_TOKEN`，在网页更新 `main` 后，两个容器统一更新，所有用户继续使用原地址、密钥和数据。此功能需要通过 `install.sh` 配置宿主机更新监视器。
 
-也可以直接在 `hub/.env` 配置 `TENANTS_JSON`，格式见 `.env.example`。独立存储位于两个数据卷的 `tenants/<用户>/`，不是独立容器隔离；所有业务数据统一纳入上述备份和恢复流程。当前多用户功能覆盖 Token Monitor，OpenWebUI 记录同步仍使用主实例原有密钥。
+也可以直接在 `hub/.env` 配置 `TENANTS_JSON`，格式见 `.env.example`。独立存储位于两个数据卷的 `tenants/<用户>/`，不是独立容器隔离；所有业务数据统一纳入上述备份和恢复流程。
 
 ## 界面开发
 
@@ -239,11 +221,10 @@ sudo python3 hub/scripts/tenant.py remove alice  # 撤销配置，保留历史�
 
 ## 测试
 
-Python ≥ 3.9 即可（macOS 自带的 3.9 也行；镜像和 CI 用 3.12）。两套测试目录的 conftest 模块名相同，要分开跑，不要合成一条 pytest：
+Python ≥ 3.9 即可（macOS 自带的 3.9 也行；镜像和 CI 用 3.12）：
 
 ```bash
 cd hub   && PYTHONPATH=backend python -m pytest tests/ -q
-cd agent && python -m pytest tests/ -q
 ```
 
 hub 测试覆盖 provider-status（Mock 网络）、history/daily SQL 分页、100×370 查询计划、activity 覆盖率、乱序快照压缩，以及前端契约 fixture 导出。

@@ -63,8 +63,8 @@ Reviewed frontend source: `cloud-monitor-frontend(1).zip` supplied on 2026-08-23
 
 Evidence is in `evidence/review-regression-results.json` and the two screenshots.
 
-## Verification required after applying to the repository
+## Verification
 
-`apply_to_repo.sh` runs the complete backend and agent pytest suites available in
-the repository. The Playwright suite requires npm packages and Chromium; GitHub
-Actions installs these and runs it through `frontend-tests.yml`.
+Run the backend suite with `cd hub && PYTHONPATH=backend python -m pytest tests/ -q`.
+The browser suite requires npm packages and Chromium; GitHub Actions installs
+these and runs it through `frontend-tests.yml`.

@@ -367,13 +367,8 @@ def test_ensure_schema_adds_migrated_columns_before_new_index(tmp_path):
         db.close()
 
 
-def test_compose_and_scripts_pass_reset_cursor_and_runtime_mode():
+def test_update_scripts_keep_shared_runtime_permissions():
     root = Path(__file__).resolve().parents[2]
-    compose = (root / "agent" / "docker-compose.yml").read_text(encoding="utf-8")
-    assert "RESET_CURSOR: ${RESET_CURSOR:-false}" in compose
-    example = (root / "agent" / ".env.example").read_text(encoding="utf-8")
-    assert "RESET_CURSOR=false" in example
-    assert "改回 false" in example or "关闭" in example
     install = (root / "install.sh").read_text(encoding="utf-8")
     update = (root / "hub" / "scripts" / "self-update.sh").read_text(encoding="utf-8")
     assert 'install -d -o root -g 999 -m 0750' in install

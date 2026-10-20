@@ -10,7 +10,6 @@ import httpx
 import pytest
 
 from conftest import (
-    API_KEY,
     READ_KEY,
     TM_SECRET,
     limits_only_payload,
@@ -343,9 +342,8 @@ def raw_app(tmp_path):
     from hub.main import create_app
 
     settings = Settings(
-        api_key=API_KEY, access_token=READ_KEY,
+        access_token=READ_KEY,
         database_path=tmp_path / "h.sqlite3", frontend_dir=tmp_path,
-        max_records_per_push=500,
     )
     return create_app(settings)
 
@@ -380,9 +378,9 @@ def test_body_limit_exact_boundary_accepted(raw_app, node_hub_free=None):
         from hub.main import create_app
 
         settings = Settings(
-            api_key=API_KEY, access_token=READ_KEY,
+            access_token=READ_KEY,
             database_path=tmp / "h2.sqlite3", frontend_dir=tmp,
-            max_records_per_push=500, tm_ingest_secret=TM_SECRET, tm_core_url=hub.url,
+            tm_ingest_secret=TM_SECRET, tm_core_url=hub.url,
         )
         app = create_app(settings)
         prefix = json.dumps({"deviceId": "edge", "today": {"totalTokens": 1}})[:-1] + ","
@@ -546,14 +544,14 @@ def test_overview_shape_and_key_isolation(cloud):
     assert overview["devices"][0]["stale"] is False
     assert overview["trend"]
 
-    # TM 密钥不能访问 OpenWebUI 链路，ACCESS_TOKEN 不能访问 TM 端点
-    assert cloud.get("/api/v1/records", headers=HEADERS).status_code == 401
+    # ACCESS_TOKEN cannot authenticate to Token Monitor ingest endpoints.
+    assert cloud.get("/api/v1/records", headers=HEADERS).status_code == 404
     assert cloud.get("/api/stats", headers=READ).status_code == 401
-    # OpenWebUI 管理写接口也不接受 TM 密钥
+    # Removed record-sync endpoint is absent even with a valid TM credential.
     assert cloud.post(
         "/api/v1/sync/push", headers=HEADERS,
         json={"device": {"id": "x"}, "records": []},
-    ).status_code == 401
+    ).status_code == 404
 
 
 @requires_node
