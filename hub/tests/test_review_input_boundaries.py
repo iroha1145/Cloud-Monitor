@@ -8,6 +8,40 @@ from hub.config import Settings
 from hub.main import create_app
 
 
+def test_validation_error_does_not_reflect_submitted_input(tmp_path):
+    settings = Settings(
+        access_token="b" * 32,
+        database_path=tmp_path / "validation.sqlite3",
+        frontend_dir=tmp_path / "frontend",
+        tm_background_enabled=False,
+    )
+    marker = "private-note-not-for-error-output"
+    with TestClient(create_app(settings), raise_server_exceptions=False) as client:
+        response = client.get("/api/v1/tm/history/daily", params={"limit": marker},
+                              headers={"Authorization": "Bearer " + "b" * 32})
+    assert response.status_code == 400
+    error = response.json()
+    assert error["error"] == "请求体校验失败"
+    assert error["details"][0]["loc"] == ["query", "limit"]
+    assert set(error["details"][0]) == {"type", "loc", "msg"}
+    assert marker not in response.text
+
+
+EXTREME_DATES = ["0001-01-01T00:00:00+14:00", "9999-12-31T23:59:59-12:00"]
+
+
+@pytest.mark.parametrize("stamp", EXTREME_DATES)
+def test_timezone_conversion_overflow_is_rejected(stamp):
+    from hub.time_utils import iso_to_utc
+    from hub.tm_validate import PayloadValidationError, validate_ingest_payload
+
+    with pytest.raises(OverflowError):
+        iso_to_utc(stamp)
+    with pytest.raises(PayloadValidationError) as caught:
+        validate_ingest_payload({"deviceId": "dev", "extra": {"items": [{"lastUsedAt": stamp}]}})
+    assert str(caught.value) == f"$.extra.items[0].lastUsedAt: 非法时间戳 {stamp!r}"
+
+
 def _deep_json() -> bytes:
     # About 20 KB: below the ingest byte limit but beyond the JSON recursion limit.
     return (b"[" * 10000) + (b"]" * 10000)
