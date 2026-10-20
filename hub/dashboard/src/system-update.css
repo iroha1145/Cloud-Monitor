@@ -165,8 +165,14 @@
 .system-update-job > .system-update-button {
   margin-top: 12px;
 }
+.system-update-job-error {
+  border-left: 3px solid var(--red);
+}
 .system-update-job-error > strong {
   color: var(--red);
+}
+.system-update-job-ok {
+  border-left: 3px solid var(--green);
 }
 .system-update-job-ok > strong {
   color: var(--green);

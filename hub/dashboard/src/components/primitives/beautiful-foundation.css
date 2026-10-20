@@ -182,7 +182,7 @@ body {
   color: var(--ink);
   font-feature-settings: "cv11", "ss01";
   font-size: 14px;
-  letter-spacing: -0.01em;
+  letter-spacing: normal;
   line-height: 1.5;
 }
 
@@ -242,10 +242,8 @@ a {
   outline-offset: 2px;
 }
 
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible,
-[contenteditable]:focus-visible {
+.search-field input:focus-visible,
+.sv-search input:focus-visible {
   outline: none;
 }
 

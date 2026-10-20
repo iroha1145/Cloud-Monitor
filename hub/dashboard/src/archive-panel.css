@@ -65,7 +65,8 @@
 .archive-context {
   margin: 18px 0 14px;
   padding: 12px 14px;
-  border-radius: 7px;
+  border-left: 3px solid var(--primary);
+  border-radius: var(--r-well);
   background: var(--inset);
   overflow-wrap: anywhere;
 }
@@ -76,7 +77,7 @@
   color: var(--orange);
 }
 .archive-day {
-  border-bottom: 1px solid var(--line);
+  border-bottom: 0;
 }
 .archive-columns,
 .archive-day summary {
@@ -214,7 +215,11 @@
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 12px 0;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--red);
+  border-radius: 0 var(--r-xs) var(--r-xs) 0;
+  background: var(--red-tint);
   color: var(--red);
   font-size: 12px;
 }

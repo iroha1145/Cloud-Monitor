@@ -95,22 +95,31 @@
   gap: 10px;
   margin-top: 32px;
 }
+/* TypeUI proximity: label sits closer to its input (6px) than the submit
+   action below (16px). */
 .access-card label {
-  font-size: 13px;
+  margin-bottom: -4px;
+  font-size: var(--fs-body);
   font-weight: 500;
 }
+/* TypeUI input-contrast & recognizable-buttons: field surface != parent
+   surface, and desktop input + primary dark button share a 40px height. */
 .access-card input {
   min-width: 0;
-  height: 46px;
+  height: var(--control-h);
   padding: 0 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-md);
-  background: var(--surface);
+  border: 1px solid var(--field-border);
+  border-radius: var(--r-control);
+  background: var(--field);
   color: var(--ink);
   font-size: 16px;
+  transition:
+    background var(--duration-quick) var(--ease-smooth-out),
+    border-color var(--duration-quick) var(--ease-smooth-out);
 }
 .access-card input:focus-visible {
   outline: none;
+  background: var(--surface);
   border-color: var(--primary);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
 }
@@ -119,10 +128,10 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  min-height: 46px;
+  min-height: var(--control-h);
   margin-top: 6px;
   border: 0;
-  border-radius: var(--r-md);
+  border-radius: var(--r-control);
   background: var(--ink);
   color: var(--surface);
   font: inherit;
@@ -130,8 +139,12 @@
   font-weight: 500;
   cursor: pointer;
   transition:
+    background-color var(--duration-quick) var(--ease-smooth-out),
     opacity var(--duration-quick) var(--ease-smooth-out),
     transform var(--duration-quick) var(--ease-smooth-out);
+}
+.access-card button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 88%, var(--surface));
 }
 .access-card button:active:not(:disabled) {
   transform: scale(0.98);
@@ -178,6 +191,11 @@
     align-self: start;
     padding: max(48px, 10vh) 22px 32px;
   }
+  .access-card input,
+  .access-card button {
+    min-height: 44px;
+    height: 44px;
+  }
 }
 
 /* ── Workspace notices: the original transparent, collapsed style ──── */
@@ -187,16 +205,16 @@
   border: 0;
   background: transparent;
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--fs-body);
 }
 .workspace-notices summary {
   display: flex;
   align-items: center;
   gap: 8px;
   width: fit-content;
-  min-height: 28px;
+  min-height: 36px;
   color: var(--ink-2);
-  line-height: 28px;
+  line-height: 1.5;
   list-style: none;
   cursor: pointer;
   transition: color var(--duration-quick) var(--ease-smooth-out);
@@ -224,8 +242,10 @@
   rotate: 90deg;
 }
 .workspace-notices ul {
+  max-width: 68ch;
   margin: 8px 0 0;
-  padding-left: 18px;
+  padding: 4px 0 4px 20px;
+  border-left: 3px solid var(--primary);
   line-height: 1.8;
 }
 .workspace-notices ul li + li {

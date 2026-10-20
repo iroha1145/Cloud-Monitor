@@ -263,7 +263,7 @@ export function Stats({
             <span className="ledger-denominator">/ {data.devices.length}</span>
           </strong>
           <span className="ledger-note">
-            <i className={online ? "status-dot" : "status-dot muted"} />
+            <i className={online ? "status-dot" : "status-dot muted"} aria-hidden="true" />
             {online ? "设备正在同步" : "暂无在线设备"}
           </span>
         </article>
@@ -576,6 +576,18 @@ export function ModelTable({
             <Search size={22} />
             <strong>没有找到匹配的模型</strong>
             <span>请尝试其他关键词或筛选条件。</span>
+            {(query || provider !== "all") && (
+              <button
+                type="button"
+                className="plain-button"
+                onClick={() => {
+                  setQuery("");
+                  setProvider("all");
+                }}
+              >
+                清除筛选
+              </button>
+            )}
           </div>
         ) : (
           <div className="empty-inline">
@@ -730,6 +742,7 @@ export function Overview({
             <span className={`provider-state ${p.status}`}>
               <i
                 className={`status-dot ${p.status === "operational" ? "" : p.status === "unknown" ? "muted" : "amber"}`}
+                aria-hidden="true"
               />
               {p.stale
                 ? "上次状态"

@@ -64,7 +64,7 @@ export class AppErrorBoundary extends Component<
     return (
       <div className="page-loading" role="alert">
         <p>{this.props.title || "页面已更新，请刷新后继续。"}</p>
-        <button type="button" onClick={() => location.reload()}>
+        <button type="button" className="plain-button" onClick={() => location.reload()}>
           刷新页面
         </button>
       </div>
@@ -88,10 +88,10 @@ export function DialogErrorNotice({ title, onDismiss }: { title?: string; onDism
       }}
     >
       <p>{title || "对话框未能打开，请重试或刷新页面。"}</p>
-      <button type="button" onClick={() => location.reload()}>
+      <button type="button" className="plain-button" onClick={() => location.reload()}>
         刷新页面
       </button>
-      {onDismiss && <button type="button" onClick={onDismiss}>关闭提示</button>}
+      {onDismiss && <button type="button" className="plain-button" onClick={onDismiss}>关闭提示</button>}
     </div>
   );
 }
