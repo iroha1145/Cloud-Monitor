@@ -14,7 +14,7 @@ import pytest
 from conftest import (
     READ_KEY,
     TM_SECRET,
-    API_KEY,
+    UNREGISTERED_KEY,
     make_cloud_app,
     requires_node,
     widget_style_payload,
@@ -585,7 +585,7 @@ def test_endpoint_auth_and_secret_isolation(cloud):
     ).status_code == 401
     assert cloud.get(
         "/api/v1/tm/provider-status",
-        headers={"Authorization": f"Bearer {API_KEY}"},
+        headers={"Authorization": f"Bearer {UNREGISTERED_KEY}"},
     ).status_code == 401
 
 
@@ -687,11 +687,9 @@ def test_overview_not_blocked_by_hanging_status_pages(cloud):
 
 def test_tm_disabled_404(tmp_path):
     settings = Settings(
-        api_key=API_KEY,
         access_token=READ_KEY,
         database_path=tmp_path / "x.db",
         frontend_dir=tmp_path,
-        max_records_per_push=500,
         tm_ingest_secret="",
     )
     app = create_app(settings)
@@ -704,11 +702,9 @@ def test_tm_disabled_404(tmp_path):
 
 def test_provider_status_disabled_flag(tmp_path):
     settings = Settings(
-        api_key=API_KEY,
         access_token=READ_KEY,
         database_path=tmp_path / "x.db",
         frontend_dir=tmp_path,
-        max_records_per_push=500,
         tm_ingest_secret=TM_SECRET,
         tm_core_url="http://127.0.0.1:9",
         provider_status_enabled=False,

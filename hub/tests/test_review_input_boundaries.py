@@ -8,127 +8,63 @@ from hub.config import Settings
 from hub.main import create_app
 
 
-@pytest.fixture
-def client(tmp_path):
+def test_validation_error_does_not_reflect_submitted_input(tmp_path):
     settings = Settings(
-        api_key="a" * 32, access_token="b" * 32,
-        database_path=tmp_path / "boundaries.sqlite3",
-        frontend_dir=tmp_path / "frontend", max_records_per_push=500,
+        access_token="b" * 32,
+        database_path=tmp_path / "validation.sqlite3",
+        frontend_dir=tmp_path / "frontend",
         tm_background_enabled=False,
     )
-    with TestClient(create_app(settings), raise_server_exceptions=False) as instance:
-        yield instance
-
-
-@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity", "1e9999"])
-def test_nonfinite_validation_input_returns_json_400(client, value):
-    body = ('{"device":{"id":"dev"},"records":[{"local_id":1,"user_id":"u",'
-            '"input_tokens":' + value + ',"created_at":"2026-08-01T00:00:00Z"}]}')
-    response = client.post("/api/v1/sync/push", content=body, headers={
-        "Authorization": "Bearer " + "a" * 32, "Content-Type": "application/json",
-    })
+    marker = "private-note-not-for-error-output"
+    with TestClient(create_app(settings), raise_server_exceptions=False) as client:
+        response = client.get("/api/v1/tm/history/daily", params={"limit": marker},
+                              headers={"Authorization": "Bearer " + "b" * 32})
     assert response.status_code == 400
     error = response.json()
     assert error["error"] == "请求体校验失败"
-    assert error["details"][0]["loc"] == ["body", "records", 0, "input_tokens"]
+    assert error["details"][0]["loc"] == ["query", "limit"]
     assert set(error["details"][0]) == {"type", "loc", "msg"}
-    assert client.app.state.db.fetchone("SELECT COUNT(*) AS n FROM devices")["n"] == 0
-    assert client.get("/api/v1/health/live").status_code == 200
-
-
-def test_nested_invalid_input_is_not_reflected_in_error_response(client):
-    response = client.post("/api/v1/sync/push", json={
-        "device": {"id": "dev"}, "records": [{
-            "local_id": 1, "user_id": "u", "created_at": "2026-08-01T00:00:00Z",
-            "input_tokens": {"private-note": "not-for-error-output"},
-        }],
-    }, headers={"Authorization": "Bearer " + "a" * 32})
-    assert response.status_code == 400
-    assert "not-for-error-output" not in response.text
-    assert response.json()["details"][0]["type"] == "int_type"
+    assert marker not in response.text
 
 
 EXTREME_DATES = ["0001-01-01T00:00:00+14:00", "9999-12-31T23:59:59-12:00"]
 
 
 @pytest.mark.parametrize("stamp", EXTREME_DATES)
-def test_sync_rejects_timezone_conversion_overflow(client, stamp):
-    response = client.post("/api/v1/sync/push", json={
-        "device": {"id": "dev"},
-        "records": [{"local_id": 1, "user_id": "u", "created_at": stamp}],
-    }, headers={"Authorization": "Bearer " + "a" * 32})
-    assert response.status_code == 400
-    assert response.json()["details"][0]["loc"] == ["body", "records", 0, "created_at"]
-    assert client.app.state.db.fetchone("SELECT COUNT(*) AS n FROM devices")["n"] == 0
+def test_timezone_conversion_overflow_is_rejected(stamp):
+    from hub.time_utils import iso_to_utc
+    from hub.tm_validate import PayloadValidationError, validate_ingest_payload
 
-
-@pytest.mark.parametrize("stamp", EXTREME_DATES)
-@pytest.mark.parametrize("endpoint", ["usage", "users", "records"])
-def test_read_filters_reject_timezone_conversion_overflow(client, stamp, endpoint):
-    response = client.get("/api/v1/" + endpoint, params={"start_time": stamp},
-                          headers={"Authorization": "Bearer " + "b" * 32})
-    assert response.status_code == 400
-    assert isinstance(response.json()["error"], str)
+    with pytest.raises(OverflowError):
+        iso_to_utc(stamp)
+    with pytest.raises(PayloadValidationError) as caught:
+        validate_ingest_payload({"deviceId": "dev", "extra": {"items": [{"lastUsedAt": stamp}]}})
+    assert str(caught.value) == f"$.extra.items[0].lastUsedAt: 非法时间戳 {stamp!r}"
 
 
 def _deep_json() -> bytes:
-    # 约 20KB，低于同步与 ingest 的正文上限，但超过 json.loads 递归深度。
+    # About 20 KB: below the ingest byte limit but beyond the JSON recursion limit.
     return (b"[" * 10000) + (b"]" * 10000)
 
 
 def test_deeply_nested_json_stays_client_error(tmp_path):
     settings = Settings(
-        api_key="a" * 32, access_token="b" * 32,
+        access_token="b" * 32,
         database_path=tmp_path / "nested.sqlite3",
-        frontend_dir=tmp_path / "frontend", max_records_per_push=500,
+        frontend_dir=tmp_path / "frontend",
         tm_background_enabled=False,
         tm_ingest_secret="c" * 32,
         tm_core_url="http://127.0.0.1:9",
     )
     body = _deep_json()
     with TestClient(create_app(settings), raise_server_exceptions=False) as client:
-        pushed = client.post("/api/v1/sync/push", content=body, headers={
-            "Authorization": "Bearer " + "a" * 32,
-            "Content-Type": "application/json",
-        })
         ingested = client.post("/api/ingest", content=body, headers={
             "X-Token-Monitor-Secret": "c" * 32,
             "Content-Type": "application/json",
         })
-        assert pushed.status_code == 400
-        assert pushed.json() == {"error": "请求体不是合法 JSON"}
         assert ingested.status_code == 400
         assert ingested.json() == {"error": "bad_request", "message": "invalid json"}
-        follow = client.post("/api/v1/sync/push", json={
-            "device": {"id": "dev"},
-            "records": [{"local_id": 1, "user_id": "u", "created_at": "2026-08-01T00:00:00Z"}],
-        }, headers={"Authorization": "Bearer " + "a" * 32})
-        assert follow.status_code == 200
         assert client.get("/api/v1/health/live").status_code == 200
-
-
-def test_valid_offset_timestamps_still_roundtrip(client):
-    response = client.post("/api/v1/sync/push", json={
-        "device": {"id": "dev"}, "records": [{
-            "local_id": 1, "user_id": "u", "input_tokens": 10,
-            "created_at": "2026-08-01T09:30:00+09:00",
-        }],
-    }, headers={"Authorization": "Bearer " + "a" * 32})
-    assert response.status_code == 200
-    response = client.get("/api/v1/records", params={
-        "start_time": "2026-08-01T09:30:00+09:00", "end_time": "2026-08-01T00:30:00Z",
-    }, headers={"Authorization": "Bearer " + "b" * 32})
-    assert response.status_code == 200
-    assert response.json()["total"] == 1
-    assert response.json()["records"][0]["created_at"] == "2026-08-01T00:30:00+00:00"
-
-
-def test_oversized_page_returns_empty_page_without_sqlite_integer_overflow(client):
-    response = client.get("/api/v1/records", params={"page": 2**63, "page_size": 200},
-                          headers={"Authorization": "Bearer " + "b" * 32})
-    assert response.status_code == 200
-    assert response.json()["records"] == []
-    assert response.json()["total"] == 0
 
 
 def _nest(depth: int) -> dict:

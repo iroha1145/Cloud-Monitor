@@ -17,7 +17,6 @@ import time
 import pytest
 
 from conftest import (
-    API_KEY,
     READ_KEY,
     TM_SECRET,
     _now_iso,
@@ -227,9 +226,9 @@ def test_health_disabled_returns_404_not_attributeerror(tmp_path):
     from fastapi.testclient import TestClient
 
     settings = Settings(
-        api_key=API_KEY, access_token=READ_KEY,
+        access_token=READ_KEY,
         database_path=tmp_path / "h.db", frontend_dir=tmp_path,
-        max_records_per_push=500, tm_ingest_secret="",
+        tm_ingest_secret="",
     )
     client = TestClient(create_app(settings))
     resp = client.get("/api/health")
@@ -631,42 +630,12 @@ def sync_app(tmp_path):
     from fastapi.testclient import TestClient
 
     settings = Settings(
-        api_key=API_KEY, access_token=READ_KEY,
+        access_token=READ_KEY,
         database_path=tmp_path / "h.db", frontend_dir=tmp_path,
-        max_records_per_push=500,
     )
     app = create_app(settings)
     with TestClient(app):
         yield app
-
-
-def test_sync_push_body_limit_chunked_no_content_length(sync_app):
-    pad = "a" * (1024 * 1024)
-    part = json.dumps({"device": {"id": "d"}, "pad": pad}).encode()
-    status, body = _asgi_call(sync_app, "/api/v1/sync/push", [part, part, part[:100]])
-    assert status == 413
-    assert b"payload_too_large" in body
-
-
-def test_sync_push_body_limit_forged_small_header(sync_app):
-    payload = b'{"device":{"id":"d"},"pad":"' + b"a" * (2 * 1024 * 1024 + 10) + b'"}'
-    status, _ = _asgi_call(
-        sync_app, "/api/v1/sync/push", [payload],
-        headers=[(b"content-length", b"10")],
-    )
-    assert status == 413
-
-
-def test_sync_push_body_limit_boundary_ok(sync_app):
-    prefix = b'{"device":{"id":"d"},"records":[],"pad":"'
-    quota = 2 * 1024 * 1024 - len(prefix) - 2
-    payload = prefix + b"a" * quota + b'"}'
-    assert len(payload) <= 2 * 1024 * 1024
-    status, body = _asgi_call(
-        sync_app, "/api/v1/sync/push", [payload[:1000], payload[1000:]],
-        headers=[(b"authorization", f"Bearer {API_KEY}".encode())],
-    )
-    assert status == 200, body[:200]
 
 
 def test_body_limit_all_write_paths_configured(sync_app):
@@ -683,7 +652,6 @@ def test_body_limit_all_write_paths_configured(sync_app):
         "/api/sync/content",
         "/api/sync/settings/modelAliases",
         "/api/sync/settings/customPricing",
-        "/api/v1/sync/push",
         "/api/v1/system/update",
     }
     assert found["/api/v1/system/update"] == 4096

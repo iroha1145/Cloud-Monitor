@@ -16,7 +16,6 @@ from conftest import make_settings
 from hub.body_limit import TmBodyLimitMiddleware
 from hub.db import Database
 from hub.main import create_app
-from hub.models import MAX_USERS_PER_PUSH
 from hub.tm_outbox import ensure_schema as ensure_outbox
 from hub.tm_overview import build_tm_overview_router
 from hub.tm_proxy import UpstreamUnavailable
@@ -308,21 +307,6 @@ def test_readiness_shortens_external_lock_wait_and_restores_normal_policy(tmp_pa
             blocker.close()
         assert db.fetchone("PRAGMA busy_timeout")["timeout"] == 30000
         assert client.get("/api/v1/health/ready").status_code == 200
-
-
-def test_user_limit_rejects_whole_push_without_partial_writes(tmp_path):
-    with TestClient(create_app(settings(tmp_path))) as client:
-        headers = {"Authorization": "Bearer " + "a" * 32}
-        body = {"device": {"id": "limited-device"},
-                "users": [{"id": str(n)} for n in range(MAX_USERS_PER_PUSH + 1)]}
-        response = client.post("/api/v1/sync/push", json=body, headers=headers)
-        assert response.status_code == 400
-        assert client.app.state.db.fetchone("SELECT COUNT(*) AS n FROM users")["n"] == 0
-        assert client.app.state.db.fetchone("SELECT COUNT(*) AS n FROM devices")["n"] == 0
-        body["users"].pop()
-        response = client.post("/api/v1/sync/push", json=body, headers=headers)
-        assert response.status_code == 200
-        assert response.json()["users_upserted"] == MAX_USERS_PER_PUSH
 
 
 def test_body_limit_disconnect_does_not_try_to_respond_or_invoke_app():

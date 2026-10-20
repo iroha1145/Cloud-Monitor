@@ -62,7 +62,7 @@ class Exercise:
         self.env = dict(os.environ)
         # Compose process variables take precedence over .env. Always exercise
         # this disposable installation's actual persisted configuration.
-        for key in ("API_KEY", "ACCESS_TOKEN", "TOKEN_MONITOR_SECRET", "TENANTS_JSON",
+        for key in ("ACCESS_TOKEN", "TOKEN_MONITOR_SECRET", "TENANTS_JSON",
                     "COMPOSE_PROJECT_NAME", "CM_VERSION", "CM_GIT_SHA"):
             self.env.pop(key, None)
 
@@ -169,9 +169,9 @@ class Exercise:
                                          "sync": self.initial_env["TOKEN_MONITOR_SECRET"]}}
         self.credentials.update({name: {"read": row["access_token"], "sync": row["tm_secret"]}
                                  for name, row in self.tenants.items()})
-        all_keys = [self.initial_env["API_KEY"], *(key for row in self.credentials.values() for key in row.values())]
+        all_keys = [key for row in self.credentials.values() for key in row.values()]
         self.secrets.update(all_keys)
-        require(len(set(all_keys)) == 7 and all(len(key) >= 32 for key in all_keys),
+        require(len(set(all_keys)) == 6 and all(len(key) >= 32 for key in all_keys),
                 "Root and tenant read/sync credentials must all be distinct and strong")
         self.ready()
         containers = self.containers()
@@ -247,8 +247,8 @@ class Exercise:
                                       ("/api/v1/system/update/cancel", None)):
                     status, _ = self.http(path, key=keys["read"], method="POST", payload=payload)
                     require(status == 403, f"{name}: ordinary tenant could control updates ({status})")
-        status, _ = self.http("/api/v1/tm/overview", key=self.initial_env["API_KEY"])
-        require(status == 401, "OpenWebUI API_KEY was accepted as a dashboard key")
+        status, _ = self.http("/api/v1/tm/overview", key=self.initial_env["TOKEN_MONITOR_SECRET"])
+        require(status == 401, "Token Monitor sync secret was accepted as a dashboard key")
         self.report["checks"].append("read/sync separation and ordinary-user update permissions")
 
     def assert_node_boundary(self) -> None:
@@ -300,7 +300,7 @@ const tenants = JSON.parse(process.env.TENANTS_JSON);
             require(values["TOKEN_MONITOR_SECRET"] == self.initial_env["TOKEN_MONITOR_SECRET"],
                     f"{service}: root sync credential changed")
             if service == "cloud-hub":
-                require(all(values.get(key) == self.initial_env[key] for key in ("API_KEY", "ACCESS_TOKEN")),
+                require(all(values.get(key) == self.initial_env[key] for key in ("ACCESS_TOKEN",)),
                         "Running Hub root credentials changed")
                 if target:
                     image = json.loads(self.run("docker", "image", "inspect", container["Image"]))[0]
@@ -417,7 +417,7 @@ const tenants = JSON.parse(process.env.TENANTS_JSON);
         self.credentials = {"default": {"read": current["ACCESS_TOKEN"], "sync": current["TOKEN_MONITOR_SECRET"]}}
         self.credentials.update({name: {"read": row["access_token"], "sync": row["tm_secret"]}
                                  for name, row in self.tenants.items()})
-        keys = [current["API_KEY"], *(key for row in self.credentials.values() for key in row.values())]
+        keys = [key for row in self.credentials.values() for key in row.values()]
         self.secrets.update(keys)
         require(len(set(keys)) == len(keys) and all(len(key) >= 32 for key in keys),
                 "Tenant management created overlapping or weak credentials")

@@ -36,7 +36,7 @@ print(config.get("volumes", {}).get(sys.argv[1], {}).get("name") or "")
     echo "$candidate"
     return
   fi
-  echo "找不到 Compose 声明的数据卷 $candidate；请检查项目名和 compose override，不会恢复到其他项目的卷" >&2
+  echo "找不到 Compose 声明的数据卷 ${candidate}；请检查项目名和 compose override，不会恢复到其他项目的卷" >&2
   exit 1
 }
 

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import sqlite3
 from urllib.parse import quote
@@ -14,10 +13,8 @@ from fastapi.testclient import TestClient
 from conftest import TM_SECRET, record_from_payload, widget_style_payload
 from hub.body_limit import TmBodyLimitMiddleware
 from hub.config import ConfigError, Settings, load_settings
-from hub.db import Database, record_fingerprint
+from hub.db import Database
 from hub.main import create_app
-from hub.models import SyncPushRequest
-from hub.services import apply_sync_push
 from hub.tm_outbox import ensure_schema, record_pending, replay_pending, save_normalized
 from hub.tm_overview import OverviewCache
 from hub.tm_proxy import TmBackground
@@ -25,26 +22,17 @@ from hub.tm_snapshots import ensure_schema as ensure_snapshots
 
 
 def settings(tmp_path, **overrides):
-    values = dict(api_key="a" * 32, access_token="b" * 32,
+    values = dict(access_token="b" * 32,
                   database_path=tmp_path / "review.sqlite3", frontend_dir=tmp_path / "frontend",
-                  max_records_per_push=500, tm_background_enabled=False)
+                  tm_background_enabled=False)
     return Settings(**(values | overrides))
 
 
 @pytest.mark.parametrize("token", ["password", "x", "b" * 31])
 def test_access_token_must_meet_the_same_strength_policy(monkeypatch, token):
-    monkeypatch.setenv("API_KEY", "a" * 32)
     monkeypatch.setenv("ACCESS_TOKEN", token)
-    monkeypatch.delenv("ALLOW_SHARED_TOKEN", raising=False)
     with pytest.raises(ConfigError, match="ACCESS_TOKEN"):
         load_settings()
-
-
-def test_explicit_shared_token_fallback_remains_supported(monkeypatch):
-    monkeypatch.setenv("API_KEY", "a" * 32)
-    monkeypatch.delenv("ACCESS_TOKEN", raising=False)
-    monkeypatch.setenv("ALLOW_SHARED_TOKEN", "true")
-    assert load_settings().access_token == "a" * 32
 
 
 @pytest.mark.parametrize("device_id", ["gpu?backup", "gpu#backup", "gpu/backup", "工作站?备份"])
@@ -158,52 +146,6 @@ def test_slow_overview_cannot_repopulate_cache_after_an_ingest():
     assert cache.get() is None
     cache.put({"total": 2}, generation=cache.generation)
     assert cache.get() == {"total": 2}
-
-
-def record(user_id="a|b", nickname="c"):
-    return dict(local_id=1, user_id=user_id, nickname=nickname, model_name="model", input_tokens=10, output_tokens=2, created_at="2026-08-01T00:00:00+00:00")
-
-
-def payload(*records):
-    return SyncPushRequest.model_validate({"device": {"id": "dev"}, "source_instance_id": "source", "records": list(records)})
-
-
-def test_legacy_fingerprint_collision_is_not_sufficient_evidence_of_equality():
-    first, second = record(), record("a", "b|c")
-    first.pop("local_id")
-    second.pop("local_id")
-    assert first != second
-    assert record_fingerprint(**first) == record_fingerprint(**second)
-
-
-@pytest.mark.parametrize("same_batch", [True, False])
-def test_separator_collision_is_a_conflict_not_a_duplicate(tmp_path, same_batch):
-    db = Database(tmp_path / "fingerprint.sqlite3")
-    try:
-        first, second = record(), record("a", "b|c")
-        if same_batch:
-            result = apply_sync_push(db, payload(first, second), protocol_version=2)
-        else:
-            apply_sync_push(db, payload(first), protocol_version=2)
-            result = apply_sync_push(db, payload(second), protocol_version=2)
-        assert result["conflicts"] == 1
-        assert result["duplicates"] == 0
-    finally:
-        db.close()
-
-
-def test_records_with_legacy_fingerprints_still_retry_idempotently(tmp_path):
-    db = Database(tmp_path / "legacy-hash.sqlite3")
-    try:
-        item = record()
-        apply_sync_push(db, payload(item), protocol_version=2)
-        legacy = hashlib.sha256("|".join(str(item[key]) for key in ("user_id", "nickname", "model_name", "input_tokens", "output_tokens", "created_at")).encode()).hexdigest()
-        db.execute("UPDATE usage_records SET fingerprint = ?", (legacy,))
-        result = apply_sync_push(db, payload(item), protocol_version=2)
-        assert result["duplicates"] == 1
-        assert result["conflicts"] == 0
-    finally:
-        db.close()
 
 
 def test_percent_encoded_device_id_over_real_http(live_stack):

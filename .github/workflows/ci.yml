@@ -20,9 +20,8 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r hub/requirements.txt pytest pip-audit
-          pip install -r agent/requirements.txt
       - name: compileall
-        run: python -m compileall -q hub/backend agent/sync_agent.py agent/token_monitor_bridge.py agent/healthcheck.py
+        run: python -m compileall -q hub/backend
       - name: node --check（tm-core 启动器与载荷生成器）
         run: |
           node --check hub/tm-core/run.js
@@ -34,13 +33,10 @@ jobs:
       - name: Cloud 扩展专项（provider-status / history-daily / coverage / prune / fixtures）
         run: |
           cd hub && PYTHONPATH=backend python -m pytest tests/test_provider_status.py tests/test_history_daily.py tests/test_activity_coverage.py tests/test_prune_snapshots.py tests/test_frontend_contract_export.py -q
-      - name: agent 测试
-        run: cd agent && python -m pytest tests/ -q
       - name: pip-audit（依赖漏洞；默认失败。若必须忽略：--ignore-vuln ID 且在注释写明原因与到期日）
         run: |
           # 新增 CVE 时不得 `|| true`；只能带到期日的显式 --ignore-vuln。
           pip-audit -r hub/requirements.txt
-          pip-audit -r agent/requirements.txt
 
   docker-e2e:
     runs-on: ubuntu-latest
@@ -48,7 +44,6 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: compose 配置校验
         env:
-          API_KEY: ci-placeholder-key-0123456789abcdef
           ACCESS_TOKEN: ci-placeholder-read-0123456789abcdef
           TOKEN_MONITOR_SECRET: ci-placeholder-tm-0123456789abcdef
         run: docker compose -f hub/docker-compose.yml config >/dev/null
@@ -56,10 +51,8 @@ jobs:
         run: |
           docker build -t cloud-monitor-hub ./hub
           docker build -t cloud-monitor-tm-core ./hub/tm-core
-          docker build -t cloud-monitor-agent ./agent
       - name: compose 启动并做端到端冒烟
         env:
-          API_KEY: ci-placeholder-key-0123456789abcdef
           ACCESS_TOKEN: ci-placeholder-read-0123456789abcdef
           TOKEN_MONITOR_SECRET: ci-placeholder-tm-0123456789abcdef
         # 冒烟必须真的断言：此前 curl 全部无 -f、readiness 超时不 fail、
@@ -180,7 +173,6 @@ jobs:
           version=$(tr -d '[:space:]' < "$install_dir/VERSION")
           sha=$(git -C "$install_dir" rev-parse --short HEAD)
           cat > "$install_dir/hub/.env" <<EOF
-          API_KEY=ci-placeholder-key-0123456789abcdef
           ACCESS_TOKEN=ci-placeholder-read-0123456789abcdef
           TOKEN_MONITOR_SECRET=ci-placeholder-tm-0123456789abcdef
           COMPOSE_PROJECT_NAME=cm-multi-tenant-e2e

@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { revealAll } from "./motion-helpers";
 const require = createRequire(import.meta.url);
 const READ_TOKEN = "b".repeat(32);
-const WRITE_TOKEN = "a".repeat(32);
+const SYNC_TOKEN = "unit-tm-secret-0123456789abcdef0000";
 const overviewFixture = require("./fixtures/overview.json");
 const injectAxe = async (page: import("@playwright/test").Page) => {
   await page.route("**/static/app/__test-axe.js", route => route.fulfill({ contentType: "text/javascript", path: require.resolve("axe-core/axe.min.js") }));
@@ -294,7 +294,7 @@ test("production gate, real auth and static resources work under the server CSP"
   expect(await root.text()).toContain("/static/app/assets/");
   const unauthorized = await request.get("/api/v1/tm/overview");
   expect([401,403]).toContain(unauthorized.status());
-  await page.getByLabel("访问密钥", { exact: true }).fill(WRITE_TOKEN);
+  await page.getByLabel("访问密钥", { exact: true }).fill(SYNC_TOKEN);
   await page.getByRole("button", { name: "进入工作台" }).click();
   await expect(page.getByRole("alert")).toContainText("访问密钥不正确");
   await page.getByLabel("访问密钥", { exact: true }).fill(READ_TOKEN);

@@ -119,7 +119,7 @@ env_get() {
   local file="$1" key="$2"
   [[ -f "$file" ]] || return 0
   # `|| true` 必不可少：key 不存在时 grep 退出 1，在 set -euo pipefail 下
-  # 会让 `api="$(env_get …)"` 赋值直接杀死脚本（无任何报错）——而这恰恰是
+  # 会让 `token="$(env_get …)"` 赋值直接杀死脚本（无任何报错）——而这恰恰是
   # ensure_env 需要补生成该 key 的场景
   grep -E "^${key}=" "$file" 2>/dev/null | tail -n1 | cut -d= -f2- || true
 }
@@ -139,7 +139,9 @@ upsert_env() {
 ensure_env() {
   local envf="$1"
   local example="$2"
+  local new_env=0
   if [[ ! -f "$envf" ]]; then
+    new_env=1
     if [[ -f "$example" ]]; then
       cp "$example" "$envf"
     else
@@ -147,13 +149,13 @@ ensure_env() {
     fi
     chmod 600 "$envf"
   fi
-  local api token tm
-  api="$(env_get "$envf" API_KEY)"
+  local token
   token="$(env_get "$envf" ACCESS_TOKEN)"
-  tm="$(env_get "$envf" TOKEN_MONITOR_SECRET)"
-  [[ -n "$api" ]] || upsert_env "$envf" API_KEY "$(rand_hex)"
   [[ -n "$token" ]] || upsert_env "$envf" ACCESS_TOKEN "$(rand_hex)"
-  [[ -n "$tm" ]] || upsert_env "$envf" TOKEN_MONITOR_SECRET "$(rand_hex)"
+  # Existing empty/missing sync secrets intentionally keep ingestion disabled.
+  if [[ "$new_env" == "1" ]]; then
+    upsert_env "$envf" TOKEN_MONITOR_SECRET "$(rand_hex)"
+  fi
 }
 
 read_mode_file() {

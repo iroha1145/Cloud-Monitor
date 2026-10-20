@@ -4,7 +4,7 @@
 - Node tm-core（vendored 官方代码, 未修改）: payload 规范化、设备记录合并、
   多设备聚合（过期/陈旧判定）、history、limits、subscriptions、SSE 广播、
   devices.json 持久化。所有官方响应原样透传，不重造。
-- Python 本层: 鉴权（TOKEN_MONITOR_SECRET，与 OpenWebUI 链路密钥隔离）、
+- Python 本层: 鉴权（TOKEN_MONITOR_SECRET，与面板访问密钥隔离）、
   转发前的严格载荷校验、ASGI 级 1MiB 限流、事务发件箱保证的 SQLite
   5 分钟桶快照、健康检查（live/ready）、/api/v1/tm/*（tm_overview.py）、
   v1 旧表迁移。

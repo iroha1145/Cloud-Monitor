@@ -18,16 +18,15 @@ if [ ! -x .venv/bin/python ]; then
   python3 -m venv .venv
 fi
 .venv/bin/pip install --upgrade pip -q
-.venv/bin/pip install -q -r hub/requirements.txt -r agent/requirements.txt pytest
+.venv/bin/pip install -q -r hub/requirements.txt pytest
 
-# 3) 生成 hub/.env（仅在缺失时）：三把互不相同的强随机密钥；默认演示模式
+# 3) 生成 hub/.env（仅在缺失时）：两把互不相同的强随机密钥；默认演示模式
 if [ ! -f hub/.env ]; then
   cp hub/.env.example hub/.env
   python3 - <<'PY'
 import secrets, pathlib
 p = pathlib.Path("hub/.env")
 vals = {
-    "API_KEY": secrets.token_hex(32),
     "ACCESS_TOKEN": secrets.token_hex(32),
     "TOKEN_MONITOR_SECRET": secrets.token_hex(32),
     "CM_DEMO": "true",  # 打开页面即见演示面板；实机开发改为 false 并用 ACCESS_TOKEN 登录
@@ -56,4 +55,4 @@ if [ -f hub/dashboard/package-lock.json ]; then
   (cd hub/dashboard && npm ci --no-audit --no-fund && npm run build)
 fi
 
-echo "安装完成：hub + agent 依赖就绪，新版面板已构建，hub/.env 已配置。"
+echo "安装完成：hub 依赖就绪，新版面板已构建，hub/.env 已配置。"

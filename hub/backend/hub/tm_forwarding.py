@@ -25,7 +25,7 @@ import httpx
 
 from .db import Database
 from . import tm_outbox as outbox
-from .services import iso_to_utc
+from .time_utils import iso_to_utc
 from .tm_snapshots import resolve_local_day, utc_z, write_snapshot
 from .tm_validate import is_limits_only_update, validate_ingest_payload
 

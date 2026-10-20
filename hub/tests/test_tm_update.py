@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from hub.main import create_app
 from hub.tm_update import UpdateService, parse_ref, version_gt, version_key
-from conftest import make_settings
+from conftest import TM_SECRET, make_settings
 from test_hub import AUTH, READ
 
 RELEASE = {
@@ -94,7 +94,7 @@ def test_check_tagged_release_without_git_sha_does_not_force_main_ahead(tmp_path
 
 
 def test_http_requires_access_token(tmp_path):
-    app = create_app(make_settings(tmp_path))
+    app = create_app(make_settings(tmp_path, tm_ingest_secret=TM_SECRET))
     with TestClient(app) as client:
         assert client.get("/api/v1/system/update").status_code == 401
         assert client.post("/api/v1/system/update", json={"ref": "main"}).status_code == 401
@@ -105,7 +105,7 @@ def test_http_requires_access_token(tmp_path):
             headers={"content-type": "application/json"},
         ).status_code == 401
         assert client.post("/api/v1/system/update/cancel").status_code == 401
-        # 取消更新只认访问密钥，写入密钥也不行
+        # 取消更新只认访问密钥，Token Monitor 同步密钥也不行
         assert client.post("/api/v1/system/update/cancel", headers=AUTH).status_code == 401
 
 
