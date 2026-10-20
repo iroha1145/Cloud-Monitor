@@ -1,55 +1,49 @@
-# 原生安卓客户端（Jetpack Compose）
+# Cloud Monitor 原生安卓客户端
 
-APK 由 `.github/workflows/build-apk.yml` 在 GitHub Actions 云端构建，本机无需 JDK / Android SDK。客户端使用原生界面框架，对标手机版网页的设计，并直接请求 `/api/v1/tm/*`。
+基于 **Jetpack Compose** 编写的原生 Android 客户端，直接连接你的 Cloud Monitor 服务器拉取实时数据，无需在本地电脑安装 Android Studio，可通过 GitHub Actions 一键云端打包。
 
-Release 会开 R8 压缩与资源收缩；图标只用到的十来个矢量路径，不打包 `material-icons-extended`。
+## 系统要求
 
-## 最低要求
+- **Android 14（API 34）及以上**（按 Android 17 / API 37 规范编译）
+- **仅限 64 位设备**（`arm64-v8a` / `x86_64`）
 
-- 安卓14（Android 14，API 34）及以上；编译与目标系统为安卓17（API 37）
-- 64 位：`arm64-v8a` 或 `x86_64`（不含 32 位）
+## 如何获取安装包（云端自动打包）
 
-## 云端出包
+1. 打开你 Fork 或克隆的 GitHub 仓库，进入 **Actions → build-apk → Run workflow**（修改 `android/` 目录提交 PR 时也会自动触发）。
+2. 等待工作流跑完后，在页面底部的 **Artifacts** 下载安装包：
+   - 配置了正式签名密钥时为 `cloud-monitor-apk`
+   - 未配置签名密钥时为 `cloud-monitor-apk-debug`（测试签名，直接安装即可用）
+3. 传到手机安装：
+   - 第一次打开可以先点 **「体验演示」** 查看内置示例数据。
+   - 连接自己的服务器时，填入面板的 HTTPS 地址和 `ACCESS_TOKEN` 即可（勾选「记住密钥」会通过 Android 系统 Keystore 加密保存）。
 
-1. **Actions → build-apk → Run workflow**（PR 改动 `android/` 时也会自动跑）。
-2. 完成后下载 Artifact：`cloud-monitor-apk` 或调试签名的 `cloud-monitor-apk-debug`。
-3. 传到手机安装。首次打开可点「体验演示」，或填面板 HTTPS 地址 + `ACCESS_TOKEN`。局域网 HTTP 可用，登录页会提示明文风险。
+## 主要功能
 
-登录页可以选择记住访问密钥。勾选后写入系统密钥库加密存储；不勾选则只在本次打开期间保留。若设备无法启用密钥库，本次登录不会把密钥写进磁盘。
+- **五大页面与网页版对齐**：总览、设备、模型、额度、历史归档，统计口径与网页版完全一致。
+- **原生交互体验**：手机端采用底部导航栏，平板/大屏自动切换为侧边导航；支持深色模式与系统大字体缩放。
+- **手势查明细**：趋势折线图支持 7 / 30 天切换、Token / 费用切换，手指横向滑动即可查看每日数值，点按日期弹出原生底部明细抽屉。
 
-顶栏更多菜单可检查服务器更新（只读）：展示当前版本、最新 Release 与 notes，**不会**向服务器 `POST` 应用更新。折线图支持7／30天、词元／费用切换，可横向拖动或用前后日期按钮查看记录；点按曲线或日期打开原生明细面板。手机采用底部导航，宽屏采用侧边导航。系统「关闭动画」时入场/生长动效会短路。
+## 配置正式签名（可选）
 
-## 签名
+如果不配置签名 Secret，GitHub Actions 每次会生成临时调试签名（重装新版本时可能需要先卸载旧版）。如果你想后续直接覆盖升级，可以在仓库的 **Settings → Secrets and variables → Actions** 中添加：
 
-| 场景 | 结果 |
-|---|---|
-| 未配置 keystore Secret | CI 生成临时调试 keystore，每次指纹不同，Artifact 名带 `-debug`，仅供测试 |
-| 配置了 keystore Secret | 用你的正式 keystore 签名，指纹固定 |
+- `ANDROID_KEYSTORE_B64`：Keystore 文件的 Base64 字符串（macOS 可用 `openssl base64 -A -in release.keystore` 生成）
+- `ANDROID_KEYSTORE_PASSWORD`：Keystore 密码
+- `ANDROID_KEY_PASSWORD`：密钥密码（若与 Keystore 密码相同可不填）
+- `ANDROID_KEY_ALIAS`：别名（默认 `cloudmonitor`）
 
-正式签名需要：
+> 请务必备份好自己的 `.keystore` 文件，丢失后将无法覆盖安装更新。
 
-- `ANDROID_KEYSTORE_B64`：keystore 的 base64。macOS 用 `openssl base64 -A -in release.keystore`
-- `ANDROID_KEYSTORE_PASSWORD`
-- `ANDROID_KEY_PASSWORD`（可省略，默认与 keystore 密码相同）
-- `ANDROID_KEY_ALIAS`（默认 `cloudmonitor`）
+## 本地编译（可选）
 
-**keystore 必须备份**：丢了就无法覆盖安装更新。
-
-`versionCode` 取 `20000 + github.run_number`，`versionName` 取仓库根目录 `VERSION`。
-
-产物只上传 Artifact，不创建 GitHub Release，避免干扰面板「检索更新」。
-
-## 本地构建（可选）
-
-需要 Java 17、安卓17 SDK 和构建工具36。
+如果你本地装有 Java 17 与 Android SDK（API 37 / Build-Tools 36）：
 
 ```bash
 cd android
-./gradlew assembleDebug lintDebug testDebugUnitTest
-./gradlew connectedDebugAndroidTest
-./gradlew assembleRelease
+./gradlew assembleDebug          # 编译调试包
+./gradlew testDebugUnitTest      # 运行单元测试
+./gradlew assembleRelease        # 编译正式包
 ```
 
-包名：`io.github.iroha1145.cloudmonitor`。
-
-设计与数据规则见 [安卓工作台设计](../ANDROID_WORKBENCH_DESIGN.md)。云端会在安卓14与17模拟器上执行界面测试，并上传检查报告与截图。安卓17连接局域网服务器时会请求系统的附近设备权限；公网地址不需要这项权限。
+- 应用包名：`io.github.iroha1145.cloudmonitor`
+- 详细界面设计说明见 [ANDROID_WORKBENCH_DESIGN.md](../ANDROID_WORKBENCH_DESIGN.md)。

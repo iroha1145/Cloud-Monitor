@@ -1,76 +1,88 @@
 # Cloud Monitor
 
-把本机 [token-monitor](https://github.com/Javis603/token-monitor) 的用量接到自己的服务器。widget 在设置里把 hub 指过来，浏览器打开面板就能看今日、本月、累计。
+把你电脑上 [Token Monitor](https://github.com/Javis603/token-monitor) 统计的 AI 用量同步到自己的服务器，随时用网页或手机查看今天、本月和累计烧了多少 Token、花了多少钱。
 
-**在线演示（免安装）：** https://iroha1145.github.io/Cloud-Monitor/
+👉 **在线演示（免安装直接看效果）：** https://iroha1145.github.io/Cloud-Monitor/
 
-官方 hub 按固定提交 `cbed591`（v0.74.0）原样放进 tm-core 容器，协议行为跟官方一致。前面是 Python 网关：鉴权、校验、1MiB 实测限流，并把快照写入 SQLite。官方 `devices.json` 只留每台设备最新状态，没有历史点；长期趋势和日归档是我们自己补的。
+---
 
+## 它是怎么工作的？
+
+官方 Token Monitor 自带的同步服务只保留每台设备的「当前最新状态」，没法看长期历史趋势和每日账单。Cloud Monitor 在完全兼容官方同步协议的基础上，补齐了**长期历史存储**、**双密钥安全防护**和一套**全平台可视化面板**。
+
+```text
+┌──────────── 你的电脑 ────────────┐        ┌──────────── 你的服务器（Docker Compose）────────────┐
+│ Token Monitor 桌面端 / Agent     │  原生  │  Python 网关 (cloud-hub)                            │
+│                                  │  同步  │  ├─ 校验请求、区分「上传密钥」与「面板登录密钥」     │
+│  Hub 地址: https://你的域名       │ ─────► │  ├─ 每 5 分钟存一份 SQLite 快照（补齐历史曲线与归档）│
+│  同步密钥: TOKEN_MONITOR_SECRET  │  协议  │  └─ 托管响应式 Web 面板（桌面 + 手机适配）          │
+└──────────────────────────────────┘        │         │                                          │
+                                            │         ▼ 内部转发                                  │
+                                            │  官方内核 (tm-core @ v0.74.0 原版代码)              │
+                                            │  └─ 多设备合并、配额计算、实时 SSE 推送             │
+                                            └────────────────────────────────────────────────────┘
 ```
-┌───────────── 本机 ─────────────┐      ┌────────── 云端（docker compose）──────────┐
-│ token-monitor widget           │ 原生  │ ┌────────────────────────────────────┐   │
-│  hub = 服务器                  │──────►│ │ tm-core（官方 hub @cbed591，未改） │   │
-│  密钥 = TOKEN_MONITOR_SECRET   │ 协议  │ │ 规范化 / 合并 / 聚合 / 过期 / SSE  │   │
-│  widget：实时 / 10 / 20 / 30 分 │      │ │ devices.json（官方原生持久化）     │   │
-│  headless agent 默认 5 分钟     │      │ └──────────────△─────────────────────┘   │
-└────────────────────────────────┘      │ Python 网关：鉴权 + 校验 + 1MiB 限流      │
-                                        │ SQLite 5 分钟桶 + 用量面板                │
-                                        └──────────────────────────────────────────┘
-```
 
-## 面板里有什么
+- **100% 官方协议兼容**：底层直接运行未修改的官方 Token Monitor Hub（当前固定为 `v0.74.0`），桌面端无需安装任何额外插件，填上地址和密钥就能同步。
+- **读写密钥分离**：上传数据用 `TOKEN_MONITOR_SECRET`，看面板用 `ACCESS_TOKEN`，两把密钥必须不同，互不混用。
+- **纯净轻量**：仅专注 Token Monitor 数据同步与展示（已移除旧版 Open WebUI 采集组件），一套 `docker compose` 即可跑起全部服务。
 
-- 概览：今日 tokens、费用、连接状态、近 30 天趋势
-- 模型分布：环形图；悬停看 tokens、占比、该模型费用、缓存率
-- 客户端分布：用 token-monitor 的 logo；条内是上报的真实构成；各行轨道等宽
-- 工具 × 模型矩阵、最近会话
-- 项目用量：今日、本月、累计各项目的 tokens 与费用，可按模型或按客户端拆分；旧版客户端没拆到模型的部分单独列出
-- 设备、配额与订阅
-- 活动热力图（日、周、月，格子保持正方形）
-- 提供商状态：只出今日有上报的提供商，数据来自各官方状态页（Anthropic、OpenAI、Cursor、DeepSeek、Kimi、SpaceXAI / Grok）。GLM 没有官方 Statuspage，不出卡
-- 日归档：最多 370 天
-- 夜间模式
-- 检索更新：从 GitHub Releases / origin/main 对比当前版本；实机面板可后台升级
+---
 
-旧路径 `/tm/` 会 301 到 `/`。
+## 面板里能看什么？
 
-## 快速开始
+- **用量总览与趋势**：今日 / 本月 / 累计 Token 与费用、近 7 / 30 天按模型堆叠的消耗曲线。
+- **模型分析**：各模型花销占比、缓存命中率、平均输出速率；点击任意模型可展开查看**会话级明细**（上下文占用、缓存剩余时间、输入输出构成）。
+- **客户端与项目统计**：按 AI 编程工具（Claude Code、Cursor、Codex、Windsurf、Cline、Roo Code、Goose、CatPaw 等）查看消耗构成；按本地项目查看今日/本月/累计花销；提供「客户端 × 模型」交叉矩阵。
+- **设备、配额与订阅**：查看多台电脑的在线状态、各平台实时额度窗口（Claude、Cursor、Codex、StepFun、Notion AI 等）以及月度订阅账单汇总。
+- **活跃度与每日归档**：按你当前浏览器时区展示日 / 周 / 月活跃热力图与 24 小时分布；支持最多 **370 天**的每日历史账单分页回溯与 CSV 导出。
+- **官方服务商状态**：自动拉取你今日在用的大模型官方状态页（OpenAI、Anthropic、Cursor、DeepSeek、Kimi、Grok），一眼看出是不是官方崩了。
+- **全端体验**：支持跟随系统深色模式；桌面端配备可拖拽磁吸菜单，手机端配备三档贴底抽屉，并提供原生 Android 客户端。
 
-服务器上推荐用安装脚本。管道执行时 stdin 不是终端，必须带 `--mode`，否则脚本会拒绝往下走：
+---
+
+## 3 分钟快速部署
+
+### 方式一：一键安装脚本（推荐）
+
+在服务器上运行安装脚本，会自动生成随机密钥、写入配置并启动容器：
 
 ```bash
+# 先装成演示模式看看效果（免密访问假数据）
 curl -fsSL https://raw.githubusercontent.com/iroha1145/Cloud-Monitor/main/install.sh | sudo bash -s -- --mode demo
+
+# 确认没问题后，切换为正式实机模式（开启密码保护与真实数据接入）
+curl -fsSL https://raw.githubusercontent.com/iroha1145/Cloud-Monitor/main/install.sh | sudo bash -s -- --mode live
 ```
 
-新安装会生成两把强随机密钥；再次运行保留已有面板密钥、同步密钥和租户配置。已有同步密钥留空时保持停用。升级保留已有数据库和历史表，不进行数据删除。
+> 如果已经把仓库克隆到了本地，也可以直接运行 `sudo ./install.sh` 根据菜单提示操作。重复运行脚本**不会**覆盖你已有的密钥和历史数据。
 
-再跑一次同一脚本，改 `--mode live`（或在服务器上交互选「实机」），就会关掉演示，改用 `ACCESS_TOKEN` 登录。
-
-已经克隆过仓库：
-
-```bash
-sudo ./install.sh            # 交互选择
-sudo ./install.sh --mode demo
-sudo ./install.sh --mode live
-```
-
-也可以手动：
+### 方式二：手动 Docker Compose 启动
 
 ```bash
 git clone https://github.com/iroha1145/Cloud-Monitor.git
 cd Cloud-Monitor/hub
 cp .env.example .env
-# 两个互不相同、各不少于 32 个随机字符的密钥：
-#   ACCESS_TOKEN（面板登录）
-#   TOKEN_MONITOR_SECRET（Token Monitor 同步；留空停用）
-# 演示预览设 CM_DEMO=true，实机保持 false
+```
+
+编辑 `hub/.env`，填入两把**不同**且长度不少于 32 位的随机密钥（可用 `openssl rand -hex 32` 生成）：
+
+```ini
+ACCESS_TOKEN=你的面板登录密钥（至少32位）
+TOKEN_MONITOR_SECRET=你的数据同步密钥（至少32位，不能和上面相同）
+CM_DEMO=false
+```
+
+启动服务并检查健康状态：
+
+```bash
 docker compose up -d --build
 curl http://127.0.0.1:7878/api/health
 ```
 
-容器存活检查走 `/api/v1/health/live`。部署是否就绪走 `/api/v1/health/ready`（SQLite、tm-core、快照）。
+### 配置 HTTPS 反向代理（Nginx 示例）
 
-公网访问请在前面挂 HTTPS 反代。**SSE 必须关掉代理缓冲**（nginx 示例）：
+服务默认只监听本机 `127.0.0.1:7878`。公网访问请用 Nginx / Caddy 挂上 HTTPS，注意 **`/api/stats/stream` 实时流接口需要关闭代理缓冲**：
 
 ```nginx
 location /api/stats/stream {
@@ -81,165 +93,127 @@ location /api/stats/stream {
     proxy_cache off;
     proxy_read_timeout 24h;
 }
+
+location / {
+    proxy_pass http://127.0.0.1:7878;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 1m;
+}
 ```
 
-其余路径按普通反代即可。如果还想限制上传体积，可另加 `client_max_body_size 1m;`。
+---
 
-## 接本机 token-monitor
+## 连接你的电脑
 
-设置 → 多设备同步：
+1. 打开你电脑上的 **Token Monitor → 设置 → 多设备同步**：
+   - **Hub 地址**：填 `https://你的服务器域名`
+   - **同步密钥**：填 `TOKEN_MONITOR_SECRET`
+2. 浏览器打开 `https://你的服务器域名`，输入 `ACCESS_TOKEN` 登录，就能看到实时同步过来的数据了。
 
-- hub 填 `https://<服务器>`
-- 密钥填 `TOKEN_MONITOR_SECRET`
+---
 
-widget 按自己的同步间隔推送，本机不用再装别的。然后打开 `https://<服务器>/`，用 `ACCESS_TOKEN` 进面板。
+## 给朋友开独立账号（多租户）
 
-## 协议支持
-
-内置服务端固定为 Token Monitor **v0.74.0**（`cbed5915e294abb4a210f7ebb385e9415f706821`），源码保持上游原样。
-支持 CatPaw（`catpaw`）、FX（`fx`）、MiniMax Code（`mcode`）、Factory Droid（`factory` / `droid`）、Goose（`goose`）客户端与 Notion AI 配额，以及会话实时状态（`waitingForInput`、`liveActivity`、提示词缓存剩余时间、未定价词元、流式输出速率、用量来源与父子会话关联）。网页与安卓端同步支持 CatPaw、FX、MiniMax Code、Factory Droid、StepFun 与 Muse Code 图标，网页另有 Goose 与 Notion AI 图标。
-Cursor 的 Auto/default 模型按官方规则归并到 cursor-auto，同时保留其它工具的同名模型；MiMo、Kilo 的旧工具名继续归并。旧客户端仍可上报，v0.62–v0.64 的每日额度、Claude 重置券、StepFun 配额、第三方用量摘要和会话上下文字段保持兼容。
-
-| 官方端点 | 状态 | 谁处理 |
-|---|---|---|
-| `GET /api/health` | 官方形状（含 hubBuild） | 透传 tm-core；上游不可达时 503 |
-| `POST /api/ingest` | 默认完整回应；请求头 `X-Token-Monitor-Response: minimal` 可取精简回应 | 内部始终保存完整确认，再向客户端返回 ok / deviceId |
-| `GET /api/stats` | 支持 | 透传（聚合 / 过期 / stale 跟官方一致） |
-| `GET /api/stats/stream` | SSE（首帧 snapshot、更新广播、30s `: hb`）；请求头 `X-Token-Monitor-Stream: 2` 启用 freshness 事件 | 按字节透传；旧客户端继续收到完整 stats |
-| `GET /api/devices` | `{devices:[...]}` | 透传 |
-| `DELETE /api/devices/:id` | `{ok,deviceId}` | 透传，并清 SQLite 快照 |
-| `GET /api/history` | 支持 | 透传 |
-| `GET/PUT /api/subscriptions` | 含 stale_write 409、非法币种 400 | 透传 |
-| `GET /api/sync/content` | 模型别名、自定义定价与可选会话标题读取 | 透传 |
-| `PUT /api/sync/settings/:kind` | `modelAliases` / `customPricing` 同步（1MiB 限流） | 透传 |
-| `PUT /api/sync/titles/:deviceId` | 每设备会话标题同步（1MiB 限流；需开启 `TOKEN_MONITOR_SYNC_SESSION_TITLES`） | 透传 |
-| `GET /api/v1/tm/overview` | Cloud 扩展 | `ACCESS_TOKEN`；官方 stats + SQLite 时间序列 |
-| `GET /api/v1/tm/subscriptions` | Cloud 扩展 | `ACCESS_TOKEN` |
-| `GET /api/v1/tm/provider-status` | Cloud 扩展 | `ACCESS_TOKEN`；allowlist 并发拉状态页 |
-| `GET/POST /api/v1/system/update` | Cloud 扩展 | `ACCESS_TOKEN`；检索 GitHub Releases，POST 把目标 ref 交给宿主机监视器 |
-| `OPTIONS`（官方 204） | 未单独处理 | 要用再加 |
-| Worker 专属 `/api/public/*` | 不适用 | 官方 Node hub 也没有 |
-
-## 和官方 hub 差在哪
-
-协议本身不另搞一套。tm-core 是官方代码的逐字节副本：规范化、设备合并（含 limitsOnly）、聚合、`periodWindows` 过期、按 `syncUploadIntervalMs` 判 stale、SSE、订阅、`devices.json` 原子写。差分测试对同一载荷序列断言两边输出等价。
-
-固定版本校验可运行 `python3 hub/tm-core/sync_vendor.py --check`；从已下载的同版官方源码恢复使用 `--source <源码目录>`。校验包含固定提交、完整依赖、许可证与文件哈希，不会自动联网追随上游主分支。版本专用样例和回归覆盖旧数据启动、新字段、工具改名及升级后的持久化。
-
-网关多出来的是防护和面板用的数据：
-
-- `TOKEN_MONITOR_SECRET` 用于同步，`ACCESS_TOKEN` 用于面板登录；两把密钥必须不同
-- 转发前校验：负数、bool、NaN、Infinity、超 64 位、非法 IANA 时区、原型污染键、数量超限、过度未来时间一律 400。官方只卡 1MiB 体积
-- ASGI receive 层按实际字节限 1MiB（分块、没有或伪造 Content-Length 也算）
-- SQLite 5 分钟桶时间序列，以及上面的 `/api/v1/tm/*` 接口
-- ingest 先保存完整待发送载荷，再按同设备顺序转发，得到本次确认后才按 `stats.devices` 落快照。网络错误、408/425/429/5xx 由后台有界重试，未确认时仍返回失败状态，不冒充成功；`Retry-After` 会保留。快照失败只重放已确认记录，不再向核心重复发送。
-- 活动请求默认最多 1000 条，完整待发送载荷最多 16 MiB；并发入队也计入容量。最多尝试 8 次或保留 1 小时，以先到者为准。失败终结后保留原因，并在网页提示历史可能缺口。详细顺序、幂等窗口和时间边界见 [架构说明](docs/ARCHITECTURE.md#待发送与快照补写的恢复边界)。
-- 官方是单进程；这里是 compose 里 python + node 两个容器
-- 普通响应超过 1 KiB 时按客户端接受的编码压缩；实时事件流保持不压缩、不缓冲。
-
-升级云端需先备份两个数据卷，再通过现有云监控更新流程发布。本机 Token Monitor 升级不会替换云端内核。若曾使用旧名称上传 MiMo 或 Kilo，升级后应核对工具累计量和历史快照；过去已写入的快照不会自动扣减，也不会因本次升级被清空。
-
-## 数据怎么留、时区、隐私、备份
-
-- **保留：** 近 7 天按设备本地日、5 分钟桶 UPSERT（同桶留最后一次）；更早每天每设备一个锚点；370 天硬删。清理按阈值触发（至少间隔 10 分钟），不在每次 ingest 扫全表。只更新 limits 的请求不写 token 历史点
-- **时区：** 网页自动使用各自浏览器的时区显示时间，并按该时区生成近期活动的日期和小时分组；不同用户、不同浏览器互不影响。快照日归属和每日归档仍按设备 `periodWindows`（today.key → timeZone+updatedAt → endsAt 反推 → UTC 回退并留空标注），保留采集端原始统计口径。未提供浏览器时区的客户端使用 `DASHBOARD_TIME_ZONE=Asia/Tokyo` 作为回退。
-- **外观：** 默认跟随浏览器的深色／浅色偏好，系统切换后网页同步变化；也可手动切换明暗，或点「跟随系统」恢复自动。偏好仅保存在当前浏览器。
-- **隐私：** `devices.json` 可能带 limits 里的账户邮箱、计划名、订阅金额（官方字段，在 TM 密钥后面）。SQLite 快照只存 token / 成本聚合和客户端、模型名，不含账户身份。面板用 `ACCESS_TOKEN`
-- **备份：** `hub/scripts/backup.sh <目录>` 备份 `tm-core-data`（devices.json）和 `cloud-hub-data`（SQLite），包含主用户及所有已落盘的租户，SQLite 使用在线一致性备份。恢复用 `hub/scripts/restore.sh <备份目录>`；恢复会短暂停止整套服务。旧版单用户备份仍可恢复，且不会删除现有租户数据。密钥配置 `hub/.env` 需另外安全保存，业务数据备份不包含密钥
-
-## 环境变量（hub）
-
-| 变量 | 说明 | 默认 |
-|---|---|---|
-| `ACCESS_TOKEN` | 面板访问密钥，须与同步密钥不同 | — |
-| `TOKEN_MONITOR_SECRET` | token-monitor 接入密钥（空 = 停用） | 空 |
-| `TOKEN_MONITOR_SYNC_SESSION_TITLES` | `true` 时允许同步会话标题（透传给 tm-core） | `false` |
-| `TENANTS_JSON` | 多用户配置，每人独立同步与访问密钥 | 空 |
-| `CM_DEMO` | `true` 时 `/` 直接进演示面板 | `false` |
-| `CORS_ORIGINS` / `DOCS_ENABLED` | 默认都关 | 关 |
-| `DASHBOARD_TIME_ZONE` | 未提供客户端时区时的面板回退时区 | `Asia/Tokyo` |
-| `PROVIDER_STATUS_ENABLED` | 官方状态页 | `true` |
-| `PROVIDER_STATUS_CACHE_SECONDS` | 状态页缓存 TTL（SWR） | `300` |
-| `PROVIDER_STATUS_TIMEOUT_SECONDS` | 单页超时（总预算 3s） | `2.5` |
-| `CM_VERSION` / `CM_GIT_SHA` | 面板显示的当前版本（install / 在线更新写入） | `dev` / 空 |
-| `CM_GITHUB_REPO` | 检索用的 GitHub `owner/name` | `iroha1145/Cloud-Monitor` |
-| `GITHUB_TOKEN` | 可选，提高 GitHub API 限额 | 空 |
-| `CM_UPDATE_DIR` | 容器内更新请求目录（需挂载到宿主机） | `/update` |
-
-
-## 在线更新
-
-面板顶栏「检索更新」会向 GitHub 拉最新 Release 和 `origin/main` 的 tip，和当前 `CM_VERSION` / `CM_GIT_SHA` 比较。真正升级不在容器里做（cloud-hub 只读、没有 git、也没有 docker.sock），而是把目标 ref 写进 `hub/update-control/request.json`，由宿主机上的 `update-watcher.sh` 调用 `self-update.sh`：`git fetch` + 快进 `main` 或检出 tag，再 `docker compose up -d --build`。
-
-安装脚本需用 `sudo` 运行：宿主状态目录为 `root:999 0750`，共享锁和状态文件为
-`root:999 0640`，容器只读挂载该目录。提交与取消共用宿主文件锁；宿主已经领取
-更新时取消返回 409，取消先取得锁时宿主不会继续执行。取消回执写入可写控制目录，
-重启后仍能显示；提交写入失败也在可写目录留下回执，不改宿主状态文件。
-旧部署若共享锁缺失或不可读，可保留下一次升级提交入口，但取消
-会返回 503 并提示重跑安装脚本；新版宿主脚本也会修复旧锁权限。
-
-用 `install.sh` 安装或再跑一遍即可创建该目录并启动监视器（有 systemd 就用服务，否则 nohup）。只 `docker compose up`、没跑过安装脚本的话，检索仍然可用，点更新会返回 503。演示页（含 GitHub Pages）为静态演示模式，不会修改服务器。
-
-## 同一地址供朋友使用
-
-所有人使用同一个 HTTPS 地址，由不同密钥区分用户。每人有独立的设备、订阅、同步设置、历史数据库和缓存；主用户与朋友的数据也分开保存。整套服务共用 Python 和 Node 两个容器，更新或重启会一起影响所有人。
-
-先通过安装脚本配置主实例及其两把密钥，再在项目根目录创建朋友：
+想把服务器分享给朋友用，但不想混合各自的数据？你可以直接用内置脚本给朋友开独立账号——**大家共用同一个网址，靠各自的密钥区分身份，数据完全隔离**：
 
 ```bash
+# 1. 给朋友 alice 创建一个独立账号
 sudo python3 hub/scripts/tenant.py add alice
-sudo python3 hub/scripts/tenant.py add bob
+
+# 2. 重启容器让配置生效
 sudo docker compose --project-directory hub up -d --force-recreate
 ```
 
-脚本会生成两把不同的强随机密钥，并保存到 `hub/.env` 的 `TENANTS_JSON`。把同一个面板地址与该朋友的两把密钥私发给对方：
+终端会打印出属于 `alice` 的两把专属密钥（`access_token` 用来看面板，`tm_secret` 填进她电脑的 Token Monitor），发给她就能直接用。
 
-- 网页 / 安卓使用 `access_token` 登录。
-- Token Monitor 的「多设备同步」使用 `tm_secret`，Hub 地址仍是同一个面板地址。
-- 同一人的多台设备可以共用其同步密钥；不同朋友分别创建用户。
-
-常用管理命令：
+其他常用管理命令：
 
 ```bash
-sudo python3 hub/scripts/tenant.py list          # 只列用户和角色
-sudo python3 hub/scripts/tenant.py show alice    # 查看该用户的两把密钥
-sudo python3 hub/scripts/tenant.py rotate alice  # 重新生成两把密钥
-sudo python3 hub/scripts/tenant.py remove alice  # 撤销配置，保留历史数据
+sudo python3 hub/scripts/tenant.py list          # 查看所有用户列表
+sudo python3 hub/scripts/tenant.py show alice    # 查看 alice 的密钥
+sudo python3 hub/scripts/tenant.py rotate alice  # 为 alice 更换新密钥
+sudo python3 hub/scripts/tenant.py remove alice  # 停用账号（保留历史数据文件）
 ```
 
-新增、轮换或撤销后，都需执行 `sudo docker compose --project-directory hub up -d --force-recreate`，让两个服务加载新配置；生效后旧密钥失效。脚本不会自行重启服务。
+---
 
-朋友默认是 `role=user`，可以维护自己的数据，不能触发或取消服务器更新。主人使用主实例的 `ACCESS_TOKEN`，在网页更新 `main` 后，两个容器统一更新，所有用户继续使用原地址、密钥和数据。此功能需要通过 `install.sh` 配置宿主机更新监视器。
+## 日常维护：更新与备份
 
-也可以直接在 `hub/.env` 配置 `TENANTS_JSON`，格式见 `.env.example`。独立存储位于两个数据卷的 `tenants/<用户>/`，不是独立容器隔离；所有业务数据统一纳入上述备份和恢复流程。
+### 面板一键更新
+如果是通过 `install.sh` 安装的服务，宿主机上会自动配置更新守护进程。你只需在网页面板右上角点击 **「检索更新」**，发现新版本后直接点更新，服务器就会在后台自动拉取最新代码并重建容器。
 
-## 界面开发
-
-新版面板源代码位于 `hub/dashboard/`，包含手机底部导航、模型纵向指标、缓存明细浮窗、设备与订阅卡片，以及日／周／月活动和每日归档。Docker 构建会自动编译前端；直接运行 Python 后端时，先执行 `cd hub/dashboard && npm ci && npm run build`；未构建时首页返回 404「未找到前端页面」并提示构建命令，构建后重启服务即可。
-
-本地开发、演示构建、登录存储和完整测试命令见 [面板开发说明](hub/dashboard/README.md)。GitHub Pages 采用独立演示构建，不读取保存的访问密钥，也不会请求生产数据或更新服务。
-
-## 测试
-
-Python ≥ 3.9 即可（macOS 自带的 3.9 也行；镜像和 CI 用 3.12）：
+### 备份与恢复
+所有数据（含主账号和所有朋友账号的 SQLite 数据库与 `devices.json`）都可以用一行命令打包备份：
 
 ```bash
-cd hub   && PYTHONPATH=backend python -m pytest tests/ -q
+# 在线热备份到指定目录
+./hub/scripts/backup.sh /path/to/backup-dir
+
+# 从备份目录恢复（会短暂重启服务）
+./hub/scripts/restore.sh /path/to/backup-dir
 ```
 
-hub 测试覆盖 provider-status（Mock 网络）、history/daily SQL 分页、100×370 查询计划、activity 覆盖率、乱序快照压缩，以及前端契约 fixture 导出。
+> 注意：数据备份不包含 `hub/.env` 里的密钥配置，请另外妥善保存 `.env` 文件。
 
-## 安卓 APK（原生客户端）
+### 常用环境变量（`hub/.env`）
 
-仓库提供原生安卓客户端，直接读取面板数据。最低支持安卓14（Android 14），仅支持64位设备，并按安卓17规范构建。总览、设备、模型、额度、历史五个页面沿用新版网页的设计与统计规则；手机使用底部导航，大屏使用侧边导航。支持深色外观、大字体、趋势日期选择及会话筛选。更多菜单中的服务器更新检查只读取版本信息。
+| 变量名 | 作用说明 | 默认值 |
+|---|---|---|
+| `ACCESS_TOKEN` | 面板登录密码（必填，≥32 位随机字符，不可与同步密钥相同） | — |
+| `TOKEN_MONITOR_SECRET` | 桌面端上传同步密钥（≥32 位随机字符；留空则停用主账号上传） | 空 |
+| `TOKEN_MONITOR_SYNC_SESSION_TITLES` | 设为 `true` 时允许同步会话标题 | `false` |
+| `TENANTS_JSON` | 多用户配置 JSON（推荐用上面的 `tenant.py` 自动管理） | 空 |
+| `CM_DEMO` | 设为 `true` 时首页直接展示免密演示面板 | `false` |
+| `DASHBOARD_TIME_ZONE` | 当客户端未上报时区时的默认兜底时区（网页日常会自动按浏览器时区显示） | `Asia/Tokyo` |
+| `PROVIDER_STATUS_ENABLED` | 是否开启大模型官方状态页监控 | `true` |
 
-1. **Actions → build-apk → Run workflow**（改 `android/` 的 PR 也会自动构建）。
-2. 下载 Artifact `cloud-monitor-apk`（未配置正式签名时为 `cloud-monitor-apk-debug`）。
-3. 安装后可先看内置演示数据，或填写面板地址 + `ACCESS_TOKEN` 连实机。趋势图可拖动查看日期，明细在原生底部面板中展开。
+---
 
-包名 `io.github.iroha1145.cloudmonitor`。详见 [docs/android/README.md](docs/android/README.md)。
+## 原生安卓客户端（APK）
 
-网页面板仍带最小 PWA 支持（manifest + 图标），可「添加到主屏幕」；独立 App 请用上面的原生 APK。
+除了直接把网页「添加到手机主屏幕」（支持 PWA）外，仓库还提供使用 Jetpack Compose 编写的原生 Android 客户端（支持 Android 14+，64 位设备）：
+
+1. 打开 GitHub 仓库的 **Actions → build-apk → Run workflow**。
+2. 构建完成后下载 `cloud-monitor-apk`（或 `cloud-monitor-apk-debug`）安装到手机。
+3. 打开 App 可直接体验内置演示，或输入服务器地址与 `ACCESS_TOKEN` 查看实机数据。
+
+更多签名与构建说明见 [docs/android/README.md](docs/android/README.md)。
+
+---
+
+## 本地开发与目录说明
+
+```text
+Cloud-Monitor/
+├── hub/
+│   ├── backend/        # Python FastAPI 网关（鉴权、入站校验、SQLite 时序快照、面板接口）
+│   ├── tm-core/        # 官方 Token Monitor Hub (v0.74.0) 固定版本容器
+│   ├── dashboard/      # React + TypeScript + Vite 网页面板源码
+│   ├── scripts/        # 备份恢复、多租户管理、宿主机在线更新脚本
+│   └── tests/          # 后端与全链路差分测试（pytest）
+├── android/            # Jetpack Compose 原生安卓客户端源码
+├── docs/               # 架构细节与数据契约文档
+└── install.sh          # 服务器一键安装与更新守护配置脚本
+```
+
+- **开发前端面板**：
+  ```bash
+  cd hub/dashboard
+  npm ci
+  npm run dev          # 启动本地预览（默认带演示数据，地址 http://127.0.0.1:5188）
+  npm test             # 运行前端单元测试
+  npm run build        # 编译生产构建到 hub/frontend/app/
+  ```
+  前端详细说明见 [hub/dashboard/README.md](hub/dashboard/README.md)。
+
+- **运行后端测试**：
+  ```bash
+  cd hub
+  PYTHONPATH=backend python3 -m pytest tests/ -q
+  ```
+- **深入了解底层架构**：如果你关心重试队列、5 分钟分桶规则或官方协议差分测试，可以阅读 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
 ## 友情链接
 
