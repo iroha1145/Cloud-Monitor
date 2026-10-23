@@ -1827,17 +1827,18 @@ button,
 }
 .search-dialog-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  padding: var(--space-4) var(--space-6);
+  padding: var(--space-4) calc(44px + var(--space-4) + var(--space-3)) var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--line);
   color: var(--ink-2);
   font-size: var(--fs-section);
   font-weight: 600;
 }
+.search-dialog-heading > span { min-width: 0; flex: 1; }
 .search-dialog-heading kbd {
   margin-left: auto;
-  margin-right: 28px;
 }
 .search-dialog > div.max-w-72 {
   max-width: none;

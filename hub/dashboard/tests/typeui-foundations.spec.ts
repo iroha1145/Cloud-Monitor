@@ -25,6 +25,26 @@ async function fitsPage(page: Page) {
   expect(size.scroll).toBeLessThanOrEqual(size.width + 1);
 }
 
+for (const width of [320, 1440]) {
+  test(`quick search keeps its keyboard hint clear of the close target at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/demo.html");
+    await page.getByRole("button", { name: "搜索或快速跳转", exact: true }).click();
+    const dialog = page.locator(".search-dialog");
+    await finishAnimations(dialog);
+    const hint = await dialog.locator(".search-dialog-heading kbd").boundingBox();
+    const close = await dialog.getByRole("button", { name: "关闭", exact: true }).boundingBox();
+    expect(hint!.x + hint!.width + 8).toBeLessThanOrEqual(close!.x);
+    await dialog.getByRole("textbox").fill("不存在的模型");
+    await expect(dialog.getByText("没有找到匹配项", { exact: true })).toBeVisible();
+    expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    await expect(dialog.getByText("试试模型名称，或输入“设备”。", { exact: true })).toHaveCSS("font-size", "14px");
+    await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(dialog).toBeHidden();
+  });
+}
+
 for (const width of [320, 390, 768, 1440]) {
   test(`all pages retain a readable hierarchy and fit at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
