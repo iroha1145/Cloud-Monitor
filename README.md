@@ -18,12 +18,12 @@
 │  同步密钥: TOKEN_MONITOR_SECRET  │  协议  │  └─ 托管响应式 Web 面板（桌面 + 手机适配）          │
 └──────────────────────────────────┘        │         │                                          │
                                             │         ▼ 内部转发                                  │
-                                            │  官方内核 (tm-core @ v0.74.0 原版代码)              │
+                                            │  官方内核 (tm-core @ v0.77.0 原版代码)              │
                                             │  └─ 多设备合并、配额计算、实时 SSE 推送             │
                                             └────────────────────────────────────────────────────┘
 ```
 
-- **100% 官方协议兼容**：底层直接运行未修改的官方 Token Monitor Hub（当前固定为 `v0.74.0`），桌面端无需安装任何额外插件，填上地址和密钥就能同步。
+- **100% 官方协议兼容**：底层直接运行未修改的官方 Token Monitor Hub（当前固定为 `v0.77.0`），桌面端无需安装任何额外插件，填上地址和密钥就能同步。
 - **读写密钥分离**：上传数据用 `TOKEN_MONITOR_SECRET`，看面板用 `ACCESS_TOKEN`，两把密钥必须不同，互不混用。
 - **纯净轻量**：仅专注 Token Monitor 数据同步与展示（已移除旧版 Open WebUI 采集组件），一套 `docker compose` 即可跑起全部服务。
 
@@ -189,7 +189,7 @@ sudo python3 hub/scripts/tenant.py remove alice  # 停用账号（保留历史�
 Cloud-Monitor/
 ├── hub/
 │   ├── backend/        # Python FastAPI 网关（鉴权、入站校验、SQLite 时序快照、面板接口）
-│   ├── tm-core/        # 官方 Token Monitor Hub (v0.74.0) 固定版本容器
+│   ├── tm-core/        # 官方 Token Monitor Hub (v0.77.0) 固定版本容器
 │   ├── dashboard/      # React + TypeScript + Vite 网页面板源码
 │   ├── scripts/        # 备份恢复、多租户管理、宿主机在线更新脚本
 │   └── tests/          # 后端与全链路差分测试（pytest）
