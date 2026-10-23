@@ -152,7 +152,7 @@
   max-width: 34ch;
   color: var(--ink-3);
   font-size: var(--fs-label);
-  line-height: 1.6;
+  line-height: var(--lh-meta);
 }
 .insight-trend .insight-trend-cursor {
   top: 14px;

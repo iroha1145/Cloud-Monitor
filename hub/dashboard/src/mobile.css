@@ -368,7 +368,7 @@
   }
   .table-foot,
   .full-models .table-foot {
-    line-height: 1.7;
+    line-height: var(--lh-meta);
     padding: 13px 16px;
     flex-wrap: wrap;
     gap: 7px 12px;
@@ -457,7 +457,7 @@
     align-items: flex-end;
     justify-content: center;
     font-size: var(--fs-meta);
-    line-height: 1.55;
+    line-height: var(--lh-meta);
     text-align: center;
     overflow-wrap: anywhere;
     width: 100%;
@@ -486,7 +486,7 @@
   }
   .page-footer {
     align-items: center;
-    line-height: 1.7;
+    line-height: var(--lh-meta);
   }
   .page-footer button {
     min-height: 44px;

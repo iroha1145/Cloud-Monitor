@@ -518,7 +518,7 @@ export function InsightTrend({ data }: { data: DashboardData }) {
               disabled={!hasCost}
               onClick={() => setMetric("cost")}
             >
-              使用费用
+              估算费用
             </button>
           </div>
         </div>

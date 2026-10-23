@@ -246,3 +246,89 @@ test("metric details keep enlarged text inside the viewport and close on real sc
   await page.mouse.wheel(0, 120);
   await expect(tooltip).toBeHidden();
 });
+
+for (const width of [320, 390]) {
+  test(`phone quick navigation gives its four places equal width at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 760 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/demo.html#overview");
+    await loadedPage(page, "overview");
+    const places = await page.locator(".feel-quick-navigation > *").evaluateAll(elements => elements.map(element => {
+      const label = element.querySelector("span")!;
+      return { width: element.getBoundingClientRect().width, fits: label.scrollWidth <= label.clientWidth + 1 && label.getBoundingClientRect().right <= element.getBoundingClientRect().right };
+    }));
+    expect(places).toHaveLength(4);
+    for (const place of places) {
+      expect(place.width).toBeCloseTo(places[0].width, 0);
+      expect(place.fits).toBe(true);
+    }
+  });
+}
+
+test("text stays light: grayscale smoothing and no weight above 500 except the brand name", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  for (const [id] of destinations) {
+    await page.goto(`/demo.html#${id}`);
+    await loadedPage(page, id);
+    await revealAll(page);
+    const heavy = await page.evaluate(() => {
+      const found = new Set<string>();
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const element = node.parentElement;
+        if (!node.textContent?.trim() || !element || !element.getClientRects().length || element.closest(".app-brand, .sr-only")) continue;
+        if (Number(getComputedStyle(element).fontWeight) > 500) found.add(`${element.className || element.tagName}: ${node.textContent.trim().slice(0, 20)}`);
+      }
+      return [...found];
+    });
+    expect(heavy).toEqual([]);
+    expect(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue("-webkit-font-smoothing"))).toBe("antialiased");
+  }
+});
+
+test("session details keep one hierarchy in the model dialog and in history rows", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const roles = (root: Element) => {
+    const size = (selector: string) => parseFloat(getComputedStyle(root.querySelector(selector)!).fontSize);
+    return { subheading: size(".session-details-content .detail-section-heading h3"), label: size(".session-facts dt"),
+      value: size(".session-facts dd"), note: parseFloat(getComputedStyle(root.querySelector(".session-token-breakdown .detail-footnote")!).marginTop) };
+  };
+  // History first, so its page sheet is loaded before the dialog opens.
+  await page.goto("/demo.html#history");
+  await loadedPage(page, "history");
+  await page.locator(".sv-session-table tbody button").first().click();
+  const history = await page.locator(".sv-session-detail").first().evaluate(roles);
+  await page.locator("aside").getByRole("link", { name: "模型分析" }).click();
+  await loadedPage(page, "models");
+  await page.getByRole("button", { name: "查看 gpt-6-astra 详情", exact: true }).click();
+  const dialog = page.locator(".model-dialog");
+  await finishAnimations(dialog);
+  const summary = dialog.locator(".session-usage-card > summary").first();
+  await summary.click();
+  const inDialog = await dialog.evaluate(roles);
+  expect(inDialog).toEqual(history);
+  const cardTitle = await summary.locator(".session-card-title strong").evaluate(element => parseFloat(getComputedStyle(element).fontSize));
+  expect(inDialog.subheading).toBeLessThan(cardTitle);
+  expect(inDialog.value).toBe(16);
+  expect(inDialog.label).toBe(14);
+  expect(inDialog.note).toBeGreaterThanOrEqual(8);
+});
+
+for (const width of [320, 1440]) {
+  test(`quick search centres its close button on the heading row at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/demo.html");
+    await page.getByRole("button", { name: "搜索或快速跳转", exact: true }).click();
+    const dialog = page.locator(".search-dialog");
+    await finishAnimations(dialog);
+    const heading = (await dialog.locator(".search-dialog-heading").boundingBox())!;
+    const close = (await dialog.getByRole("button", { name: "关闭", exact: true }).boundingBox())!;
+    const box = (await dialog.boundingBox())!;
+    expect(close.y + close.height / 2).toBeCloseTo(heading.y + heading.height / 2, 0);
+    expect(close.y + close.height).toBeLessThanOrEqual(heading.y + heading.height);
+    expect(heading.x - box.x).toBeLessThanOrEqual(1.5);
+  });
+}

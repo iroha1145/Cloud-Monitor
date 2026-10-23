@@ -59,8 +59,8 @@ test("demo matrix paints a color on every reported token and cost cell", async (
     path: "evidence/matrix-demo-tokens.png",
     animations: "disabled",
   });
-  await page.getByRole("button", { name: "使用费用" }).click();
-  await expect(page.getByRole("button", { name: "使用费用" })).toHaveAttribute(
+  await page.getByRole("button", { name: "估算费用" }).click();
+  await expect(page.getByRole("button", { name: "估算费用" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -133,7 +133,7 @@ test("skewed live matrix keeps 万-scale cells colored against a 亿-scale peak"
     path: "evidence/matrix-skewed-tokens.png",
     animations: "disabled",
   });
-  await page.getByRole("button", { name: "使用费用" }).click();
+  await page.getByRole("button", { name: "估算费用" }).click();
   await expectMatrixCellsColored(page);
   await page.locator(".matrix-panel").scrollIntoViewIfNeeded();
   await page.screenshot({
