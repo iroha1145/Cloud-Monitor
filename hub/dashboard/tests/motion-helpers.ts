@@ -26,20 +26,57 @@ export async function waitForReveal(locator: Locator) {
 export async function scrollIntoViewAndReveal(locator: Locator) {
   await locator.scrollIntoViewIfNeeded();
   await waitForReveal(locator);
+  // Revealing a taller card can change the browser's scroll destination.
+  // A hover sent during that final scroll correctly dismisses metric details.
+  // Wait for the viewport and the target to settle, not just the reveal flag.
+  await locator.scrollIntoViewIfNeeded();
+  await locator.evaluate(element => new Promise<void>((resolve, reject) => {
+    const ancestors: Element[] = [];
+    for (let node: Element | null = element; node; node = node.parentElement) ancestors.push(node);
+    const sample = () => {
+      const box = element.getBoundingClientRect();
+      return [box.x, box.y, box.width, box.height, ...ancestors.flatMap(node => [node.scrollLeft, node.scrollTop])];
+    };
+    let previous = sample();
+    let stableFrames = 0;
+    const started = performance.now();
+    const frame = () => {
+      const current = sample();
+      stableFrames = current.every((value, index) => Math.abs(value - previous[index]) < 0.1) ? stableFrames + 1 : 0;
+      previous = current;
+      if (stableFrames >= 6) return resolve();
+      if (performance.now() - started > 3000) return reject(new Error("The scrolled target did not settle"));
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  }));
 }
 
 /** Wait for the finite CSS and Web Animations running on the element and its
  * descendants (an entering side sheet, for example) to finish. Looping
  * indicators never finish, so they are left alone. */
 export async function finishAnimations(locator: Locator) {
-  await locator.evaluate((element) =>
-    Promise.all(
-      element
-        .getAnimations({ subtree: true })
-        .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
-        .map((animation) => animation.finished.catch(() => undefined)),
-    ),
-  );
+  // A closing/reopening dialog may replace an animation after it is sampled.
+  // Inspect current animations instead of retaining an old finished promise.
+  // Paused and pending animations still fail this wait; nothing is forced to end.
+  await expect.poll(() => locator.evaluate((element) =>
+    element.getAnimations({ subtree: true })
+      .filter((animation) => animation.effect?.getTiming().iterations !== Infinity
+        && (animation.pending || !["finished", "idle"].includes(animation.playState)))
+      .map((animation) => {
+        const effect = animation.effect;
+        const target = effect instanceof KeyframeEffect ? effect.target : null;
+        return {
+          name: animation instanceof CSSAnimation ? animation.animationName : animation.id || "Web Animation",
+          target: target instanceof Element ? target.id || target.getAttribute("class") || target.tagName : null,
+          state: animation.playState,
+          pending: animation.pending,
+          currentTime: animation.currentTime,
+          playbackRate: animation.playbackRate,
+          duration: effect?.getTiming().duration,
+        };
+      }),
+  ), { message: "finite animations should finish before checking layout" }).toEqual([]);
 }
 
 /** Scroll through the whole page so every card that waits below the fold

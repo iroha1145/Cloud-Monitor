@@ -98,7 +98,7 @@
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
-.feel-nav-content .app-brand { padding: 4px 8px; font-size: 15px; gap: 10px; }
+.feel-nav-content .app-brand { padding: 4px 8px; font-size: var(--fs-body); gap: 10px; }
 .feel-nav-content .brand-mark { width: 30px; height: 30px; }
 .feel-nav-content .nav-label { margin: 20px 10px 8px; }
 .feel-nav-content .nav-list { gap: 4px; }
@@ -106,7 +106,7 @@
   min-height: 44px;
   padding: 0 12px;
   border-radius: var(--r-well);
-  font-size: 14px;
+  font-size: var(--fs-label);
 }
 /* The current page takes the accent, as in game-manage's menu. */
 .feel-nav-content .nav-item.active { color: var(--primary); font-weight: 600; }
@@ -275,7 +275,7 @@
   /* above the grip's lower edge and the close button, which slide under it */
   z-index: 7;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: 1fr 1.35fr 1.65fr 1fr;
   gap: 2px;
   height: var(--nav-bar-height);
   padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
@@ -306,8 +306,8 @@
   border-radius: 16px;
   background: transparent;
   color: var(--ink-2);
-  font-size: 12px;
-  line-height: 14px;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
   text-align: center;
   white-space: nowrap;
   text-decoration: none;

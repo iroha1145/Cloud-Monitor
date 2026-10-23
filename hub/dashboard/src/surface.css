@@ -1,6 +1,6 @@
 /* Card surface after game-manage (docs/frontend-motion.md there): white cards
    with a hairline and a soft two-step shadow, one level of grey wells inside a
-   card and no shadow below that, rounded-rectangle controls, a 12px floor for
+   card and no shadow below that, rounded-rectangle controls, a 14px floor for
    text and 600 for titles. The page stays white and every colour comes from
    tokens.css, so the dashboard keeps its own palette. */
 
@@ -27,18 +27,18 @@
 .app-shell .main-content { padding-top: 4px; }
 
 /* ── Type ─────────────────────────────────────────────────────────── */
-.app-shell h1 { font-size: var(--fs-page); line-height: 36px; font-weight: 600; letter-spacing: -0.03em; }
+.app-shell h1 { font-size: var(--fs-page); line-height: var(--lh-heading); font-weight: 600; letter-spacing: -0.02em; }
 .app-shell h2 { font-weight: 600; letter-spacing: -0.02em; }
 .app-shell .panel-head h2,
 .app-shell .ledger-composition-head h2,
 .app-shell .insight-trend-heading h2,
 .app-shell .cm-activity-head h2,
 .app-shell .archive-header h2,
-.app-shell .system-update-header h2 { font-size: var(--fs-section); line-height: 24px; font-weight: 600; }
-.app-shell .sv-section-head h2 { font-size: 18px; line-height: 26px; }
+.app-shell .system-update-header h2 { font-size: var(--fs-section); line-height: var(--lh-heading); font-weight: 600; }
+.app-shell .sv-section-head h2 { font-size: var(--fs-section); line-height: var(--lh-heading); }
 .app-shell .page-heading { align-items: center; padding: 20px 0 22px; }
-.app-shell .heading-kicker { margin-bottom: 8px; font-size: 13px; }
-.app-shell .heading-mode { margin-top: 6px; font-size: 13px; color: var(--ink-3); }
+.app-shell .heading-kicker { margin-bottom: 8px; font-size: var(--fs-meta); }
+.app-shell .heading-mode { margin-top: 6px; font-size: var(--fs-meta); color: var(--ink-3); }
 
 /* ── Controls: rounded rectangles with a hairline, a 1px press ───── */
 .app-shell :is(.plain-button, .sv-button, .archive-button, .system-update-button:not(.system-update-primary)),
@@ -113,9 +113,9 @@
   border-radius: var(--r-chip);
   background: var(--canvas);
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: var(--fs-meta);
   font-weight: 500;
-  line-height: 18px;
+  line-height: var(--lh-meta);
 }
 .app-shell .workspace-notices { border-radius: var(--r-well); }
 
@@ -128,8 +128,8 @@
   background: var(--surface);
   box-shadow: var(--shadow-panel);
 }
-.app-shell .panel-head { padding: 22px 22px 0; }
-.app-shell .panel-head p { margin-top: 2px; font-size: 12px; line-height: 18px; }
+.app-shell .panel-head { padding: var(--space-6) var(--space-6) 0; }
+.app-shell .panel-head p { margin-top: var(--space-2); font-size: var(--fs-meta); line-height: var(--lh-meta); }
 
 /* The ledger is four figure cards and a composition card, not one strip. */
 .app-shell .ledger {
@@ -142,7 +142,7 @@
   overflow: visible;
 }
 .app-shell .ledger-figures { gap: 16px; grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)); }
-.app-shell .ledger-figure { padding: 22px; min-height: 164px; }
+.app-shell .ledger-figure { padding: var(--space-6); min-height: 164px; }
 .app-shell .ledger-figure + .ledger-figure { border-left: 1px solid var(--card-border); }
 /* The lead figure is the one tinted card, like game-manage's hero tone. Its
    tinted border holds at every width, and it drops the white top highlight,
@@ -150,12 +150,12 @@
    hue-family tint (TypeUI tinted-text). */
 .app-shell .ledger-lead { --lead-border: color-mix(in srgb, var(--primary) 12%, var(--card-border)); background: var(--accent-tint); border-color: var(--lead-border); box-shadow: var(--shadow-panel-lift); }
 .app-shell .ledger-lead :is(.ledger-label, .ledger-label small, .ledger-note, .ledger-unit) { color: var(--accent-muted); }
-.app-shell .ledger-label { font-size: 13px; color: var(--ink-2); white-space: normal; flex-wrap: wrap; }
-.app-shell .ledger-value { font-weight: 500; letter-spacing: -0.04em; }
-.app-shell .ledger-lead .ledger-value { font-size: var(--fs-lead); font-weight: 500; letter-spacing: -0.05em; }
-.app-shell .ledger-note { white-space: normal; line-height: 18px; }
-.app-shell .ledger-composition { padding: 22px; }
-.app-shell .ledger-composition-head p { font-size: 12px; }
+.app-shell .ledger-label { font-size: var(--fs-meta); color: var(--ink-2); white-space: normal; flex-wrap: wrap; }
+.app-shell .ledger-value { font-weight: 500; letter-spacing: -0.02em; }
+.app-shell .ledger-lead .ledger-value { font-size: var(--fs-lead); font-weight: 500; letter-spacing: -0.02em; }
+.app-shell .ledger-note { white-space: normal; line-height: var(--lh-meta); }
+.app-shell .ledger-composition { padding: var(--space-6); }
+.app-shell .ledger-composition-head p { font-size: var(--fs-meta); }
 .app-shell .ledger-composition .composition-legend { gap: 8px; }
 .app-shell .ledger-composition .composition-legend > div { padding: 10px 12px; }
 
@@ -201,10 +201,10 @@
 .app-shell .client-row + .client-row { border-top: 0; }
 
 /* Trend card: figures above the chart, each in a well. */
-.app-shell .insight-trend-metrics { gap: 8px; padding: 0 22px 16px; grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr)); }
+.app-shell .insight-trend-metrics { gap: 8px; padding: 0 22px 16px; grid-template-columns: repeat(auto-fit, minmax(min(10rem, 100%), 1fr)); }
 .app-shell .insight-trend-metrics > div { padding: 12px 14px; }
-.app-shell .insight-trend-metrics > div > span { white-space: normal; line-height: 18px; }
-.app-shell .insight-trend-metrics > div > small { white-space: normal; line-height: 18px; overflow-wrap: anywhere; }
+.app-shell .insight-trend-metrics > div > span { white-space: normal; line-height: var(--lh-meta); }
+.app-shell .insight-trend-metrics > div > small { white-space: normal; line-height: var(--lh-meta); overflow-wrap: anywhere; }
 .app-shell .insight-trend-inset { margin: 0; padding: 0 12px 4px; }
 
 /* Clients card. */
@@ -230,7 +230,7 @@
   background: var(--surface);
 }
 .app-shell .model-table th,
-.app-shell .sv-session-table th { background: transparent; color: var(--ink-3); font-size: 12px; font-weight: 500; }
+.app-shell .sv-session-table th { background: transparent; color: var(--ink-3); font-size: var(--fs-meta); font-weight: 500; }
 .app-shell .model-open > .brand-icon { width: 32px; height: 32px; }
 .app-shell .model-open strong { font-weight: 500; }
 .app-shell .table-foot { padding: 14px 22px; background: transparent; border-top: 1px solid var(--line-soft); }
@@ -285,42 +285,42 @@
 
 /* ── Secondary pages ──────────────────────────────────────────────── */
 .app-shell .sv-page .sv-summary { gap: 16px; background: transparent; border: 0; border-radius: 0; overflow: visible; }
-.app-shell .sv-page .sv-summary-item { padding: 22px; gap: 8px; min-height: 132px; }
+.app-shell .sv-page .sv-summary-item { padding: var(--space-6); gap: 8px; min-height: 132px; }
 .app-shell .sv-page .sv-summary-item + .sv-summary-item::before { display: none; }
-.app-shell .sv-summary-value { font-weight: 500; letter-spacing: -0.04em; overflow-wrap: anywhere; }
-.app-shell .sv-summary-label { flex-wrap: wrap; font-size: 13px; }
+.app-shell .sv-summary-value { font-weight: 500; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+.app-shell .sv-summary-label { flex-wrap: wrap; font-size: var(--fs-meta); }
 /* A toolbar is a row of controls on the page, not a card. */
 .app-shell .sv-page > .sv-toolbar { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 
 /* Devices */
-.app-shell .sv-device-main { padding: 22px; }
+.app-shell .sv-device-main { padding: var(--space-6); }
 .app-shell .sv-device-heading { padding: 0; gap: 12px; border: 0; border-radius: 0; background: transparent; }
-.app-shell .sv-device-heading h3 { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.app-shell .sv-device-heading h3 { font-size: var(--fs-section); font-weight: 600; overflow-wrap: anywhere; }
 .app-shell .sv-device-icon { border-radius: var(--r-well); background: var(--inset); }
 .app-shell .sv-device-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; border-top: 0; padding-top: 0; }
 .app-shell .sv-device-stat { padding: 12px 14px; }
-.app-shell .sv-device-metrics .sv-metric-value { font-size: 20px; font-weight: 500; letter-spacing: -0.03em; overflow-wrap: anywhere; }
+.app-shell .sv-device-metrics .sv-metric-value { font-size: var(--fs-value); font-weight: 500; letter-spacing: -0.02em; overflow-wrap: anywhere; }
 .app-shell .sv-device-footer { padding: 12px 22px; background: transparent; border-top: 1px solid var(--line-soft); }
 .app-shell .sv-device-detail { padding: 16px 22px; }
 
 /* Quota and subscriptions */
-.app-shell :is(.sv-quota-card, .sv-subscription) { padding: 22px; }
+.app-shell :is(.sv-quota-card, .sv-subscription) { padding: var(--space-6); }
 .app-shell .sv-provider-icon { border-radius: var(--r-well); background: var(--inset); }
 .app-shell .sv-quota-windows { gap: 8px; padding-top: 0; border-top: 0; }
 .app-shell .sv-quota-window { padding: 14px; }
-.app-shell .sv-subscription h3.sv-subscription-plan { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.app-shell .sv-subscription h3.sv-subscription-plan { font-size: var(--fs-section); font-weight: 600; overflow-wrap: anywhere; }
 .app-shell .sv-subscription-price { padding: 0; border: 0; border-radius: 0; background: transparent; }
 .app-shell .sv-subscription-dates { gap: 8px; }
 .app-shell .sv-subscription-dates > div { padding: 10px 12px; min-width: 0; }
 .app-shell .sv-subscription-records li { padding: 10px 12px; }
 
 /* History */
-.app-shell .cm-activity-head { padding: 22px; }
+.app-shell .cm-activity-head { padding: var(--space-6); }
 .app-shell .cm-activity-body { background: transparent; }
 .app-shell .cm-activity-summary > span { padding: 10px 12px; }
 .app-shell .sv-history-sessions .sv-history-filters { padding: 14px 22px; background: transparent; border-bottom: 1px solid var(--line-soft); }
 .app-shell .sv-session-table thead { background: transparent; }
-.app-shell .archive-panel { padding: 22px; }
+.app-shell .archive-panel { padding: var(--space-6); }
 .app-shell .archive-days { display: grid; gap: 8px; }
 .app-shell .archive-day summary { padding: 14px 16px; border-radius: inherit; }
 .app-shell .archive-columns { padding-inline: 16px; border-color: var(--line-soft); }
@@ -351,15 +351,15 @@
   .app-shell .command-search { flex: 1 1 auto; width: auto; min-width: 0; height: 44px; padding: 0 13px; justify-content: flex-start; }
   .app-shell .command-search kbd { display: none; }
   .app-shell .page-heading { padding-block: 12px 16px; gap: 12px; }
-  .app-shell h1 { font-size: 26px; line-height: 34px; }
+  .app-shell h1 { font-size: var(--fs-dialog); line-height: var(--lh-heading); }
   .app-shell .heading-actions { align-items: center; }
   .app-shell .ledger { gap: 12px; }
   .app-shell .ledger-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .app-shell .ledger-figure,
   .app-shell .ledger-figure:nth-child(n) { padding: 18px 16px; border: 1px solid var(--card-border); min-height: 148px; }
   .app-shell .ledger-lead:nth-child(n) { border-color: var(--lead-border); }
-  .app-shell .ledger-value { font-size: clamp(23px, 6vw, 28px); flex-wrap: wrap; line-height: 1.15; }
-  .app-shell .ledger-lead .ledger-value { font-size: clamp(26px, 7vw, 32px); }
+  .app-shell .ledger-value { font-size: var(--fs-dialog); flex-wrap: wrap; line-height: 1.15; }
+  .app-shell .ledger-lead .ledger-value { font-size: var(--fs-figure); }
   .app-shell .ledger-composition { padding: 18px 16px; }
   .app-shell .ledger-composition .composition-legend { display: grid; grid-template-columns: 1fr; gap: 8px; }
   .app-shell .panel-head { padding: 18px 16px 0; }
@@ -385,7 +385,7 @@
   .app-shell :is(.sv-device-main, .sv-quota-card, .sv-subscription) { padding: 18px 16px; }
   .app-shell .sv-device-metrics { gap: 8px; }
   .app-shell .sv-device-stat { padding: 12px; }
-  .app-shell .sv-device-metrics .sv-metric-value { font-size: 18px; }
+  .app-shell .sv-device-metrics .sv-metric-value { font-size: var(--fs-section); }
   .app-shell .sv-quota-window { padding: 12px; }
   .app-shell .cm-activity-head { padding: 18px 16px; }
   .app-shell .cm-activity-summary { gap: 6px; }
@@ -397,9 +397,9 @@
 }
 @media (max-width: 480px) {
   .app-shell .sv-page .sv-summary { grid-template-columns: 1fr; }
-  .app-shell .sv-page .sv-summary-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 12px; min-height: 96px; }
+  .app-shell .sv-page .sv-summary-item { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: var(--space-2) var(--space-3); min-height: 96px; }
   .app-shell .sv-summary-item .sv-summary-label { grid-column: 1; }
-  .app-shell .sv-summary-item .sv-summary-value { grid-column: 2; grid-row: 1 / 3; font-size: 25px; text-align: right; }
+  .app-shell .sv-summary-item .sv-summary-value { grid-column: 2; grid-row: 1 / 3; font-size: var(--fs-dialog); text-align: right; }
   .app-shell .sv-summary-item .sv-summary-foot { grid-column: 1; }
 }
 @media (min-width: 600px) and (max-width: 960px) and (max-height: 500px) {

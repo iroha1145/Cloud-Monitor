@@ -66,7 +66,7 @@ export default function SearchList({
             }}
             placeholder={labels.placeholder}
             aria-label={labels.ariaLabel}
-            className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-3"
+            className="min-w-0 flex-1 bg-transparent text-[length:var(--fs-body)] text-ink outline-none placeholder:text-ink-3"
           />
           {query && (
             <button
@@ -97,8 +97,8 @@ export default function SearchList({
                 <path d="M21 21l-4.3-4.3" />
               </svg>
             </span>
-            <span className="text-[13px] font-medium text-ink">{labels.emptyTitle}</span>
-            <span className="text-[12px] text-ink-3">{labels.emptyHint}</span>
+            <span className="text-[length:var(--fs-body)] font-medium text-ink">{labels.emptyTitle}</span>
+            <span className="text-[length:var(--fs-meta)] text-ink-3">{labels.emptyHint}</span>
           </div>
         ) : (
           <div className="p-1">
@@ -114,7 +114,7 @@ export default function SearchList({
                     setActiveIndex(0);
                     onSelect?.(item);
                   }}
-                  className={`relative z-10 flex h-8 w-full items-center rounded-[var(--r-dropdown-item)] px-2 text-left text-[13px] text-ink focus-visible:outline-2 focus-visible:outline-[var(--primary)] focus-visible:-outline-offset-2 ${
+                  className={`relative z-10 flex h-8 w-full items-center rounded-[var(--r-dropdown-item)] px-2 text-left text-[length:var(--fs-body)] text-ink focus-visible:outline-2 focus-visible:outline-[var(--primary)] focus-visible:-outline-offset-2 ${
                     index === currentIndex ? "bg-hover/60" : ""
                   }`}
                   // Rows cascade by 20ms (capped) instead of appearing all at once.

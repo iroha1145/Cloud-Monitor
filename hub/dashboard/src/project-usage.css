@@ -7,26 +7,27 @@
   color: var(--ink-2);
 }
 .project-note {
-  margin: 12px 22px 0;
+  margin: var(--space-3) var(--space-6) 0;
   color: var(--ink-3);
   font-size: var(--fs-label);
-  line-height: 1.5;
+  line-height: var(--lh-meta);
+  max-width: 65ch;
 }
 .project-share-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
-  margin: 0 0 9px;
+  gap: var(--space-1) var(--space-3);
+  margin: 0 0 var(--space-2);
   padding: 0;
   list-style: none;
   color: var(--ink-2);
   font-size: var(--fs-label);
-  line-height: 18px;
+  line-height: var(--lh-meta);
 }
 .project-share-legend li {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1);
   min-width: 0;
 }
 .project-share-legend span {
@@ -36,6 +37,7 @@
   color: var(--ink);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+  line-height: var(--lh-data);
 }
 .project-share-legend i {
   flex: none;
@@ -48,10 +50,10 @@
 }
 .more-projects {
   display: flex;
-  margin: 0 auto 16px;
+  margin: 0 auto var(--space-4);
 }
 .app-shell .project-rows:has(+ .more-projects) {
-  padding-bottom: 14px;
+  padding-bottom: var(--space-3);
 }
 
 @media (max-width: 760px), (max-width: 960px) and (max-height: 500px) {
@@ -62,9 +64,11 @@
     margin-left: 0;
   }
   .project-note {
-    margin-inline: 16px;
+    margin-inline: var(--space-4);
+    max-width: 65ch;
+    line-height: var(--lh-meta);
   }
   .app-shell .project-rows:has(+ .more-projects) {
-    padding-bottom: 12px;
+    padding-bottom: var(--space-3);
   }
 }

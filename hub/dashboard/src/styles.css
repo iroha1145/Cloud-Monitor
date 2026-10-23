@@ -51,11 +51,12 @@ body {
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: var(--fs-body);
-  line-height: 1.5;
+  line-height: var(--lh-body);
   /* Every figure lines up in its column: the dashboard is mostly numbers. */
   font-variant-numeric: tabular-nums;
   font-variant-ligatures: common-ligatures contextual;
-  -webkit-font-smoothing: antialiased;
+  font-kerning: normal;
+  -webkit-font-smoothing: auto;
   text-rendering: optimizeLegibility;
 }
 code,
@@ -114,17 +115,23 @@ h1 {
   margin: 0;
   color: var(--ink);
   font-size: var(--fs-page);
-  font-weight: 500;
-  letter-spacing: -0.03em;
-  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: var(--lh-heading);
 }
 h2 {
   margin: 0;
   color: var(--ink);
   font-size: var(--fs-section);
-  font-weight: 500;
-  letter-spacing: -0.015em;
-  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: var(--lh-heading);
+}
+h3 {
+  margin: 0;
+  font-size: var(--fs-section);
+  font-weight: 600;
+  line-height: var(--lh-heading);
 }
 kbd {
   font-family: inherit;
@@ -179,7 +186,7 @@ input[type="search"]::-webkit-search-decoration {
 .system-update-hint,
 .system-update-error,
 .design-intro {
-  max-width: 68ch;
+  max-width: 65ch;
 }
 /* Interactive option labels, tabs, disclosures and chips should not highlight
    as text during clicks or drags (TypeUI label-selection). */
@@ -209,7 +216,7 @@ button,
   align-items: center;
   gap: 11px;
   padding: 6px 8px;
-  font-size: 16px;
+  font-size: var(--fs-strong);
   font-weight: 600;
   letter-spacing: -0.02em;
   white-space: nowrap;
@@ -276,7 +283,7 @@ button,
   padding: 0 12px;
   border-radius: var(--r-sm);
   color: var(--ink-2);
-  font-size: 14.5px;
+  font-size: var(--fs-label);
   line-height: 1.2;
   transition: color var(--duration-quick) var(--ease-smooth-out);
 }
@@ -359,7 +366,7 @@ button,
   padding: 0 10px;
   border-radius: var(--r-sm);
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--fs-meta);
   text-align: left;
   transition: background var(--duration-quick) var(--ease-smooth-out),
     color var(--duration-quick) var(--ease-smooth-out);
@@ -524,7 +531,7 @@ button,
   border-radius: var(--r-control) !important;
   background: var(--surface) !important;
   color: var(--ink) !important;
-  font-size: 13px !important;
+  font-size: var(--fs-meta) !important;
   box-shadow: none !important;
 }
 .refresh-button:hover {
@@ -569,7 +576,7 @@ button,
   min-width: 64px;
   height: 30px;
   padding: 0 14px;
-  font-size: 13px;
+  font-size: var(--fs-meta);
 }
 .period-tabs [role="tab"]:hover,
 .small-tabs [role="tab"]:hover {
@@ -616,7 +623,7 @@ button,
   align-items: center;
   gap: 7px;
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--fs-meta);
 }
 .date-label > svg {
   color: var(--ink-3);
@@ -632,7 +639,7 @@ button,
   border-radius: var(--r-control);
   background: var(--surface);
   color: var(--ink);
-  font-size: 13px;
+  font-size: var(--fs-meta);
   transition: background var(--duration-quick) var(--ease-smooth-out);
 }
 .plain-button > svg {
@@ -688,7 +695,7 @@ button,
   align-items: center;
   gap: 6px;
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--fs-meta);
   white-space: nowrap;
 }
 .ledger-label small {
@@ -939,7 +946,7 @@ button,
   min-height: 160px;
   padding: 32px;
   color: var(--ink-3);
-  font-size: 13px;
+  font-size: var(--fs-meta);
   text-align: center;
 }
 .empty-inline strong {
@@ -961,7 +968,7 @@ button,
   max-width: 62ch;
   margin: 8px 0 0;
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--fs-meta);
   line-height: 1.7;
 }
 .first-report dl {
@@ -985,11 +992,11 @@ button,
 .first-report dd {
   margin: 0;
   overflow-wrap: anywhere;
-  font-size: 13px;
+  font-size: var(--fs-meta);
 }
 .first-report code {
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--fs-meta);
 }
 @media (max-width: 860px) {
   .first-report {
@@ -1021,7 +1028,7 @@ button,
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  font-size: 13px;
+  font-size: var(--fs-meta);
 }
 .client-head > span {
   display: flex;
@@ -1098,7 +1105,7 @@ button,
 .composition-hero strong {
   display: block;
   margin-top: 4px;
-  font-size: 30px;
+  font-size: var(--fs-figure);
   font-weight: 500;
   letter-spacing: -0.035em;
   line-height: 1.1;
@@ -1200,7 +1207,7 @@ button,
   min-width: 0;
   background: transparent;
   color: var(--ink);
-  font-size: 13px;
+  font-size: var(--fs-meta);
   outline: none !important;
 }
 .model-filters [data-slot="select-trigger"] {
@@ -1233,7 +1240,7 @@ button,
 .model-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--fs-meta);
   text-align: left;
   white-space: nowrap;
 }
@@ -1492,7 +1499,7 @@ button,
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--fs-meta);
 }
 .provider-status strong {
   font-weight: 500;
@@ -1551,6 +1558,8 @@ button,
   background: var(--surface);
   color: var(--ink);
   font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   box-shadow: var(--shadow-modal);
 }
 [data-slot="dialog-content"] > * {
@@ -1561,22 +1570,29 @@ button,
   overflow-wrap: anywhere;
 }
 [data-slot="dialog-title"] {
-  font-size: 20px !important;
-  font-weight: 500;
-  letter-spacing: -0.02em;
-  line-height: 1.35;
+  font-size: var(--fs-dialog) !important;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: var(--lh-heading);
 }
 [data-slot="dialog-description"] {
   color: var(--ink-2);
-  font-size: 13px !important;
-  line-height: 1.7;
+  font-size: var(--fs-meta) !important;
+  line-height: var(--lh-meta);
+  max-width: 65ch;
+  text-wrap: pretty;
+}
+[data-slot="dialog-header"] {
+  gap: var(--space-2);
+  padding-right: 44px;
+  text-align: left;
 }
 [data-slot="dialog-close"] {
   z-index: 2;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border-radius: var(--r-control);
   background: var(--hover);
@@ -1664,11 +1680,12 @@ button,
   color: var(--primary);
 }
 .settings-dialog {
-  gap: 20px !important;
-  padding: 28px !important;
+  gap: var(--space-6) !important;
+  padding: var(--space-6) !important;
 }
 .connection-target {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   padding: 14px;
@@ -1677,11 +1694,12 @@ button,
   background: var(--inset);
   color: var(--primary);
 }
+.connection-target > span:not(.connection-pill) { min-width: 0; flex: 1; overflow-wrap: anywhere; }
 .connection-target strong {
   display: block;
   color: var(--ink);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--fs-body);
+  font-weight: 600;
 }
 .connection-target small {
   display: block;
@@ -1690,6 +1708,7 @@ button,
   font-size: var(--fs-label);
 }
 .connection-pill {
+  flex-shrink: 0;
   margin-left: auto;
   padding: 2px 8px;
   border: 1px solid var(--line-strong);
@@ -1699,13 +1718,13 @@ button,
 }
 .form-label {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-2);
   font-size: var(--fs-body);
   font-weight: 500;
 }
 .form-input {
   width: 100%;
-  height: var(--control-h);
+  min-height: 44px;
   padding: 0 12px;
   border: 1px solid var(--field-border);
   border-radius: var(--r-control);
@@ -1724,17 +1743,18 @@ button,
 }
 .field-help {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
-  margin: 6px 0 0;
+  margin: var(--space-2) 0 0;
   color: var(--ink-3);
   font-size: var(--fs-label);
-  line-height: 1.7;
+  line-height: var(--lh-meta);
 }
+.field-help svg { flex-shrink: 0; margin-top: 3px; }
 .connect-submit {
   width: 100%;
-  min-height: var(--control-h);
-  margin-top: 16px;
+  min-height: 44px;
+  margin-top: var(--space-6);
   padding: 0 16px !important;
   border-radius: var(--r-control) !important;
   font-size: var(--fs-body) !important;
@@ -1777,6 +1797,8 @@ button,
   text-align: left;
   transition: border-color var(--duration-quick) var(--ease-smooth-out);
 }
+.demo-button > span { min-width: 0; overflow-wrap: anywhere; }
+.demo-button > svg, .demo-button .demo-icon { flex-shrink: 0; }
 .demo-button:hover {
   border-color: var(--line-strong);
 }
@@ -1786,8 +1808,8 @@ button,
 }
 .demo-button strong {
   display: block;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--fs-body);
+  font-weight: 600;
 }
 .demo-button small {
   display: block;
@@ -1805,16 +1827,18 @@ button,
 }
 .search-dialog-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  padding: 18px 22px;
+  padding: var(--space-4) calc(44px + var(--space-4) + var(--space-3)) var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--line);
   color: var(--ink-2);
-  font-size: 14px;
+  font-size: var(--fs-section);
+  font-weight: 600;
 }
+.search-dialog-heading > span { min-width: 0; flex: 1; }
 .search-dialog-heading kbd {
   margin-left: auto;
-  margin-right: 28px;
 }
 .search-dialog > div.max-w-72 {
   max-width: none;
@@ -1841,16 +1865,22 @@ button,
 .search-dialog .h-10 input:focus-visible {
   outline: none;
 }
+.search-dialog input { font-size: var(--fs-body); }
 .search-dialog .h-8 {
-  height: 42px;
-  padding-left: 12px;
-  font-size: 13px;
+  min-height: 44px;
+  height: auto;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-body);
+  line-height: var(--lh-data);
+  overflow-wrap: anywhere;
 }
 .search-dialog-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 11px 22px;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-6);
   border-top: 1px solid var(--line);
   background: var(--inset);
   color: var(--ink-3);
@@ -1870,7 +1900,7 @@ button,
   border-radius: var(--r-well);
   background: var(--inset);
   font-size: var(--fs-body);
-  line-height: 1.8;
+  line-height: var(--lh-body);
 }
 .notification-row svg {
   flex-shrink: 0;
@@ -1881,78 +1911,13 @@ button,
   margin: 0;
 }
 .notifications-dialog {
-  padding: 28px !important;
+  padding: var(--space-6) !important;
 }
 .notifications-dialog .plain-button {
   justify-self: end;
 }
-/* Fits a 900px-tall window without scrolling. */
-.model-dialog {
-  gap: 16px !important;
-  padding: 28px !important;
-}
-.model-dialog .composition-hero {
-  margin-block: 6px 8px;
-}
-.model-dialog .composition-legend > div {
-  min-height: 32px;
-}
-.model-dialog [data-slot="dialog-header"] > .brand-icon {
-  margin-bottom: 8px;
-}
-.model-dialog [data-slot="dialog-title"] {
-  font-size: 23px !important;
-}
-.model-detail-stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  padding: 18px 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-.model-detail-stats span {
-  display: block;
-  color: var(--ink-2);
-  font-size: var(--fs-label);
-}
-.model-detail-stats strong {
-  display: block;
-  margin: 6px 0;
-  font-size: 28px;
-  font-weight: 500;
-  letter-spacing: -0.035em;
-}
-.model-detail-stats small {
-  color: var(--ink-3);
-  font-size: var(--fs-label);
-}
-/* In the dialog the composition is part of the sheet, not a card on it. */
-.model-dialog .composition-panel {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  overflow: visible;
-}
-.model-dialog .composition-panel .panel-head {
-  padding: 0;
-}
-.model-dialog .composition-hero {
-  margin-inline: 0;
-}
-.model-dialog .composition-note {
-  margin: 16px 0 0;
-  padding: 0;
-  border: 0;
-  line-height: 1.8;
-}
-.model-dialog .composition-legend {
-  margin: 0;
-  padding-bottom: 4px;
-}
 .design-dialog {
-  padding: 28px !important;
+  padding: var(--space-6) !important;
 }
 .design-swatches {
   display: flex;
@@ -1968,8 +1933,8 @@ button,
 .design-intro {
   margin: 0;
   color: var(--ink-2);
-  font-size: 13px;
-  line-height: 1.8;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 .design-sources {
   display: grid;
@@ -1991,7 +1956,7 @@ button,
 }
 .design-sources strong {
   display: block;
-  font-size: 13px;
+  font-size: var(--fs-meta);
   font-weight: 500;
 }
 .design-sources small {
@@ -2160,7 +2125,7 @@ button,
   border-radius: var(--r-md);
   background: var(--hover);
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--fs-meta);
   font-weight: 500;
 }
 /* An unreported pair is a bare dash, not a pale fill that reads as "a little". */
