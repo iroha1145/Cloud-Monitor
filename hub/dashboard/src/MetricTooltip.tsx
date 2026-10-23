@@ -61,7 +61,11 @@ function FloatingMetricCard({
       1,
       (view?.height ?? window.innerHeight) - margin * 2,
     );
-    card.style.width = `${Math.min(274, availableWidth)}px`;
+    // Resolve the CSS reading width afresh, including an enlarged root font.
+    // The visual viewport can be narrower than the layout viewport on zoom.
+    card.style.width = "";
+    const readingWidth = parseFloat(getComputedStyle(card).width);
+    card.style.width = `${Math.min(readingWidth, availableWidth)}px`;
     const scale = Math.min(1, availableHeight / card.offsetHeight);
     const width = card.offsetWidth * scale;
     const height = card.offsetHeight * scale;

@@ -325,7 +325,7 @@ export default function AppDialogs({
           {shownModel && (
             <>
               <DialogHeader className="model-detail-heading">
-                <div className="model-detail-heading-identity">
+                <div className="model-detail-heading-identity" tabIndex={0} aria-label="模型名称与统计周期">
                   <BrandIcon name={shownModel.name} size={36} />
                   <div>
                     <DialogTitle>{shownModel.name}</DialogTitle>

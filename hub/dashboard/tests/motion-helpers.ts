@@ -26,6 +26,30 @@ export async function waitForReveal(locator: Locator) {
 export async function scrollIntoViewAndReveal(locator: Locator) {
   await locator.scrollIntoViewIfNeeded();
   await waitForReveal(locator);
+  // Revealing a taller card can change the browser's scroll destination.
+  // A hover sent during that final scroll correctly dismisses metric details.
+  // Wait for the viewport and the target to settle, not just the reveal flag.
+  await locator.scrollIntoViewIfNeeded();
+  await locator.evaluate(element => new Promise<void>((resolve, reject) => {
+    const ancestors: Element[] = [];
+    for (let node: Element | null = element; node; node = node.parentElement) ancestors.push(node);
+    const sample = () => {
+      const box = element.getBoundingClientRect();
+      return [box.x, box.y, box.width, box.height, ...ancestors.flatMap(node => [node.scrollLeft, node.scrollTop])];
+    };
+    let previous = sample();
+    let stableFrames = 0;
+    const started = performance.now();
+    const frame = () => {
+      const current = sample();
+      stableFrames = current.every((value, index) => Math.abs(value - previous[index]) < 0.1) ? stableFrames + 1 : 0;
+      previous = current;
+      if (stableFrames >= 6) return resolve();
+      if (performance.now() - started > 3000) return reject(new Error("The scrolled target did not settle"));
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  }));
 }
 
 /** Wait for the finite CSS and Web Animations running on the element and its

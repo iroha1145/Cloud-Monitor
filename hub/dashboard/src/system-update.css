@@ -1,52 +1,57 @@
 .system-update {
-  margin-top: 24px;
-  padding: 24px;
+  margin-top: var(--space-6);
+  padding: var(--space-6);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   background: var(--surface);
   color: var(--ink);
   min-width: 0;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 .system-update-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  gap: 20px;
+  align-items: flex-start;
+  gap: var(--space-4);
+  flex-wrap: wrap;
 }
 .system-update-eyebrow {
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 12px;
+  gap: var(--space-2);
+  font-size: var(--fs-meta);
   color: var(--ink-2);
 }
 .system-update-header h2 {
-  margin: 7px 0 6px;
-  font-size: 18px;
+  margin: var(--space-2) 0 var(--space-1);
+  font-size: var(--fs-section);
   letter-spacing: -0.3px;
-  font-weight: 500;
+  font-weight: 600;
+  line-height: var(--lh-heading);
 }
 .system-update-header p {
   margin: 0;
   color: var(--ink-2);
-  font-size: 12px;
-  line-height: 1.7;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-body);
 }
 .system-update-button {
   display: inline-flex;
   justify-content: center;
   align-items: center;
-  gap: 7px;
-  min-height: 38px;
-  padding: 8px 14px;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--r-control);
   background: var(--surface);
   color: var(--ink);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--fs-meta);
   cursor: pointer;
   flex-shrink: 0;
+  white-space: normal;
 }
 .system-update-button:hover:not(:disabled) {
   background: var(--hover);
@@ -58,7 +63,7 @@
 .system-update-button:focus-visible,
 .system-update-notes summary:focus-visible {
   outline: 2px solid var(--primary);
-  outline-offset: 3px;
+  outline-offset: 2px;
 }
 .system-update .system-update-primary {
   background: var(--primary);
@@ -70,36 +75,38 @@
   background: var(--primary);
 }
 .system-update-versions {
-  margin: 20px 0;
+  margin: var(--space-4) 0;
 }
 .system-update-versions > div {
   display: grid;
   grid-template-columns: 132px minmax(0, 1fr);
-  padding: 14px 0;
+  padding: var(--space-3) 0;
   border-bottom: 1px solid var(--line);
-  gap: 16px;
+  gap: var(--space-4);
   align-items: baseline;
 }
 .system-update-versions dt {
-  font-size: 12px;
+  font-size: var(--fs-meta);
   color: var(--ink-2);
 }
 .system-update-versions dd {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-body);
   overflow-wrap: anywhere;
 }
 .system-update-versions strong {
   font-weight: 500;
 }
 .system-update-versions code {
-  font-size: 12px;
+  font-size: var(--fs-meta);
   color: var(--ink-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .system-update-versions small {
   color: var(--ink-3);
@@ -111,7 +118,7 @@
   background: var(--hover);
   color: var(--ink-2);
   border-radius: var(--r-chip);
-  padding: 3px 7px;
+  padding: 3px var(--space-2);
   font-size: var(--fs-meta);
 }
 .system-update-tag.is-new {
@@ -120,50 +127,53 @@
 }
 .system-update-commit {
   flex-basis: 100%;
-  line-height: 1.6;
+  line-height: var(--lh-body);
   white-space: pre-wrap;
 }
 .system-update-hint {
-  font-size: 12px;
-  line-height: 1.7;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-body);
   color: var(--ink-2);
-  margin: 14px 0;
+  margin: var(--space-3) 0;
   overflow-wrap: anywhere;
 }
 .system-update-error {
   color: var(--red);
-  font-size: 12px;
-  line-height: 1.7;
-  margin: 14px 0;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-body);
+  margin: var(--space-3) 0;
   overflow-wrap: anywhere;
 }
 .system-update-job {
-  padding: 14px 16px;
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--r-well);
   background: var(--inset);
   border: 1px solid var(--line);
-  margin-top: 15px;
+  margin-top: var(--space-4);
   overflow-wrap: anywhere;
 }
 .system-update-job > strong {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--fs-strong);
+  font-weight: 600;
 }
 .system-update-job p {
-  margin: 7px 0 0;
+  margin: var(--space-2) 0 0;
   color: var(--ink-2);
-  font-size: 12px;
-  line-height: 1.7;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   white-space: pre-wrap;
+  max-width: 65ch;
 }
 .system-update-job small {
   display: block;
-  margin-top: 7px;
+  margin-top: var(--space-2);
   color: var(--ink-3);
   font-size: var(--fs-meta);
 }
 .system-update-job > .system-update-button {
-  margin-top: 12px;
+  margin-top: var(--space-3);
+  min-height: 44px;
+  white-space: normal;
 }
 .system-update-job-error > strong {
   color: var(--red);
@@ -172,26 +182,29 @@
   color: var(--green);
 }
 .system-update-notes {
-  margin-top: 18px;
+  margin-top: var(--space-4);
 }
 .system-update-notes summary {
-  font-size: 12px;
+  font-size: var(--fs-meta);
   cursor: pointer;
-  padding: 8px 0;
+  padding: var(--space-2) 0;
   color: var(--ink-2);
+  min-height: 44px;
+  line-height: var(--lh-meta);
 }
 .system-update-notes pre {
   font-family: inherit;
-  font-size: 12px;
-  line-height: 1.8;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  margin: 10px 0 0;
+  margin: var(--space-2) 0 0;
   max-height: 300px;
   overflow: auto;
-  padding: 14px;
+  padding: var(--space-3);
   border-radius: var(--r-well);
   border: 1px solid var(--line);
+  max-width: 65ch;
 }
 .system-update-notes a {
   color: var(--primary);
@@ -199,62 +212,71 @@
   text-underline-offset: 2px;
 }
 .system-update-footer {
-  margin-top: 20px;
+  margin-top: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: var(--space-4);
 }
 .system-update-actions {
   display: flex;
-  gap: 10px;
+  gap: var(--space-2);
   align-items: center;
   flex-wrap: wrap;
 }
 .system-update-actions a {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
   color: var(--primary);
-  font-size: 12px;
+  font-size: var(--fs-meta);
+  min-height: 44px;
 }
 .system-update-footer > small {
   font-size: var(--fs-meta);
   color: var(--ink-3);
 }
 .system-update-empty {
-  padding: 28px 0 10px;
+  padding: var(--space-6) 0 var(--space-2);
   color: var(--ink-3);
-  font-size: 12px;
-  line-height: 1.7;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-body);
 }
 @media (max-width: 640px) {
   .system-update {
-    padding: 18px 15px;
-    margin-top: 18px;
+    padding: var(--space-4) var(--space-4);
+    margin-top: var(--space-4);
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
   }
   .system-update-header {
     align-items: flex-start;
-    gap: 10px;
+    gap: var(--space-2);
+    flex-wrap: wrap;
   }
   .system-update-header h2 {
-    font-size: 19px;
+    font-size: var(--fs-section);
+    font-weight: 600;
+    line-height: var(--lh-heading);
   }
   .system-update-button {
     min-height: 44px;
+    white-space: normal;
   }
   .system-update-header > .system-update-button {
-    padding: 8px 10px;
+    padding: var(--space-2) var(--space-2);
+    min-height: 44px;
+    white-space: normal;
   }
   .system-update-versions > div {
     grid-template-columns: 1fr;
-    gap: 8px;
-    padding: 14px 0;
+    gap: var(--space-2);
+    padding: var(--space-3) 0;
   }
   .system-update-versions {
-    margin: 16px 0;
+    margin: var(--space-4) 0;
   }
   .system-update-job {
-    padding: 12px;
+    padding: var(--space-3);
   }
   .system-update-actions {
     align-items: stretch;
@@ -269,5 +291,6 @@
   }
   .system-update-notes summary {
     min-height: 44px;
+    line-height: var(--lh-meta);
   }
 }

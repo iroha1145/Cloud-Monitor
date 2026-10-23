@@ -5,6 +5,7 @@
 }
 .cm-activity-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -54,7 +55,7 @@
 .cm-activity-summary { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 9px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .cm-activity-summary > span { min-width: 0; }
 .cm-activity-summary small { display: block; margin-bottom: 5px; color: var(--ink-2); font-size: var(--fs-meta); }
-.cm-activity-summary strong { display: block; color: var(--ink); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.cm-activity-summary strong { display: block; color: var(--ink); font-size: var(--fs-body); font-weight: 500; line-height: var(--lh-data); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .cm-activity-missing, .cm-activity-empty, .cm-activity-coverage-missing { color: var(--ink-2); font-size: var(--fs-meta); line-height: 1.65; }
 .cm-activity-missing { margin: 12px 0 0; }
 .cm-activity-empty { margin: 0 0 14px; }
@@ -83,6 +84,6 @@
   .cm-activity-tabs button { min-width: 28px; padding: 4px 5px; }
   .cm-activity-body { padding: 16px; }
   .cm-activity-summary { gap: 6px; }
-  .cm-activity-summary strong { font-size: 12px; }
+  .cm-activity-summary { grid-template-columns: minmax(0, 1fr); }
   .cm-activity-coverage, .cm-activity-coverage-missing { padding-left: 16px; padding-right: 16px; }
 }

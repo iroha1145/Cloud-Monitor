@@ -12,9 +12,9 @@
   top: 0;
   left: 0;
   z-index: 160;
-  width: 274px;
+  width: 20rem;
   max-width: calc(100vw - 24px);
-  padding: 13px 15px;
+  padding: var(--space-4);
   border-radius: 10px;
   background: var(--surface);
   color: var(--ink);
@@ -28,18 +28,18 @@
   animation: none;
   transition: none;
   font-size: var(--fs-meta);
-  line-height: 1.5;
+  line-height: var(--lh-meta);
 }
 .metric-tooltip-title {
   display: block;
-  margin-bottom: 10px;
-  font-size: 12px;
-  font-weight: 500;
+  margin-bottom: var(--space-3);
+  font-size: var(--fs-body);
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 .metric-tooltip-card dl {
   display: grid;
-  gap: 7px;
+  gap: var(--space-2);
   margin: 0;
   font-size: var(--fs-meta);
 }

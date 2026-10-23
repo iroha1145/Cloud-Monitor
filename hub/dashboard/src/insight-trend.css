@@ -31,10 +31,10 @@
 .insight-trend-metrics strong {
   display: block;
   margin: 6px 0 3px;
-  font-size: clamp(20px, 1.7vw, 24px);
+  font-size: var(--fs-dialog);
   font-weight: 500;
   line-height: 1.2;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.02em;
 }
 /* One line in both states: inspecting a day must not move the plot under
    the finger that is inspecting it. */
@@ -140,7 +140,7 @@
   gap: 6px;
   height: 264px;
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--fs-meta);
   text-align: center;
 }
 .insight-trend-no-line strong {
@@ -323,7 +323,7 @@
     font-size: var(--fs-meta);
   }
   .insight-trend-metrics strong {
-    font-size: 19px;
+    font-size: var(--fs-value);
   }
   .insight-trend-inset {
     margin: 0 16px 4px;
