@@ -1,6 +1,8 @@
 """Online update publication must remain recoverable across process exits."""
 
 import json
+import os
+from pathlib import Path
 import subprocess
 import sys
 
@@ -8,10 +10,15 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+import hub
 from hub.main import create_app
 from hub.tm_update import UpdateService
 from conftest import make_settings
 from test_hub import READ
+
+# conftest puts backend/ on this process's sys.path; a child interpreter needs
+# it in PYTHONPATH, or the test only passes when the caller exported it.
+BACKEND = str(Path(hub.__file__).resolve().parent.parent)
 
 
 def test_process_exit_after_first_publication_keeps_a_consumable_request(tmp_path):
@@ -41,6 +48,7 @@ tm_update._atomic_write = publish_then_exit
 tm_update.UpdateService(settings).apply("main")
 """, str(control)],
         capture_output=True, text=True, timeout=10,
+        env={**os.environ, "PYTHONPATH": os.pathsep.join(filter(None, (BACKEND, os.environ.get("PYTHONPATH"))))},
     )
     assert child.returncode == 23, child.stderr
     assert (control / "request.json").is_file()

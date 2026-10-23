@@ -28,8 +28,10 @@ def write_db(path, value):
         connection.close()
 
 
-def read_db(path):
-    connection = sqlite3.connect(path)
+def read_db(path, immutable=False):
+    # immutable=1 reads only the main file, as validate_backup does: no -wal
+    # or -shm is opened or created, so the value proves the file stands alone.
+    connection = sqlite3.connect(f"{path.absolute().as_uri()}?immutable=1", uri=True) if immutable else sqlite3.connect(path)
     try:
         return connection.execute("SELECT tokens FROM usage WHERE device='same-device'").fetchone()[0]
     finally:
@@ -108,7 +110,10 @@ def test_sqlite_snapshot_includes_committed_wal_without_crossing_tenants(tmp_pat
             backup_data.sqlite_snapshot(path, output)
             snapshot = tmp_path / f"{tenant}.sqlite3"
             snapshot.write_bytes(output.getvalue())
-            assert read_db(snapshot) == expected
+            # The snapshot keeps the source's WAL flag in its header, so a
+            # read-write open may leave an empty -wal behind (macOS keeps it).
+            # What matters is that the committed WAL pages are in the file itself.
+            assert read_db(snapshot, immutable=True) == expected
             assert not Path(str(snapshot) + "-wal").exists()
     finally:
         for connection in connections:

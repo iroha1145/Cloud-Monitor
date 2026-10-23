@@ -32,7 +32,7 @@
   display: block;
   margin: 6px 0 3px;
   font-size: var(--fs-dialog);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   line-height: 1.2;
   letter-spacing: -0.02em;
 }
@@ -78,7 +78,7 @@
   background: transparent;
   color: var(--ink-2);
   font-size: var(--fs-label);
-  font-weight: 500;
+  font-weight: var(--fw-control);
   cursor: pointer;
   transition:
     color var(--duration-quick) var(--ease-smooth-out),
@@ -146,7 +146,7 @@
 .insight-trend-no-line strong {
   color: var(--ink);
   font-size: var(--fs-strong);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 .insight-trend-no-line span {
   max-width: 34ch;
@@ -202,7 +202,7 @@
 }
 .insight-trend-tooltip-title time {
   color: var(--ink);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 .insight-trend-tooltip-title span {
   color: var(--ink-3);

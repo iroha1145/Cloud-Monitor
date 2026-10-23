@@ -35,7 +35,7 @@
 }
 .project-share-legend strong {
   color: var(--ink);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   font-variant-numeric: tabular-nums;
   line-height: var(--lh-data);
 }

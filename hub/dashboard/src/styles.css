@@ -6,6 +6,9 @@
     "Geist Variable", -apple-system, BlinkMacSystemFont, "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
+  /* Tailwind's font-medium is used by the button and tab primitives: it takes
+     the control step, 400 on phones like the dashboard's own buttons. */
+  --font-weight-medium: var(--fw-control);
   --color-background: var(--surface);
   --color-foreground: var(--ink);
   --color-card: var(--surface);
@@ -62,6 +65,13 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+}
+/* Phone text steps down to 15px (tokens.css), but iOS Safari zooms the page
+   into any field under 16px when it takes focus, so fields keep 1rem. */
+@media (max-width: 760px), (max-width: 960px) and (max-height: 500px) {
+  :is(input, textarea, select):not([type="checkbox"], [type="radio"], [type="range"]) {
+    font-size: 1rem !important;
+  }
 }
 code,
 pre,
@@ -128,7 +138,7 @@ h1 {
   margin: 0;
   color: var(--ink);
   font-size: var(--fs-page);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   letter-spacing: -0.02em;
   line-height: var(--lh-heading);
 }
@@ -136,14 +146,14 @@ h2 {
   margin: 0;
   color: var(--ink);
   font-size: var(--fs-section);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   letter-spacing: -0.01em;
   line-height: var(--lh-heading);
 }
 h3 {
   margin: 0;
   font-size: var(--fs-section);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   line-height: var(--lh-heading);
 }
 kbd {
@@ -267,7 +277,7 @@ button,
 .workspace-picker strong {
   display: block;
   font-size: var(--fs-label);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 .workspace-picker small {
   display: block;
@@ -310,7 +320,7 @@ button,
 }
 .nav-item.active {
   color: var(--ink);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 .nav-item.active > svg {
   color: var(--ink);
@@ -580,7 +590,7 @@ button,
   border: 0 !important;
   border-radius: var(--r-segment) !important;
   color: var(--ink-2) !important;
-  font-weight: 500;
+  font-weight: var(--fw-control);
   transition:
     color var(--duration-quick) var(--ease-smooth-out),
     transform var(--duration-quick) var(--ease-smooth-out);
@@ -723,7 +733,7 @@ button,
   padding-top: 18px;
   color: var(--ink);
   font-size: var(--fs-figure);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   letter-spacing: -0.035em;
   line-height: 1.05;
   white-space: nowrap;
@@ -743,7 +753,7 @@ button,
   margin: 0 0 0.16em 0.12em;
   color: var(--ink-2);
   font-size: var(--fs-strong);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   line-height: 1;
   letter-spacing: 0;
 }
@@ -829,7 +839,7 @@ button,
 .ledger-composition .composition-legend strong {
   color: var(--ink);
   font-size: var(--fs-section);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   letter-spacing: -0.01em;
 }
 .ledger-composition .composition-legend > div > span:last-child {
@@ -878,7 +888,7 @@ button,
   gap: 4px;
   color: var(--primary);
   font-size: var(--fs-body);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   white-space: nowrap;
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--primary) 42%, transparent);
@@ -910,7 +920,7 @@ button,
   padding: 0 12px;
   border-radius: var(--r-segment);
   color: var(--ink-2);
-  font-weight: 500;
+  font-weight: var(--fw-control);
   transition:
     color var(--duration-quick) var(--ease-smooth-out),
     transform var(--duration-quick) var(--ease-smooth-out);
@@ -964,7 +974,7 @@ button,
 }
 .empty-inline strong {
   color: var(--ink);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 
 /* ── First report: a new server explains how to connect a device ─── */
@@ -1050,12 +1060,12 @@ button,
   min-width: 0;
 }
 .client-head strong {
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 .client-head > strong {
   color: var(--ink);
   font-size: var(--fs-strong);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 .client-row > .metric-bar-trigger {
   margin: 12px 0 9px;
@@ -1119,7 +1129,7 @@ button,
   display: block;
   margin-top: 4px;
   font-size: var(--fs-figure);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   letter-spacing: -0.035em;
   line-height: 1.1;
 }
@@ -1161,7 +1171,7 @@ button,
 }
 .composition-legend > div > span:last-child {
   color: var(--ink);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   text-align: right;
 }
 .composition-note {
@@ -1289,7 +1299,7 @@ button,
 }
 .model-total-cell {
   color: var(--ink) !important;
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 /* Figures line up on their last digit: total, cache read, cache rate and cost
    (TypeUI table-alignment: right-align comparable numeric columns & headers). */
@@ -1336,7 +1346,7 @@ button,
   display: block;
   color: var(--ink);
   font-size: var(--fs-strong);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   letter-spacing: -0.01em;
 }
 .model-open small {
@@ -1515,7 +1525,7 @@ button,
   font-size: var(--fs-meta);
 }
 .provider-status strong {
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 .provider-state {
   display: inline-flex;
@@ -1584,7 +1594,7 @@ button,
 }
 [data-slot="dialog-title"] {
   font-size: var(--fs-dialog) !important;
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   letter-spacing: -0.01em;
   line-height: var(--lh-heading);
 }
@@ -1713,7 +1723,7 @@ button,
   display: block;
   color: var(--ink);
   font-size: var(--fs-body);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 .connection-target small {
   display: block;
@@ -1734,7 +1744,7 @@ button,
   display: block;
   margin-bottom: var(--space-2);
   font-size: var(--fs-body);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 .form-input {
   width: 100%;
@@ -1823,7 +1833,7 @@ button,
 .demo-button strong {
   display: block;
   font-size: var(--fs-body);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 .demo-button small {
   display: block;
@@ -1859,7 +1869,7 @@ button,
   border-bottom: 1px solid var(--line);
   color: var(--ink-2);
   font-size: var(--fs-section);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 .search-dialog-heading > span { min-width: 0; flex: 1; }
 .search-dialog-heading kbd {
@@ -1982,7 +1992,7 @@ button,
 .design-sources strong {
   display: block;
   font-size: var(--fs-meta);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 .design-sources small {
   display: block;
@@ -2152,7 +2162,7 @@ button,
   background: var(--hover);
   color: var(--ink-2);
   font-size: var(--fs-meta);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 /* An unreported pair is a bare dash, not a pale fill that reads as "a little". */
 .matrix-cell.level-0 {

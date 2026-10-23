@@ -27,14 +27,14 @@
 .app-shell .main-content { padding-top: 4px; }
 
 /* ── Type ─────────────────────────────────────────────────────────── */
-.app-shell h1 { font-size: var(--fs-page); line-height: var(--lh-heading); font-weight: 500; letter-spacing: -0.02em; }
-.app-shell h2 { font-weight: 500; letter-spacing: -0.02em; }
+.app-shell h1 { font-size: var(--fs-page); line-height: var(--lh-heading); font-weight: var(--fw-medium); letter-spacing: -0.02em; }
+.app-shell h2 { font-weight: var(--fw-medium); letter-spacing: -0.02em; }
 .app-shell .panel-head h2,
 .app-shell .ledger-composition-head h2,
 .app-shell .insight-trend-heading h2,
 .app-shell .cm-activity-head h2,
 .app-shell .archive-header h2,
-.app-shell .system-update-header h2 { font-size: var(--fs-section); line-height: var(--lh-heading); font-weight: 500; }
+.app-shell .system-update-header h2 { font-size: var(--fs-section); line-height: var(--lh-heading); font-weight: var(--fw-medium); }
 .app-shell .sv-section-head h2 { font-size: var(--fs-section); line-height: var(--lh-heading); }
 .app-shell .page-heading { align-items: center; padding: 20px 0 22px; }
 .app-shell .heading-kicker { margin-bottom: 8px; font-size: var(--fs-meta); }
@@ -51,7 +51,7 @@
   box-shadow: none !important;
   color: var(--ink) !important;
   font-size: var(--fs-body) !important;
-  font-weight: 500;
+  font-weight: var(--fw-control);
 }
 /* Optical button padding: slightly less space on the icon side so the label
    appears centered (TypeUI button-padding & color-weight). */
@@ -114,7 +114,7 @@
   background: var(--canvas);
   color: var(--ink-2);
   font-size: var(--fs-meta);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   line-height: var(--lh-meta);
 }
 .app-shell .workspace-notices { border-radius: var(--r-well); }
@@ -151,8 +151,8 @@
 .app-shell .ledger-lead { --lead-border: color-mix(in srgb, var(--primary) 12%, var(--card-border)); background: var(--accent-tint); border-color: var(--lead-border); box-shadow: var(--shadow-panel-lift); }
 .app-shell .ledger-lead :is(.ledger-label, .ledger-label small, .ledger-note, .ledger-unit) { color: var(--accent-muted); }
 .app-shell .ledger-label { font-size: var(--fs-meta); color: var(--ink-2); white-space: normal; flex-wrap: wrap; }
-.app-shell .ledger-value { font-weight: 500; letter-spacing: -0.02em; }
-.app-shell .ledger-lead .ledger-value { font-size: var(--fs-lead); font-weight: 500; letter-spacing: -0.02em; }
+.app-shell .ledger-value { font-weight: var(--fw-medium); letter-spacing: -0.02em; }
+.app-shell .ledger-lead .ledger-value { font-size: var(--fs-lead); font-weight: var(--fw-medium); letter-spacing: -0.02em; }
 .app-shell .ledger-note { white-space: normal; line-height: var(--lh-meta); }
 .app-shell .ledger-composition { padding: var(--space-6); }
 .app-shell .ledger-composition-head p { font-size: var(--fs-meta); }
@@ -210,7 +210,7 @@
 /* Clients card. */
 .app-shell .client-rows { display: grid; gap: 8px; padding: 16px 22px 22px; }
 .app-shell .client-row { padding: 14px; }
-.app-shell .client-head strong { font-weight: 500; }
+.app-shell .client-head strong { font-weight: var(--fw-medium); }
 .app-shell :is(.cache-track, .client-track):not(.is-incomplete)::after { background: var(--inset); }
 
 /* ── Tables: square model rows, rounded session rows ──────────────── */
@@ -230,9 +230,9 @@
   background: var(--surface);
 }
 .app-shell .model-table th,
-.app-shell .sv-session-table th { background: transparent; color: var(--ink-3); font-size: var(--fs-meta); font-weight: 500; }
+.app-shell .sv-session-table th { background: transparent; color: var(--ink-3); font-size: var(--fs-meta); font-weight: var(--fw-medium); }
 .app-shell .model-open > .brand-icon { width: 32px; height: 32px; }
-.app-shell .model-open strong { font-weight: 500; }
+.app-shell .model-open strong { font-weight: var(--fw-medium); }
 .app-shell .table-foot { padding: 14px 22px; background: transparent; border-top: 1px solid var(--line-soft); }
 .app-shell .sv-history-sessions .sv-table-footer { padding-block: 14px; background: transparent; border-top: 1px solid var(--line-soft); }
 .app-shell .matrix-scroll { padding: 16px 22px; background: transparent; }
@@ -287,7 +287,7 @@
 .app-shell .sv-page .sv-summary { gap: 16px; background: transparent; border: 0; border-radius: 0; overflow: visible; }
 .app-shell .sv-page .sv-summary-item { padding: var(--space-6); gap: 8px; min-height: 132px; }
 .app-shell .sv-page .sv-summary-item + .sv-summary-item::before { display: none; }
-.app-shell .sv-summary-value { font-weight: 500; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+.app-shell .sv-summary-value { font-weight: var(--fw-medium); letter-spacing: -0.02em; overflow-wrap: anywhere; }
 .app-shell .sv-summary-label { flex-wrap: wrap; font-size: var(--fs-meta); }
 /* A toolbar is a row of controls on the page, not a card. */
 .app-shell .sv-page > .sv-toolbar { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
@@ -295,11 +295,11 @@
 /* Devices */
 .app-shell .sv-device-main { padding: var(--space-6); }
 .app-shell .sv-device-heading { padding: 0; gap: 12px; border: 0; border-radius: 0; background: transparent; }
-.app-shell .sv-device-heading h3 { font-size: var(--fs-section); font-weight: 500; overflow-wrap: anywhere; }
+.app-shell .sv-device-heading h3 { font-size: var(--fs-section); font-weight: var(--fw-medium); overflow-wrap: anywhere; }
 .app-shell .sv-device-icon { border-radius: var(--r-well); background: var(--inset); }
 .app-shell .sv-device-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; border-top: 0; padding-top: 0; }
 .app-shell .sv-device-stat { padding: 12px 14px; }
-.app-shell .sv-device-metrics .sv-metric-value { font-size: var(--fs-value); font-weight: 500; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+.app-shell .sv-device-metrics .sv-metric-value { font-size: var(--fs-value); font-weight: var(--fw-medium); letter-spacing: -0.02em; overflow-wrap: anywhere; }
 .app-shell .sv-device-footer { padding: 12px 22px; background: transparent; border-top: 1px solid var(--line-soft); }
 .app-shell .sv-device-detail { padding: 16px 22px; }
 
@@ -308,7 +308,7 @@
 .app-shell .sv-provider-icon { border-radius: var(--r-well); background: var(--inset); }
 .app-shell .sv-quota-windows { gap: 8px; padding-top: 0; border-top: 0; }
 .app-shell .sv-quota-window { padding: 14px; }
-.app-shell .sv-subscription h3.sv-subscription-plan { font-size: var(--fs-section); font-weight: 500; overflow-wrap: anywhere; }
+.app-shell .sv-subscription h3.sv-subscription-plan { font-size: var(--fs-section); font-weight: var(--fw-medium); overflow-wrap: anywhere; }
 .app-shell .sv-subscription-price { padding: 0; border: 0; border-radius: 0; background: transparent; }
 .app-shell .sv-subscription-dates { gap: 8px; }
 .app-shell .sv-subscription-dates > div { padding: 10px 12px; min-width: 0; }

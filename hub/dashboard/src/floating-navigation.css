@@ -109,7 +109,7 @@
   font-size: var(--fs-label);
 }
 /* The current page takes the accent, as in game-manage's menu. */
-.feel-nav-content .nav-item.active { color: var(--primary); font-weight: 500; }
+.feel-nav-content .nav-item.active { color: var(--primary); font-weight: var(--fw-medium); }
 .feel-nav-content .nav-item.active > svg { color: var(--primary); }
 .feel-nav-content .nav-active { border-radius: var(--r-well); background: var(--accent-tint); }
 .feel-nav-content .nav-hover { border-radius: var(--r-well); }
@@ -209,7 +209,7 @@
   font-weight: 600;
   letter-spacing: -0.02em;
 }
-.feel-nav-drawer .feel-nav-content .nav-label { margin: 6px 6px; font-weight: 500; }
+.feel-nav-drawer .feel-nav-content .nav-label { margin: 6px 6px; font-weight: var(--fw-medium); }
 .feel-nav-drawer .feel-nav-content .nav-list { gap: 2px; }
 /* Options as in Feel's drawer: a 30px icon tile beside the label and no row
    fill; the current page tints its tile. */
@@ -221,7 +221,7 @@
   background: transparent;
   color: var(--ink);
   font-size: var(--fs-strong);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 .feel-nav-drawer .feel-nav-content :is(.nav-item, .sidebar-setting) > svg {
   box-sizing: content-box;
@@ -234,7 +234,7 @@
 }
 /* Settings icons are 16px; the tile stays 30px. */
 .feel-nav-drawer .feel-nav-content .sidebar-setting > svg { padding: 7px; }
-.feel-nav-drawer .feel-nav-content .nav-item.active { color: var(--primary); font-weight: 500; }
+.feel-nav-drawer .feel-nav-content .nav-item.active { color: var(--primary); font-weight: var(--fw-medium); }
 .feel-nav-drawer .feel-nav-content .nav-item.active > svg {
   background: var(--accent-tint);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 22%, transparent);
@@ -247,7 +247,7 @@
   border-radius: 999px;
   background: var(--surface);
   color: var(--ink-2);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 .feel-nav-drawer .sidebar-bottom {
   flex-shrink: 0;
@@ -313,7 +313,7 @@
   white-space: nowrap;
   text-decoration: none;
 }
-.feel-quick-navigation > [aria-current="page"] { background: var(--accent-tint); color: var(--primary); font-weight: 500; }
+.feel-quick-navigation > [aria-current="page"] { background: var(--accent-tint); color: var(--primary); font-weight: var(--fw-medium); }
 .feel-quick-navigation > :is(a, button):active { transform: translateY(1px); }
 .feel-more > svg { transform: rotate(0deg); transition: transform var(--duration-fast) var(--ease-smooth-out); }
 .feel-more[aria-expanded="true"] > svg { transform: rotate(180deg); }

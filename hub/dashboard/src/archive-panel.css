@@ -27,7 +27,7 @@
   margin: var(--space-2) 0 var(--space-1);
   font-size: var(--fs-section);
   letter-spacing: -0.3px;
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   line-height: var(--lh-heading);
 }
 .archive-header p,
@@ -142,7 +142,7 @@
 }
 .archive-day strong {
   font-size: var(--fs-body);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
   line-height: var(--lh-data);
@@ -172,7 +172,7 @@
 .archive-composition h3 {
   margin: 0 0 var(--space-3);
   font-size: var(--fs-strong);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   line-height: var(--lh-heading);
 }
 .archive-composition dl {
@@ -254,7 +254,7 @@
   }
   .archive-header h2 {
     font-size: var(--fs-section);
-    font-weight: 500;
+    font-weight: var(--fw-medium);
     line-height: var(--lh-heading);
   }
   .archive-button {
