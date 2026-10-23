@@ -21,19 +21,19 @@
 .sv-page h1 {
   margin: 0;
   font-size: var(--fs-page);
-  font-weight: 600;
+  font-weight: 500;
   line-height: var(--lh-heading);
   letter-spacing: -0.02em;
 }
 .sv-page h2 {
   font-size: var(--fs-section);
-  font-weight: 600;
+  font-weight: 500;
   line-height: var(--lh-heading);
   margin: 0;
 }
 .sv-page h3 {
   font-size: var(--fs-strong);
-  font-weight: 600;
+  font-weight: 500;
   margin: 0;
   line-height: var(--lh-heading);
 }
@@ -1627,8 +1627,11 @@
 .sv-history-sessions .sv-session-detail .sv-detail-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-/* Narrow session columns wrap titles evenly, never one character alone. */
-.sv-session-table strong,
+/* Narrow session columns wrap titles evenly (TypeUI headings: balanced),
+   never one or two characters alone. */
+.sv-session-table strong {
+  text-wrap: balance;
+}
 .sv-session-table small {
   text-wrap: pretty;
 }

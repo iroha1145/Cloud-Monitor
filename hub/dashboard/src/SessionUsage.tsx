@@ -45,7 +45,7 @@ export function SessionTokenBreakdown({ session }: { session: Session }) {
         <dd>{row.value === null ? <span className="value-unavailable">未提供</span> : count(row.value)}</dd>
       </div>)}
     </dl>
-    <p className="detail-footnote">推理用量已包含在输出中。{usage.hasUnconfirmedZeros ? " 部分零值无法确认，显示为未提供。" : !usage.complete ? " 部分细项未提供，与总量不完全一致。" : ""}</p>
+    <p className="detail-footnote">推理用量已包含在输出中。{usage.hasUnconfirmedZeros ? "部分零值无法确认，显示为未提供。" : !usage.complete ? "部分细项未提供，与总量不完全一致。" : ""}</p>
   </section>;
 }
 
@@ -57,9 +57,9 @@ export function SessionDetails({ session, generatedAt, timeZone }: { session: Se
   return <div className="session-details-content">
     <SessionTokenBreakdown session={session} />
     {usage.context && <section className="session-context-block sv-session-context" aria-label="上次上报的上下文" data-feel-item="row">
-      <div className="detail-section-heading"><h3>上次上报的上下文</h3><strong>{usage.context.percentUsed.toFixed(1)}%</strong></div>
+      <div className="detail-section-heading"><h3>上次上报的上下文</h3><strong><small>已用</small>{usage.context.percentUsed.toFixed(1)}%</strong></div>
       <progress max={100} value={Math.min(100, usage.context.percentUsed)} aria-label="上次上报的上下文已用比例" style={{ "--context-usage-fill": CONTEXT_USAGE_FILL } as CSSProperties} />
-      <p>{count(usage.context.tokens)} / {count(usage.context.window)} 词元 <span>· 已用 {usage.context.percentUsed.toFixed(1)}% · 剩余 {Math.max(0, 100 - usage.context.percentUsed).toFixed(1)}%</span></p>
+      <p><span>{count(usage.context.tokens)} / {count(usage.context.window)} 词元 ·</span> <span>剩余 {Math.max(0, 100 - usage.context.percentUsed).toFixed(1)}%</span></p>
     </section>}
     <dl className="session-facts sv-detail-grid">
       <div data-feel-item="row"><dt>活动状态</dt><dd className={activity === "等待输入" ? "sv-session-activity-waiting" : undefined}>{activity}{session.archived ? " · 已归档" : ""}</dd></div>

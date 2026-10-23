@@ -6,10 +6,13 @@
 :root {
   color-scheme: light;
 
-  /* Shared by pages, portalled dialogs and the access screen. Reading text
-     stays 16px at every breakpoint; secondary text is 14px. Dense controls
-     use the secondary role, never a scaled-down version of the whole page.
-     Titles take 600, figures/controls 500, reading text 400. */
+  /* Shared by pages, portalled dialogs and the access screen (TypeUI type
+     scale: heading 28, paragraph 16, supporting 14). Reading text stays 16px
+     at every breakpoint; secondary text is 14px. Dense controls use the
+     secondary role, never a scaled-down version of the whole page. Titles,
+     figures and controls take 500, reading text 400; only the brand name
+     takes 600. Leading follows TypeUI's "Ideal" step: headings 1.2,
+     paragraphs 1.5. */
   --fs-meta: 0.875rem;
   --fs-label: 0.875rem;
   --fs-body: 1rem;
@@ -20,8 +23,8 @@
   --fs-page: 1.75rem;
   --fs-figure: 1.75rem;
   --fs-lead: 2.25rem;
-  --lh-heading: 1.25;
-  --lh-body: 1.6;
+  --lh-heading: 1.2;
+  --lh-body: 1.5;
   --lh-meta: 1.5;
   --lh-data: 1.4;
   --space-1: 0.25rem;

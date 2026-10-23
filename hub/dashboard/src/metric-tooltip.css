@@ -34,7 +34,7 @@
   display: block;
   margin-bottom: var(--space-3);
   font-size: var(--fs-body);
-  font-weight: 600;
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 .metric-tooltip-card dl {
@@ -74,5 +74,5 @@
   padding-top: 9px;
   font-size: var(--fs-meta);
   color: var(--ink-2);
-  line-height: 1.6;
+  line-height: var(--lh-meta);
 }

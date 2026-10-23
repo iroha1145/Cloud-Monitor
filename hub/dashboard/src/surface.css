@@ -27,14 +27,14 @@
 .app-shell .main-content { padding-top: 4px; }
 
 /* ── Type ─────────────────────────────────────────────────────────── */
-.app-shell h1 { font-size: var(--fs-page); line-height: var(--lh-heading); font-weight: 600; letter-spacing: -0.02em; }
-.app-shell h2 { font-weight: 600; letter-spacing: -0.02em; }
+.app-shell h1 { font-size: var(--fs-page); line-height: var(--lh-heading); font-weight: 500; letter-spacing: -0.02em; }
+.app-shell h2 { font-weight: 500; letter-spacing: -0.02em; }
 .app-shell .panel-head h2,
 .app-shell .ledger-composition-head h2,
 .app-shell .insight-trend-heading h2,
 .app-shell .cm-activity-head h2,
 .app-shell .archive-header h2,
-.app-shell .system-update-header h2 { font-size: var(--fs-section); line-height: var(--lh-heading); font-weight: 600; }
+.app-shell .system-update-header h2 { font-size: var(--fs-section); line-height: var(--lh-heading); font-weight: 500; }
 .app-shell .sv-section-head h2 { font-size: var(--fs-section); line-height: var(--lh-heading); }
 .app-shell .page-heading { align-items: center; padding: 20px 0 22px; }
 .app-shell .heading-kicker { margin-bottom: 8px; font-size: var(--fs-meta); }
@@ -210,7 +210,7 @@
 /* Clients card. */
 .app-shell .client-rows { display: grid; gap: 8px; padding: 16px 22px 22px; }
 .app-shell .client-row { padding: 14px; }
-.app-shell .client-head strong { font-weight: 600; }
+.app-shell .client-head strong { font-weight: 500; }
 .app-shell :is(.cache-track, .client-track):not(.is-incomplete)::after { background: var(--inset); }
 
 /* ── Tables: square model rows, rounded session rows ──────────────── */
@@ -295,7 +295,7 @@
 /* Devices */
 .app-shell .sv-device-main { padding: var(--space-6); }
 .app-shell .sv-device-heading { padding: 0; gap: 12px; border: 0; border-radius: 0; background: transparent; }
-.app-shell .sv-device-heading h3 { font-size: var(--fs-section); font-weight: 600; overflow-wrap: anywhere; }
+.app-shell .sv-device-heading h3 { font-size: var(--fs-section); font-weight: 500; overflow-wrap: anywhere; }
 .app-shell .sv-device-icon { border-radius: var(--r-well); background: var(--inset); }
 .app-shell .sv-device-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; border-top: 0; padding-top: 0; }
 .app-shell .sv-device-stat { padding: 12px 14px; }
@@ -308,7 +308,7 @@
 .app-shell .sv-provider-icon { border-radius: var(--r-well); background: var(--inset); }
 .app-shell .sv-quota-windows { gap: 8px; padding-top: 0; border-top: 0; }
 .app-shell .sv-quota-window { padding: 14px; }
-.app-shell .sv-subscription h3.sv-subscription-plan { font-size: var(--fs-section); font-weight: 600; overflow-wrap: anywhere; }
+.app-shell .sv-subscription h3.sv-subscription-plan { font-size: var(--fs-section); font-weight: 500; overflow-wrap: anywhere; }
 .app-shell .sv-subscription-price { padding: 0; border: 0; border-radius: 0; background: transparent; }
 .app-shell .sv-subscription-dates { gap: 8px; }
 .app-shell .sv-subscription-dates > div { padding: 10px 12px; min-width: 0; }

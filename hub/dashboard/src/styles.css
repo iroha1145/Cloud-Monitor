@@ -56,7 +56,11 @@ body {
   font-variant-numeric: tabular-nums;
   font-variant-ligatures: common-ligatures contextual;
   font-kerning: normal;
-  -webkit-font-smoothing: auto;
+  /* TypeUI leaves smoothing to the browser unless a tested override reads
+     better. On macOS the default emboldens every stroke (about 13% more ink
+     measured on this page), which made the whole dashboard look heavy. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 code,
@@ -111,11 +115,19 @@ h2,
 h3 {
   text-wrap: balance;
 }
+/* Descriptions and values wrap evenly: no word or one or two characters left
+   alone on the last line (TypeUI text wrapping). */
+p,
+dd,
+li,
+small {
+  text-wrap: pretty;
+}
 h1 {
   margin: 0;
   color: var(--ink);
   font-size: var(--fs-page);
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.02em;
   line-height: var(--lh-heading);
 }
@@ -123,14 +135,14 @@ h2 {
   margin: 0;
   color: var(--ink);
   font-size: var(--fs-section);
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.01em;
   line-height: var(--lh-heading);
 }
 h3 {
   margin: 0;
   font-size: var(--fs-section);
-  font-weight: 600;
+  font-weight: 500;
   line-height: var(--lh-heading);
 }
 kbd {
@@ -969,7 +981,7 @@ button,
   margin: 8px 0 0;
   color: var(--ink-2);
   font-size: var(--fs-meta);
-  line-height: 1.7;
+  line-height: var(--lh-meta);
 }
 .first-report dl {
   display: grid;
@@ -1160,7 +1172,7 @@ button,
   border-top: 1px solid var(--line);
   color: var(--ink-3);
   font-size: var(--fs-label);
-  line-height: 1.6;
+  line-height: var(--lh-meta);
 }
 
 /* ── Model table ──────────────────────────────────────────────────── */
@@ -1571,7 +1583,7 @@ button,
 }
 [data-slot="dialog-title"] {
   font-size: var(--fs-dialog) !important;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.01em;
   line-height: var(--lh-heading);
 }
@@ -1580,7 +1592,8 @@ button,
   font-size: var(--fs-meta) !important;
   line-height: var(--lh-meta);
   max-width: 65ch;
-  text-wrap: pretty;
+  /* one or two short lines: split them evenly rather than leave 多少。 alone */
+  text-wrap: balance;
 }
 [data-slot="dialog-header"] {
   gap: var(--space-2);
@@ -1699,7 +1712,7 @@ button,
   display: block;
   color: var(--ink);
   font-size: var(--fs-body);
-  font-weight: 600;
+  font-weight: 500;
 }
 .connection-target small {
   display: block;
@@ -1763,7 +1776,7 @@ button,
   margin: 8px 0;
   color: var(--red);
   font-size: var(--fs-label);
-  line-height: 1.7;
+  line-height: var(--lh-meta);
 }
 .dialog-divider {
   position: relative;
@@ -1809,7 +1822,7 @@ button,
 .demo-button strong {
   display: block;
   font-size: var(--fs-body);
-  font-weight: 600;
+  font-weight: 500;
 }
 .demo-button small {
   display: block;
@@ -1825,16 +1838,27 @@ button,
   padding: 0 !important;
   overflow: hidden;
 }
+/* The phone rule pads every dialog by 20px; this one draws edge to edge. */
+[data-slot="dialog-content"].search-dialog {
+  padding: 0 !important;
+}
+/* The heading row and the close button share one centre line: the row is as
+   tall as the 44px button plus its 12px inset above and below. */
+[data-slot="dialog-content"].search-dialog > button[data-slot="dialog-close"] {
+  top: var(--space-3);
+  right: var(--space-3);
+}
 .search-dialog-heading {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  padding: var(--space-4) calc(44px + var(--space-4) + var(--space-3)) var(--space-4) var(--space-6);
+  min-height: calc(44px + 2 * var(--space-3));
+  padding: var(--space-3) calc(44px + var(--space-3) + var(--space-4)) var(--space-3) var(--space-6);
   border-bottom: 1px solid var(--line);
   color: var(--ink-2);
   font-size: var(--fs-section);
-  font-weight: 600;
+  font-weight: 500;
 }
 .search-dialog-heading > span { min-width: 0; flex: 1; }
 .search-dialog-heading kbd {
@@ -1965,6 +1989,7 @@ button,
   color: var(--ink-3);
   font-size: var(--fs-label);
   line-height: 1.5;
+  text-wrap: balance;
 }
 .design-sources svg {
   flex-shrink: 0;
@@ -2106,7 +2131,7 @@ button,
   overflow-wrap: anywhere;
   text-align: center;
   text-wrap: balance;
-  line-height: 1.35;
+  line-height: var(--lh-data);
 }
 .matrix-client-heading {
   display: flex;
