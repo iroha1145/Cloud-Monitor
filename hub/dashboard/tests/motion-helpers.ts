@@ -56,14 +56,27 @@ export async function scrollIntoViewAndReveal(locator: Locator) {
  * descendants (an entering side sheet, for example) to finish. Looping
  * indicators never finish, so they are left alone. */
 export async function finishAnimations(locator: Locator) {
-  await locator.evaluate((element) =>
-    Promise.all(
-      element
-        .getAnimations({ subtree: true })
-        .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
-        .map((animation) => animation.finished.catch(() => undefined)),
-    ),
-  );
+  // A closing/reopening dialog may replace an animation after it is sampled.
+  // Inspect current animations instead of retaining an old finished promise.
+  // Paused and pending animations still fail this wait; nothing is forced to end.
+  await expect.poll(() => locator.evaluate((element) =>
+    element.getAnimations({ subtree: true })
+      .filter((animation) => animation.effect?.getTiming().iterations !== Infinity
+        && (animation.pending || !["finished", "idle"].includes(animation.playState)))
+      .map((animation) => {
+        const effect = animation.effect;
+        const target = effect instanceof KeyframeEffect ? effect.target : null;
+        return {
+          name: animation instanceof CSSAnimation ? animation.animationName : animation.id || "Web Animation",
+          target: target instanceof Element ? target.id || target.getAttribute("class") || target.tagName : null,
+          state: animation.playState,
+          pending: animation.pending,
+          currentTime: animation.currentTime,
+          playbackRate: animation.playbackRate,
+          duration: effect?.getTiming().duration,
+        };
+      }),
+  ), { message: "finite animations should finish before checking layout" }).toEqual([]);
 }
 
 /** Scroll through the whole page so every card that waits below the fold

@@ -85,6 +85,16 @@ for (const width of [320, 390, 1440]) {
     const header = dialog.locator(".model-detail-heading");
     const body = dialog.locator(".model-details-content");
     const summary = dialog.locator(".session-usage-card > summary").first();
+    const sessionHeading = dialog.locator(".model-session-section > .detail-section-heading");
+    const sectionBox = await sessionHeading.boundingBox();
+    const cardBox = await dialog.locator(".session-usage-card").first().boundingBox();
+    const countBox = await sessionHeading.locator("span").boundingBox();
+    expect(cardBox!.y - (sectionBox!.y + sectionBox!.height)).toBeGreaterThanOrEqual(12);
+    expect(sectionBox!.x).toBeCloseTo(cardBox!.x, 1);
+    expect(countBox!.x + countBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width);
+    const titleBox = await summary.locator(".session-card-title").boundingBox();
+    const amountBox = await summary.locator(".session-card-amount").boundingBox();
+    expect(titleBox!.x + titleBox!.width <= amountBox!.x || titleBox!.y + titleBox!.height <= amountBox!.y).toBe(true);
     await summary.click();
     await dialog.locator(".session-token-breakdown").first().scrollIntoViewIfNeeded();
     const metrics = await dialog.evaluate(root => {
