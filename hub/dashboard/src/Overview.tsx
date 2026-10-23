@@ -187,7 +187,7 @@ export function Stats({
         </article>
         <article className="ledger-figure" data-feel-card>
           <span className="ledger-label">
-            使用费用
+            估算费用
           </span>
           <strong className="ledger-value">
             {per.costUsd === null ? (
@@ -544,7 +544,7 @@ export function ModelTable({
                       </small>
                     )}
                   </td>
-                  <td data-label="使用费用" className="money-cell">
+                  <td data-label="估算费用" className="money-cell">
                     {usd(m.costUsd)}
                     {modelUsageDetails(per, m.id).outputTokensPerSecond !== null && <small className="model-speed-note">输出 {modelUsageDetails(per, m.id).outputTokensPerSecond!.toFixed(1)} 词元/秒</small>}
                   </td>
@@ -792,7 +792,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
             aria-pressed={metric === "cost"}
             onClick={() => setMetric("cost")}
           >
-            使用费用
+            估算费用
           </button>
         </div>
       </div>
@@ -842,7 +842,7 @@ export function ModelMatrix({ per }: { per: PeriodUsage }) {
                           rows={[
                             {
                               label:
-                                metric === "tokens" ? "词元用量" : "使用费用",
+                                metric === "tokens" ? "词元用量" : "估算费用",
                               value:
                                 v === undefined
                                   ? "无记录"

@@ -159,6 +159,8 @@ test("unconfirmed upstream zeroes remain unknown in the rendered session", async
   await expect(dialog.locator(".session-token-grid")).toContainText("10");
   await expect(dialog.locator(".session-token-grid .value-unavailable")).toHaveCount(5);
   await expect(dialog.locator(".session-card-body")).toContainText("部分零值无法确认");
+  // Chinese sentences run on without a space after 。 (toContainText would fold it away).
+  expect(await dialog.locator(".session-token-breakdown .detail-footnote").textContent()).toBe("推理用量已包含在输出中。部分零值无法确认，显示为未提供。");
   await expect(dialog.locator(".session-card-body")).not.toContainText("$0.00");
   await expect(dialog.locator(".session-context-block")).toHaveCount(0);
 });

@@ -314,7 +314,6 @@ test("session details keep one hierarchy in the model dialog and in history rows
   expect(inDialog.value).toBe(16);
   expect(inDialog.label).toBe(14);
   expect(inDialog.note).toBeGreaterThanOrEqual(8);
-  await expect(dialog.locator(".session-token-breakdown .detail-footnote").first()).not.toContainText("。 ");
 });
 
 for (const width of [320, 1440]) {

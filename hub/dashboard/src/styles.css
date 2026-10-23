@@ -116,12 +116,13 @@ h3 {
   text-wrap: balance;
 }
 /* Descriptions and values wrap evenly: no word or one or two characters left
-   alone on the last line (TypeUI text wrapping). */
+   alone on the last line (TypeUI text wrapping). Only the style longhand, so
+   text that inherits nowrap (the model table, ledger) stays on one line. */
 p,
 dd,
 li,
 small {
-  text-wrap: pretty;
+  text-wrap-style: pretty;
 }
 h1 {
   margin: 0;
@@ -893,7 +894,7 @@ button,
 .text-link:hover > svg {
   translate: 1px -1px;
 }
-/* The same segmented control as the trend card's 词元用量 / 使用费用.
+/* The same segmented control as the trend card's 词元用量 / 估算费用.
    3px track inset makes 14px - 3px = 11px (--r-segment) concentric. */
 .metric-switch {
   position: relative;
