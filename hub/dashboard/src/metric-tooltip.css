@@ -34,7 +34,7 @@
   display: block;
   margin-bottom: var(--space-3);
   font-size: var(--fs-body);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   overflow-wrap: anywhere;
 }
 .metric-tooltip-card dl {

@@ -3,6 +3,9 @@ import { mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { finishAnimations, revealAll, scrollIntoViewAndReveal } from "./motion-helpers";
 
+// Phones step every text role down once (tokens.css): secondary 13, titles 22.
+const isPhone = (width: number) => width <= 760;
+
 const destinations = [
   ["overview", "总览"], ["models", "模型分析"], ["devices", "设备"],
   ["quota", "配额与订阅"], ["history", "历史记录"],
@@ -39,7 +42,7 @@ for (const width of [320, 1440]) {
     await dialog.getByRole("textbox").fill("不存在的模型");
     await expect(dialog.getByText("没有找到匹配项", { exact: true })).toBeVisible();
     expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
-    await expect(dialog.getByText("试试模型名称，或输入“设备”。", { exact: true })).toHaveCSS("font-size", "14px");
+    await expect(dialog.getByText("试试模型名称，或输入“设备”。", { exact: true })).toHaveCSS("font-size", isPhone(width) ? "13px" : "14px");
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(dialog).toBeHidden();
   });
@@ -61,9 +64,9 @@ for (const width of [320, 390, 768, 1440]) {
           captions: [...root.querySelectorAll(".heading-mode, .panel-head p, .sv-summary-label")]
             .filter(element => element.getClientRects().length).map(size) };
       });
-      expect(hierarchy.title).toBeGreaterThanOrEqual(24);
+      expect(hierarchy.title).toBeGreaterThanOrEqual(isPhone(width) ? 22 : 24);
       for (const caption of hierarchy.captions) {
-        expect(caption).toBeGreaterThanOrEqual(14);
+        expect(caption).toBeGreaterThanOrEqual(isPhone(width) ? 13 : 14);
         expect(caption).toBeLessThan(hierarchy.title);
       }
       if (width === 390 || width === 1440) {
@@ -112,7 +115,7 @@ for (const width of [320, 390, 1440]) {
     expect(metrics.scroll).toBeLessThanOrEqual(metrics.width + 1);
     expect(metrics.title).toBeGreaterThan(metrics.section);
     expect(metrics.section).toBeGreaterThan(metrics.label);
-    expect(metrics.label).toBeGreaterThanOrEqual(14);
+    expect(metrics.label).toBeGreaterThanOrEqual(isPhone(width) ? 13 : 14);
     const headingBefore = await header.boundingBox();
     await body.hover();
     await page.mouse.wheel(0, 1200);
@@ -201,7 +204,7 @@ test("a long model name and 200 percent text leave phone details scrollable and 
   await page.addStyleTag({ content: ":root { font-size: 200%; }" });
   await expect(dialog.getByRole("heading", { name: longName, exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize))).toBe(32);
-  await expect(dialog.locator('[data-slot="dialog-title"]')).toHaveCSS("font-size", "48px");
+  await expect(dialog.locator('[data-slot="dialog-title"]')).toHaveCSS("font-size", "44px");
   const body = dialog.locator(".model-details-content");
   expect(await body.evaluate(element => {
     const style = getComputedStyle(element);
@@ -332,3 +335,20 @@ for (const width of [320, 1440]) {
     expect(heading.x - box.x).toBeLessThanOrEqual(1.5);
   });
 }
+
+test("phone text steps down once while fields stay at 16px so iOS does not zoom", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/demo.html#history");
+  await loadedPage(page, "history");
+  const roles = await page.evaluate(() => {
+    const size = (selector: string) => getComputedStyle(document.querySelector(selector)!).fontSize;
+    return { body: getComputedStyle(document.body).fontSize, title: size(".main-content h1"), medium: getComputedStyle(document.documentElement).getPropertyValue("--fw-medium").trim(),
+      fields: [...document.querySelectorAll("input:not([type=checkbox]):not([type=radio]):not([type=range])")].map(field => getComputedStyle(field).fontSize) };
+  });
+  expect(roles).toMatchObject({ body: "15px", title: "22px", medium: "450" });
+  expect(roles.fields.length).toBeGreaterThan(0);
+  for (const size of roles.fields) expect(size).toBe("16px");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).fontSize)).toBe("16px");
+});

@@ -34,7 +34,7 @@
   margin: 0 0 var(--space-8);
   color: var(--ink);
   font-size: var(--fs-page);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   letter-spacing: -0.03em;
   line-height: var(--lh-heading);
   text-wrap: balance;
@@ -88,7 +88,7 @@
 .access-card h1 {
   margin: 0 0 var(--space-2);
   font-size: var(--fs-page);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   line-height: var(--lh-heading);
 }
 .access-card > p {
@@ -107,7 +107,7 @@
 .access-card label {
   margin-bottom: 0;
   font-size: var(--fs-label);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 /* Fields and their submit action share a minimum 44px touch target. */
 .access-card input {
@@ -145,7 +145,7 @@
   color: var(--surface);
   font: inherit;
   font-size: var(--fs-strong);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   cursor: pointer;
   transition:
     background-color var(--duration-quick) var(--ease-smooth-out),
