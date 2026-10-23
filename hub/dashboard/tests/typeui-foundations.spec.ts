@@ -357,3 +357,35 @@ test("phone text steps down once while fields stay at 16px so iOS does not zoom"
   await page.setViewportSize({ width: 1440, height: 1000 });
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--fs-body").trim())).toBe("1rem");
 });
+
+test.describe("on a touch phone", () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 412, height: 915 } });
+
+  test("an opened session card keeps its details apart from the summary and leaves no hover fill after the tap", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/demo.html#models");
+    await loadedPage(page, "models");
+    await page.getByRole("button", { name: "查看 gpt-6-astra 详情", exact: true }).tap();
+    const dialog = page.locator(".model-dialog");
+    await finishAnimations(dialog);
+    const card = dialog.locator(".session-usage-card").filter({ has: page.locator(".session-scope-note") }).first();
+    await card.locator(":scope > summary").scrollIntoViewIfNeeded();
+    await card.locator(":scope > summary").tap();
+    await finishAnimations(card);
+    const layout = await card.evaluate(element => {
+      const summary = element.querySelector(":scope > summary")!;
+      const note = element.querySelector(".session-scope-note")!;
+      const text = [...note.childNodes].find(node => node.nodeType === Node.TEXT_NODE)!;
+      const range = document.createRange();
+      range.selectNodeContents(text);
+      const firstLine = range.getClientRects()[0];
+      const icon = note.querySelector("svg")!.getBoundingClientRect();
+      return { gap: note.getBoundingClientRect().top - summary.getBoundingClientRect().bottom,
+        summaryFill: getComputedStyle(summary).backgroundColor,
+        iconBesideFirstLine: icon.top < firstLine.bottom && icon.bottom > firstLine.top };
+    });
+    expect(layout.gap).toBeGreaterThanOrEqual(12);
+    expect(layout.summaryFill).toBe("rgba(0, 0, 0, 0)");
+    expect(layout.iconBesideFirstLine).toBe(true);
+  });
+});

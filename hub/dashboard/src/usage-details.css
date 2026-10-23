@@ -34,7 +34,6 @@
 .model-dialog [data-slot="dialog-title"] { font-size: var(--fs-dialog) !important; font-weight: var(--fw-medium); line-height: var(--lh-heading); overflow-wrap: anywhere; }
 .model-detail-heading [data-slot="dialog-description"] { margin: var(--space-2) 0 0; font-size: var(--fs-meta); line-height: var(--lh-meta); }
 .model-dialog .model-detail-close { display: grid; place-items: center; align-self: flex-start; flex-shrink: 0; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: var(--r-control); color: var(--ink-2); background: var(--surface); box-shadow: none; }
-.model-dialog .model-detail-close:hover { background: var(--hover-2); color: var(--ink); }
 .model-details-content {
   min-width: 0;
   min-height: 0;
@@ -96,7 +95,12 @@
 .session-usage-card > summary::-webkit-details-marker,
 .session-origin-disclosure > summary::-webkit-details-marker,
 .model-speed-detail summary::-webkit-details-marker { display: none; }
-.session-usage-card > summary:hover { background: var(--hover); }
+/* Hover fills only follow a real pointer: on a phone the tap that opens a
+   card would leave the fill on, and the summary would read as its own box. */
+@media (hover: hover) and (pointer: fine) {
+  .session-usage-card > summary:hover { background: var(--hover); }
+  .model-dialog .model-detail-close:hover { background: var(--hover-2); color: var(--ink); }
+}
 .session-usage-card[open] > summary { border-radius: var(--r-tile) var(--r-tile) 0 0; }
 .session-card-title { display: grid; gap: var(--space-1); flex: 1; min-width: 0; }
 .session-card-title strong { display: block; overflow-wrap: anywhere; font-size: var(--fs-body); font-weight: var(--fw-medium); line-height: var(--lh-data); }
@@ -106,12 +110,13 @@
 .session-card-amount small { font-size: var(--fs-meta); color: var(--ink-3); }
 .session-usage-card .disclosure-chevron { flex-shrink: 0; color: var(--ink-3); transition: rotate 220ms var(--ease-smooth-out); }
 .session-usage-card[open] .disclosure-chevron { rotate: 180deg; }
-.session-card-body { padding: 0 var(--space-4) var(--space-4); }
+/* The details start under a hairline with a full section gap, so the first
+   block never touches the summary (TypeUI clear groups, section separators). */
+.session-card-body { padding: var(--space-4); border-top: 1px solid var(--line); }
 .session-usage-card[open] .session-card-body { animation: detail-reveal 230ms var(--ease-smooth-out); }
 .session-current-line, .session-scope-note { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin: 0 0 var(--space-4); color: var(--ink-2); font-size: var(--fs-meta); line-height: var(--lh-meta); }
 /* A plain status line under the summary: no box of its own inside the card. */
-.session-current-line { margin-top: calc(-1 * var(--space-1)); }
-.session-scope-note { align-items: flex-start; padding: var(--space-3); border-radius: var(--r-md); background: var(--inset); }
+.session-scope-note { align-items: flex-start; flex-wrap: nowrap; padding: var(--space-3); border-radius: var(--r-md); background: var(--inset); }
 .session-scope-note svg { flex-shrink: 0; margin-top: 3px; }
 .session-details-content { min-width: 0; container: session-detail / inline-size; }
 .session-token-breakdown { padding-top: var(--space-2); }
@@ -201,7 +206,7 @@
   .model-detail-stats > div { padding: var(--space-3); }
   .model-dialog .composition-legend > div { gap: var(--space-2); }
   .session-usage-card > summary { padding: var(--space-3); }
-  .session-card-body { padding: 0 var(--space-3) var(--space-4); }
+  .session-card-body { padding: var(--space-4) var(--space-3); }
   .model-compact-split { align-items: flex-start; }
   .model-speed-note { white-space: normal; }
 }
