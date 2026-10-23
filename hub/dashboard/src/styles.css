@@ -6,6 +6,9 @@
     "Geist Variable", -apple-system, BlinkMacSystemFont, "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
+  /* Tailwind's font-medium (buttons, tabs) follows the dashboard's medium,
+     so it drops to 450 on phones with everything else. */
+  --font-weight-medium: var(--fw-medium);
   --color-background: var(--surface);
   --color-foreground: var(--ink);
   --color-card: var(--surface);

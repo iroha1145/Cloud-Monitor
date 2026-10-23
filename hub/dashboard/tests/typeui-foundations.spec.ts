@@ -343,12 +343,16 @@ test("phone text steps down once while fields stay at 16px so iOS does not zoom"
   await loadedPage(page, "history");
   const roles = await page.evaluate(() => {
     const size = (selector: string) => getComputedStyle(document.querySelector(selector)!).fontSize;
-    return { body: getComputedStyle(document.body).fontSize, title: size(".main-content h1"), medium: getComputedStyle(document.documentElement).getPropertyValue("--fw-medium").trim(),
+    const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const heavy = [...document.querySelectorAll(".main-content *, .feel-quick-navigation *")]
+      .filter(element => element.getClientRects().length && [...element.childNodes].some(node => node.nodeType === 3 && node.textContent!.trim()))
+      .filter(element => Number(getComputedStyle(element).fontWeight) > 450).map(element => element.textContent!.trim().slice(0, 16));
+    return { reading: token("--fs-body"), secondary: token("--fs-meta"), title: size(".main-content h1"), medium: token("--fw-medium"), heavy,
       fields: [...document.querySelectorAll("input:not([type=checkbox]):not([type=radio]):not([type=range])")].map(field => getComputedStyle(field).fontSize) };
   });
-  expect(roles).toMatchObject({ body: "15px", title: "22px", medium: "450" });
+  expect(roles).toMatchObject({ reading: "0.9375rem", secondary: "0.8125rem", title: "22px", medium: "450", heavy: [] });
   expect(roles.fields.length).toBeGreaterThan(0);
   for (const size of roles.fields) expect(size).toBe("16px");
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).fontSize)).toBe("16px");
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--fs-body").trim())).toBe("1rem");
 });
