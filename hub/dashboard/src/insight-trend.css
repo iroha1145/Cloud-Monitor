@@ -78,7 +78,7 @@
   background: transparent;
   color: var(--ink-2);
   font-size: var(--fs-label);
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw-control);
   cursor: pointer;
   transition:
     color var(--duration-quick) var(--ease-smooth-out),

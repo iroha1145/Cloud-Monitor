@@ -81,7 +81,7 @@
   color: var(--ink-2);
   cursor: pointer;
   font-size: var(--fs-meta);
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw-control);
   white-space: normal;
   line-height: var(--lh-meta);
   transition:

@@ -144,7 +144,7 @@
 .session-details-content .session-facts dd { margin: var(--space-1) 0 0; color: var(--ink); font-size: var(--fs-body); line-height: var(--lh-body); overflow-wrap: anywhere; }
 .session-origin-disclosure { margin-top: var(--space-6); padding: 0 var(--space-4); border-radius: var(--r-md); background: var(--inset); }
 .session-origin-disclosure[open] { padding-bottom: var(--space-4); }
-.session-origin-disclosure > summary { display: flex; justify-content: space-between; align-items: center; gap: var(--space-4); min-height: 48px; cursor: pointer; font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--ink-2); list-style: none; }
+.session-origin-disclosure > summary { display: flex; justify-content: space-between; align-items: center; gap: var(--space-4); min-height: 48px; cursor: pointer; font-size: var(--fs-body); font-weight: var(--fw-control); color: var(--ink-2); list-style: none; }
 .session-origin-disclosure .session-facts { grid-template-columns: 1fr; gap: 0; margin: 0; padding: 0; border-top: 0; }
 .session-origin-disclosure .session-facts > div { display: grid; grid-template-columns: minmax(6rem, .6fr) minmax(0, 1.4fr); align-items: baseline; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--line); }
 .session-details-content .session-origin-disclosure .session-facts dd { margin: 0; }

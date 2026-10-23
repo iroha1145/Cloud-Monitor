@@ -145,7 +145,7 @@
   color: var(--surface);
   font: inherit;
   font-size: var(--fs-strong);
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw-control);
   cursor: pointer;
   transition:
     background-color var(--duration-quick) var(--ease-smooth-out),

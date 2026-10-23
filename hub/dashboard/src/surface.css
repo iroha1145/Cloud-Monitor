@@ -51,7 +51,7 @@
   box-shadow: none !important;
   color: var(--ink) !important;
   font-size: var(--fs-body) !important;
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw-control);
 }
 /* Optical button padding: slightly less space on the icon side so the label
    appears centered (TypeUI button-padding & color-weight). */

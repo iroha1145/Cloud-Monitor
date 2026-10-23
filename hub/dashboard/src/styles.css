@@ -6,9 +6,9 @@
     "Geist Variable", -apple-system, BlinkMacSystemFont, "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
-  /* Tailwind's font-medium (buttons, tabs) follows the dashboard's medium,
-     so it drops to 450 on phones with everything else. */
-  --font-weight-medium: var(--fw-medium);
+  /* Tailwind's font-medium is used by the button and tab primitives: it takes
+     the control step, 400 on phones like the dashboard's own buttons. */
+  --font-weight-medium: var(--fw-control);
   --color-background: var(--surface);
   --color-foreground: var(--ink);
   --color-card: var(--surface);
@@ -590,7 +590,7 @@ button,
   border: 0 !important;
   border-radius: var(--r-segment) !important;
   color: var(--ink-2) !important;
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw-control);
   transition:
     color var(--duration-quick) var(--ease-smooth-out),
     transform var(--duration-quick) var(--ease-smooth-out);
@@ -920,7 +920,7 @@ button,
   padding: 0 12px;
   border-radius: var(--r-segment);
   color: var(--ink-2);
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw-control);
   transition:
     color var(--duration-quick) var(--ease-smooth-out),
     transform var(--duration-quick) var(--ease-smooth-out);

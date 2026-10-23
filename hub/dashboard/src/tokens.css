@@ -23,8 +23,11 @@
   --fs-page: 1.75rem;
   --fs-figure: 1.75rem;
   --fs-lead: 2.25rem;
-  /* Emphasis weight for titles, figures and controls; reading text is 400. */
+  /* Emphasis weight for titles and figures; reading text is 400. Button,
+     tab and switch labels have their own step so phones can set them at 400:
+     Chinese has no 450, and a medium 刷新数据 outweighs the page title there. */
   --fw-medium: 500;
+  --fw-control: 500;
   --lh-heading: 1.2;
   --lh-body: 1.5;
   --lh-meta: 1.5;
@@ -205,6 +208,7 @@
     --fs-figure: 1.5rem;
     --fs-lead: 1.75rem;
     --fw-medium: 450;
+    --fw-control: 400;
   }
 }
 
