@@ -138,16 +138,16 @@ h1 {
   margin: 0;
   color: var(--ink);
   font-size: var(--fs-page);
-  font-weight: var(--fw-medium);
-  letter-spacing: -0.02em;
+  font-weight: 500;
+  letter-spacing: -0.03em;
   line-height: var(--lh-heading);
 }
 h2 {
   margin: 0;
   color: var(--ink);
   font-size: var(--fs-section);
-  font-weight: var(--fw-medium);
-  letter-spacing: -0.01em;
+  font-weight: 500;
+  letter-spacing: -0.015em;
   line-height: var(--lh-heading);
 }
 h3 {
@@ -239,7 +239,7 @@ button,
   align-items: center;
   gap: 11px;
   padding: 6px 8px;
-  font-size: var(--fs-strong);
+  font-size: 1rem;
   font-weight: 600;
   letter-spacing: -0.02em;
   white-space: nowrap;
@@ -306,7 +306,7 @@ button,
   padding: 0 12px;
   border-radius: var(--r-sm);
   color: var(--ink-2);
-  font-size: var(--fs-label);
+  font-size: 0.9062rem;
   line-height: 1.2;
   transition: color var(--duration-quick) var(--ease-smooth-out);
 }
@@ -389,7 +389,7 @@ button,
   padding: 0 10px;
   border-radius: var(--r-sm);
   color: var(--ink-2);
-  font-size: var(--fs-meta);
+  font-size: 0.8125rem;
   text-align: left;
   transition: background var(--duration-quick) var(--ease-smooth-out),
     color var(--duration-quick) var(--ease-smooth-out);
@@ -554,7 +554,7 @@ button,
   border-radius: var(--r-control) !important;
   background: var(--surface) !important;
   color: var(--ink) !important;
-  font-size: var(--fs-meta) !important;
+  font-size: 0.8125rem !important;
   box-shadow: none !important;
 }
 .refresh-button:hover {
@@ -599,7 +599,7 @@ button,
   min-width: 64px;
   height: 30px;
   padding: 0 14px;
-  font-size: var(--fs-label);
+  font-size: 0.8125rem;
 }
 .period-tabs [role="tab"]:hover,
 .small-tabs [role="tab"]:hover {
@@ -646,7 +646,7 @@ button,
   align-items: center;
   gap: 7px;
   color: var(--ink-2);
-  font-size: var(--fs-meta);
+  font-size: 0.8125rem;
 }
 .date-label > svg {
   color: var(--ink-3);
@@ -662,7 +662,7 @@ button,
   border-radius: var(--r-control);
   background: var(--surface);
   color: var(--ink);
-  font-size: var(--fs-meta);
+  font-size: 0.8125rem;
   transition: background var(--duration-quick) var(--ease-smooth-out);
 }
 .plain-button > svg {
@@ -718,7 +718,7 @@ button,
   align-items: center;
   gap: 6px;
   color: var(--ink-2);
-  font-size: var(--fs-meta);
+  font-size: 0.8125rem;
   white-space: nowrap;
 }
 .ledger-label small {
@@ -969,7 +969,7 @@ button,
   min-height: 160px;
   padding: 32px;
   color: var(--ink-3);
-  font-size: var(--fs-meta);
+  font-size: 0.8125rem;
   text-align: center;
 }
 .empty-inline strong {
@@ -991,7 +991,7 @@ button,
   max-width: 62ch;
   margin: 8px 0 0;
   color: var(--ink-2);
-  font-size: var(--fs-meta);
+  font-size: 0.8125rem;
   line-height: var(--lh-meta);
 }
 .first-report dl {
@@ -1015,11 +1015,11 @@ button,
 .first-report dd {
   margin: 0;
   overflow-wrap: anywhere;
-  font-size: var(--fs-meta);
+  font-size: 0.8125rem;
 }
 .first-report code {
   font-family: var(--font-mono);
-  font-size: var(--fs-meta);
+  font-size: 0.7812rem;
 }
 @media (max-width: 860px) {
   .first-report {
@@ -1051,7 +1051,7 @@ button,
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  font-size: var(--fs-meta);
+  font-size: 0.8125rem;
 }
 .client-head > span {
   display: flex;
@@ -1128,8 +1128,8 @@ button,
 .composition-hero strong {
   display: block;
   margin-top: 4px;
-  font-size: var(--fs-figure);
-  font-weight: var(--fw-medium);
+  font-size: 1.875rem;
+  font-weight: 500;
   letter-spacing: -0.035em;
   line-height: 1.1;
 }
@@ -1230,7 +1230,7 @@ button,
   min-width: 0;
   background: transparent;
   color: var(--ink);
-  font-size: var(--fs-meta);
+  font-size: 0.8125rem;
   outline: none !important;
 }
 .model-filters [data-slot="select-trigger"] {
@@ -1263,7 +1263,7 @@ button,
 .model-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--fs-meta);
+  font-size: 0.8125rem;
   text-align: left;
   white-space: nowrap;
 }
@@ -1522,7 +1522,7 @@ button,
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--fs-meta);
+  font-size: 0.8125rem;
 }
 .provider-status strong {
   font-weight: var(--fw-medium);
@@ -1581,7 +1581,7 @@ button,
   background: var(--surface);
   color: var(--ink);
   font-family: var(--font-sans);
-  font-size: var(--fs-body);
+  
   line-height: var(--lh-body);
   box-shadow: var(--shadow-modal);
 }
@@ -1593,14 +1593,14 @@ button,
   overflow-wrap: anywhere;
 }
 [data-slot="dialog-title"] {
-  font-size: var(--fs-dialog) !important;
-  font-weight: var(--fw-medium);
-  letter-spacing: -0.01em;
+  font-size: 1.25rem !important;
+  font-weight: 500;
+  letter-spacing: -0.02em;
   line-height: var(--lh-heading);
 }
 [data-slot="dialog-description"] {
   color: var(--ink-2);
-  font-size: var(--fs-meta) !important;
+  font-size: 0.8125rem !important;
   line-height: var(--lh-meta);
   max-width: 65ch;
   /* one or two short lines: split them evenly rather than leave 多少。 alone */
@@ -1868,8 +1868,8 @@ button,
   padding: var(--space-3) calc(44px + var(--space-3) + var(--space-4)) var(--space-3) var(--space-6);
   border-bottom: 1px solid var(--line);
   color: var(--ink-2);
-  font-size: var(--fs-section);
-  font-weight: var(--fw-medium);
+  font-size: 0.875rem;
+  
 }
 .search-dialog-heading > span { min-width: 0; flex: 1; }
 .search-dialog-heading kbd {
@@ -1991,8 +1991,8 @@ button,
 }
 .design-sources strong {
   display: block;
-  font-size: var(--fs-meta);
-  font-weight: var(--fw-medium);
+  font-size: 0.8125rem;
+  font-weight: 500;
 }
 .design-sources small {
   display: block;
@@ -2161,8 +2161,8 @@ button,
   border-radius: var(--r-md);
   background: var(--hover);
   color: var(--ink-2);
-  font-size: var(--fs-meta);
-  font-weight: var(--fw-medium);
+  font-size: 0.8125rem;
+  font-weight: 500;
 }
 /* An unreported pair is a bare dash, not a pale fill that reads as "a little". */
 .matrix-cell.level-0 {

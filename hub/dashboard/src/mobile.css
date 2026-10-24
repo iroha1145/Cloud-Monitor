@@ -1,7 +1,7 @@
 .page-loading {
   padding: 48px 16px;
   color: var(--ink-3);
-  font-size: var(--fs-meta);
+  font-size: 0.8125rem;
   text-align: center;
 }
 
@@ -16,7 +16,7 @@
     scroll-padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
   }
   body {
-    font-size: var(--fs-label);
+    font-size: 0.875rem;
   }
   :root {
     --gap: 14px;
@@ -67,7 +67,7 @@
     gap: 16px;
   }
   .heading-copy h1 {
-    font-size: var(--fs-page);
+    font-size: clamp(1.5rem, 6.6vw, 1.75rem);
   }
   .heading-actions {
     position: static;
@@ -137,10 +137,10 @@
   }
   .ledger-value {
     padding-top: 10px;
-    font-size: var(--fs-figure);
+    font-size: clamp(1.375rem, 6.4vw, 1.625rem);
   }
   .ledger-lead .ledger-value {
-    font-size: var(--fs-figure);
+    font-size: clamp(1.6875rem, 8vw, 2rem);
   }
   .ledger-note {
     margin-top: 8px;
@@ -206,7 +206,7 @@
     font-size: var(--fs-meta);
   }
   .insight-trend-metrics strong {
-    font-size: var(--fs-value);
+    font-size: clamp(1.0625rem, 4.5vw, 1.3125rem);
   }
   .insight-trend-metrics > div > small {
     font-size: var(--fs-meta);
@@ -236,7 +236,7 @@
     margin-right: 0;
   }
   .composition-hero strong {
-    font-size: var(--fs-figure);
+    font-size: clamp(1.5rem, 7.5vw, 1.875rem);
   }
   .composition-ring {
     width: min(196px, 100%);
@@ -253,7 +253,7 @@
     display: block;
     min-width: 0;
     width: 100%;
-    font-size: var(--fs-label);
+    font-size: 0.875rem;
   }
   .model-table thead {
     display: none;
@@ -322,7 +322,7 @@
   }
   .model-open strong,
   .full-models .model-open strong {
-    font-size: var(--fs-label);
+    font-size: 0.875rem;
     white-space: normal;
     overflow-wrap: anywhere;
     line-height: 1.5;
@@ -344,7 +344,7 @@
     justify-content: flex-start;
     flex-wrap: wrap;
     gap: 5px;
-    font-size: var(--fs-label);
+    font-size: 0.875rem;
   }
   .cache-rate > span:last-child {
     min-width: 0;
@@ -393,16 +393,16 @@
   .search-field,
   .model-filters [data-slot="select-trigger"] {
     min-height: 44px;
-    font-size: var(--fs-meta);
+    font-size: 0.8125rem;
   }
   /* Menu rows are finger-sized on touch screens. */
   [data-slot="select-item"] {
     min-height: 44px;
-    font-size: var(--fs-label);
+    font-size: 0.875rem;
   }
   .search-field input {
     min-height: 42px;
-    font-size: var(--fs-strong);
+    font-size: 1rem;
   }
   .matrix-panel .panel-head {
     flex-wrap: wrap;
@@ -438,7 +438,7 @@
   .matrix-client-heading {
     min-height: 36px;
     min-width: 0;
-    font-size: var(--fs-meta);
+    font-size: 0.8125rem;
   }
   .matrix-table td {
     display: flex;
@@ -502,7 +502,7 @@
     display: none;
   }
   .model-detail-stats strong {
-    font-size: var(--fs-figure);
+    font-size: 1.5rem;
   }
   .skip-link {
     left: 16px;

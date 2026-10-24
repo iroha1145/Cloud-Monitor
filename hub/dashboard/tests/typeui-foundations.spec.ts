@@ -3,8 +3,8 @@ import { mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { finishAnimations, revealAll, scrollIntoViewAndReveal } from "./motion-helpers";
 
-// Text uses the 10-21 sizes (captions 12, labels and reading text 13,
-// sections 16); phones shrink only titles and big figures (titles 22).
+// Text uses the 10-21 sizes and weights: captions 12, reading text 13,
+// sections 16 at 600; phones keep them with their own title sizes.
 const isPhone = (width: number) => width <= 760;
 
 const destinations = [
@@ -269,40 +269,31 @@ for (const width of [320, 390]) {
   });
 }
 
-test("text stays light: grayscale smoothing and no weight above 500 except the brand name", async ({ page }) => {
+test("desktop type follows the 10-21 dashboard: 13px text and buttons, 16px sections at 600", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  for (const [id] of destinations) {
-    await page.goto(`/demo.html#${id}`);
-    await loadedPage(page, id);
-    await revealAll(page);
-    const heavy = await page.evaluate(() => {
-      const found = new Set<string>();
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        const element = node.parentElement;
-        if (!node.textContent?.trim() || !element || !element.getClientRects().length || element.closest(".app-brand, .sr-only")) continue;
-        if (Number(getComputedStyle(element).fontWeight) > 500) found.add(`${element.className || element.tagName}: ${node.textContent.trim().slice(0, 20)}`);
-      }
-      return [...found];
-    });
-    expect(heavy).toEqual([]);
-    expect(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue("-webkit-font-smoothing"))).toBe("antialiased");
-    // Buttons and tabs read as regular text, as on 10-21; titles keep 500.
-    const controls = await page.locator('.main-content :is(.plain-button, .refresh-button, [role="tab"]), .main-content .plain-button span').evaluateAll(elements =>
-      [...new Set(elements.filter(element => element.getClientRects().length).map(element => getComputedStyle(element).fontWeight))]);
-    expect(controls).toEqual(["400"]);
-  }
+  await page.goto("/demo.html#overview");
+  await loadedPage(page, "overview");
+  const style = (locator: ReturnType<Page["locator"]>) => locator.first().evaluate(element => {
+    const computed = getComputedStyle(element);
+    return `${computed.fontSize}/${computed.fontWeight}`;
+  });
+  expect(await style(page.locator(".main-content h1"))).toBe("28px/600");
+  expect(await style(page.locator(".main-content h2", { hasText: "用量组成" }))).toBe("16px/600");
+  expect(await style(page.locator(".main-content .plain-button", { hasText: "导出数据" }))).toBe("13px/500");
+  expect(await style(page.locator('.main-content [role="tab"]', { hasText: "本月" }))).toBe("13px/500");
+  expect(await style(page.locator(".main-content .ledger-label").first())).toBe("13px/400");
+  expect(await page.evaluate(() => getComputedStyle(document.body).fontSize)).toBe("13px");
+  expect(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue("-webkit-font-smoothing"))).toBe("antialiased");
 });
 
-test("session details keep one hierarchy in the model dialog and in history rows", async ({ page }) => {
+test("session details keep the 10-21 sizes and their spacing in the model dialog and in history rows", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const roles = (root: Element) => {
-    const size = (selector: string) => parseFloat(getComputedStyle(root.querySelector(selector)!).fontSize);
-    return { subheading: size(".session-details-content .detail-section-heading h3"), label: size(".session-facts dt"),
-      value: size(".session-facts dd"), note: parseFloat(getComputedStyle(root.querySelector(".session-token-breakdown .detail-footnote")!).marginTop) };
-  };
+  const roles = (root: Element) => ({
+    heading: getComputedStyle(root.querySelector(".session-details-content .detail-section-heading h3")!).fontSize,
+    value: getComputedStyle(root.querySelector(".session-facts.sv-detail-grid dd")!).fontSize,
+    note: parseFloat(getComputedStyle(root.querySelector(".session-token-breakdown .detail-footnote")!).marginTop) });
   // History first, so its page sheet is loaded before the dialog opens.
   await page.goto("/demo.html#history");
   await loadedPage(page, "history");
@@ -313,15 +304,14 @@ test("session details keep one hierarchy in the model dialog and in history rows
   await page.getByRole("button", { name: "查看 gpt-6-astra 详情", exact: true }).click();
   const dialog = page.locator(".model-dialog");
   await finishAnimations(dialog);
-  const summary = dialog.locator(".session-usage-card > summary").first();
-  await summary.click();
+  await dialog.locator(".session-usage-card > summary").first().click();
   const inDialog = await dialog.evaluate(roles);
-  expect(inDialog).toEqual(history);
-  const cardTitle = await summary.locator(".session-card-title strong").evaluate(element => parseFloat(getComputedStyle(element).fontSize));
-  expect(inDialog.subheading).toBeLessThan(cardTitle);
-  expect(inDialog.value).toBe(13);
-  expect(inDialog.label).toBe(12);
+  // As on 10-21: history rows show the facts at caption size, the dialog at reading size.
+  expect(history).toMatchObject({ heading: "14px", value: "12px" });
+  expect(inDialog).toMatchObject({ heading: "14px", value: "13px" });
+  expect(history.note).toBeGreaterThanOrEqual(8);
   expect(inDialog.note).toBeGreaterThanOrEqual(8);
+  await expect(dialog.locator('[data-slot="dialog-title"]')).toHaveCSS("font-size", "23px");
 });
 
 for (const width of [320, 1440]) {
@@ -341,26 +331,18 @@ for (const width of [320, 1440]) {
   });
 }
 
-test("phone keeps 13px text and 22px titles while fields stay at 16px so iOS does not zoom", async ({ page }) => {
+test("phone keeps the 10-21 sizes while fields stay at 16px so iOS does not zoom", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/demo.html#history");
   await loadedPage(page, "history");
-  const roles = await page.evaluate(() => {
-    const size = (selector: string) => getComputedStyle(document.querySelector(selector)!).fontSize;
-    const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    const heavy = [...document.querySelectorAll(".main-content *, .feel-quick-navigation *")]
-      .filter(element => element.getClientRects().length && [...element.childNodes].some(node => node.nodeType === 3 && node.textContent!.trim()))
-      .filter(element => Number(getComputedStyle(element).fontWeight) > 450).map(element => element.textContent!.trim().slice(0, 16));
-    const tabs = [...document.querySelectorAll('[role="tab"]')].filter(tab => tab.getClientRects().length).map(tab => getComputedStyle(tab).fontWeight);
-    return { reading: token("--fs-body"), secondary: token("--fs-meta"), title: size(".main-content h1"), medium: token("--fw-medium"), heavy, tabs: [...new Set(tabs)],
-      fields: [...document.querySelectorAll("input:not([type=checkbox]):not([type=radio]):not([type=range])")].map(field => getComputedStyle(field).fontSize) };
-  });
-  expect(roles).toMatchObject({ reading: "0.8125rem", secondary: "0.75rem", title: "22px", medium: "450", heavy: [], tabs: ["400"] });
+  const roles = await page.evaluate(() => ({
+    body: getComputedStyle(document.body).fontSize,
+    title: `${getComputedStyle(document.querySelector(".main-content h1")!).fontSize}/${getComputedStyle(document.querySelector(".main-content h1")!).fontWeight}`,
+    fields: [...document.querySelectorAll("input:not([type=checkbox]):not([type=radio]):not([type=range])")].map(field => getComputedStyle(field).fontSize) }));
+  expect(roles).toMatchObject({ body: "14px", title: "26px/600" });
   expect(roles.fields.length).toBeGreaterThan(0);
   for (const size of roles.fields) expect(size).toBe("16px");
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector(".main-content h1")!).fontSize)).toBe("28px");
 });
 
 test.describe("on a touch phone", () => {

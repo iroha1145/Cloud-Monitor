@@ -6,7 +6,7 @@
   background: var(--surface);
   color: var(--ink);
   min-width: 0;
-  font-size: var(--fs-body);
+  
   line-height: var(--lh-body);
 }
 .system-update-header {
@@ -25,9 +25,9 @@
 }
 .system-update-header h2 {
   margin: var(--space-2) 0 var(--space-1);
-  font-size: var(--fs-section);
+  font-size: 1.125rem;
   letter-spacing: -0.3px;
-  font-weight: var(--fw-medium);
+  font-weight: 500;
   line-height: var(--lh-heading);
 }
 .system-update-header p {
@@ -153,13 +153,13 @@
   overflow-wrap: anywhere;
 }
 .system-update-job > strong {
-  font-size: var(--fs-strong);
-  font-weight: var(--fw-medium);
+  font-size: 0.75rem;
+  font-weight: 500;
 }
 .system-update-job p {
   margin: var(--space-2) 0 0;
   color: var(--ink-2);
-  font-size: var(--fs-body);
+  font-size: 0.75rem;
   line-height: var(--lh-body);
   white-space: pre-wrap;
   max-width: 65ch;
@@ -194,7 +194,7 @@
 }
 .system-update-notes pre {
   font-family: inherit;
-  font-size: var(--fs-body);
+  font-size: 0.75rem;
   line-height: var(--lh-body);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -245,7 +245,7 @@
   .system-update {
     padding: var(--space-4) var(--space-4);
     margin-top: var(--space-4);
-    font-size: var(--fs-body);
+    
     line-height: var(--lh-body);
   }
   .system-update-header {
@@ -254,8 +254,8 @@
     flex-wrap: wrap;
   }
   .system-update-header h2 {
-    font-size: var(--fs-section);
-    font-weight: var(--fw-medium);
+    font-size: 1.1875rem;
+    
     line-height: var(--lh-heading);
   }
   .system-update-button {

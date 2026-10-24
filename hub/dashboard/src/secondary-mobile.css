@@ -12,7 +12,7 @@
   }
   .sv-search input {
     min-height: 42px;
-    font-size: var(--fs-body);
+    font-size: 1rem;
   }
   .sv-toolbar-actions [data-slot="select-trigger"] {
     height: 44px;
@@ -31,7 +31,7 @@
   }
   .sv-summary-value,
   .sv-dense-page .sv-summary-value {
-    font-size: var(--fs-figure);
+    font-size: clamp(1.3125rem, 6vw, 1.625rem);
     min-width: 0;
     overflow-wrap: anywhere;
   }
@@ -60,7 +60,8 @@
     width: 100%;
     max-width: none;
     min-width: 0;
-  }
+  font-size: 0.8125rem;
+}
   .sv-toolbar-actions {
     width: 100%;
     justify-content: space-between;
@@ -70,7 +71,7 @@
     flex: 1;
   }
   .sv-device-heading h3 {
-    font-size: var(--fs-body);
+    font-size: 1rem;
   }
   .sv-device-heading p,
   .sv-device-meta,
@@ -112,7 +113,7 @@
     line-height: var(--lh-body);
   }
   .sv-quota-card h3 {
-    font-size: var(--fs-body);
+    font-size: 1rem;
   }
   .sv-quota-window-foot,
   .sv-quota-source,
@@ -204,7 +205,7 @@
     background: var(--field);
     color: var(--ink);
     font: inherit;
-    font-size: var(--fs-body);
+    font-size: 1rem;
   }
   .sv-mobile-date-picker input:focus-visible {
     outline: 2px solid var(--primary);

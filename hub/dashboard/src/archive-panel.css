@@ -7,7 +7,7 @@
   color: var(--ink);
   min-width: 0;
   line-height: var(--lh-body);
-  font-size: var(--fs-body);
+  
 }
 .archive-header {
   display: flex;
@@ -25,9 +25,9 @@
 }
 .archive-header h2 {
   margin: var(--space-2) 0 var(--space-1);
-  font-size: var(--fs-section);
+  font-size: 1.125rem;
   letter-spacing: -0.3px;
-  font-weight: var(--fw-medium);
+  font-weight: 500;
   line-height: var(--lh-heading);
 }
 .archive-header p,
@@ -141,8 +141,8 @@
   text-align: right;
 }
 .archive-day strong {
-  font-size: var(--fs-body);
-  font-weight: var(--fw-medium);
+  font-size: 0.8125rem;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
   line-height: var(--lh-data);
@@ -171,8 +171,8 @@
 }
 .archive-composition h3 {
   margin: 0 0 var(--space-3);
-  font-size: var(--fs-strong);
-  font-weight: var(--fw-medium);
+  font-size: 0.75rem;
+  font-weight: 500;
   line-height: var(--lh-heading);
 }
 .archive-composition dl {
@@ -245,7 +245,7 @@
     padding: var(--space-4) var(--space-4);
     margin-top: var(--space-4);
     line-height: var(--lh-body);
-    font-size: var(--fs-body);
+    
   }
   .archive-header {
     align-items: flex-start;
@@ -253,8 +253,8 @@
     flex-wrap: wrap;
   }
   .archive-header h2 {
-    font-size: var(--fs-section);
-    font-weight: var(--fw-medium);
+    font-size: 1.1875rem;
+    
     line-height: var(--lh-heading);
   }
   .archive-button {

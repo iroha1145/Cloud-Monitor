@@ -3,7 +3,7 @@
   gap: var(--space-6);
   min-width: 0;
   color: var(--ink);
-  font-size: var(--fs-body);
+  
   line-height: var(--lh-body);
   overflow-wrap: anywhere;
 }
@@ -20,14 +20,14 @@
 }
 .sv-page h1 {
   margin: 0;
-  font-size: var(--fs-page);
-  font-weight: var(--fw-medium);
+  font-size: clamp(1.5625rem, 3vw, 1.875rem);
+  font-weight: 500;
   line-height: var(--lh-heading);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.7px;
 }
 .sv-page h2 {
-  font-size: var(--fs-section);
-  font-weight: var(--fw-medium);
+  font-size: 0.9375rem;
+  font-weight: 500;
   line-height: var(--lh-heading);
   margin: 0;
 }
@@ -256,8 +256,7 @@
   min-width: 0;
 }
 .sv-device-heading h3 {
-  overflow-wrap: anywhere;
-}
+  overflow-wrap: anywhere; font-size: 0.9375rem; }
 .sv-device-heading p {
   margin: var(--space-1) 0 0;
   font-size: var(--fs-meta);
@@ -341,8 +340,8 @@
   align-items: baseline;
   flex-wrap: wrap;
   gap: 0 var(--space-1);
-  font-size: var(--fs-figure);
-  font-weight: var(--fw-medium);
+  font-size: 1.4375rem;
+  font-weight: 500;
   line-height: var(--lh-heading);
   letter-spacing: -0.6px;
   font-variant-numeric: tabular-nums;
@@ -461,8 +460,8 @@
   border-radius: 9px;
   background: var(--hover);
   color: var(--primary);
-  font-weight: var(--fw-medium);
-  font-size: var(--fs-strong);
+  font-weight: 500;
+  font-size: 0.9375rem;
   flex-shrink: 0;
 }
 .sv-provider-heading {
@@ -603,7 +602,7 @@
 .sv-session-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--fs-body);
+  font-size: 0.75rem;
   table-layout: fixed;
 }
 .sv-session-table th {
@@ -643,8 +642,8 @@
 }
 .sv-session-table strong {
   display: block;
-  font-size: var(--fs-body);
-  font-weight: var(--fw-medium);
+  font-size: 0.75rem;
+  font-weight: 500;
   color: var(--ink-2);
 }
 .sv-session-table small {
@@ -746,7 +745,7 @@
 @media (max-width: 760px) {
   .sv-page {
     gap: var(--space-4);
-    font-size: var(--fs-body);
+    
     line-height: var(--lh-body);
     overflow-wrap: anywhere;
   }
@@ -758,7 +757,7 @@
     padding: var(--space-4) var(--space-4);
   }
   .sv-summary-value {
-    font-size: var(--fs-figure);
+    font-size: 1.5rem;
     overflow-wrap: anywhere;
     line-height: var(--lh-data);
   }
@@ -820,7 +819,7 @@
     height: 12px;
   }
   .sv-summary-value {
-    font-size: var(--fs-figure);
+    font-size: 1.3125rem;
     overflow-wrap: anywhere;
     line-height: var(--lh-data);
   }
@@ -945,20 +944,17 @@
   flex-wrap: wrap;
 }
 .sv-session-table {
-  font-size: var(--fs-body);
+  font-size: 0.75rem;
 }
 .sv-session-table th {
-  font-size: var(--fs-meta);
-}
+  font-size: var(--fs-meta); font-weight: 400; }
 .sv-session-table strong {
-  font-size: var(--fs-body);
-}
+  font-size: 0.75rem; font-weight: 500; }
 .sv-session-table small {
   font-size: var(--fs-meta);
 }
 .sv-status {
-  color: var(--ink-2);
-}
+  color: var(--ink-2); font-size: var(--fs-meta); }
 .sv-status-online,
 .sv-status-active,
 .sv-download-note {
@@ -974,8 +970,7 @@
   color: var(--primary);
 }
 .sv-date-filter {
-  border-color: color-mix(in srgb, var(--primary) 18%, var(--surface));
-}
+  border-color: color-mix(in srgb, var(--primary) 18%, var(--surface)); font-size: var(--fs-meta); }
 .sv-quota-balance {
   display: flex;
   align-items: center;
@@ -997,8 +992,7 @@
 
 /* Brand marks stay monochrome; chart and status colors provide the accents. */
 .sv-provider-icon {
-  color: var(--ink);
-}
+  color: var(--ink); font-size: 0.9375rem; font-weight: 500; }
 /* The summary icons keep the original colours, one per figure. */
 .sv-summary-label > span {
   display: inline-flex;
@@ -1047,7 +1041,7 @@
   gap: var(--space-1);
 }
 .sv-dense-page .sv-summary-value {
-  font-size: var(--fs-figure);
+  font-size: 1.5rem;
   overflow-wrap: anywhere;
   line-height: var(--lh-data);
 }
@@ -1087,7 +1081,7 @@
   gap: var(--space-2);
 }
 .sv-device-heading h3 {
-  font-size: var(--fs-strong);
+  font-size: 0.9375rem;
 }
 .sv-device-heading p {
   margin-top: 3px;
@@ -1271,6 +1265,8 @@
   width: 34px;
   height: 34px;
   border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 500;
 }
 .sv-binding {
   margin: var(--space-2) 0 0;
@@ -1292,7 +1288,7 @@
   font-size: var(--fs-meta);
 }
 .sv-quota-topline .sv-quota-balance strong {
-  font-size: var(--fs-body);
+  font-size: 1rem;
   color: var(--ink);
 }
 .sv-quota-source {
@@ -1343,7 +1339,8 @@
 }
 .sv-progress-label strong {
   white-space: nowrap;
-  font-size: var(--fs-body);
+  font-size: 0.8125rem;
+  font-weight: 500;
 }
 .sv-progress-label .sv-quota-value {
   min-width: 0;
@@ -1436,7 +1433,7 @@
 }
 .sv-subscription h3.sv-subscription-plan {
   margin: 0;
-  font-size: var(--fs-body);
+  font-size: 1rem;
   line-height: var(--lh-meta);
 }
 .sv-subscription-price {
@@ -1450,7 +1447,7 @@
   line-height: var(--lh-data);
 }
 .sv-subscription-price strong {
-  font-size: var(--fs-figure);
+  font-size: 1.4375rem;
   line-height: var(--lh-data);
   white-space: normal;
   overflow-wrap: anywhere;
@@ -1527,7 +1524,7 @@
   font-size: var(--fs-meta);
 }
 .sv-subscription-records strong {
-  font-size: var(--fs-body);
+  font-size: 0.75rem;
   white-space: normal;
   overflow-wrap: anywhere;
 }
@@ -1543,7 +1540,7 @@
     padding: var(--space-3) var(--space-3);
   }
   .sv-dense-page .sv-summary-value {
-    font-size: var(--fs-figure);
+    font-size: 1.3125rem;
     overflow-wrap: anywhere;
     line-height: var(--lh-data);
   }
@@ -1564,7 +1561,7 @@
     gap: var(--space-3);
   }
   .sv-device-metrics .sv-metric-value {
-    font-size: var(--fs-section);
+    font-size: 1.0625rem;
   }
   .sv-device-meta {
     font-size: var(--fs-meta);
@@ -1630,11 +1627,9 @@
 /* Narrow session columns wrap titles evenly (TypeUI headings: balanced),
    never one or two characters alone. */
 .sv-session-table strong {
-  text-wrap: balance;
-}
+  text-wrap: balance; font-size: 0.75rem; font-weight: 500; }
 .sv-session-table small {
-  text-wrap: pretty;
-}
+  text-wrap: pretty; font-size: var(--fs-meta); }
 @media (max-width: 1180px) {
   .sv-history-layout {
     grid-template-columns: 1fr;
