@@ -3,7 +3,8 @@ import { mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { finishAnimations, revealAll, scrollIntoViewAndReveal } from "./motion-helpers";
 
-// Phones step every text role down once (tokens.css): secondary 13, titles 22.
+// Text uses the 10-21 sizes (captions 12, labels and reading text 13,
+// sections 16); phones shrink only titles and big figures (titles 22).
 const isPhone = (width: number) => width <= 760;
 
 const destinations = [
@@ -42,7 +43,7 @@ for (const width of [320, 1440]) {
     await dialog.getByRole("textbox").fill("不存在的模型");
     await expect(dialog.getByText("没有找到匹配项", { exact: true })).toBeVisible();
     expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
-    await expect(dialog.getByText("试试模型名称，或输入“设备”。", { exact: true })).toHaveCSS("font-size", isPhone(width) ? "13px" : "14px");
+    await expect(dialog.getByText("试试模型名称，或输入“设备”。", { exact: true })).toHaveCSS("font-size", "12px");
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     await expect(dialog).toBeHidden();
   });
@@ -66,7 +67,7 @@ for (const width of [320, 390, 768, 1440]) {
       });
       expect(hierarchy.title).toBeGreaterThanOrEqual(isPhone(width) ? 22 : 24);
       for (const caption of hierarchy.captions) {
-        expect(caption).toBeGreaterThanOrEqual(isPhone(width) ? 13 : 14);
+        expect(caption).toBeGreaterThanOrEqual(12);
         expect(caption).toBeLessThan(hierarchy.title);
       }
       if (width === 390 || width === 1440) {
@@ -115,7 +116,7 @@ for (const width of [320, 390, 1440]) {
     expect(metrics.scroll).toBeLessThanOrEqual(metrics.width + 1);
     expect(metrics.title).toBeGreaterThan(metrics.section);
     expect(metrics.section).toBeGreaterThan(metrics.label);
-    expect(metrics.label).toBeGreaterThanOrEqual(isPhone(width) ? 13 : 14);
+    expect(metrics.label).toBeGreaterThanOrEqual(12);
     const headingBefore = await header.boundingBox();
     await body.hover();
     await page.mouse.wheel(0, 1200);
@@ -204,7 +205,7 @@ test("a long model name and 200 percent text leave phone details scrollable and 
   await page.addStyleTag({ content: ":root { font-size: 200%; }" });
   await expect(dialog.getByRole("heading", { name: longName, exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize))).toBe(32);
-  await expect(dialog.locator('[data-slot="dialog-title"]')).toHaveCSS("font-size", "44px");
+  await expect(dialog.locator('[data-slot="dialog-title"]')).toHaveCSS("font-size", "40px");
   const body = dialog.locator(".model-details-content");
   expect(await body.evaluate(element => {
     const style = getComputedStyle(element);
@@ -245,7 +246,7 @@ test("metric details keep enlarged text inside the viewport and close on real sc
   expect(bounds.right).toBeLessThanOrEqual(1440);
   expect(bounds.bottom).toBeLessThanOrEqual(1000);
   expect(bounds.scroll).toBeLessThanOrEqual(bounds.width + 1);
-  await expect(tooltip.locator("dt").first()).toHaveCSS("font-size", "28px");
+  await expect(tooltip.locator("dt").first()).toHaveCSS("font-size", "24px");
   await page.mouse.wheel(0, 120);
   await expect(tooltip).toBeHidden();
 });
@@ -287,6 +288,10 @@ test("text stays light: grayscale smoothing and no weight above 500 except the b
     });
     expect(heavy).toEqual([]);
     expect(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue("-webkit-font-smoothing"))).toBe("antialiased");
+    // Buttons and tabs read as regular text, as on 10-21; titles keep 500.
+    const controls = await page.locator('.main-content :is(.plain-button, .refresh-button, [role="tab"]), .main-content .plain-button span').evaluateAll(elements =>
+      [...new Set(elements.filter(element => element.getClientRects().length).map(element => getComputedStyle(element).fontWeight))]);
+    expect(controls).toEqual(["400"]);
   }
 });
 
@@ -314,8 +319,8 @@ test("session details keep one hierarchy in the model dialog and in history rows
   expect(inDialog).toEqual(history);
   const cardTitle = await summary.locator(".session-card-title strong").evaluate(element => parseFloat(getComputedStyle(element).fontSize));
   expect(inDialog.subheading).toBeLessThan(cardTitle);
-  expect(inDialog.value).toBe(16);
-  expect(inDialog.label).toBe(14);
+  expect(inDialog.value).toBe(13);
+  expect(inDialog.label).toBe(12);
   expect(inDialog.note).toBeGreaterThanOrEqual(8);
 });
 
@@ -336,7 +341,7 @@ for (const width of [320, 1440]) {
   });
 }
 
-test("phone text steps down once while fields stay at 16px so iOS does not zoom", async ({ page }) => {
+test("phone keeps 13px text and 22px titles while fields stay at 16px so iOS does not zoom", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/demo.html#history");
@@ -351,11 +356,11 @@ test("phone text steps down once while fields stay at 16px so iOS does not zoom"
     return { reading: token("--fs-body"), secondary: token("--fs-meta"), title: size(".main-content h1"), medium: token("--fw-medium"), heavy, tabs: [...new Set(tabs)],
       fields: [...document.querySelectorAll("input:not([type=checkbox]):not([type=radio]):not([type=range])")].map(field => getComputedStyle(field).fontSize) };
   });
-  expect(roles).toMatchObject({ reading: "0.9375rem", secondary: "0.8125rem", title: "22px", medium: "450", heavy: [], tabs: ["400"] });
+  expect(roles).toMatchObject({ reading: "0.8125rem", secondary: "0.75rem", title: "22px", medium: "450", heavy: [], tabs: ["400"] });
   expect(roles.fields.length).toBeGreaterThan(0);
   for (const size of roles.fields) expect(size).toBe("16px");
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--fs-body").trim())).toBe("1rem");
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector(".main-content h1")!).fontSize)).toBe("28px");
 });
 
 test.describe("on a touch phone", () => {

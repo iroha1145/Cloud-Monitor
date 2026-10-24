@@ -66,8 +66,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
-/* Phone text steps down to 15px (tokens.css), but iOS Safari zooms the page
-   into any field under 16px when it takes focus, so fields keep 1rem. */
+/* Reading text is 13px (tokens.css), but iOS Safari zooms the page into any
+   field under 16px when it takes focus, so phone fields keep 1rem. */
 @media (max-width: 760px), (max-width: 960px) and (max-height: 500px) {
   :is(input, textarea, select):not([type="checkbox"], [type="radio"], [type="range"]) {
     font-size: 1rem !important;
@@ -599,7 +599,7 @@ button,
   min-width: 64px;
   height: 30px;
   padding: 0 14px;
-  font-size: var(--fs-meta);
+  font-size: var(--fs-label);
 }
 .period-tabs [role="tab"]:hover,
 .small-tabs [role="tab"]:hover {

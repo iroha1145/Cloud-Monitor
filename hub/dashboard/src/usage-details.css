@@ -202,7 +202,7 @@
   .model-dialog .model-detail-heading { padding-block: var(--space-4); gap: var(--space-3); }
   .model-detail-heading-identity { gap: var(--space-2); }
   .model-dialog .model-detail-stats { gap: var(--space-3); }
-  .model-dialog .model-detail-stats strong { font-size: var(--fs-dialog); }
+  .model-dialog .model-detail-stats strong { font-size: var(--fs-figure); }
   .model-detail-stats > div { padding: var(--space-3); }
   .model-dialog .composition-legend > div { gap: var(--space-2); }
   .session-usage-card > summary { padding: var(--space-3); }

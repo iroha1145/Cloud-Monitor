@@ -18,7 +18,7 @@
   align-items: center;
   gap: 7px;
   color: var(--ink-2);
-  font-size: var(--fs-label);
+  font-size: var(--fs-meta);
   white-space: nowrap;
 }
 /* Series dots: the line's colour for tokens and cost, cache-read green. */

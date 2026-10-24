@@ -204,7 +204,7 @@
     padding: max(48px, 10vh) var(--space-6) var(--space-8);
   }
   .access-card h1 {
-    font-size: var(--fs-dialog);
+    font-size: var(--fs-page);
   }
 }
 

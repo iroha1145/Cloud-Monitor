@@ -67,7 +67,7 @@
     gap: 16px;
   }
   .heading-copy h1 {
-    font-size: var(--fs-dialog);
+    font-size: var(--fs-page);
   }
   .heading-actions {
     position: static;
@@ -137,7 +137,7 @@
   }
   .ledger-value {
     padding-top: 10px;
-    font-size: var(--fs-dialog);
+    font-size: var(--fs-figure);
   }
   .ledger-lead .ledger-value {
     font-size: var(--fs-figure);
@@ -502,7 +502,7 @@
     display: none;
   }
   .model-detail-stats strong {
-    font-size: var(--fs-dialog);
+    font-size: var(--fs-figure);
   }
   .skip-link {
     left: 16px;
