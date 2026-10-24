@@ -7,7 +7,7 @@
   color-scheme: light;
 
   /* Shared by pages, portalled dialogs and the access screen. The sizes are
-     the 2026-10-21 dashboard's: reading text and buttons 13, labels 13,
+     the 2026-10-21 dashboard's: reading text and buttons 13, labels and
      captions 12, sections 16. The owner preferred that density to the
      16/14/18 scale tried on 10-23 (TypeUI's example values), which read big
      and heavy. Weights and letter spacing are the 10-21 ones too: section
