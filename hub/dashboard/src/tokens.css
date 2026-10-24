@@ -6,26 +6,25 @@
 :root {
   color-scheme: light;
 
-  /* Shared by pages, portalled dialogs and the access screen (TypeUI type
-     scale: heading 28, paragraph 16, supporting 14). Reading text stays 16px
-     at every breakpoint; secondary text is 14px. Dense controls use the
-     secondary role, never a scaled-down version of the whole page. Titles,
-     figures and controls take 500, reading text 400; only the brand name
-     takes 600. Leading follows TypeUI's "Ideal" step: headings 1.2,
-     paragraphs 1.5. */
-  --fs-meta: 0.875rem;
-  --fs-label: 0.875rem;
-  --fs-body: 1rem;
-  --fs-strong: 1rem;
-  --fs-section: 1.125rem;
-  --fs-value: 1.25rem;
-  --fs-dialog: 1.5rem;
+  /* Shared by pages, portalled dialogs and the access screen. The sizes are
+     the 2026-10-21 dashboard's: reading text and buttons 13, labels and
+     captions 12, sections 16. The owner preferred that density to the
+     16/14/18 scale tried on 10-23 (TypeUI's example values), which read big
+     and heavy. Weights and letter spacing are the 10-21 ones too: section
+     and page titles 600, figures and controls 500 (--fw-medium,
+     --fw-control). Phones use the same tokens; mobile.css sets their own
+     title and figure sizes as on 10-21. Leading follows TypeUI's "Ideal"
+     step: headings 1.2, paragraphs 1.5. */
+  --fs-meta: 0.75rem;
+  --fs-label: 0.75rem;
+  --fs-body: 0.8125rem;
+  --fs-strong: 0.875rem;
+  --fs-section: 1rem;
+  --fs-value: 1.125rem;
+  --fs-dialog: 1.375rem;
   --fs-page: 1.75rem;
   --fs-figure: 1.75rem;
-  --fs-lead: 2.25rem;
-  /* Emphasis weight for titles and figures; reading text is 400. Button,
-     tab and switch labels have their own step so phones can set them at 400:
-     Chinese has no 450, and a medium 刷新数据 outweighs the page title there. */
+  --fs-lead: clamp(2.125rem, 1.9vw + 0.75rem, 2.75rem);
   --fw-medium: 500;
   --fw-control: 500;
   --lh-heading: 1.2;
@@ -189,27 +188,6 @@
   --scale-tiny: 0.99;
   --blur-small: 2px;
   --blur-medium: 3px;
-}
-
-/* Phones read at arm's length on a small screen: every role steps down once
-   (body 15, secondary 13, sections 16, page and dialog titles 22) and emphasis drops to 450.
-   Geist and the Latin figures get lighter; Chinese has no 450, so headings
-   stay PingFang Medium and keep their rank. Nothing goes below 13px. */
-@media (max-width: 760px), (max-width: 960px) and (max-height: 500px) {
-  :root {
-    --fs-meta: 0.8125rem;
-    --fs-label: 0.8125rem;
-    --fs-body: 0.9375rem;
-    --fs-strong: 0.9375rem;
-    --fs-section: 1rem;
-    --fs-value: 1.125rem;
-    --fs-dialog: 1.375rem;
-    --fs-page: 1.375rem;
-    --fs-figure: 1.5rem;
-    --fs-lead: 1.75rem;
-    --fw-medium: 450;
-    --fw-control: 400;
-  }
 }
 
 .dark {
