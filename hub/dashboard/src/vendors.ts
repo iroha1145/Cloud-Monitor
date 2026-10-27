@@ -66,6 +66,7 @@ const CLIENT_TITLES: Record<string, string> = {
   openclaw: "OpenClaw",
   pi: "Pi",
   omp: "Oh My Pi",
+  senpi: "OmO Native",
   kimi: "Kimi Code",
   qoder: "Qoder",
   qodercn: "Qoder (中国)",

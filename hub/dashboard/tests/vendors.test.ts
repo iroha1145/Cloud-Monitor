@@ -44,6 +44,9 @@ test("service-reported client ids keep their product names", () => {
   // v0.71–v0.74: Goose usage and Notion AI allowances.
   assert.equal(clientName("goose"), "Goose");
   assert.equal(providerName("notion"), "Notion AI");
+  // v0.80: OmO Native usage and Muse Code allowances.
+  assert.equal(clientName("senpi"), "OmO Native");
+  assert.equal(providerName("muse"), "Muse Code");
 });
 
 test("all official limit providers resolve to formatted product names", () => {
@@ -61,6 +64,7 @@ test("all official limit providers resolve to formatted product names", () => {
     ["zed", "Zed"],
     ["commandcode", "Command Code"],
     ["mimo", "Xiaomi MiMo"],
+    ["muse", "Muse Code"],
     ["zai", "GLM"],
     ["zaiteam", "GLM Team"],
     ["kiro", "Kiro"],

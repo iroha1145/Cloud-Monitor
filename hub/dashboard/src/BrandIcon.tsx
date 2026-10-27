@@ -48,6 +48,7 @@ const logoIds = new Set([
   "qodercn",
   "qwen",
   "reasonix",
+  "senpi",
   "stepfun",
   "sub2api",
   "trae",
@@ -82,6 +83,7 @@ const aliases: Record<string, string> = {
   volc: "volcengine",
   cherrystudioapp: "cherrystudio",
   notionai: "notion",
+  omonative: "senpi",
 };
 
 /** Resolve the same client and vendor artwork used by the original dashboard. */
