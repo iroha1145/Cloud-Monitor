@@ -11,9 +11,11 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
 不重造官方聚合。官方 `/api/ingest` `/api/stats` `/api/history` SSE 订阅
 行为不得因本扩展改变。
 
-当前内核固定为 Token Monitor v0.77.0（`c83ee3aeb6d23505257113c29ef010040deb52f7`）。支持 CatPaw（`catpaw`）、FX（`fx`）、MiniMax Code（`mcode`）、Factory Droid（`factory` / `droid`）、Muse Code（`muse`）、Goose（`goose`）客户端与 StepFun、Notion AI（`notion`）配额窗口；v0.71–v0.74 起 WorkBuddy 多个账号分开显示，多日汇总保留为 0 的未分类词元，官方项目汇总多出按模型的词元（`models`，网关的 `projects` 与 `projects_by_period` 也带出）；`limits` 原样传递官方完整配额记录，Token Plan 未提供实际点数余额时，网页只展示上报的用量比例。
+当前内核固定为 Token Monitor v0.80.0（`c61cbe998d69725589c03511f2f56d43714f4c0f`）。支持 CatPaw（`catpaw`）、FX（`fx`）、MiniMax Code（`mcode`）、Factory Droid（`factory` / `droid`）、Muse Code（`muse`）、Goose（`goose`）客户端与 StepFun、Notion AI（`notion`）配额窗口；v0.71–v0.74 起 WorkBuddy 多个账号分开显示，多日汇总保留为 0 的未分类词元，官方项目汇总多出按模型的词元（`models`，网关的 `projects` 与 `projects_by_period` 也带出）；`limits` 原样传递官方完整配额记录，Token Plan 未提供实际点数余额时，网页只展示上报的用量比例。
 
 v0.77 起 Cline 配额按凭据身份聚合：相同邮箱的不同密钥或登录账号分别保留，同一凭据在多台设备上的记录仍合并。
+
+v0.80 起客户端多了 Senpi（`senpi`，网页显示为 OmO Native），`Senpi (OmO Native)` 等写法由内核并入 `senpi`；Muse Code（`muse`）配额没有可跨设备的账号标识，每台设备单独一行，不合并。
 
 鉴权：面板与 Cloud 扩展一律 `Authorization: Bearer ACCESS_TOKEN`。
 `TOKEN_MONITOR_SECRET` 不能读这些端点。Token Monitor 未启用 → 404。
@@ -198,6 +200,8 @@ v0.70 起官方周期还带 `unpricedTokens`、`clientUnpricedTokens`、`modelUn
 `clientModelUnpricedTokens`（没有价格、未计入 `costUsd` 的词元）和 `modelThroughput`
 （按模型的 `timedTokens`、`timedOutputTokens`、`timedDurationMs`），随 `totals` 原样透传。
 会话详情把未定价词元单独列出，不当作免费用量。
+
+费用由各设备上的 tokscale 计算后上传，网关和内核都不定价。tokscale 4.20 把不带前缀的 `k3.1-pro`、`k3.1-pro-highspeed`（Z Code、DSH 等客户端上报的 Kimi K3.1 Pro 编号）匹配到价格库里 Kimi Code 订阅套餐的条目（`kimi-code-plan-cn/k3.1-pro`），该条目单价为 0，所以这部分用量上报为 0 美元，也不算未定价词元。网关不补这笔费用：上传数据在周期汇总里按模型拆出了缓存读取，但按客户端和模型交叉的费用（`clientModelCosts`）没有这层拆分，混用多个模型的会话也只有整场的组成，网关重算只能改到一部分数字，各处合计会对不上；按总词元数粗估又因缓存读取占九成以上而高出约一个数量级。修法在设备侧：在 Token Monitor 的自定义价格里为 `k3.1-pro` 填官方价（每百万词元输入 2、输出 10、缓存写入 2、缓存读取 0.2 美元；highspeed 为 4、20、4、0.2），然后在内容同步里打开「自定义价格」：第一台设备选用本机设置上传到 Hub，其余设备打开时选用 Hub 上的设置。各设备按新价格重算本机日志里的用量，重算后的费用随下次上传进入面板；本机已经没有日志的日期无法重算。
 
 官方聚合只要有一台当前设备的某个周期没有 `modelThroughput`（例如旧版无界面代理），
 就删掉该周期整张表。此时网关另给 `model_throughput_partial[period]`：

@@ -12,3 +12,6 @@ https://github.com/Javis603/token-monitor/tree/ac4eeb2c4aea239dd94b67f074c73f69a
 
 Goose and Notion icons from v0.74.0:
 https://github.com/Javis603/token-monitor/tree/cbed5915e294abb4a210f7ebb385e9415f706821/assets/icons
+
+Senpi (OmO Native) icon from v0.80.0:
+https://github.com/Javis603/token-monitor/tree/c61cbe998d69725589c03511f2f56d43714f4c0f/assets/icons
