@@ -370,6 +370,11 @@ export default function AppDialogs({
             {[
               ["Stripe", "https://stripe.com", "排版、空间与信息层次"],
               [
+                "Paper Widgets",
+                "https://uberdesigner.ai/t/paper-widgets",
+                "柔和投影、群青点缀与列表样式",
+              ],
+              [
                 "TypeUI",
                 "https://www.typeui.sh/ui-foundations/configurator",
                 "字阶、表格对齐、同心圆角与控件高度规范",

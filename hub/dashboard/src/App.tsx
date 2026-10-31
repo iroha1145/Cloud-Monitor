@@ -553,7 +553,7 @@ export default function App({ initialData, initialToken = "", hosted = false, is
               <div className="heading-actions">
                 <span className="sync-status">
                   <i className={`status-dot ${freshData ? "is-fresh" : ""}`} key={data.generatedAt} aria-hidden="true" />
-                  更新于 {time}
+                  更新于 <span className="sync-time">{time}</span>
                 </span>
                 <StatefulButton
                   variant="outline"

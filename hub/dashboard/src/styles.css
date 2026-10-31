@@ -2133,14 +2133,17 @@ button,
   gap: 7px;
 }
 /* Long model names wrap onto two balanced lines (at the hyphens where they
-   can) before they are clipped; the tooltip carries the full name. */
+   can) before they are clipped; the tooltip carries the full name. The box
+   fits its text and sits centred under the icon, while its lines start at
+   one left edge (TypeUI readable-alignment). */
 .matrix-model-heading > span:last-child {
   display: block;
-  width: 96px;
+  width: max-content;
+  max-width: 96px;
   max-height: calc(1.35em * 2);
   overflow: hidden;
   overflow-wrap: anywhere;
-  text-align: center;
+  text-align: start;
   text-wrap: balance;
   line-height: var(--lh-data);
 }

@@ -29,8 +29,12 @@ async function expectStaticComposition(
       )
       .all()),
   ]) {
-    if (touch) await target.tap();
-    else await target.hover();
+    // Centre each target first: a row near the bottom edge can sit "in view"
+    // under the fixed phone menu bar, and a tap there opens the menu instead.
+    if (touch) {
+      await target.evaluate(element => element.scrollIntoView({ block: "center", behavior: "instant" }));
+      await target.tap();
+    } else await target.hover();
     await expect(page.getByRole("tooltip")).toHaveCount(0);
   }
   expect(await legend.allTextContents()).toEqual(before);
