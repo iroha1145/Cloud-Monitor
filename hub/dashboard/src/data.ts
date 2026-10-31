@@ -290,6 +290,7 @@ export interface Session {
   usageCoverage?: string | null;
   archived?: boolean | null;
   sessionKind?: string | null;
+  reasoningEffort?: string | null;
   deviceStale?: boolean | null;
 }
 
@@ -1490,6 +1491,7 @@ export function normalizeOverview(
       usageCoverage: optionalText(item.usageCoverage),
       archived: optionalBoolean(item.archived),
       sessionKind: optionalText(item.sessionKind),
+      reasoningEffort: optionalText(item.reasoningEffort),
       deviceStale: optionalBoolean(item.deviceStale),
     };
   });

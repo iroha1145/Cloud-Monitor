@@ -8,7 +8,7 @@ Token Monitor 本机组件使用原生同步协议连接云端；Python 网关�
 Token Monitor widget/headless agent ──官方同步协议──► Python 网关（鉴权/严格校验/1MiB 实测限流）
                                    │ 转发
                                    ▼
-                          tm-core（官方 v0.80.0 @c61cbe9，逐字节未改）
+                          tm-core（官方 v0.83.0 @7dc0198，逐字节未改）
                             规范化 / 设备合并(含 limitsOnly) / 多设备聚合 /
                             periodWindows 过期 / syncUploadIntervalMs stale /
                             history / limits / SSE 广播 / subscriptions /
@@ -28,12 +28,14 @@ headless agent 风格、官方 mergeDeviceRecord 生成的载荷、partial、
 limits-only、trackedClients 变化、窗口过期、删除）断言：经 Cloud 全链路
 与直连官方 hub 的 stats/devices/history/ingest 响应核心字段等价。
 
-固定版本测试 `tests/test_tm_v070_core.py` 校验当前固定版本（v0.80.0）与内核构建号，并验证 v0.70 引入的 CatPaw（`catpaw`）/ FX（`fx`）/ MiniMax Code（`mcode`）/ Factory Droid 客户端、会话实时状态（`waitingForInput`、`liveActivity`、`promptCache`、流式输出速率与父子会话关联）、内容同步端点（`/api/sync/*`）及上报合并；`tests/test_tm_v064_core.py` 与 `tests/test_tm_v062_core.py` 继续验证旧客户端载荷。样例与预期独立提交，不通过当前内核生成预期。
-完整依赖与来源哈希由 `tm-core/upstream-v080.json` 固定，`tm-core/sync_vendor.py --check` 校验；生成清单不能替代版本契约检查。Git 保留 vendor 原始字节，跨平台检出不能改变来源哈希。
+固定版本测试 `tests/test_tm_v070_core.py` 校验当前固定版本（v0.83.0）与内核构建号，并验证 v0.70 引入的 CatPaw（`catpaw`）/ FX（`fx`）/ MiniMax Code（`mcode`）/ Factory Droid 客户端、会话实时状态（`waitingForInput`、`liveActivity`、`promptCache`、流式输出速率与父子会话关联）、内容同步端点（`/api/sync/*`）及上报合并；`tests/test_tm_v064_core.py` 与 `tests/test_tm_v062_core.py` 继续验证旧客户端载荷。样例与预期独立提交，不通过当前内核生成预期。
+完整依赖与来源哈希由 `tm-core/upstream-v083.json` 固定，`tm-core/sync_vendor.py --check` 校验；生成清单不能替代版本契约检查。Git 保留 vendor 原始字节，跨平台检出不能改变来源哈希。
 
 v0.77.0 上游提供可选批量保存；本项目启动器继续采用默认 `persistIntervalMs=0`，成功回应前立即完成核心文件保存，未接入 `TOKEN_MONITOR_PERSIST_INTERVAL_MS`。上游将文件改为紧凑 JSON，结构版本仍为 1，无需迁移。`tests/test_tm_v077_core.py` 验证旧格式读取、立即落盘和强制终止后的恢复。
 
 v0.78.0–v0.80.0 在内核依赖范围内只改 5 个文件，上报格式不变，旧客户端照常上传。`tests/test_tm_v080_core.py` 验证 Senpi（OmO Native）的几种写法合并为 `senpi` 一个客户端、Muse Code 配额按设备分行，以及共享自定义价格（`customPricing`）经网关读写。
+
+v0.81.0–v0.83.0 在内核依赖范围内改 6 个文件并新增 `hubDelta.js`，上报格式不变。实时流协议升到 4，网关随之改为转发版本 3 和 4（见下文 SSE）；会话多出推理强度与按模型的词元组成。`tests/test_tm_v083_core.py` 验证版本 4 的首帧修订号、新鲜度事件和增量补丁经网关衔接，以及两个新会话字段通过网关校验。
 
 ## 关键语义（全部由官方代码执行，网关不重造）
 
@@ -46,10 +48,13 @@ v0.78.0–v0.80.0 在内核依赖范围内只改 5 个文件，上报格式不�
   时以组件归一）。
 - **订阅**：条目必须含 provider+startDate（topup 需 topUps）；过期
   baseUpdatedAt → 409 stale_write；非法币种 → 400。
-- **SSE**：首帧 `event: snapshot`；请求头 `X-Token-Monitor-Stream: 2` 可启用
-  仅更新设备新鲜度的 `event: freshness`。旧客户端保持完整 `event: stats`。
-  核心合并短时间内的上传广播；删除和订阅变更仍发布完整统计，30s `: hb` 心跳。
-  网关只转发已支持的版本 2，字节级透传、不压缩，设置 `x-accel-buffering: no`。
+- **SSE**：首帧 `event: snapshot`；请求头 `X-Token-Monitor-Stream: 3` 可启用
+  仅更新设备新鲜度的 `event: freshness`，`4`（官方小组件的默认）另有按
+  `baseRevision`/`revision` 衔接的 `event: delta` 补丁，丢帧或乱序时客户端
+  重连取完整快照。版本 2、不带或未知版本收完整 `event: stats`（v0.83 起
+  版本 2 不再收新鲜度事件，与官方 Hub 相同）。核心合并短时间内的上传广播；
+  删除和订阅变更仍发布完整统计，30s `: hb` 心跳。网关只转发内核支持的版本
+  3 和 4，字节级透传、不压缩，设置 `x-accel-buffering: no`。
 - **精简回执**：外部 `X-Token-Monitor-Response: minimal` 不传给内部核心。
   转发队列收到完整 `stats.devices`、持久保存本请求的规范化记录后，外层才将
   成功回应裁为 `ok/deviceId`。错误及 Retry-After 保持原状；本地快照写入失败

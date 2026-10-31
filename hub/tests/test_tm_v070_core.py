@@ -1,5 +1,5 @@
 """Wire contracts, sync routes and session/throughput fields introduced in v0.70.0,
-checked against the current vendored pin (v0.80.0)."""
+checked against the current vendored pin (v0.83.0)."""
 from __future__ import annotations
 
 import copy
@@ -22,8 +22,8 @@ def test_vendor_matches_reviewed_pin_and_complete_closure():
         [sys.executable, str(HUB_ROOT / "tm-core" / "sync_vendor.py"), "--check"],
         capture_output=True, text=True, check=True,
     )
-    assert "v0.80.0 (c61cbe998d69725589c03511f2f56d43714f4c0f)" in result.stdout
-    assert "24 source files" in result.stdout
+    assert "v0.83.0 (7dc01989ccd62fd52bc027b28c64f7d225fbc5c8)" in result.stdout
+    assert "25 source files" in result.stdout
 
 
 @requires_node
@@ -31,11 +31,11 @@ def test_vendored_hub_build_identity(node_hub):
     health = httpx.get(node_hub.url + "/api/health").json()
     expected = {
         "schemaVersion": 1,
-        "coreRevision": 93,
-        "coreBuildId": "sha256:5e40d06f9976760803de3bfd4f23876fd541b0ee9adda4961c5a95aad33cde35",
+        "coreRevision": 101,
+        "coreBuildId": "sha256:76c35428a3bd74047aa03827d1348511a1ddb08a7f1f38c287144ae07cbad9ee",
         "runtime": "node-hub",
-        "runtimeRevision": 7,
-        "runtimeBuildId": "sha256:abf450079b4960c3088395ac467a2ef2c81f244a3d85a1f928b97abf06a904b9",
+        "runtimeRevision": 9,
+        "runtimeBuildId": "sha256:658c0bbaa38d0bdcacff92070a236d0c698dde4942666f832d7354a0bbf2962f",
     }
     assert {key: health["hubBuild"][key] for key in expected} == expected
 

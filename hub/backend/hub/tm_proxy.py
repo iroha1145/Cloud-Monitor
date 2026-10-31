@@ -60,6 +60,10 @@ log = logging.getLogger("tm-proxy")
 
 CONNECT_TIMEOUT = 5.0
 READ_TIMEOUT = 15.0
+# Stream versions the vendored hub answers (hubProtocol.js): 3 adds freshness
+# events, 4 also adds deltas. Version 2 and anything else get complete stats
+# events, the fallback the official hub documents for older widgets.
+STREAM_VERSIONS = frozenset({"3", "4"})
 
 
 class UpstreamUnavailable(Exception):
@@ -467,8 +471,9 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
         )
         core = scope.core
         headers = core.headers()
-        if request.headers.get("x-token-monitor-stream", "").strip() == "2":
-            headers["X-Token-Monitor-Stream"] = "2"
+        stream_version = request.headers.get("x-token-monitor-stream", "").strip()
+        if stream_version in STREAM_VERSIONS:
+            headers["X-Token-Monitor-Stream"] = stream_version
         upstream_req = async_client.build_request(
             "GET",
             f"{core.base_url}/api/stats/stream",

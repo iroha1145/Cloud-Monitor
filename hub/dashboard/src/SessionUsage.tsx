@@ -75,6 +75,7 @@ export function SessionDetails({ session, generatedAt, timeZone }: { session: Se
       {promptCache && <div data-feel-item="row"><dt>提示词缓存</dt><dd>约剩 {promptCache.minutes} 分钟</dd></div>}
       {session.unpricedTokens != null && session.unpricedTokens > 0 && <div data-feel-item="row"><dt>未定价词元</dt><dd>{count(session.unpricedTokens)} 词元，未计入费用</dd></div>}
       {session.sessionKind && <div data-feel-item="row"><dt>会话类型</dt><dd>{session.sessionKind}</dd></div>}
+      {session.reasoningEffort && <div data-feel-item="row"><dt>推理强度</dt><dd>{session.reasoningEffort}</dd></div>}
       {source && <div data-feel-item="row"><dt>统计范围</dt><dd>{source}</dd></div>}
     </dl>
     {usage.outputTokensPerSecond !== null && <p className="detail-footnote">速率仅统计带有效计时的输出，耗时可能包含等待时间。</p>}

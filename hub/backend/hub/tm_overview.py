@@ -722,6 +722,7 @@ def _collect_sessions(stats: dict, period: str = "today", *, now: Any = None) ->
                 "nativeSessionId", "t3ThreadId", "usageSource", "usageCoverage",
                 "inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens",
                 "reasoningTokens", "messageCount", "modelCosts", "providers", "projectId",
+                "reasoningEffort",
             ):
                 if field in value:
                     item[field] = value[field]

@@ -171,6 +171,8 @@ test("model session activity and cache expire while the same snapshot remains op
   const overview = detailedOverview();
   overview.generated_at = now.toISOString();
   Object.assign(overview.sessions_by_period.today[0], {
+    // Only Claude's prompt cache counts down since v0.83.
+    client: "claude",
     lastUsedAt: new Date(now.getTime() - 20 * 60_000).toISOString(),
     liveActivity: { state: "running", observedAt: now.toISOString() },
     promptCache: { observedAt: now.toISOString(), ttlSeconds: 300 },
