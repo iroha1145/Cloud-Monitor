@@ -61,10 +61,12 @@
   --r-dropdown-item: 10px;
   --r-chip: 7px;
 
-  /* A white page under white cards: each card has a hairline and a soft
-     two-step shadow (game-manage's card), inner pieces sit on a grey well
-     with no shadow of their own. Greys carry no hue; colour is left to the
-     data. */
+  /* A white page under white cards: each card has a hairline and the soft
+     drop shadow of paper widgets (uberdesigner.ai/t/paper-widgets), and the
+     few pieces that still sit in a well take a grey step with no shadow of
+     their own. Greys carry no hue; colour is left to the data and the one
+     ultramarine accent. The paper page and cards the reference uses were
+     tried on 2026-10-31 and set back to this white at the owner's request. */
   --page: #ffffff;
   --canvas: #f2f2f2;
   --surface: #ffffff;
@@ -86,14 +88,28 @@
   --field-border: #d6d6d6;
   --border: var(--line);
 
-  --primary: #1f5fae;
+  /* Ultramarine, the reference's one accent: 6.8:1 on white and 5.7:1 on
+     --hover-2 as text; a white label on it is 6.8:1. The tint is 7% of it
+     over white. */
+  --primary: #2b36ff;
   --accent: var(--primary);
-  --accent-ink: #1b5499;
-  --accent-muted: #35547a;
-  --accent-tint: #edf3fb;
+  --accent-ink: #2430e6;
+  --accent-muted: #3a3f9e;
+  --accent-tint: #eeefff;
   /* a step darker than --hover, so a hovered item never reads as current */
   --nav-active: #ebebeb;
   --nav-ink: var(--ink);
+  /* The lead card is the reference's one dark tile in both themes: near
+     black with an ultramarine glow from its upper right. Its supporting text
+     is a pale tint of that ultramarine (TypeUI tinted-text), still 4.5:1 or
+     more where the glow is strongest; its caption dot is a lifted blue. */
+  --lead-bg: #121215;
+  --lead-glow: rgb(43 54 255 / 0.5);
+  --lead-ink: #f8f8fb;
+  --lead-ink-2: #cfd1fb;
+  --lead-ink-3: #aeb1ee;
+  --lead-mark: #7c84ff;
+  --lead-border: rgb(255 255 255 / 0.05);
 
   --green: #127152;
   --green-tint: #e6f5ee;
@@ -141,25 +157,27 @@
   --share-rest: color-mix(in srgb, var(--ink-3) 55%, var(--surface));
 
 
-  /* Depth stays faint: cards sit on a hairline with a near contact shadow
-     and a soft far one; only floating layers cast a real shadow.
+  /* Depth measured on the reference: a white top edge, a faint ring at the
+     sides and a soft shadow that falls ~30px below the card and fades out;
+     on a white page the card keeps its hairline too. Floating layers cast
+     the same shadow, longer.
      TypeUI layering: base (0) < raised card (3) < dropdown (2) < toast (5) < modal overlay. */
   --card-border: #ebebeb;
-  --shadow-panel-lift: 0 1px 2px rgb(23 23 23 / 0.025), 0 8px 24px -16px rgb(23 23 23 / 0.16);
+  --shadow-panel-lift: 0 0 0 0.5px rgb(20 20 22 / 0.03), 0 1px 2px rgb(20 20 22 / 0.05), 0 14px 30px -16px rgb(20 20 22 / 0.24);
   --shadow-panel: inset 0 1px 0 rgb(255 255 255 / 0.9), var(--shadow-panel-lift);
-  --shadow-dropdown: inset 0 1px 0 rgb(255 255 255 / 0.94), 0 2px 6px rgb(23 23 23 / 0.05), 0 14px 34px -10px rgb(23 23 23 / 0.16);
+  --shadow-dropdown: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 2px 6px rgb(20 20 22 / 0.06), 0 14px 34px -10px rgb(20 20 22 / 0.2);
   /* menus, dialogs, tooltips and the menu while it is dragged */
-  --shadow-float: inset 0 1px 0 rgb(255 255 255 / 0.92), 0 3px 8px rgb(23 23 23 / 0.045), 0 24px 64px -14px rgb(23 23 23 / 0.2);
-  --shadow-toast: inset 0 1px 0 rgb(255 255 255 / 0.94), 0 4px 12px rgb(23 23 23 / 0.06), 0 20px 48px -12px rgb(23 23 23 / 0.22);
-  --shadow-modal: inset 0 1px 0 rgb(255 255 255 / 0.95), 0 4px 14px rgb(23 23 23 / 0.06), 0 28px 72px -12px rgb(23 23 23 / 0.26);
+  --shadow-float: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 3px 8px rgb(20 20 22 / 0.05), 0 24px 64px -14px rgb(20 20 22 / 0.26);
+  --shadow-toast: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 4px 12px rgb(20 20 22 / 0.07), 0 20px 48px -12px rgb(20 20 22 / 0.26);
+  --shadow-modal: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 4px 14px rgb(20 20 22 / 0.07), 0 28px 72px -12px rgb(20 20 22 / 0.3);
   --shadow-overlay: var(--shadow-dropdown);
-  --scrim-bg: rgb(15 18 24 / 0.42);
+  --scrim-bg: rgb(20 20 22 / 0.4);
   /* the resting desktop menu */
-  --shadow-sidebar: inset 0 1px 0 rgb(255 255 255 / 0.95), 0 2px 6px rgb(23 23 23 / 0.035), 0 16px 42px -14px rgb(23 23 23 / 0.18);
+  --shadow-sidebar: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 2px 6px rgb(20 20 22 / 0.04), 0 18px 42px -16px rgb(20 20 22 / 0.24);
   /* the phone menu panel, docked to the bottom edge: its shadow falls upward */
-  --shadow-sheet: 0 -1px 2px rgb(23 23 23 / 0.03), 0 -10px 28px -6px rgb(23 23 23 / 0.12);
+  --shadow-sheet: 0 -1px 2px rgb(20 20 22 / 0.04), 0 -10px 28px -6px rgb(20 20 22 / 0.14);
   /* a segmented control's thumb: a white slip on the grey track */
-  --shadow-thumb: 0 1px 2px rgb(23 23 23 / 0.06);
+  --shadow-thumb: 0 1px 2px rgb(20 20 22 / 0.08);
   /* Only the desktop floating menu frosts what scrolls beneath. */
   --glass: rgb(255 255 255 / 0.96);
   --glass-border: #ffffff;
@@ -212,11 +230,17 @@
   --line-soft: #1f1f1f;
   --field-border: #323232;
 
-  --primary: #8bb9f2;
-  --accent-ink: #a9cbf6;
-  --accent-muted: #9dc0ee;
-  --accent-tint: #172437;
+  /* Ultramarine lifted for a dark ground: 6.7:1 on a card as text, and a
+     card-dark label on it is 6.7:1. */
+  --primary: #8e95ff;
+  --accent-ink: #a3a8ff;
+  --accent-muted: #a9adf2;
+  --accent-tint: #1b1d3a;
   --nav-active: #292929;
+  /* on a dark page the lead card needs a stronger glow and an ultramarine
+     ring */
+  --lead-glow: rgb(43 54 255 / 0.62);
+  --lead-border: rgb(142 149 255 / 0.24);
 
   --green: #4fcf9f;
   --green-tint: #11291f;
@@ -249,8 +273,10 @@
 
 
 
+  /* A card on a dark page keeps its faint ring: a shadow alone would not
+     separate two near-blacks. */
   --card-border: rgb(255 255 255 / 0.06);
-  --shadow-panel-lift: 0 1px 2px rgb(0 0 0 / 0.12), 0 8px 24px -16px rgb(0 0 0 / 0.45);
+  --shadow-panel-lift: 0 1px 2px rgb(0 0 0 / 0.2), 0 14px 30px -16px rgb(0 0 0 / 0.6);
   --shadow-panel: inset 0 1px 0 rgb(255 255 255 / 0.025), var(--shadow-panel-lift);
   --shadow-dropdown: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 4px 12px rgb(0 0 0 / 0.28), 0 18px 42px -10px rgb(0 0 0 / 0.55);
   --shadow-float: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 4px 12px rgb(0 0 0 / 0.2), 0 24px 64px -12px rgb(0 0 0 / 0.55);

@@ -1,8 +1,11 @@
-/* Card surface after game-manage (docs/frontend-motion.md there): white cards
-   with a hairline and a soft two-step shadow, one level of grey wells inside a
-   card and no shadow below that, rounded-rectangle controls, a 14px floor for
-   text and 600 for titles. The page stays white and every colour comes from
-   tokens.css, so the dashboard keeps its own palette. */
+/* Card surface after game-manage, with details from paper widgets
+   (uberdesigner.ai/t/paper-widgets): white cards on a white page with a
+   hairline and a soft drop shadow, lists straight on the card, one level of
+   grey wells for the remaining tiles and no shadow below that,
+   rounded-rectangle controls and 600 for titles. Clock times and chart dates
+   are Geist Mono, and each figure card's caption opens with an ultramarine
+   dot. Every colour comes from tokens.css; the data keeps
+   the dashboard's own palette. */
 
 /* ── Shell ────────────────────────────────────────────────────────── */
 /* The menu floats over the page; the page itself is centred in the window and
@@ -39,6 +42,9 @@
 .app-shell .page-heading { align-items: center; padding: 20px 0 22px; }
 .app-shell .heading-kicker { margin-bottom: 8px; font-size: 0.8125rem; }
 .app-shell .heading-mode { margin-top: 6px; font-size: 0.8125rem; color: var(--ink-3); }
+/* Small mono captions, as the reference sets its times: same sizes as the
+   text they replace. */
+.app-shell :is(.sync-time, .insight-trend-dates, .insight-trend-day-nav time) { font-family: var(--font-mono); letter-spacing: 0; }
 
 /* ── Controls: rounded rectangles with a hairline, a 1px press ───── */
 .app-shell :is(.plain-button, .sv-button, .archive-button, .system-update-button:not(.system-update-primary)),
@@ -144,27 +150,38 @@
 .app-shell .ledger-figures { gap: 16px; grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)); }
 .app-shell .ledger-figure { padding: var(--space-6); min-height: 164px; }
 .app-shell .ledger-figure + .ledger-figure { border-left: 1px solid var(--card-border); }
-/* The lead figure is the one tinted card, like game-manage's hero tone. Its
-   tinted border holds at every width, and it drops the white top highlight,
-   which would read as a pale line on the tint. Secondary text uses a related
-   hue-family tint (TypeUI tinted-text). */
-.app-shell .ledger-lead { --lead-border: color-mix(in srgb, var(--primary) 12%, var(--card-border)); background: var(--accent-tint); border-color: var(--lead-border); box-shadow: var(--shadow-panel-lift); }
-.app-shell .ledger-lead :is(.ledger-label, .ledger-label small, .ledger-note, .ledger-unit) { color: var(--accent-muted); }
+/* The lead figure is the one dark card, the reference's focus tile. Its
+   border holds at every width, and its top highlight is dimmed to suit the
+   dark. The glow is laid out from the border edge: from the padding edge it
+   would tile, and its top-right corner would show through the bottom and
+   left borders as a blue line. */
+.app-shell .ledger-lead {
+  border-color: var(--lead-border);
+  background: radial-gradient(ellipse 90% 100% at 92% 0%, var(--lead-glow), transparent 72%) border-box, var(--lead-bg);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), var(--shadow-panel-lift);
+}
+.app-shell .ledger-lead .ledger-value { color: var(--lead-ink); }
+.app-shell .ledger-lead :is(.ledger-label, .ledger-unit) { color: var(--lead-ink-2); }
+.app-shell .ledger-lead :is(.ledger-label small, .ledger-note) { color: var(--lead-ink-3); }
 .app-shell .ledger-label { font-size: 0.8125rem; color: var(--ink-2); white-space: normal; flex-wrap: wrap; }
+/* The caption mark is decoration; status dots live in the notes below and
+   keep their own colours. */
+.app-shell .ledger-label::before { content: ""; flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--primary); }
+.app-shell .ledger-lead .ledger-label::before { background: var(--lead-mark); }
 .app-shell .ledger-value { font-weight: 500; letter-spacing: -0.04em; }
 .app-shell .ledger-lead .ledger-value { font-size: var(--fs-lead); font-weight: 500; letter-spacing: -0.05em; }
 .app-shell .ledger-note { white-space: normal; line-height: var(--lh-meta); }
 .app-shell .ledger-composition { padding: var(--space-6); }
 .app-shell .ledger-composition-head p { font-size: var(--fs-meta); }
-.app-shell .ledger-composition .composition-legend { gap: 8px; }
-.app-shell .ledger-composition .composition-legend > div { padding: 10px 12px; }
+.app-shell .ledger-composition .composition-legend { gap: 24px; }
+.app-shell .ledger-composition .composition-legend > div { row-gap: 8px; }
 
 /* ── Wells: the one level of grey inside a card ───────────────────── */
-/* Tiles sit inside a card, so they take a tone step and no outline. */
+/* Tiles sit inside a card, so they take a tone step and no outline. The
+   overview's lists and figure rows (usage parts, trend figures, clients,
+   models) sit straight on the card instead, as the reference's lists do:
+   spacing, swatches and hairlines keep them apart. */
 .app-shell :is(
-  .ledger-composition .composition-legend > div,
-  .insight-trend-metrics > div,
-  .client-row,
   .sv-device-stat,
   .sv-quota-window,
   .sv-subscription-dates > div,
@@ -181,9 +198,6 @@
   box-shadow: inset 0 0 0 1px rgb(23 23 23 / 0.035);
 }
 .dark .app-shell :is(
-  .ledger-composition .composition-legend > div,
-  .insight-trend-metrics > div,
-  .client-row,
   .sv-device-stat,
   .sv-quota-window,
   .sv-subscription-dates > div,
@@ -198,20 +212,21 @@
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.04);
 }
 .app-shell .sv-quota-window + .sv-quota-window { border-top: 0; }
-.app-shell .client-row + .client-row { border-top: 0; }
 
-/* Trend card: figures above the chart, each in a well. */
-.app-shell .insight-trend-metrics { gap: 8px; padding: 0 22px 16px; grid-template-columns: repeat(auto-fit, minmax(min(10rem, 100%), 1fr)); }
-.app-shell .insight-trend-metrics > div { padding: 12px 14px; }
+/* Trend card: figures above the chart. */
+.app-shell .insight-trend-metrics { gap: 24px; }
+.app-shell .insight-trend-metrics strong { margin: 8px 0; }
 .app-shell .insight-trend-metrics > div > span { white-space: normal; line-height: var(--lh-meta); }
 .app-shell .insight-trend-metrics > div > small { white-space: normal; line-height: var(--lh-meta); overflow-wrap: anywhere; }
 .app-shell .insight-trend-inset { margin: 0; padding: 0 12px 4px; }
 
-/* Clients card. */
-.app-shell .client-rows { display: grid; gap: 8px; padding: 16px 22px 22px; }
-.app-shell .client-row { padding: 14px; }
+/* Clients card: a hairline list, each brand on the same small tile as the
+   model table's. */
+.app-shell .client-rows { padding: 4px var(--space-6) 12px; }
+.app-shell .client-row { padding-block: 12px; }
+.app-shell .client-row + .client-row { border-top-color: var(--line); }
 .app-shell .client-head strong { font-weight: 600; }
-.app-shell :is(.cache-track, .client-track):not(.is-incomplete)::after { background: var(--inset); }
+.app-shell .client-head .brand-icon { border-radius: var(--r-sm); background: var(--canvas); }
 
 /* ── Tables: square model rows, rounded session rows ──────────────── */
 .app-shell .model-filters { padding: 14px 22px; gap: 10px; border-bottom: 1px solid var(--line-soft); background: transparent; }
@@ -231,7 +246,8 @@
 }
 .app-shell .model-table th,
 .app-shell .sv-session-table th { background: transparent; color: var(--ink-3); font-size: var(--fs-meta); font-weight: var(--fw-medium); }
-.app-shell .model-open > .brand-icon { width: 32px; height: 32px; }
+/* As the reference's list rows carry their icon on a small tile. */
+.app-shell .model-open > .brand-icon { width: 32px; height: 32px; border-radius: var(--r-md); background: var(--canvas); }
 .app-shell .model-open strong { font-weight: var(--fw-medium); }
 .app-shell .table-foot { padding: 14px 22px; background: transparent; border-top: 1px solid var(--line-soft); }
 .app-shell .sv-history-sessions .sv-table-footer { padding-block: 14px; background: transparent; border-top: 1px solid var(--line-soft); }
@@ -239,11 +255,17 @@
 .app-shell .matrix-panel .matrix-note { padding: 14px 22px; }
 @media (min-width: 761px) and (min-height: 501px), (min-width: 961px) {
   .app-shell :is(.model-table-scroll, .sv-table-wrap) { padding-inline: 16px; }
-  .app-shell :is(.model-table, .sv-session-table) { border-collapse: separate; border-spacing: 0 8px; }
+  .app-shell .sv-session-table { border-collapse: separate; border-spacing: 0 8px; }
   .app-shell :is(.model-table th, .model-table td, .sv-session-table th, .sv-session-table td):first-child { padding-left: 14px; }
   .app-shell :is(.model-table th, .model-table td, .sv-session-table th, .sv-session-table td):last-child { padding-right: 14px; }
-  .app-shell .table-glide { left: 16px; right: 16px; border-radius: 0; }
-  .app-shell .model-table tbody tr > td,
+  /* Model rows sit straight on the card, as the reference's lists do: the
+     table's own hairline between rows and a rounded highlight that glides
+     under the pointer. The hairlines either side of it step aside. */
+  .app-shell .table-glide { border-radius: calc(var(--r-card) - 16px); }
+  .app-shell .model-table tbody tr > td { border-bottom-color: var(--line); }
+  @media (hover: hover) and (pointer: fine) {
+    .app-shell .model-table tbody tr:is(:hover, :has(+ tr:hover)) > td { border-bottom-color: transparent; }
+  }
   .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td {
     background: var(--inset);
     border-block: 0;
@@ -251,16 +273,13 @@
     box-shadow: inset 0 1px 0 rgb(23 23 23 / 0.035), inset 0 -1px 0 rgb(23 23 23 / 0.035);
     transition: background-color var(--duration-quick) var(--ease-smooth-out);
   }
-  .app-shell .model-table tbody tr > td:first-child,
   .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td:first-child {
     box-shadow: inset 1px 1px 0 rgb(23 23 23 / 0.035), inset 0 -1px 0 rgb(23 23 23 / 0.035);
   }
-  .app-shell .model-table tbody tr > td:last-child,
   .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td:last-child {
     box-shadow: inset -1px 1px 0 rgb(23 23 23 / 0.035), inset 0 -1px 0 rgb(23 23 23 / 0.035);
   }
-  /* Model rows stay square, as asked for the model usage list; session rows
-     are rounded wells. */
+  /* Session rows are rounded wells. */
   .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td:first-child { border-radius: var(--r-well) 0 0 var(--r-well); }
   .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td:last-child { border-radius: 0 var(--r-well) var(--r-well) 0; }
   .app-shell .sv-session-table tbody tr.sv-session-detail > td {
@@ -270,15 +289,11 @@
   }
   /* At night the rows sit a step darker than the card; a faint light edge
      keeps each one readable as its own card. */
-  .dark .app-shell .model-table tbody tr > td,
   .dark .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), inset 0 -1px 0 rgb(255 255 255 / 0.05); }
-  .dark .app-shell .model-table tbody tr > td:first-child,
   .dark .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td:first-child { box-shadow: inset 1px 1px 0 rgb(255 255 255 / 0.05), inset 0 -1px 0 rgb(255 255 255 / 0.05); }
-  .dark .app-shell .model-table tbody tr > td:last-child,
   .dark .app-shell .sv-session-table tbody tr:not(.sv-session-detail) > td:last-child { box-shadow: inset -1px 1px 0 rgb(255 255 255 / 0.05), inset 0 -1px 0 rgb(255 255 255 / 0.05); }
   .dark .app-shell .sv-session-table tbody tr.sv-session-detail > td { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05); }
   @media (hover: hover) and (pointer: fine) {
-    .app-shell .model-table tbody tr:hover > td,
     .app-shell .sv-session-table tbody tr:not(.sv-session-detail):hover > td { background: var(--hover); }
   }
 }
@@ -336,7 +351,6 @@
   .app-shell .ledger-lead { grid-column: auto; }
   .app-shell .ledger-figure:nth-child(n) { border: 1px solid var(--card-border); }
   .app-shell .ledger-lead:nth-child(n) { border-color: var(--lead-border); }
-  .app-shell .ledger-composition .composition-legend { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 }
 @media (min-width: 761px) and (max-width: 1100px) {
   .app-shell { --gutter: 24px; --gap: 20px; }
@@ -360,20 +374,27 @@
   .app-shell .ledger-lead:nth-child(n) { border-color: var(--lead-border); }
   .app-shell .ledger-value { font-size: clamp(1.4375rem, 6vw, 1.75rem); flex-wrap: wrap; line-height: 1.15; }
   .app-shell .ledger-lead .ledger-value { font-size: clamp(1.625rem, 7vw, 2rem); }
-  .app-shell .ledger-composition { padding: 18px 16px; }
-  .app-shell .ledger-composition .composition-legend { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .app-shell .ledger-composition { padding: 18px 16px 8px; }
   .app-shell .panel-head { padding: 18px 16px 0; }
-  .app-shell .insight-trend-metrics { padding-inline: 16px; }
-  .app-shell .client-rows { padding: 14px 16px 16px; }
-  .app-shell .client-row { padding: 12px; }
+  /* Three figures side by side leave a phone column too narrow for their
+     labels (「已识别缓存占比」 broke with one character alone on its last
+     line); they become rows like the usage parts above: label and note on
+     the left, the figure on the right, a hairline between rows. */
+  .app-shell .insight-trend-metrics { display: block; padding: 0 16px 8px; }
+  .app-shell .insight-trend-metrics > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 12px; padding: 12px 0; }
+  .app-shell .insight-trend-metrics > div + div { border-top: 1px solid var(--line); }
+  .app-shell .insight-trend-metrics > div > :is(span, small) { grid-column: 1; }
+  .app-shell .insight-trend-metrics strong { grid-column: 2; grid-row: 1 / 3; margin: 0; text-align: right; }
+  .app-shell .ledger-composition .composition-legend > div + div { border-top: 1px solid var(--line); }
+  .app-shell .client-rows { padding: 4px 16px 8px; }
+  /* Model rows: the same hairline list, inset to the card's padding. */
   .app-shell .model-table td { padding-block: 0; }
-  .app-shell .model-table tbody,
+  .app-shell .model-table tbody { padding: 0 16px 4px; }
+  .app-shell .model-table tbody tr { padding: 16px 0; }
+  .app-shell .model-table .model-action-cell { right: -8px; }
   .app-shell .sv-session-table tbody { display: grid; gap: 8px; padding: 12px 16px 16px; }
-  .app-shell .model-table tbody tr,
-  .app-shell .sv-session-table tbody tr:not(.sv-session-detail) { padding: 14px; border: 0; border-radius: 0; background: var(--inset); box-shadow: inset 0 0 0 1px rgb(23 23 23 / 0.035); }
-  .app-shell .sv-session-table tbody tr:not(.sv-session-detail) { border-radius: var(--r-well); }
+  .app-shell .sv-session-table tbody tr:not(.sv-session-detail) { padding: 14px; border: 0; border-radius: var(--r-well); background: var(--inset); box-shadow: inset 0 0 0 1px rgb(23 23 23 / 0.035); }
   .app-shell .sv-session-table tbody tr.sv-session-detail > td { border-radius: var(--r-well); box-shadow: inset 0 0 0 1px rgb(23 23 23 / 0.035); }
-  .dark .app-shell .model-table tbody tr,
   .dark .app-shell .sv-session-table tbody tr:not(.sv-session-detail),
   .dark .app-shell .sv-session-table tbody tr.sv-session-detail > td { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.04); }
   .app-shell .model-filters { padding: 14px 16px; }

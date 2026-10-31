@@ -1169,7 +1169,7 @@ export function QuotaView({ data }: SecondaryProps) {
             <h2 id="sv-subscription-title">订阅与账单</h2>
             {data.subscriptionsUpdatedAt && (
               <p className="sv-muted">
-                更新于 {fullDate(data.subscriptionsUpdatedAt)}
+                更新于 <span className="sync-time">{fullDate(data.subscriptionsUpdatedAt)}</span>
               </p>
             )}
           </div>
