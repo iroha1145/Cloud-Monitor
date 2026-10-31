@@ -33,10 +33,12 @@ export function sessionActivity(session: Session, generatedAt: string): string {
   return "状态未提供";
 }
 
-// Mirrors upstream sessionPromptCacheForRow: only a live reading is shown.
+// Mirrors upstream sessionPromptCacheForRow: only a live Claude reading is
+// shown. Since v0.83 Codex's estimated countdown is ignored, including the
+// estimates older devices and archives still carry.
 export function sessionPromptCache(session: Session, generatedAt: string): { minutes: number } | null {
   const cache = session.promptCache;
-  if (!cache || session.archived === true || !LIVE_ACTIVITY_CLIENTS.has(session.client)) return null;
+  if (!cache || session.archived === true || session.client !== "claude") return null;
   const now = Date.parse(generatedAt);
   const observed = Date.parse(cache.observedAt);
   if (!Number.isFinite(now) || !Number.isFinite(observed) || observed > now) return null;

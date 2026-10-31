@@ -144,8 +144,11 @@ def _sse_frame(lines):
     raise AssertionError("event stream ended before a frame")
 
 
-@pytest.mark.parametrize("version,event", [("2", "freshness"), (None, "stats"), ("999", "stats")])
-def test_stream_v2_is_opt_in_and_never_compressed(live_stack, version, event):
+# Since v0.83 freshness events are stream 3 (and 4, see test_tm_v083_core);
+# stream 2, no header or an unknown one get complete stats, as on the
+# official hub.
+@pytest.mark.parametrize("version,event", [("3", "freshness"), ("2", "stats"), (None, "stats"), ("999", "stats")])
+def test_stream_freshness_is_opt_in_and_never_compressed(live_stack, version, event):
     device_id = f"v062-stream-{version}"
     payload = widget_style_payload(device_id)
     response = httpx.post(f"{live_stack.url}/api/ingest", json=payload, headers=MINIMAL)

@@ -106,6 +106,7 @@ test("v0.70 liveActivity and waitingForInput states are normalized and presented
       unpricedTokens: 50,
       usageSource: "codex-dots-local",
       usageCoverage: "observed-only",
+      reasoningEffort: "xhigh",
     }],
   });
   assert.deepEqual(
@@ -127,6 +128,7 @@ test("v0.70 liveActivity and waitingForInput states are normalized and presented
   assert.equal(s.unpricedTokens, 50);
   assert.equal(s.usageSource, "codex-dots-local");
   assert.equal(s.usageCoverage, "observed-only");
+  assert.equal(s.reasoningEffort, "xhigh");
 
   assert.equal(sessionActivity(s, now), "等待输入");
   assert.equal(
@@ -166,7 +168,7 @@ test("quota numbers keep Intl rounding and only drop negative zero", () => {
   assert.equal(quotaHeadline(quota).value, "12.35%");
 });
 
-test("prompt cache shows minutes left only for a live claude or codex reading", () => {
+test("prompt cache shows minutes left only for a live claude reading", () => {
   const base = normalizeOverview({
     generated_at: now,
     totals: {},
@@ -176,12 +178,15 @@ test("prompt cache shows minutes left only for a live claude or codex reading", 
       usageSource: "codex-dots-local", usageCoverage: "observed-only",
     }],
   }).sessions[0];
-  assert.deepEqual(sessionPromptCache(base, now), { minutes: 3 });
-  assert.deepEqual(sessionPromptCache({ ...base, client: "claude" }, "2026-09-26T12:02:30Z"), { minutes: 1 });
-  assert.equal(sessionPromptCache(base, "2026-09-26T12:03:00Z"), null);
+  const claude = { ...base, client: "claude" };
+  assert.deepEqual(sessionPromptCache(claude, now), { minutes: 3 });
+  assert.deepEqual(sessionPromptCache(claude, "2026-09-26T12:02:30Z"), { minutes: 1 });
+  assert.equal(sessionPromptCache(claude, "2026-09-26T12:03:00Z"), null);
+  // v0.83 dropped Codex's estimated countdown, older devices' readings included.
+  assert.equal(sessionPromptCache(base, now), null);
   assert.equal(sessionPromptCache({ ...base, client: "cursor" }, now), null);
-  assert.equal(sessionPromptCache({ ...base, archived: true }, now), null);
-  assert.equal(sessionPromptCache({ ...base, promptCache: { observedAt: "2026-09-26T12:01:00Z", ttlSeconds: 300 } }, now), null);
+  assert.equal(sessionPromptCache({ ...claude, archived: true }, now), null);
+  assert.equal(sessionPromptCache({ ...claude, promptCache: { observedAt: "2026-09-26T12:01:00Z", ttlSeconds: 300 } }, now), null);
 
   assert.equal(sessionUsageSource(base), "仅统计本机记录到的请求");
   assert.equal(sessionUsageSource({ ...base, usageSource: "other", usageCoverage: "partial" }), null);
