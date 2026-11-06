@@ -1,8 +1,9 @@
 """Cloud 扩展：GET /api/v1/tm/provider-status。
 
 官方 tm-core 协议不含此端点。本模块只向固定 allowlist 拉取状态：
-Atlassian Statuspage 的 summary.json（失败再回退 status.json），以及
-xAI 官方 RSS（status.x.ai/feed.xml）。用已有 httpx.AsyncClient 并发请求，
+Atlassian Statuspage 的 summary.json（失败再回退 status.json）、
+xAI 官方 RSS（status.x.ai/feed.xml），以及 DeepSeek 官方 Atom feed
+（status.deepseek.com/feed.atom）。用已有 httpx.AsyncClient 并发请求，
 带 in-memory stale-while-revalidate 与 singleflight。客户端不能传 URL
 （防 SSRF）。外部状态页失败不得影响 Overview / Token ingest。
 
@@ -18,7 +19,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from datetime import timezone
+from datetime import datetime, timezone
 from defusedxml import ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
 from email.utils import parsedate_to_datetime
@@ -89,7 +90,7 @@ class StatusPage:
     status_url: str
     prefer: tuple[re.Pattern[str], ...]
     exclude: tuple[re.Pattern[str], ...]
-    parser: str = "statuspage"  # statuspage | rss
+    parser: str = "statuspage"  # statuspage | rss | atom
 
 
 def _rx(*patterns: str) -> tuple[re.Pattern[str], ...]:
@@ -130,16 +131,20 @@ STATUS_PAGES: dict[str, StatusPage] = {
         prefer=_rx(r"^api$", r"cursor\s*api", r"\bapi\b", r"agent", r"tab"),
         exclude=_rx(r"^website$", r"^marketing$", r"docs"),
     ),
-    # 正式站 status.deepseek.com 已迁 Flashduty，且对非浏览器 TLS 会 RST；
-    # 仍提供 Atlassian 镜像（summary.json），页面入口继续指向正式站。
+    # status.deepseek.com 已从 Atlassian 迁到 Flashduty。旧的 deepseek.statuspage.io
+    # 镜像 2026-05 之后不再收事件，却一直回答 All Systems Operational，不能再读。
+    # 新站没有匿名 JSON 接口；官方 Atom feed 带着每条事件的当前状态与受影响组件
+    # （上游 token-monitor #1343 同样改读它）。组件名形如
+    # 「DeepSeek V4 Pro API服务(API Service)」「对话服务(Chatservice)」。
     "deepseek": StatusPage(
         canonical="deepseek",
         name="DeepSeek",
         public_url="https://status.deepseek.com",
-        summary_url="https://deepseek.statuspage.io/api/v2/summary.json",
-        status_url="https://deepseek.statuspage.io/api/v2/status.json",
+        summary_url="https://status.deepseek.com/feed.atom",
+        status_url="https://status.deepseek.com/feed.atom",
         prefer=_rx(r"api\s*service", r"^api$"),
-        exclude=_rx(r"web\s*chat", r"网页对话"),
+        exclude=_rx(r"web\s*chat", r"网页对话", r"chat\s*service", r"对话服务"),
+        parser="atom",
     ),
     "kimi": StatusPage(
         canonical="kimi",
@@ -336,7 +341,10 @@ _RSS_DEGRADED_SEV = frozenset({
 })
 STATUS_FETCH_HEADERS = {
     "User-Agent": "Cloud-Monitor/provider-status",
-    "Accept": "application/json, application/rss+xml, application/xml;q=0.9, */*;q=0.8",
+    "Accept": (
+        "application/json, application/rss+xml, application/atom+xml, "
+        "application/xml;q=0.9, */*;q=0.8"
+    ),
 }
 
 
@@ -386,15 +394,8 @@ def _rss_component_status(item_status: str, severity: str) -> str:
     return "degraded_performance"
 
 
-def parse_rss_payload(page: StatusPage, xml_text: Any) -> dict[str, Any]:
-    """解析 status.x.ai RSS → 面板 status 字段。已恢复的条目不算当前故障。"""
-    if not isinstance(xml_text, str) or not xml_text.strip():
-        return {
-            "status": "unknown",
-            "description": "invalid status payload",
-            "source_updated_at": None,
-            "error_code": "invalid_json",
-        }
+def _strip_xml_preamble(xml_text: str) -> str:
+    """去掉 XML 声明与 DOCTYPE，剩下的再交给 defusedxml。"""
     cleaned = re.sub(r"^<\?xml[^?]*\?>", "", xml_text, count=1, flags=re.IGNORECASE).strip()
     # 再剔除 DOCTYPE（含内部实体子集）作为纵深防御：defusedxml 已禁实体
     # 扩展，剔除后连合法 DTD 声明也不进入解析器
@@ -414,6 +415,19 @@ def parse_rss_payload(page: StatusPage, xml_text: Any) -> dict[str, Any]:
             cleaned = (cleaned[:doctype] + cleaned[end + 1 :]).strip()
         else:
             cleaned = cleaned[:doctype].strip()
+    return cleaned
+
+
+def parse_rss_payload(page: StatusPage, xml_text: Any) -> dict[str, Any]:
+    """解析 status.x.ai RSS → 面板 status 字段。已恢复的条目不算当前故障。"""
+    if not isinstance(xml_text, str) or not xml_text.strip():
+        return {
+            "status": "unknown",
+            "description": "invalid status payload",
+            "source_updated_at": None,
+            "error_code": "invalid_json",
+        }
+    cleaned = _strip_xml_preamble(xml_text)
     try:
         # defusedxml：拒绝实体扩展/外部实体（标准库 ElementTree 不禁 DTD，
         # 远端 RSS 可用 billion laughs 制造资源耗尽）
@@ -477,6 +491,131 @@ def parse_rss_payload(page: StatusPage, xml_text: Any) -> dict[str, Any]:
         "source_updated_at": source_updated if isinstance(source_updated, str) else None,
         "error_code": None,
     }
+
+
+_ATOM_NS = "{http://www.w3.org/2005/Atom}"
+# 与上游 token-monitor 一致：这些状态的事件已经结束。读不出或没见过的状态
+# 一律按进行中算——feed 格式一变就只能报「可能有事」，不能退回「一切正常」。
+_ATOM_INACTIVE = frozenset({"resolved", "completed", "postmortem", "canceled", "cancelled"})
+# 官方标题中英双语，例如「部分中断（Partially Unavailable）」，两种措辞都认
+_ATOM_OUTAGE_TITLE = re.compile(r"outage|unavailable|not available|中断|不可用|宕机", re.IGNORECASE)
+_ATOM_MAINTENANCE_TITLE = re.compile(r"maintenance|维护", re.IGNORECASE)
+# summary 是 type="html"：解析器解出的文本已是 <p><strong>Status:</strong> …</p>
+_ATOM_EVENT_STATUS = re.compile(r"Status:</strong>\s*([a-z_]+)", re.IGNORECASE)
+_ATOM_AFFECTED = re.compile(r"Affected components:</strong>([^<]*)")
+
+
+def _invalid_feed(description: str) -> dict[str, Any]:
+    return {
+        "status": "unknown",
+        "description": description,
+        "source_updated_at": None,
+        "error_code": "invalid_json",
+    }
+
+
+def _atom_time(raw: Optional[str]) -> tuple[Optional[datetime], Optional[str]]:
+    """Atom 的 ISO 时间（常带 +08:00）→ (datetime, 秒级 UTC Z)；读不出时保留原文。"""
+    text = str(raw or "").strip()
+    if not text:
+        return None, None
+    try:
+        # 3.9 的 fromisoformat 不认结尾的 Z
+        dt = datetime.fromisoformat(text[:-1] + "+00:00" if text[-1] in "Zz" else text)
+    except ValueError:
+        return None, text
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt, utc_seconds_z(dt)
+
+
+def _feed_event_concerns_page(page: StatusPage, components: list[str]) -> bool:
+    """只影响被排除组件（例如网页对话）的事件不算这张卡片；没写组件的照常算。"""
+    if not components:
+        return True
+    return not all(
+        _match_any(name, page.exclude) and not _match_any(name, page.prefer)
+        for name in components
+    )
+
+
+def parse_atom_payload(page: StatusPage, xml_text: Any) -> dict[str, Any]:
+    """解析 DeepSeek 官方 Atom feed → 面板 status 字段。
+
+    官方 feed 带着全部事件历史，所以没有条目、被截断或不是 Atom 都报 unknown，
+    不当成「没有事件」。进行中的事件按标题定中断或性能下降；计划维护单独算，
+    只在没有进行中的事件时显示维护中，不参与和故障比高低。
+    """
+    if not isinstance(xml_text, str) or not xml_text.strip():
+        return _invalid_feed("invalid status payload")
+    try:
+        root = SafeET.fromstring(_strip_xml_preamble(xml_text))
+    except (ParseError, DefusedXmlException):
+        log.warning("provider-status invalid atom canonical=%s", page.canonical)
+        return _invalid_feed("invalid status payload")
+    if root.tag != f"{_ATOM_NS}feed":
+        log.warning("provider-status unexpected feed root canonical=%s", page.canonical)
+        return _invalid_feed("invalid status payload")
+    entries = root.findall(f"{_ATOM_NS}entry")
+    if not entries:
+        return _invalid_feed("status feed has no entries")
+
+    events: list[dict[str, Any]] = []
+    for entry in entries:
+        summary = entry.findtext(f"{_ATOM_NS}summary") or ""
+        status_match = _ATOM_EVENT_STATUS.search(summary)
+        affected = _ATOM_AFFECTED.search(summary)
+        updated_dt, updated = _atom_time(entry.findtext(f"{_ATOM_NS}updated"))
+        events.append({
+            "title": (entry.findtext(f"{_ATOM_NS}title") or "").strip(),
+            "status": status_match.group(1).lower() if status_match else "",
+            "components": [
+                name.strip() for name in (affected.group(1) if affected else "").split(",") if name.strip()
+            ],
+            "updated_dt": updated_dt,
+            "updated": updated,
+        })
+    # 新的在前；时间读不出的排到最后（排序稳定，同一时间保持 feed 原顺序）
+    events.sort(
+        key=lambda event: event["updated_dt"].timestamp() if event["updated_dt"] else float("-inf"),
+        reverse=True,
+    )
+
+    active = [
+        event for event in events
+        if event["status"] not in _ATOM_INACTIVE
+        and _feed_event_concerns_page(page, event["components"])
+    ]
+    incidents = [event for event in active if not _ATOM_MAINTENANCE_TITLE.search(event["title"])]
+    maintenances = [event for event in active if _ATOM_MAINTENANCE_TITLE.search(event["title"])]
+    if incidents:
+        outage = any(_ATOM_OUTAGE_TITLE.search(event["title"]) for event in incidents)
+        status = "outage" if outage else "degraded"
+        shown = incidents
+    elif maintenances:
+        status = "maintenance"
+        shown = maintenances
+    else:
+        status = "operational"
+        shown = []
+    if shown:
+        description = " · ".join(event["title"] for event in shown[:2] if event["title"]) or status
+    else:
+        description = "All Systems Operational"
+
+    # 与 RSS 相同：feed 级 <updated> 优先，没有再取最新一条事件的时间
+    _feed_dt, source_updated = _atom_time(root.findtext(f"{_ATOM_NS}updated"))
+    if not source_updated:
+        source_updated = events[0]["updated"]
+    return {
+        "status": status,
+        "description": description,
+        "source_updated_at": source_updated,
+        "error_code": None,
+    }
+
+
+_FEED_PARSERS = {"rss": parse_rss_payload, "atom": parse_atom_payload}
 
 
 def parse_status_payload(page: StatusPage, payload: Any) -> dict[str, Any]:
@@ -667,12 +806,13 @@ async def fetch_one_provider(
     timeout: float,
 ) -> tuple[dict[str, Any], Optional[str]]:
     """Statuspage：summary.json 优先，快速失败再回退 status.json。
-    xAI RSS：拉 feed.xml，不再走 JSON。"""
-    if page.parser == "rss":
+    xAI RSS 与 DeepSeek Atom：只拉一个 feed，不走 JSON。"""
+    feed_parser = _FEED_PARSERS.get(page.parser)
+    if feed_parser is not None:
         text, error = await _get_text(client, page.summary_url, timeout)
         if text is not None:
-            return await asyncio.to_thread(parse_rss_payload, page, text), None
-        # RSS 页的 summary_url 与 status_url 是同一个 feed，没有第二个地址可回退
+            return await asyncio.to_thread(feed_parser, page, text), None
+        # feed 页的 summary_url 与 status_url 是同一个地址，没有第二个可回退
         return {}, error or "network"
     payload, error = await _get_json(client, page.summary_url, timeout)
     if payload is not None:
