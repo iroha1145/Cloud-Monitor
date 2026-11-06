@@ -15,3 +15,6 @@ https://github.com/Javis603/token-monitor/tree/cbed5915e294abb4a210f7ebb385e9415
 
 Senpi (OmO Native) icon from v0.80.0:
 https://github.com/Javis603/token-monitor/tree/c61cbe998d69725589c03511f2f56d43714f4c0f/assets/icons
+
+Manus and OpenDesign icons from v0.87.0:
+https://github.com/Javis603/token-monitor/tree/b3dd5e25bd9ab89620eb6380c863e335d8b8751e/assets/icons

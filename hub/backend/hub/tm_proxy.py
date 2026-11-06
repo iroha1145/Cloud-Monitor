@@ -295,6 +295,9 @@ def build_tm_router(settings: Settings, db: Database) -> APIRouter:
         _wake_replay(request, scope)
         # The core always returns the full record for durable acknowledgement.
         # Trim only the external response after the forwarding queue saved it.
+        # Delta uploads (v0.87 /api/ingest/delta) end here: the queue forwards
+        # full payloads without X-Token-Monitor-Upload, so the core adds no
+        # `upload` baseline and producers keep sending complete uploads.
         minimal = request.headers.get("x-token-monitor-response", "").strip().lower() == "minimal"
         if attempt.request_id == request_id and attempt.response is not None:
             return _proxy_response(attempt.response, minimal_ingest=minimal)

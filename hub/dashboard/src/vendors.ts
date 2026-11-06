@@ -40,7 +40,7 @@ const CLIENT_NAMES: Record<string, string> = {
   droid: "Factory Droid",
   devin: "Devin",
   omp: "Oh My Pi",
-  muse: "Muse Code",
+  muse: "Muse",
   stepfun: "StepFun",
   cline: "Cline",
   typesafe: "TypeSafe",
@@ -49,6 +49,8 @@ const CLIENT_NAMES: Record<string, string> = {
   fx: "FX",
   mcode: "MiniMax Code",
   notion: "Notion AI",
+  manus: "Manus",
+  opendesign: "OpenDesign",
   grok: "Grok",
   zai: "GLM",
   zaiteam: "GLM Team",
@@ -96,6 +98,9 @@ const CLIENT_TITLES: Record<string, string> = {
   ...CLIENT_NAMES,
   stepfun: "阶跃星辰",
   alibaba: "阿里云百炼",
+  // Since v0.84 the allowance provider is "Muse" (CLI and web product); the
+  // usage client is still Muse Code.
+  muse: "Muse Code",
 };
 
 const VENDOR_NAMES: Record<string, string> = Object.fromEntries(
@@ -115,4 +120,11 @@ export function providerName(provider: string): string {
   const key = provider.trim().toLowerCase();
   if (key === "other") return "其他";
   return VENDOR_NAMES[key] ?? CLIENT_NAMES[key] ?? CLIENT_TITLES[key] ?? provider;
+}
+
+/** Quota rows: Muse reports its CLI (Muse Code) and its web subscription as
+ * separate rows, titled as upstream does. */
+export function quotaProviderName(provider: string, source = ""): string {
+  if (provider.trim().toLowerCase() === "muse" && source === "cli") return "Muse Code";
+  return providerName(provider);
 }

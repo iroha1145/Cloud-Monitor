@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { clientName, providerFor, providerName, vendorFor } from "../src/vendors.ts";
+import { clientName, providerFor, providerName, quotaProviderName, vendorFor } from "../src/vendors.ts";
 
 test("models the logo table recognises get the same vendor as their label", () => {
   for (const [model, label, logo] of [
@@ -46,7 +46,16 @@ test("service-reported client ids keep their product names", () => {
   assert.equal(providerName("notion"), "Notion AI");
   // v0.80: OmO Native usage and Muse Code allowances.
   assert.equal(clientName("senpi"), "OmO Native");
-  assert.equal(providerName("muse"), "Muse Code");
+  // v0.84–v0.87: the allowance provider became "Muse" (CLI and web), while
+  // usage still comes from the Muse Code client; Manus and OpenDesign quotas.
+  assert.equal(providerName("muse"), "Muse");
+  assert.equal(clientName("muse"), "Muse Code");
+  assert.equal(quotaProviderName("muse", "cli"), "Muse Code");
+  assert.equal(quotaProviderName("muse", "web"), "Muse");
+  assert.equal(quotaProviderName("muse"), "Muse");
+  assert.equal(quotaProviderName("cursor", "cli"), "Cursor");
+  assert.equal(providerName("manus"), "Manus");
+  assert.equal(providerName("opendesign"), "OpenDesign");
 });
 
 test("all official limit providers resolve to formatted product names", () => {
@@ -64,7 +73,7 @@ test("all official limit providers resolve to formatted product names", () => {
     ["zed", "Zed"],
     ["commandcode", "Command Code"],
     ["mimo", "Xiaomi MiMo"],
-    ["muse", "Muse Code"],
+    ["muse", "Muse"],
     ["zai", "GLM"],
     ["zaiteam", "GLM Team"],
     ["kiro", "Kiro"],
@@ -81,6 +90,8 @@ test("all official limit providers resolve to formatted product names", () => {
     ["alibaba", "Alibaba Cloud"],
     ["stepfun", "StepFun"],
     ["notion", "Notion AI"],
+    ["manus", "Manus"],
+    ["opendesign", "OpenDesign"],
     ["thirdparty", "第三方接口"],
   ]) {
     assert.equal(providerName(id), expected, id);

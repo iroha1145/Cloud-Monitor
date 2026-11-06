@@ -8,7 +8,7 @@ Token Monitor 本机组件使用原生同步协议连接云端；Python 网关�
 Token Monitor widget/headless agent ──官方同步协议──► Python 网关（鉴权/严格校验/1MiB 实测限流）
                                    │ 转发
                                    ▼
-                          tm-core（官方 v0.83.0 @7dc0198，逐字节未改）
+                          tm-core（官方 v0.87.0 @b3dd5e2，逐字节未改）
                             规范化 / 设备合并(含 limitsOnly) / 多设备聚合 /
                             periodWindows 过期 / syncUploadIntervalMs stale /
                             history / limits / SSE 广播 / subscriptions /
@@ -28,14 +28,16 @@ headless agent 风格、官方 mergeDeviceRecord 生成的载荷、partial、
 limits-only、trackedClients 变化、窗口过期、删除）断言：经 Cloud 全链路
 与直连官方 hub 的 stats/devices/history/ingest 响应核心字段等价。
 
-固定版本测试 `tests/test_tm_v070_core.py` 校验当前固定版本（v0.83.0）与内核构建号，并验证 v0.70 引入的 CatPaw（`catpaw`）/ FX（`fx`）/ MiniMax Code（`mcode`）/ Factory Droid 客户端、会话实时状态（`waitingForInput`、`liveActivity`、`promptCache`、流式输出速率与父子会话关联）、内容同步端点（`/api/sync/*`）及上报合并；`tests/test_tm_v064_core.py` 与 `tests/test_tm_v062_core.py` 继续验证旧客户端载荷。样例与预期独立提交，不通过当前内核生成预期。
-完整依赖与来源哈希由 `tm-core/upstream-v083.json` 固定，`tm-core/sync_vendor.py --check` 校验；生成清单不能替代版本契约检查。Git 保留 vendor 原始字节，跨平台检出不能改变来源哈希。
+固定版本测试 `tests/test_tm_v070_core.py` 校验当前固定版本（v0.87.0）与内核构建号，并验证 v0.70 引入的 CatPaw（`catpaw`）/ FX（`fx`）/ MiniMax Code（`mcode`）/ Factory Droid 客户端、会话实时状态（`waitingForInput`、`liveActivity`、`promptCache`、流式输出速率与父子会话关联）、内容同步端点（`/api/sync/*`）及上报合并；`tests/test_tm_v064_core.py` 与 `tests/test_tm_v062_core.py` 继续验证旧客户端载荷。样例与预期独立提交，不通过当前内核生成预期。
+完整依赖与来源哈希由 `tm-core/upstream-v087.json` 固定，`tm-core/sync_vendor.py --check` 校验；生成清单不能替代版本契约检查。Git 保留 vendor 原始字节，跨平台检出不能改变来源哈希。
 
 v0.77.0 上游提供可选批量保存；本项目启动器继续采用默认 `persistIntervalMs=0`，成功回应前立即完成核心文件保存，未接入 `TOKEN_MONITOR_PERSIST_INTERVAL_MS`。上游将文件改为紧凑 JSON，结构版本仍为 1，无需迁移。`tests/test_tm_v077_core.py` 验证旧格式读取、立即落盘和强制终止后的恢复。
 
 v0.78.0–v0.80.0 在内核依赖范围内只改 5 个文件，上报格式不变，旧客户端照常上传。`tests/test_tm_v080_core.py` 验证 Senpi（OmO Native）的几种写法合并为 `senpi` 一个客户端、Muse Code 配额按设备分行，以及共享自定义价格（`customPricing`）经网关读写。
 
 v0.81.0–v0.83.0 在内核依赖范围内改 6 个文件并新增 `hubDelta.js`，上报格式不变。实时流协议升到 4，网关随之改为转发版本 3 和 4（见下文 SSE）；会话多出推理强度与按模型的词元组成。`tests/test_tm_v083_core.py` 验证版本 4 的首帧修订号、新鲜度事件和增量补丁经网关衔接，以及两个新会话字段通过网关校验。
+
+v0.84.0–v0.87.0 在内核依赖范围内改 8 个文件，新增 `uploadDelta.js` 与 `deviceKind.js`，依赖闭包从 25 个文件增加到 27 个。上报端多了两种省流量的做法：一是 15 分钟内已经确认过、没有变化的历史不再重发（省略 `history` 表示保留核心里存的历史，`null` 才清空），对任何 Hub 都这样做；二是增量上报 `POST /api/ingest/delta`，只有 Hub 在完整上报的回执里给出 `upload` 基线时才会启用。网关不提供增量上报（见下文「增量上报」）。实时流协议和会话字段没有变（`hubProtocol.js`、`sessionLive.js` 未改），网关转发的流版本和概览的会话字段白名单照旧。设备记录多出可选的 `deviceKind`（硬件图标提示），后续上报省略时核心保留上次的值；面板还没有用到，概览不带出。Muse 的网页订阅额度跨设备只留一行，Muse Code（命令行）仍按设备分行；新增 Manus 与 OpenDesign 配额。`tests/test_tm_v087_core.py` 验证省略历史与 `null` 清空、网关不给出增量基线、`deviceKind` 透传与保留，以及 Muse 两种额度的分行方式。
 
 ## 关键语义（全部由官方代码执行，网关不重造）
 
@@ -59,6 +61,12 @@ v0.81.0–v0.83.0 在内核依赖范围内改 6 个文件并新增 `hubDelta.js`
   转发队列收到完整 `stats.devices`、持久保存本请求的规范化记录后，外层才将
   成功回应裁为 `ok/deviceId`。错误及 Retry-After 保持原状；本地快照写入失败
   仍由已确认记录重放。`tests/test_tm_v062_gateway.py` 验证这一顺序。
+- **增量上报**：v0.87 起官方上报端在完整上报时带 `X-Token-Monitor-Upload: 1`，
+  Hub 在回执里给出 `upload` 基线后，上报端才改发 `/api/ingest/delta` 补丁。
+  补丁依赖核心内存里的临时基线，而网关的转发队列要对完整载荷做校验、去重、
+  写快照，核心不可用时还要按顺序重放，两者对不上。所以转发队列不把这个请求头
+  传给核心，回执里没有 `upload`，上报端一直发完整载荷；误发到
+  `/api/ingest/delta` 得到 404，官方上报端据此改发一次完整上报。
 - **压缩**：普通响应通过 Starlette 标准压缩器处理（1 KiB、level 1），协商前
   合并重复 Accept-Encoding 头并尊重 q=0；事件流排除在外。跨域允许的新协商头
   仍仅限配置的来源。

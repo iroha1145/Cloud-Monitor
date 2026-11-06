@@ -185,10 +185,12 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             allow_origins=list(settings.cors_origins),
             # 与路由能力对齐：tm 路由含 PUT /api/subscriptions、DELETE /api/devices/{id}
             allow_methods=["GET", "POST", "PUT", "DELETE"],
+            # X-Token-Monitor-Upload：v0.87 起官方上报端随完整上报发送；网关不提供
+            # 增量上报（见 tm_proxy 的 ingest），只是不让带这个头的请求被预检拒掉
             allow_headers=[
                 "Authorization", "Content-Type", "X-Token-Monitor-Secret",
                 "X-Token-Monitor-Response", "X-Token-Monitor-Stream",
-                "X-CM-Time-Zone",
+                "X-Token-Monitor-Upload", "X-CM-Time-Zone",
             ],
         )
 
