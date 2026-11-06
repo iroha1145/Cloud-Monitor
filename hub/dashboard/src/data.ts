@@ -4,7 +4,7 @@
  * /api/v1/tm/overview contract without changing aggregation or fetching secrets.
  */
 import { DAY_MS, browserTimeZone, dayKeyZoned, isValidTimeZone } from "./lib/datetime";
-import { clientName, providerFor, providerName } from "./vendors";
+import { clientName, providerFor, providerName, quotaProviderName } from "./vendors";
 
 export type PeriodKey = "today" | "month" | "allTime";
 export const PERIOD_LABELS: Record<PeriodKey, string> = {
@@ -1274,7 +1274,7 @@ export function normalizeOverview(
         id: `${index}-${wi}`,
         groupId: `quota-account-${index}`,
         provider: text(item.provider, "other"),
-        name: providerName(text(item.provider, "other")),
+        name: quotaProviderName(text(item.provider, "other"), text(item.source)),
         plan: text(item.planLabel),
         account: [
           ...new Set(

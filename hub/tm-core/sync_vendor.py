@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify or restore the byte-for-byte, pinned v0.83.0 Hub dependency closure.
+"""Verify or restore the byte-for-byte, pinned v0.87.0 Hub dependency closure.
 
 The lock is deliberately committed separately from the generated vendor manifest.
 No downloads or npm installation are performed. A future release needs a reviewed
@@ -15,9 +15,9 @@ import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-RELEASE = "v0.83.0"
-PIN = "7dc01989ccd62fd52bc027b28c64f7d225fbc5c8"
-LOCK = ROOT / "upstream-v083.json"
+RELEASE = "v0.87.0"
+PIN = "b3dd5e25bd9ab89620eb6380c863e335d8b8751e"
+LOCK = ROOT / "upstream-v087.json"
 REQUIRE = re.compile(r"require\(['\"]([^'\"]+)['\"]\)")
 
 

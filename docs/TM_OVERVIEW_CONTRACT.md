@@ -11,13 +11,15 @@ projects 直接来自官方 `/api/stats`，本层只做时间序列叠加与面�
 不重造官方聚合。官方 `/api/ingest` `/api/stats` `/api/history` SSE 订阅
 行为不得因本扩展改变。
 
-当前内核固定为 Token Monitor v0.83.0（`7dc01989ccd62fd52bc027b28c64f7d225fbc5c8`）。支持 CatPaw（`catpaw`）、FX（`fx`）、MiniMax Code（`mcode`）、Factory Droid（`factory` / `droid`）、Muse Code（`muse`）、Goose（`goose`）客户端与 StepFun、Notion AI（`notion`）配额窗口；v0.71–v0.74 起 WorkBuddy 多个账号分开显示，多日汇总保留为 0 的未分类词元，官方项目汇总多出按模型的词元（`models`，网关的 `projects` 与 `projects_by_period` 也带出）；`limits` 原样传递官方完整配额记录，Token Plan 未提供实际点数余额时，网页只展示上报的用量比例。
+当前内核固定为 Token Monitor v0.87.0（`b3dd5e25bd9ab89620eb6380c863e335d8b8751e`）。支持 CatPaw（`catpaw`）、FX（`fx`）、MiniMax Code（`mcode`）、Factory Droid（`factory` / `droid`）、Muse Code（`muse`）、Goose（`goose`）客户端与 StepFun、Notion AI（`notion`）配额窗口；v0.71–v0.74 起 WorkBuddy 多个账号分开显示，多日汇总保留为 0 的未分类词元，官方项目汇总多出按模型的词元（`models`，网关的 `projects` 与 `projects_by_period` 也带出）；`limits` 原样传递官方完整配额记录，Token Plan 未提供实际点数余额时，网页只展示上报的用量比例。
 
 v0.77 起 Cline 配额按凭据身份聚合：相同邮箱的不同密钥或登录账号分别保留，同一凭据在多台设备上的记录仍合并。
 
 v0.80 起客户端多了 Senpi（`senpi`，网页显示为 OmO Native），`Senpi (OmO Native)` 等写法由内核并入 `senpi`；Muse Code（`muse`）配额没有可跨设备的账号标识，每台设备单独一行，不合并。
 
 v0.83 起会话多出 `reasoningEffort`（Codex 与 Claude 会话最近一次的推理强度，内核已规范化），概览的 `sessions` 与 `sessions_by_period` 原样带出，网页会话详情显示为「推理强度」；按模型的词元组成（`modelTokenComponents`）只留在官方 `/api/stats`，概览不带出。提示词缓存倒计时只对 Claude 会话显示，Codex 的估算倒计时由上游取消，旧设备和归档里的 Codex 记录也不再显示。
+
+v0.84–v0.87 起配额多了 Manus（`manus`）与 OpenDesign（`opendesign`）。Muse 的配额分两种来源：命令行 Muse Code（`source: "cli"`）仍每台设备一行；网页订阅（`source: "web"`）跨设备只留最新的一行。官方把配额服务商名改为 Muse，网页按来源显示为「Muse Code」或「Muse」，用量里的客户端仍叫 Muse Code。设备记录多出可选的 `deviceKind`（硬件图标提示，内核规范化，后续上报省略时保留），概览暂不带出。上报端会省略 15 分钟内已确认、没有变化的 `history`（省略即保留核心里的历史，`null` 清空），网关原样转发；增量上报（`/api/ingest/delta`）在网关终止，网关的成功回执不含 `upload`，上报端因此一直发完整载荷。
 
 鉴权：面板与 Cloud 扩展一律 `Authorization: Bearer ACCESS_TOKEN`。
 `TOKEN_MONITOR_SECRET` 不能读这些端点。Token Monitor 未启用 → 404。

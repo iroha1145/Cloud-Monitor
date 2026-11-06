@@ -364,6 +364,20 @@ test("device status honors the official freshness decision for long upload inter
   );
 });
 
+test("Muse quota rows are titled by product: the CLI is Muse Code, the web subscription is Muse", () => {
+  const data = normalizeOverview({
+    totals: {},
+    limits: [
+      { provider: "muse", source: "cli", status: "ok", windows: [{ kind: "weekly", usedPercent: 30 }] },
+      { provider: "muse", source: "web", status: "ok", accountLabel: "Muse (Meta)",
+        windows: [{ kind: "weekly", usedPercent: 45 }] },
+      { provider: "manus", status: "ok", windows: [{ metric: "credits", remaining: 120 }] },
+    ],
+  });
+  assert.deepEqual(data.quotas.map((quota) => quota.name), ["Muse Code", "Muse", "Manus"]);
+  assert.equal(data.quotas[1].account, "Muse (Meta)");
+});
+
 test("quota account identity, unknown providers, native currency and meter rules survive adaptation", () => {
   const payload = {
     totals: {},
