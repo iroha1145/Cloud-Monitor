@@ -410,13 +410,28 @@ anthropic/openai 而丢掉真实的 claude/codex。
 | anthropic | https://status.claude.com/api/v2/summary.json | …/status.json |
 | openai | https://status.openai.com/api/v2/summary.json | …/status.json |
 | cursor | https://status.cursor.com/api/v2/summary.json | …/status.json |
-| deepseek | https://deepseek.statuspage.io/api/v2/summary.json（Atlassian 镜像；页面入口 https://status.deepseek.com） | …/status.json |
+| deepseek | https://status.deepseek.com/feed.atom（官方 Atom feed） | 同 URL |
 | kimi | https://status.moonshot.cn/api/v2/summary.json | …/status.json |
 | grok | https://status.x.ai/feed.xml（RSS，API 组件） | 同 URL |
 | grok-web | https://status.x.ai/feed.xml（RSS，Grok Web） | 同 URL；页面 https://status.x.ai/grok-com |
 
 优先 API / Claude Code / Cursor 组件。ChatGPT 网页故障不得必然把
 OpenAI API 标成中断。
+
+DeepSeek 不再读 deepseek.statuspage.io：那个 Atlassian 镜像 2026-05 之后不再
+收事件，却一直回答「All Systems Operational」（上游 token-monitor #1343）。
+官方 feed 的读法：
+
+- 状态为 resolved / completed / postmortem / canceled / cancelled 的事件已结束；
+  读不出或没见过的状态按进行中算。
+- 进行中的事件标题含 outage / unavailable / not available / 中断 / 不可用 / 宕机
+  时为 `outage`，否则为 `degraded`。
+- 标题含 maintenance / 维护 的是计划维护：只在没有进行中的事件时显示
+  `maintenance`，不和故障比高低。
+- 受影响组件只有对话服务（Chatservice）的事件不计入；没写组件的事件照常计入。
+  搜索、上传文件等其他组件的事件照常计入。
+- feed 没有条目、被截断、不是 Atom 时报 `unknown`（`error_code: invalid_json`），
+  不当成「没有事件」。
 
 缓存：singleflight + stale-while-revalidate（未过期直返；过期立即返 stale
 并后台刷新；完全无缓存且失败才 `unknown`）。不记录账户、密钥或完整

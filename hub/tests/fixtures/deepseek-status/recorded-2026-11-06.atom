@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom">
+  <title>DeepSeek</title>
+  <id>https://status.deepseek.com</id>
+  <updated>2026-11-03T18:48:02+08:00</updated>
+  <subtitle>Status updates for DeepSeek</subtitle>
+  <link href="https://status.deepseek.com"></link>
+  <entry>
+    <title>DeepSeek 网页/API 部分中断（DeepSeek Web/API Partially Unavailable）</title>
+    <updated>2026-11-03T18:48:02+08:00</updated>
+    <id>urn:flashduty:change:7202016104287</id>
+    <link href="https://status.deepseek.com/incidents/7202016104287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4.1 Flash API服务(API Service), 对话服务(Chatservice), DeepSeek V4 Pro API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek API 性能下降（DeepSeek API Degraded Performance）</title>
+    <updated>2026-10-27T15:21:54+08:00</updated>
+    <id>urn:flashduty:change:7170710513287</id>
+    <link href="https://status.deepseek.com/incidents/7170710513287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4 Pro API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>搜索服务异常（Search service error）</title>
+    <updated>2026-10-20T17:28:53+08:00</updated>
+    <id>urn:flashduty:change:7140152117287</id>
+    <link href="https://status.deepseek.com/incidents/7140152117287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; 搜索服务(Search Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek 网页/API 部分中断（DeepSeek Web/API Partially Unavailable）</title>
+    <updated>2026-10-15T13:04:04+08:00</updated>
+    <id>urn:flashduty:change:7116348214287</id>
+    <link href="https://status.deepseek.com/incidents/7116348214287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; 对话服务(Chatservice), DeepSeek V4.1 Flash API服务(API Service), DeepSeek V4 Pro API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek 网页/API 性能下降（DeepSeek Web/API Degraded Performance）</title>
+    <updated>2026-10-12T14:57:54+08:00</updated>
+    <id>urn:flashduty:change:7104277696287</id>
+    <link href="https://status.deepseek.com/incidents/7104277696287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4.1 Flash API服务(API Service), 对话服务(Chatservice)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>- DeepSeek 网页=部分中断（DeepSeek Web Partially Unavailable）</title>
+    <updated>2026-10-12T12:16:54+08:00</updated>
+    <id>urn:flashduty:change:7103794822287</id>
+    <link href="https://status.deepseek.com/incidents/7103794822287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; 对话服务(Chatservice)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek 网页/API 性能下降（DeepSeek Web/API Degraded Performance）</title>
+    <updated>2026-10-08T15:08:01+08:00</updated>
+    <id>urn:flashduty:change:7086651324287</id>
+    <link href="https://status.deepseek.com/incidents/7086651324287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; 对话服务(Chatservice), DeepSeek V4.1 Flash API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek 网页/API 性能下降（DeepSeek Web/API Degraded Performance）</title>
+    <updated>2026-10-02T05:34:35+08:00</updated>
+    <id>urn:flashduty:change:7058006316287</id>
+    <link href="https://status.deepseek.com/incidents/7058006316287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4 Pro API服务(API Service), 对话服务(Chatservice), DeepSeek V4.1 Flash API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek 网页/API 性能下降（DeepSeek Web/API Degraded Performance）</title>
+    <updated>2026-09-24T07:08:50+08:00</updated>
+    <id>urn:flashduty:change:7023110499287</id>
+    <link href="https://status.deepseek.com/incidents/7023110499287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4.1 Flash API服务(API Service), DeepSeek V4 Pro API服务(API Service), 对话服务(Chatservice)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek 网页/API 性能下降（DeepSeek Web/API Degraded Performance）</title>
+    <updated>2026-09-23T15:44:58+08:00</updated>
+    <id>urn:flashduty:change:7020391134287</id>
+    <link href="https://status.deepseek.com/incidents/7020391134287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4.1 Flash API服务(API Service), DeepSeek V4 Pro API服务(API Service), 对话服务(Chatservice)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek 网页/API 性能下降（DeepSeek Web/API Degraded Performance）</title>
+    <updated>2026-09-20T16:58:46+08:00</updated>
+    <id>urn:flashduty:change:7007335047287</id>
+    <link href="https://status.deepseek.com/incidents/7007335047287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4.1 Flash API服务(API Service), 对话服务(Chatservice)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek 网页/API 性能下降（DeepSeek Web/API Degraded Performance）</title>
+    <updated>2026-09-17T16:53:37+08:00</updated>
+    <id>urn:flashduty:change:6994064302287</id>
+    <link href="https://status.deepseek.com/incidents/6994064302287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4 Pro API服务(API Service), 对话服务(Chatservice)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek 网页/API 性能下降（DeepSeek Web/API Degraded Performance</title>
+    <updated>2026-09-15T19:39:42+08:00</updated>
+    <id>urn:flashduty:change:6985724403287</id>
+    <link href="https://status.deepseek.com/incidents/6985724403287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4.1 Flash API服务(API Service), 对话服务(Chatservice), 上传文件服务(File Upload Service), 搜索服务(Search Service), DeepSeek V4 Pro API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek 网页/API 性能下降（DeepSeek Web/API Degraded Performance）</title>
+    <updated>2026-09-15T17:29:32+08:00</updated>
+    <id>urn:flashduty:change:6985247573287</id>
+    <link href="https://status.deepseek.com/incidents/6985247573287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4.1 Flash API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek 网页/API 部分中断（DeepSeek Web/API Partially Unavailable）</title>
+    <updated>2026-09-15T05:30:00+08:00</updated>
+    <id>urn:flashduty:change:7010698581287</id>
+    <link href="https://status.deepseek.com/incidents/7010698581287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; 对话服务(Chatservice), DeepSeek V4.1 Flash API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek 网页/API 部分中断（DeepSeek Web/API partially unavailable)</title>
+    <updated>2026-09-02T14:25:45+08:00</updated>
+    <id>urn:flashduty:change:6927183076287</id>
+    <link href="https://status.deepseek.com/incidents/6927183076287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4 Pro API服务(API Service), DeepSeek V4.1 Flash API服务(API Service), 对话服务(Chatservice)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek API 性能下降（DeepSeek API Degraded Performance）</title>
+    <updated>2026-08-22T10:17:04+08:00</updated>
+    <id>urn:flashduty:change:6877795382287</id>
+    <link href="https://status.deepseek.com/incidents/6877795382287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4.1 Flash API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek 网页/API 性能下降（DeepSeek Web/API Degraded Performance）</title>
+    <updated>2026-08-21T15:10:06+08:00</updated>
+    <id>urn:flashduty:change:6874252609287</id>
+    <link href="https://status.deepseek.com/incidents/6874252609287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4.1 Flash API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek 网页/API 性能下降（DeepSeek Web/API Degraded Performance）</title>
+    <updated>2026-08-19T14:34:14+08:00</updated>
+    <id>urn:flashduty:change:6865326525287</id>
+    <link href="https://status.deepseek.com/incidents/6865326525287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4.1 Flash API服务(API Service), DeepSeek V4 Pro API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek API 性能下降（DeepSeek API Degraded Performance）</title>
+    <updated>2026-08-19T11:18:17+08:00</updated>
+    <id>urn:flashduty:change:6864747482287</id>
+    <link href="https://status.deepseek.com/incidents/6864747482287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4.1 Flash API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>搜索服务异常（Search service error）</title>
+    <updated>2026-08-18T15:42:00+08:00</updated>
+    <id>urn:flashduty:change:6861035747287</id>
+    <link href="https://status.deepseek.com/incidents/6861035747287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; 搜索服务(Search Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>搜索服务异常（Search service error）</title>
+    <updated>2026-08-14T14:40:51+08:00</updated>
+    <id>urn:flashduty:change:6843256773287</id>
+    <link href="https://status.deepseek.com/incidents/6843256773287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; 搜索服务(Search Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek 网页/API 性能下降（DeepSeek Web/API Degraded Performance）</title>
+    <updated>2026-08-14T11:14:41+08:00</updated>
+    <id>urn:flashduty:change:6842626394287</id>
+    <link href="https://status.deepseek.com/incidents/6842626394287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4 Pro API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek API 性能下降（DeepSeek API Degraded Performance）</title>
+    <updated>2026-08-10T17:44:39+08:00</updated>
+    <id>urn:flashduty:change:6826137995287</id>
+    <link href="https://status.deepseek.com/incidents/6826137995287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4.1 Flash API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek API 性能下降（DeepSeek API Degraded Performance）</title>
+    <updated>2026-08-10T15:51:13+08:00</updated>
+    <id>urn:flashduty:change:6825777576287</id>
+    <link href="https://status.deepseek.com/incidents/6825777576287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4.1 Flash API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+</feed>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom">
+  <title>DeepSeek</title>
+  <id>https://status.deepseek.com</id>
+  <updated>2026-11-03T18:48:02+08:00</updated>
+  <subtitle>Status updates for DeepSeek</subtitle>
+  <link href="https://status.deepseek.com"></link>
+  <entry>
+    <title>DeepSeek 网页/API 部分中断（DeepSeek Web/API Partially Unavailable）</title>
+    <updated>2026-11-03T18:48:02+08:00</updated>
+    <id>urn:flashduty:change:7202016104287</id>
+    <link href="https://status.deepseek.com/incidents/7202016104287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; monitoring&lt;/p&gt;&lt;p&gt;修复已上线，我们正在观察服务恢复情况。&#xA;&#xA;A fix has been implemented and we are monitoring the results.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4.1 Flash API服务(API Service), 对话服务(Chatservice), DeepSeek V4 Pro API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek API 性能下降（DeepSeek API Degraded Performance）</title>
+    <updated>2026-10-27T15:21:54+08:00</updated>
+    <id>urn:flashduty:change:7170710513287</id>
+    <link href="https://status.deepseek.com/incidents/7170710513287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; DeepSeek V4 Pro API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>搜索服务异常（Search service error）</title>
+    <updated>2026-10-20T17:28:53+08:00</updated>
+    <id>urn:flashduty:change:7140152117287</id>
+    <link href="https://status.deepseek.com/incidents/7140152117287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; 搜索服务(Search Service)&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>DeepSeek 网页/API 部分中断（DeepSeek Web/API Partially Unavailable）</title>
+    <updated>2026-10-15T13:04:04+08:00</updated>
+    <id>urn:flashduty:change:7116348214287</id>
+    <link href="https://status.deepseek.com/incidents/7116348214287" rel="alternate"></link>
+    <summary type="html">&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; resolved&lt;/p&gt;&lt;p&gt;本次问题已解决，服务已恢复。&#xA;&#xA;The incident has been resolved and service has been restored.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; 对话服务(Chatservice), DeepSeek V4.1 Flash API服务(API Service), DeepSeek V4 Pro API服务(API Service)&lt;/p&gt;</summary>
+  </entry>
+</feed>

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from pathlib import Path
 
 import httpx
 import pytest
@@ -98,8 +99,18 @@ class MapTransport(httpx.AsyncBaseTransport):
         return httpx.Response(status, text=str(body))
 
 
+DEEPSEEK_FEED_URL = "https://status.deepseek.com/feed.atom"
+DEEPSEEK_FIXTURES = Path(__file__).parent / "fixtures" / "deepseek-status"
+
+
+def _deepseek_feed(name: str) -> str:
+    """录下的官方 Atom feed 与按它派生的样本，说明见 fixtures/deepseek-status/README.md。"""
+    return (DEEPSEEK_FIXTURES / name).read_text(encoding="utf-8")
+
+
 def _deepseek_ok():
-    return _summary(components=[{"name": "API 服务 (API Service)", "status": "operational"}])
+    # 2026-11-06 录下的官方 feed：25 条事件全部 resolved
+    return _deepseek_feed("recorded-2026-11-06.atom")
 
 
 def _kimi_ok():
@@ -153,11 +164,11 @@ async def _client(mapping, delay=0.0, delays=None, timeout=5.0):
 
 
 def test_rss_pages_have_a_single_feed_url():
-    # fetch_one_provider 对 RSS 页只取一次 summary_url，不回退 status_url；
-    # 若以后接入两个地址不同的 RSS 页，需要先恢复回退逻辑。
-    rss = [page for page in STATUS_PAGES.values() if page.parser == "rss"]
-    assert rss
-    assert all(page.summary_url == page.status_url for page in rss)
+    # fetch_one_provider 对 RSS / Atom 页只取一次 summary_url，不回退 status_url；
+    # 若以后接入两个地址不同的 feed 页，需要先恢复回退逻辑。
+    feeds = [page for page in STATUS_PAGES.values() if page.parser in {"rss", "atom"}]
+    assert {page.parser for page in feeds} == {"rss", "atom"}
+    assert all(page.summary_url == page.status_url for page in feeds)
 
 
 def test_aliases_map_claude_codex_cursor():
@@ -305,8 +316,8 @@ def test_allowlist_is_fixed_and_has_no_client_url():
     for url in ALLOWED_FETCH_URLS:
         host = httpx.URL(url).host
         assert url.startswith("https://")
-        assert "/api/v2/" in url or url.endswith("/feed.xml")
-        assert host.startswith("status.") or host.endswith(".statuspage.io")
+        assert "/api/v2/" in url or url.endswith(("/feed.xml", "/feed.atom"))
+        assert host.startswith("status.")
 
 
 def test_three_status_pages_concurrent_not_serial():
@@ -355,7 +366,8 @@ def test_fetch_deepseek_and_kimi_when_observed_today():
     assert by["deepseek"]["status"] == "operational"
     assert by["kimi"]["status"] == "operational"
     hosts = {httpx.URL(u).host for u in transport.urls}
-    assert hosts <= {"deepseek.statuspage.io", "status.moonshot.cn"}
+    assert hosts <= {"status.deepseek.com", "status.moonshot.cn"}
+    assert transport.urls.count(DEEPSEEK_FEED_URL) == 1
 
 
 def test_fetch_grok_api_and_web_when_observed_today():
@@ -796,3 +808,353 @@ def test_warm_cache_full_failure_keeps_last_good_with_current_errors():
     assert after["partial"] is True
     # The cached copy reports the failed refresh, not the last good round's errors.
     assert sorted(e["provider"] for e in after["errors"]) == ["anthropic", "openai"]
+
+
+# ---------------------------------------------------------------------------
+# DeepSeek：官方 Atom feed（status.deepseek.com/feed.atom）
+#
+# 旧的 deepseek.statuspage.io 镜像 2026-05 之后不再收事件，却一直回答
+# 「All Systems Operational」。上游 token-monitor #1343 改读官方 feed：进行中的
+# 事件与受影响服务决定状态，维护单独算，空 feed 或不完整的 feed 报 unknown。
+# ---------------------------------------------------------------------------
+
+
+def _atom_header() -> str:
+    recorded = _deepseek_ok()
+    return recorded[: recorded.index("  <entry>")]
+
+
+_ATOM_IDS = iter(range(7400000000287, 7400000100287))
+
+
+def _atom_entry(title, updated, status, components, message="Status update."):
+    """与官方 feed 条目同形：summary 是转义后的 HTML，状态与受影响组件各占一段。"""
+    entry_id = next(_ATOM_IDS)
+    summary = (
+        f"&lt;p&gt;&lt;strong&gt;Status:&lt;/strong&gt; {status}&lt;/p&gt;"
+        f"&lt;p&gt;{message}&lt;/p&gt;"
+    )
+    if components:
+        summary += (
+            "&lt;p&gt;&lt;strong&gt;Affected components:&lt;/strong&gt; "
+            f"{', '.join(components)}&lt;/p&gt;"
+        )
+    return (
+        "  <entry>\n"
+        f"    <title>{title}</title>\n"
+        f"    <updated>{updated}</updated>\n"
+        f"    <id>urn:flashduty:change:{entry_id}</id>\n"
+        f'    <link href="https://status.deepseek.com/incidents/{entry_id}" rel="alternate"></link>\n'
+        f'    <summary type="html">{summary}</summary>\n'
+        "  </entry>\n"
+    )
+
+
+def _atom_feed(*entries) -> str:
+    return _atom_header() + "".join(entries) + "</feed>"
+
+
+def _fetch_deepseek(feed, *, status=200):
+    async def run():
+        client, transport = await _client({DEEPSEEK_FEED_URL: (status, feed)})
+        try:
+            parsed, error = await fetch_one_provider(client, STATUS_PAGES["deepseek"], timeout=2.0)
+        finally:
+            await client.aclose()
+        return parsed, error, transport.urls
+
+    return asyncio.run(run())
+
+
+V4_PRO_API = "DeepSeek V4 Pro API服务(API Service)"
+V41_FLASH_API = "DeepSeek V4.1 Flash API服务(API Service)"
+CHAT_SERVICE = "对话服务(Chatservice)"
+
+
+def test_deepseek_reads_only_the_official_atom_feed():
+    page = STATUS_PAGES["deepseek"]
+    assert page.summary_url == DEEPSEEK_FEED_URL
+    assert page.status_url == DEEPSEEK_FEED_URL
+    assert page.parser == "atom"
+    assert page.public_url == "https://status.deepseek.com"
+    assert DEEPSEEK_FEED_URL in ALLOWED_FETCH_URLS
+    assert not any("statuspage.io" in url for url in ALLOWED_FETCH_URLS)
+
+
+def test_deepseek_recorded_feed_all_resolved_is_operational():
+    parsed, error, urls = _fetch_deepseek(_deepseek_ok())
+    assert error is None
+    assert urls == [DEEPSEEK_FEED_URL]  # 只请求一次 feed，没有第二个地址可回退
+    assert parsed == {
+        "status": "operational",
+        "description": "All Systems Operational",
+        "source_updated_at": "2026-11-03T10:48:02Z",
+        "error_code": None,
+    }
+
+
+def test_deepseek_active_outage_incident():
+    parsed, error, _urls = _fetch_deepseek(_deepseek_feed("active-outage.atom"))
+    assert error is None
+    assert parsed["status"] == "outage"
+    assert parsed["description"] == "DeepSeek 网页/API 部分中断（DeepSeek Web/API Partially Unavailable）"
+    assert parsed["source_updated_at"] == "2026-11-03T10:48:02Z"
+    assert parsed["error_code"] is None
+
+
+def test_deepseek_active_degradation():
+    parsed, error, _urls = _fetch_deepseek(_deepseek_feed("degraded.atom"))
+    assert error is None
+    assert parsed["status"] == "degraded"
+    assert parsed["description"] == "DeepSeek API 性能下降（DeepSeek API Degraded Performance）"
+    assert parsed["source_updated_at"] == "2026-11-06T02:12:00Z"
+
+
+def test_deepseek_maintenance_only_is_maintenance_not_incident():
+    parsed, error, _urls = _fetch_deepseek(_deepseek_feed("maintenance-only.atom"))
+    assert error is None
+    assert parsed["status"] == "maintenance"
+    assert parsed["description"] == "DeepSeek API 计划维护（DeepSeek API Scheduled Maintenance）"
+
+
+def test_deepseek_maintenance_does_not_outrank_live_incident():
+    # 维护更新、事件更早；维护在本模块的排序里比 degraded 靠后，混进去会盖住真实故障
+    feed = _atom_feed(
+        _atom_entry(
+            "DeepSeek API 计划维护（DeepSeek API Scheduled Maintenance）",
+            "2026-11-06T09:00:00+08:00", "in_progress", [V4_PRO_API, V41_FLASH_API],
+        ),
+        _atom_entry(
+            "DeepSeek API 性能下降（DeepSeek API Degraded Performance）",
+            "2026-11-06T08:00:00+08:00", "investigating", [V41_FLASH_API],
+        ),
+    )
+    parsed, error, _urls = _fetch_deepseek(feed)
+    assert error is None
+    assert parsed["status"] == "degraded"
+    assert parsed["description"] == "DeepSeek API 性能下降（DeepSeek API Degraded Performance）"
+
+
+def test_deepseek_lists_newest_incidents_first():
+    feed = _atom_feed(
+        _atom_entry(
+            "DeepSeek API 性能下降（DeepSeek API Degraded Performance）",
+            "2026-11-06T08:00:00+08:00", "monitoring", [V4_PRO_API],
+        ),
+        _atom_entry(
+            "DeepSeek 网页/API 部分中断（DeepSeek Web/API Partially Unavailable）",
+            "2026-11-06T09:30:00+08:00", "identified", [V41_FLASH_API, CHAT_SERVICE],
+        ),
+    )
+    parsed, _error, _urls = _fetch_deepseek(feed)
+    assert parsed["status"] == "outage"
+    assert parsed["description"] == (
+        "DeepSeek 网页/API 部分中断（DeepSeek Web/API Partially Unavailable）"
+        " · DeepSeek API 性能下降（DeepSeek API Degraded Performance）"
+    )
+
+
+def test_deepseek_web_chat_only_incident_does_not_mark_api_down():
+    parsed, error, _urls = _fetch_deepseek(_deepseek_feed("chat-only.atom"))
+    assert error is None
+    assert parsed["status"] == "operational"
+
+
+def test_deepseek_incident_without_components_still_counts():
+    # 没写受影响组件时不能当成「与 API 无关」而报正常
+    feed = _atom_feed(
+        _atom_entry(
+            "DeepSeek API 部分中断（DeepSeek API Partially Unavailable）",
+            "2026-11-06T08:00:00+08:00", "investigating", [],
+        ),
+    )
+    parsed, _error, _urls = _fetch_deepseek(feed)
+    assert parsed["status"] == "outage"
+
+
+def test_deepseek_unparseable_event_status_counts_as_active():
+    # feed 格式漂移只能报成可能有事，不能退回「一切正常」
+    feed = _atom_feed(
+        _atom_entry("Something happened", "2026-11-06T08:00:00+08:00", "???", [V4_PRO_API]),
+        _atom_entry("Older incident", "2026-11-01T08:00:00+08:00", "resolved", [V4_PRO_API]),
+    )
+    parsed, _error, _urls = _fetch_deepseek(feed)
+    assert parsed["status"] == "degraded"
+    assert parsed["description"] == "Something happened"
+
+
+def _truncated_after_resolved_entry():
+    recorded = _deepseek_ok()
+    return recorded[: recorded.index("</entry>", recorded.index("</entry>") + 1) + len("</entry>")]
+
+
+def _truncated_inside_entry():
+    recorded = _deepseek_ok()
+    return recorded[: recorded.rindex("</entry>")]
+
+
+def _unclosed_active_entry():
+    active = _atom_entry(
+        "DeepSeek API 部分中断（DeepSeek API Partially Unavailable）",
+        "2026-11-06T08:00:00+08:00", "investigating", [V4_PRO_API],
+    )
+    resolved = _atom_entry("Earlier incident", "2026-11-01T08:00:00+08:00", "resolved", [V4_PRO_API])
+    return _atom_feed(resolved, active.replace("</entry>", ""))
+
+
+@pytest.mark.parametrize(
+    "feed",
+    [
+        pytest.param(lambda: _deepseek_feed("empty.atom"), id="no-entries"),
+        pytest.param(_truncated_after_resolved_entry, id="truncated-after-resolved-entry"),
+        pytest.param(_truncated_inside_entry, id="truncated-inside-entry"),
+        pytest.param(_unclosed_active_entry, id="unclosed-active-entry"),
+        pytest.param(lambda: "<!DOCTYPE html><html>oops</html>", id="html-page"),
+        pytest.param(_grok_rss_ok, id="rss-not-atom"),
+    ],
+)
+def test_deepseek_empty_or_incomplete_feed_is_unknown(feed):
+    parsed, error, _urls = _fetch_deepseek(feed())
+    assert error is None
+    assert parsed["status"] == "unknown"
+    assert parsed["error_code"] == "invalid_json"
+    assert parsed["source_updated_at"] is None
+
+
+def test_deepseek_feed_entity_subsets_are_refused():
+    feed = (
+        '<?xml version="1.0"?><!DOCTYPE feed [<!ENTITY x "aaaa">]>'
+        '<feed xmlns="http://www.w3.org/2005/Atom"><title>&x;</title>'
+        + _atom_entry("Something happened", "2026-11-06T08:00:00+08:00", "investigating", [V4_PRO_API])
+        + "</feed>"
+    )
+    parsed, _error, _urls = _fetch_deepseek(feed)
+    assert parsed["status"] == "unknown"
+    assert parsed["error_code"] == "invalid_json"
+
+
+def test_deepseek_feed_body_is_stream_capped_before_parse():
+    filler = _atom_entry("Earlier incident", "2026-11-01T08:00:00+08:00", "resolved", [V4_PRO_API])
+    feed = _atom_feed(*([filler] * (512 * 1024 // len(filler.encode("utf-8")) + 2)))
+    assert len(feed.encode("utf-8")) > 512 * 1024
+    parsed, error, _urls = _fetch_deepseek(feed)
+    assert parsed == {}
+    assert error == "payload_too_large"
+
+
+def test_deepseek_non_200_feed_is_unknown_not_500():
+    async def run():
+        client, transport = await _client({DEEPSEEK_FEED_URL: (503, "down")})
+        try:
+            providers, errors = await fetch_provider_statuses(
+                client, {"deepseek": ["deepseek"]}, timeout_seconds=2.5
+            )
+        finally:
+            await client.aclose()
+        return providers, errors, transport.urls
+
+    providers, errors, urls = asyncio.run(run())
+    assert urls == [DEEPSEEK_FEED_URL]
+    assert providers[0]["status"] == "unknown"
+    assert providers[0]["error_code"] == "http_status"
+    assert errors == [{"provider": "deepseek", "error_code": "http_status"}]
+
+
+def test_deepseek_hanging_feed_stays_within_budget():
+    async def run():
+        mapping = _ok_map()
+        client, _ = await _client(mapping, delays={DEEPSEEK_FEED_URL: 10.0})
+        started = time.monotonic()
+        try:
+            providers, errors = await fetch_provider_statuses(
+                client,
+                {"deepseek": ["deepseek"], "kimi": ["kimi-k2"]},
+                timeout_seconds=0.3,
+                budget_seconds=3.0,
+            )
+        finally:
+            await client.aclose()
+        return time.monotonic() - started, providers, errors
+
+    elapsed, providers, errors = asyncio.run(run())
+    assert elapsed < 3.0, elapsed
+    by = {p["provider"]: p for p in providers}
+    assert by["deepseek"]["status"] == "unknown"
+    assert by["deepseek"]["error_code"] == "timeout"
+    assert by["kimi"]["status"] == "operational"
+    assert errors == [{"provider": "deepseek", "error_code": "timeout"}]
+
+
+def test_deepseek_concurrent_snapshots_share_one_feed_request():
+    async def run():
+        client, transport = await _client(_ok_map(), delay=0.3)
+        svc = ProviderStatusService(cache_seconds=300, timeout_seconds=2.5)
+        observed = {"deepseek": ["deepseek-v4-pro"]}
+        try:
+            results = await asyncio.gather(*[svc.snapshot(client=client, observed=observed) for _ in range(3)])
+        finally:
+            await client.aclose()
+        return results, transport.urls
+
+    results, urls = asyncio.run(run())
+    assert urls == [DEEPSEEK_FEED_URL]
+    assert all(r["providers"][0]["status"] == "operational" for r in results)
+
+
+def test_deepseek_empty_feed_keeps_last_good_status():
+    async def run():
+        clock = {"t": 1000.0}
+        mapping = {DEEPSEEK_FEED_URL: (200, _deepseek_feed("active-outage.atom"))}
+        client, _ = await _client(mapping)
+        svc = ProviderStatusService(cache_seconds=10, timeout_seconds=2.5, monotonic=lambda: clock["t"])
+        observed = {"deepseek": ["deepseek"]}
+        try:
+            first = await svc.snapshot(client=client, observed=observed)
+            mapping[DEEPSEEK_FEED_URL] = (200, _deepseek_feed("empty.atom"))
+            clock["t"] = 1011.0
+            stale = await svc.snapshot(client=client, observed=observed)  # SWR：先回旧值，后台刷新
+            await asyncio.sleep(0.05)
+            after = await svc.snapshot(client=client, observed=observed)
+        finally:
+            await client.aclose()
+        return first, stale, after
+
+    first, stale, after = asyncio.run(run())
+    assert first["providers"][0]["status"] == "outage"
+    assert first["providers"][0]["stale"] is False
+    assert stale["providers"][0]["status"] == "outage"
+    assert stale["providers"][0]["stale"] is True
+    # 刷新拿到空 feed：不用 unknown 盖掉上次的好结果，只标 stale 与 partial
+    assert after["providers"][0]["status"] == "outage"
+    assert after["providers"][0]["stale"] is True
+    assert after["partial"] is True
+
+
+@requires_node
+def test_endpoint_hanging_deepseek_feed_does_not_touch_overview_or_ingest(cloud):
+    pa = widget_style_payload("dev-deepseek")
+    pa["today"]["models"]["deepseek-v4-pro"] = 5000
+    assert cloud.post("/api/ingest", json=pa, headers=HEADERS).status_code == 200
+    transport = MapTransport(_ok_map(), delays={DEEPSEEK_FEED_URL: 30.0})
+    cloud.portal.call(cloud.app.state.http_provider.aclose)
+    cloud.app.state.http_provider = httpx.AsyncClient(transport=transport, timeout=5.0)
+    cloud.app.state.provider_status = ProviderStatusService(cache_seconds=300, timeout_seconds=2.5)
+
+    started = time.monotonic()
+    status = cloud.get("/api/v1/tm/provider-status", headers=READ)
+    status_elapsed = time.monotonic() - started
+    assert status.status_code == 200
+    assert status_elapsed < 5.0, status_elapsed
+    by = {p["provider"]: p for p in status.json()["providers"]}
+    assert by["deepseek"]["status"] == "unknown"
+    assert by["deepseek"]["error_code"] == "timeout"
+    assert by["deepseek"]["observed_as"] == ["deepseek-v4-pro"]
+    assert by["anthropic"]["status"] == "operational"
+    assert DEEPSEEK_FEED_URL in transport.urls
+    assert all(u in ALLOWED_FETCH_URLS for u in transport.urls)
+
+    started = time.monotonic()
+    overview = cloud.get("/api/v1/tm/overview", headers=READ)
+    assert overview.status_code == 200
+    assert time.monotonic() - started < 5.0
+    assert cloud.post("/api/ingest", json=pa, headers=HEADERS).status_code == 200
