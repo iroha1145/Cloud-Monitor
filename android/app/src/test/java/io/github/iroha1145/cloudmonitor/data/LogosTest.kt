@@ -14,6 +14,19 @@ class LogosTest {
     }
 
     @Test
+    fun stepFunModelsUseTheStepFunMark() {
+        listOf(
+            "step-5-preview", "step-3.7-flash", "step-3.5-flash-2603", "step-1o-turbo-vision",
+            "step-audio-r1.5", "Step-3.7-Flash", "deepinfra/stepfun-ai/Step-3.7-Flash",
+        ).forEach { model ->
+            assertEquals(model, "stepfun", modelVendorId(model))
+            assertEquals(model, "stepfun", clientLogoId(model))
+        }
+        assertEquals("", modelVendorId("multistep-planner"))
+        assertEquals("", modelVendorId("step-by-step"))
+    }
+
+    @Test
     fun v070ClientsAndLocalRunnersResolveTheirOwnMarks() {
         assertEquals("catpaw", clientLogoId("catpaw"))
         assertEquals("fx", clientLogoId("fx"))

@@ -18,6 +18,29 @@ test("models the logo table recognises get the same vendor as their label", () =
   }
 });
 
+test("StepFun models are StepFun's, including through gateways", () => {
+  // Ids from StepFun's price list and the routes tokscale prices them through.
+  for (const model of [
+    "step-5-preview",
+    "step-3.7-flash",
+    "step-3.5-flash-2603",
+    "step-1o-turbo-vision",
+    "step-audio-r1.5",
+    "step-tts-2",
+    "Step-3.7-Flash",
+    "stepfun/step-5-preview",
+    "deepinfra/stepfun-ai/Step-3.7-Flash",
+    "openrouter/stepfun/step-3.7-flash",
+  ]) {
+    assert.equal(providerName(providerFor(model)), "StepFun", model);
+    assert.equal(vendorFor(model)?.logo, "stepfun", model);
+  }
+  // "step" alone is an ordinary word, not a model family.
+  assert.equal(providerFor("multistep-planner"), "other");
+  assert.equal(providerFor("step-by-step"), "other");
+  assert.equal(providerFor("gpt-5-step-2"), "openai");
+});
+
 test("unknown models are labelled in Chinese instead of the raw key", () => {
   assert.equal(providerFor("house-model-7"), "other");
   assert.equal(providerName("other"), "其他");

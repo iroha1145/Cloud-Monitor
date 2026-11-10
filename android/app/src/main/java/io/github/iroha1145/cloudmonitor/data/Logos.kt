@@ -47,6 +47,9 @@ private val CLIENT_LOGO_IDS = setOf(
     "zai", "zed",
 )
 
+/** StepFun model ids: "step-" plus a version or product line (step-5-preview, step-audio-2). */
+internal val STEPFUN_MODEL = Regex("""(?:^|[^a-z0-9])step-(?:\d|r\d|audio|tts|asr)""")
+
 fun modelVendorId(name: String?): String {
     val s = name.orEmpty().lowercase(Locale.US)
     if (s.isEmpty()) return ""
@@ -61,6 +64,7 @@ fun modelVendorId(name: String?): String {
     if ("mistral" in s || "mixtral" in s || "codestral" in s) return "mistral"
     if (Regex("""(?:^|[^a-z0-9])muse[\s-]*spark""").containsMatchIn(s) || Regex("""(?:^|[^a-z])llama""").containsMatchIn(s) || "meta" in s) return "meta"
     if ("minimax" in s) return "minimax"
+    if ("stepfun" in s || STEPFUN_MODEL.containsMatchIn(s)) return "stepfun"
     if ("doubao" in s) return "doubao"
     if ("hunyuan" in s) return "hunyuan"
     if ("command-r" in s || "cohere" in s || "aya-" in s) return "cohere"

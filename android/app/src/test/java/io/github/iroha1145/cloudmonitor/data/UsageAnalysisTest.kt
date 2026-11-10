@@ -233,6 +233,16 @@ class UsageAnalysisTest {
         assertNull(models[0].costUsd)
     }
 
+    @Test fun stepFunModelsAreGroupedUnderStepFun() {
+        val period = json.decodeFromString<PeriodTotals>("""{
+          "totalTokens":300,"models":{"step-5-preview":200,"step-3.7-flash":80,"multistep-planner":20}
+        }""")
+        assertEquals(
+            mapOf("step-5-preview" to "stepfun", "step-3.7-flash" to "stepfun", "multistep-planner" to "other"),
+            modelUsage(period).associate { it.id to it.provider },
+        )
+    }
+
     @Test fun emptyEntityMapsDoNotInventUncachedInputEvenWhenPeriodIsCapable() {
         val period = json.decodeFromString<PeriodTotals>("""{
           "capabilities":{"tokenComponents":true},"totalTokens":1000,"models":{"unknown":1000},
