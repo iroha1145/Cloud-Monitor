@@ -16,6 +16,10 @@ export const VENDORS = [
   // "llama" must start a word: "ollama" is a local runner, not Meta.
   { id: "meta", name: "Meta", logo: "meta", pattern: /(?:^|[^a-z0-9])muse[\s-]*spark|(?:^|[^a-z])llama|meta/ },
   { id: "minimax", name: "MiniMax", logo: "minimax", pattern: /minimax/ },
+  // StepFun model ids are "step-" plus a version or product line
+  // (step-5-preview, step-3.7-flash, step-1o-turbo-vision, step-audio-2);
+  // a bare "step" is too common a word to match on its own.
+  { id: "stepfun", name: "StepFun", logo: "stepfun", pattern: /stepfun|(?:^|[^a-z0-9])step-(?:\d|r\d|audio|tts|asr)/ },
   { id: "doubao", name: "Doubao", logo: "doubao", pattern: /doubao|bytedance/ },
   { id: "hunyuan", name: "Hunyuan", logo: "hunyuan", pattern: /hunyuan/ },
   { id: "cohere", name: "Cohere", logo: "cohere", pattern: /command-r|cohere|aya-/ },

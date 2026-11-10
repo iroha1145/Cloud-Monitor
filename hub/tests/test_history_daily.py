@@ -133,7 +133,10 @@ def test_history_unavailable_sqlite_still_multiday(tmp_path):
     for i in range(12):
         day = (dt.date(2026, 8, 22) - dt.timedelta(days=i)).isoformat()
         seed(db, "d", day, f"{day}T01:00:00.000Z", 7)
-    series = daily_activity(db, history=None, dashboard_tz="Asia/Tokyo")
+    # Pin "now" to the seeded week: the fine-grained window is relative to the
+    # clock, and from 2026-11-10 on 2026-08-11 falls outside it.
+    now = dt.datetime(2026, 8, 22, 12, tzinfo=dt.timezone.utc)
+    series = daily_activity(db, history=None, dashboard_tz="Asia/Tokyo", now=now)
     assert len(series) > 1
     days = {r["day"] for r in series}
     assert "2026-08-22" in days

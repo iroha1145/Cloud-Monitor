@@ -174,6 +174,7 @@ private fun usageProvider(id: String): String {
         "glm" in name || "zhipu" in name || Regex("""\bzai\b""").containsMatchIn(name) -> "glm"
         "mistral" in name || "mixtral" in name || "codestral" in name -> "mistral"
         "minimax" in name -> "minimax"
+        "stepfun" in name || STEPFUN_MODEL.containsMatchIn(name) -> "stepfun"
         "doubao" in name -> "doubao"
         "hunyuan" in name -> "hunyuan"
         "command-r" in name || "cohere" in name || "aya-" in name -> "cohere"
