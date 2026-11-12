@@ -26,6 +26,14 @@ npm run dev
 - **连接真实服务器**：在预览页点击「连接设置」，填入服务器地址和 `ACCESS_TOKEN` 即可拉取真实数据（密钥仅保存在当前标签页内存中）。
 - **调试正式登录页**：运行 `VITE_HOSTED=true npm run dev` 可直接预览实机环境下的登录门禁界面。
 
+## 浏览器支持
+
+面板只面向 Chrome、Edge、Firefox、Safari 的近期版本，不为旧版浏览器保留回退：
+
+- **源码只写标准写法**：不手写 `-webkit-` 等旧前缀，也不写 `100vh` 这类兜底值。至今仍只有带前缀写法的属性除外（如 `-webkit-user-select`、`-webkit-font-smoothing`）。构建工具会按自己的默认目标（约 Chrome 111、Safari 16.4 起）补齐仍需要的前缀。
+- **较新的能力按渐进增强使用**：不支持时界面照常可用，只是少一段动画。例如主题切换的圆形揭示（View Transitions）和折叠区的高度动画（`interpolate-size`）。
+- **字体只发 woff2**。
+
 ## 编译构建
 
 ```bash

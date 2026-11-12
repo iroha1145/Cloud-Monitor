@@ -1,0 +1,11 @@
+/* Geist Mono 400, Latin: the face @fontsource/geist-mono/latin-400.css
+   declares, without its second .woff source. Every browser the dashboard
+   supports reads woff2, so the .woff copy was only ever dead weight in the
+   build output. */
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("@fontsource/geist-mono/files/geist-mono-latin-400-normal.woff2") format("woff2");
+}

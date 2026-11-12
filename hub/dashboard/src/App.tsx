@@ -26,7 +26,6 @@ import { NotificationBell } from "./components/rareui/notification-bell";
 import { BrandMark } from "./BrandMark";
 import GlideMenu from "./components/primitives/GlideMenu";
 import { downloadCsv, rowsToCsv } from "./lib/csv";
-import { scrollToTop } from "./lib/scroll";
 import { useTheme } from "./lib/theme";
 import { ThemeMenu } from "./ThemeMenu";
 import { formatZoned } from "./lib/datetime";
@@ -164,7 +163,8 @@ export default function App({ initialData, initialToken = "", hosted = false, is
       if (next !== pageRef.current) setNavigated(true);
       setPage(next);
       setMobile(false);
-      scrollToTop();
+      // "instant" overrides the page's smooth scroll-behavior.
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
