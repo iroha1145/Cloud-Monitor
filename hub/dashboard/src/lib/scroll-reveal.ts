@@ -2,16 +2,15 @@
  * Scroll reveal, ported from game-manage's v-reveal (frontend/src/motion.js).
  * Cards are visible by default. Only a card that starts below the fold of a
  * live page waits, hidden, until it is scrolled to, then rises in; cards that
- * arrive together rise one after another. Anything already on screen, any
- * card under reduced motion and any browser without IntersectionObserver
- * shows at once, so no content depends on an observer that may never fire.
+ * arrive together rise one after another. Anything already on screen and any
+ * card under reduced motion shows at once.
  */
 const CARD = '[data-feel-card]';
 const SETTLE_MS = 700;
 
 export function installScrollReveal(root: HTMLElement, selector = CARD) {
   const view = root.ownerDocument.defaultView;
-  if (!view || typeof view.IntersectionObserver !== 'function') return () => {};
+  if (!view) return () => {};
   const reduced = view.matchMedia('(prefers-reduced-motion: reduce)');
   const timers = new Map<HTMLElement, number>();
   const settle = (el: HTMLElement) => {

@@ -20,11 +20,16 @@ function resolveTheme(preference: ThemePreference): Appearance {
     : preference;
 }
 
-function applyTheme(appearance: Appearance) {
+function applyTheme(preference: ThemePreference, appearance: Appearance) {
   const root = document.documentElement;
   root.classList.toggle("dark", appearance === "dark");
   root.dataset.theme = appearance;
   root.style.colorScheme = appearance;
+  // Same rule as theme-boot.js: "light dark" follows the system, a pinned
+  // choice names its one scheme.
+  document.querySelector('meta[name="color-scheme"]')?.setAttribute(
+    "content", preference === "system" ? "light dark" : preference,
+  );
   const page = getComputedStyle(root).getPropertyValue("--page").trim();
   document.querySelector('meta[name="theme-color"]')?.setAttribute(
     "content", page || (appearance === "dark" ? "#111111" : "#fafafa"),
@@ -55,7 +60,7 @@ export function useTheme() {
     };
     const apply = () => {
       if (id !== revision.current) return;
-      applyTheme(next.appearance);
+      applyTheme(next.preference, next.appearance);
       setTheme(next);
     };
     if (!changed || !origin || !document.startViewTransition || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {

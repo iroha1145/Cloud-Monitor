@@ -15,13 +15,9 @@
   width: 60%;
   height: 60%;
   background-color: currentColor;
-  -webkit-mask-image: var(--brand-image);
   mask-image: var(--brand-image);
-  -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
-  -webkit-mask-position: center;
   mask-position: center;
-  -webkit-mask-size: contain;
   mask-size: contain;
 }
 .brand-icon .brand-icon-fallback {

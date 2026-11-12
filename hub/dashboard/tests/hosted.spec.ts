@@ -291,7 +291,14 @@ test("production gate, real auth and static resources work under the server CSP"
   await expect(page.getByText("当前展示示例数据")).toHaveCount(0);
   const root = await request.get("/");
   expect(root.headers()["content-security-policy"]).toContain("script-src 'self'");
-  expect(await root.text()).toContain("/static/app/assets/");
+  const html = await root.text();
+  expect(html).toContain("/static/app/assets/");
+  // The built page asks for the one Latin face every screen draws with before
+  // the stylesheet has been read, and names both schemes for the blank window.
+  expect(html).toMatch(/<link rel="preload" as="font" type="font\/woff2" href="\/static\/app\/assets\/geist-latin-wght-normal-[\w-]+\.woff2" crossorigin>/);
+  expect(html).toContain('<meta name="color-scheme" content="light dark" />');
+  // To the browser and its password manager the key is this site's password.
+  await expect(page.getByLabel("访问密钥", { exact: true })).toHaveAttribute("autocomplete", "current-password");
   const unauthorized = await request.get("/api/v1/tm/overview");
   expect([401,403]).toContain(unauthorized.status());
   await page.getByLabel("访问密钥", { exact: true }).fill(SYNC_TOKEN);

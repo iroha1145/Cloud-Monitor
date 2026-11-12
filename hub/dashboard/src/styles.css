@@ -173,7 +173,6 @@ kbd {
    controls. */
 input[type="search"]::-webkit-search-cancel-button,
 input[type="search"]::-webkit-search-decoration {
-  -webkit-appearance: none;
   appearance: none;
 }
 /* Short captions and prose descriptions avoid orphans and stay within a
@@ -230,7 +229,6 @@ button,
 
 /* ── Shell ────────────────────────────────────────────────────────── */
 .app-shell {
-  min-height: 100vh;
   min-height: 100dvh;
 }
 
@@ -1568,7 +1566,6 @@ button,
 /* ── Dialogs, tooltips, menus ─────────────────────────────────────── */
 [data-slot="dialog-overlay"] {
   background: var(--scrim-bg);
-  -webkit-backdrop-filter: blur(8px) saturate(.95);
   backdrop-filter: blur(8px) saturate(.95);
 }
 [data-slot="dialog-content"] {
@@ -2206,16 +2203,8 @@ button,
   );
   background-size: 200% 100%;
   background-clip: text;
-  -webkit-background-clip: text;
   color: transparent;
   animation: shimmer-text 1.4s linear infinite;
-}
-@supports not (
-  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
-) {
-  [data-slot="dialog-overlay"] {
-    background: rgb(10 10 10 / 0.5);
-  }
 }
 
 /* ── Responsive (desktop and tablet; phones live in mobile.css) ───── */

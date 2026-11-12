@@ -109,19 +109,26 @@ for (const colorScheme of ["light", "dark"] as const) {
     await page.goto("/");
     await expect(page.locator("html")).toHaveAttribute("data-theme", colorScheme);
     await expect(page.locator("html")).toHaveCSS("color-scheme", colorScheme);
+    // Before any script runs the window already follows the system.
+    await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute("content", "light dark");
     await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", colorScheme === "dark" ? "#111111" : "#fafafa");
   });
 }
 
 test("manual mode can return to system and stays automatic after refresh", async ({ page }) => {
   const errors = await openDashboard(page);
+  const scheme = page.locator('meta[name="color-scheme"]');
+  await expect(scheme).toHaveAttribute("content", "light dark");
   await chooseTheme(page, "深色");
   await expectTheme(page, "dark");
+  await expect(scheme).toHaveAttribute("content", "dark");
   await page.reload();
   await expectTheme(page, "dark");
+  await expect(scheme).toHaveAttribute("content", "dark");
   await chooseTheme(page, "跟随系统");
   await expectSelection(page, "跟随系统");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect(scheme).toHaveAttribute("content", "light dark");
   await expect.poll(() => page.evaluate(() => localStorage.getItem("cm_theme"))).toBe("system");
   await page.reload();
   await expectSelection(page, "跟随系统");
